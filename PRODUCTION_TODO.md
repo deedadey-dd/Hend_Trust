@@ -19,3 +19,7 @@ This document tracks all temporary development shortcuts, mock implementations, 
     - Ensure `DEBUG=False` in Django `settings.py`.
     - Generate strong, cryptographically secure unique secrets (Django `SECRET_KEY`, JWT keys).
     - Apply proper CORS settings to strictly restrict origins to `*.hendaxis.com`.
+
+- [ ] **Courier API Integration**
+  - **Details:** Wire in real courier APIs (DHL, FedEx, etc.) for automated delivery status updates.
+  - **Implementation:** Update the `_check_courier_api_status()` stub function in `backend/apps/escrow/api.py` to route real API calls based on `delivery_log.courier_name`.

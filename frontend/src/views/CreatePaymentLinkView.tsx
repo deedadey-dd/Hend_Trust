@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { ArrowRight, Link as LinkIcon, DollarSign, Truck } from 'lucide-react';
-import axios from 'axios';
+import { ArrowRight, Link as LinkIcon, DollarSign, Truck, Copy, Check, Share2, X } from 'lucide-react';
+import { apiClient } from '../api/client';
 
 export default function CreatePaymentLinkView() {
   const [title, setTitle] = useState('');
@@ -9,6 +9,30 @@ export default function CreatePaymentLinkView() {
   const [shipping, setShipping] = useState('0');
   const [feeHandling, setFeeHandling] = useState('PASS_TO_BUYER');
   const [createdUrl, setCreatedUrl] = useState('');
+  const [copied, setCopied] = useState(false);
+  const [showModal, setShowModal] = useState(false);
+
+  const handleCopy = (url: string) => {
+    navigator.clipboard.writeText(url);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2500);
+  };
+
+  const handleShare = async (url: string) => {
+    if (navigator.share) {
+      try {
+        await navigator.share({
+          title: `Payment Link for ${title}`,
+          text: `Pay for ${title} securely via HendAxis Trust Escrow`,
+          url: url,
+        });
+      } catch (error) {
+        console.log('Error sharing', error);
+      }
+    } else {
+      alert("Web Share API not supported in your browser. Please copy the link instead.");
+    }
+  };
 
   const grossTotal = parseFloat(price || '0') + parseFloat(shipping || '0');
   const platformFee = (grossTotal * 0.015) + 10;
@@ -19,15 +43,16 @@ export default function CreatePaymentLinkView() {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      // In a real app, we would attach an auth token
-      const res = await axios.post('http://localhost:8000/api/v1/links/create', {
+      const response = await apiClient.post('/links/create', {
         title,
         description,
         price_ghs: parseFloat(price),
         shipping_fee_ghs: parseFloat(shipping),
         fee_handling: feeHandling
       });
-      setCreatedUrl(res.data.url);
+      const url = response.data.url.replace('https://pay.hendaxis.com', window.location.origin);
+      setCreatedUrl(url);
+      setShowModal(true);
     } catch (err) {
       console.error(err);
       alert('Failed to create link');
@@ -124,19 +149,87 @@ export default function CreatePaymentLinkView() {
             </button>
           </form>
 
+          {/* Inline Success Area */}
           {createdUrl && (
-            <div className="p-6 bg-green-50 border-t border-green-100 text-center">
-              <p className="text-sm text-green-800 font-medium mb-2">Link created successfully!</p>
-              <div className="flex items-center justify-center space-x-2">
-                <LinkIcon className="h-5 w-5 text-green-600" />
-                <a href={createdUrl.replace('https://pay.hendaxis.com', 'http://localhost:5173')} target="_blank" rel="noreferrer" className="text-blue-600 font-medium hover:underline">
-                  {createdUrl.replace('https://pay.hendaxis.com', 'http://localhost:5173')}
+            <div className="p-6 bg-green-50 border-t border-green-100">
+              <p className="text-sm text-green-800 font-medium mb-3 text-center">Link created successfully! Share it with your buyer.</p>
+              <div className="flex items-center gap-2 bg-white rounded-lg border border-green-200 p-3">
+                <LinkIcon className="h-4 w-4 text-green-600 flex-shrink-0" />
+                <a
+                  href={createdUrl}
+                  target="_blank" rel="noreferrer"
+                  className="text-blue-600 text-sm font-medium hover:underline flex-1 truncate">
+                  {createdUrl}
                 </a>
+                <button
+                  onClick={() => handleCopy(createdUrl)}
+                  className="flex-shrink-0 p-1.5 rounded-md hover:bg-green-100 transition-colors"
+                  title="Copy link">
+                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4 text-gray-400" />}
+                </button>
+                <button
+                  onClick={() => handleShare(createdUrl)}
+                  className="flex-shrink-0 p-1.5 rounded-md hover:bg-green-100 transition-colors"
+                  title="Share link">
+                  <Share2 className="h-4 w-4 text-gray-400" />
+                </button>
               </div>
             </div>
           )}
         </div>
       </div>
+
+      {/* Success Modal Pop-up */}
+      {showModal && createdUrl && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+            <div className="relative p-6 text-center">
+              <button 
+                onClick={() => setShowModal(false)}
+                className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
+              >
+                <X className="h-5 w-5" />
+              </button>
+              
+              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check className="h-8 w-8 text-green-600" />
+              </div>
+              
+              <h3 className="text-xl font-bold text-gray-900 mb-2">Payment Link Ready!</h3>
+              <p className="text-gray-500 mb-6 text-sm">
+                Your secure escrow link has been generated. Share it with your buyer to get paid.
+              </p>
+
+              <div className="flex items-center gap-2 bg-gray-50 rounded-lg border border-gray-200 p-3 mb-6">
+                <LinkIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
+                <input 
+                  type="text" 
+                  readOnly 
+                  value={createdUrl} 
+                  className="bg-transparent border-none focus:ring-0 text-sm text-gray-600 flex-1 min-w-0"
+                />
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={() => handleCopy(createdUrl)}
+                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all"
+                >
+                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                  {copied ? 'Copied!' : 'Copy Link'}
+                </button>
+                <button
+                  onClick={() => handleShare(createdUrl)}
+                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+                >
+                  <Share2 className="h-4 w-4" />
+                  Share Link
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

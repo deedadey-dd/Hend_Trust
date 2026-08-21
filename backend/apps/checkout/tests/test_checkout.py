@@ -46,6 +46,7 @@ def test_verify_and_initialize_pass_fee(mock_paystack, mock_verify, client, paym
 
     payload = {
         "link_id": str(payment_link_pass_fee.id),
+        "name": "Jane Doe",
         "phone_number": "1234567890",
         "otp_code": "123456",
         "email": "buyer@test.com",
@@ -66,6 +67,8 @@ def test_verify_and_initialize_pass_fee(mock_paystack, mock_verify, client, paym
     # Total Pass to Buyer: 100 + 11.50 = 111.50
     assert txn.platform_fee_ghs == Decimal('11.50')
     assert txn.total_amount_ghs == Decimal('111.50')
+    assert txn.buyer_name == "Jane Doe"
+    assert len(txn.paystack_reference) == 8
 
 @pytest.mark.django_db
 @patch('apps.checkout.api.verify_otp')
@@ -78,6 +81,7 @@ def test_verify_and_initialize_absorb_fee(mock_paystack, mock_verify, client, pa
 
     payload = {
         "link_id": str(payment_link_absorb_fee.id),
+        "name": "John Doe",
         "phone_number": "1234567890",
         "otp_code": "123456",
         "email": "buyer@test.com"

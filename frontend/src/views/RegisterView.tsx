@@ -1,9 +1,7 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
 import { ShieldCheck, User, Lock, Phone, Loader2 } from 'lucide-react';
-
-axios.defaults.withCredentials = true;
+import { apiClient } from '../api/client';
 
 export default function RegisterView() {
   const [username, setUsername] = useState('');
@@ -18,7 +16,7 @@ export default function RegisterView() {
     setError('');
     setLoading(true);
     try {
-      await axios.post('http://localhost:8000/api/v1/auth/register', {
+      await apiClient.post('/auth/register', {
         username,
         password,
         phone_number: phone,

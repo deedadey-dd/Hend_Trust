@@ -14,7 +14,8 @@ class MNotifyService:
         Returns True if successful, False otherwise.
         """
         from hendaxis_trust.settings import env
-        api_key = env('MNOTIFY_API_KEY', default='test_key')
+        api_key = env('SMS_GATEWAY_API_KEY', default='test_key')
+        sender_id = env('SMS_SENDER_ID', default='mNotify')
         
         # During local dev if no key is set, we still simulate success
         if api_key == 'test_key':
@@ -25,7 +26,7 @@ class MNotifyService:
         
         payload = {
             'recipient': [phone],
-            'sender': 'HendTrust',
+            'sender': sender_id,
             'message': message,
             'is_schedule': False,
             'schedule_date': ''

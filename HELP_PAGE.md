@@ -41,10 +41,10 @@ If the seller uses an integrated delivery company (like FedEx or a local API-int
 
 ### Path B: Informal Station / Bus Delivery (OTP)
 If the seller is using an informal delivery method (like a tro-tro, VIP bus, or sending it to a bus terminal):
-- The seller selects **Informal Station Delivery** and inputs the driver's phone number and the destination station.
-- HendAxis Trust sends a **Secret SMS OTP** to the *Buyer*.
-- When the buyer goes to the station to collect the package, they must provide the OTP to the driver/agent.
-- The driver/seller submits this OTP into the system. Once verified, the package is officially marked as Delivered.
+- The seller selects **Informal Station Delivery** and inputs the driver's phone number and/or car number, and the destination station.
+- HendAxis Trust sends the driver info  and a Secret OTP to the *Buyer*.
+- When the buyer goes to the station to collect the package, they must provide their ID and Secret OTP to the driver/agent or to the seller. This OTP must be saved and resent if the Buyer wants to Confirm Receipt.
+- If the driver/seller submits this OTP into the system. Once verified, the package is officially marked as Delivered.
 
 ---
 

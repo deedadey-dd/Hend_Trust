@@ -3,11 +3,12 @@ from ninja.pagination import paginate, PageNumberPagination
 from ninja_jwt.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
 from ninja.errors import HttpError
+from hendaxis_trust.auth import JWTCookieAuth
 from apps.notifications.models import NotificationLog
 import uuid
 import datetime
 
-notifications_router = Router(tags=["Notifications"], auth=JWTAuth())
+notifications_router = Router(tags=["Notifications"], auth=JWTCookieAuth())
 
 class NotificationSchema(Schema):
     id: uuid.UUID

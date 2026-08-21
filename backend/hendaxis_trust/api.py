@@ -1,5 +1,5 @@
 from ninja import NinjaAPI
-from apps.users.api import auth_router
+from apps.users.api import auth_router, profile_router
 from apps.links.api import links_router
 from apps.checkout.api import checkout_router
 from apps.delivery.api import delivery_router
@@ -25,3 +25,4 @@ api.add_router("/escrow", escrow_router)
 api.add_router("/wallet", wallet_router)
 api.add_router("/admin", admin_router)
 api.add_router("/notifications", notifications_router)
+api.add_router("/profile", profile_router)

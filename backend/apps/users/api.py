@@ -3,11 +3,14 @@ from ninja import Router, Schema
 from ninja_jwt.tokens import RefreshToken
 from ninja_jwt.schema import TokenRefreshInputSchema
 from django.contrib.auth import authenticate
-from apps.users.models import User
+from django.http import HttpResponse
+from apps.users.models import User, PayoutMode
 from ninja.errors import HttpError
 from typing import Optional
+from hendaxis_trust.auth import JWTCookieAuth
 
 auth_router = Router(tags=["Authentication"])
+profile_router = Router(tags=["Seller Profile"], auth=JWTCookieAuth())
 
 class RegisterSchema(Schema):
     username: str
@@ -21,6 +24,13 @@ class LoginSchema(Schema):
 
 class MessageSchema(Schema):
     message: str
+
+class LoginResponseSchema(Schema):
+    message: str
+    user_id: str
+    username: str
+    role: str
+    email: str
 
 def set_auth_cookies(response, refresh_token):
     access_token = refresh_token.access_token
@@ -59,8 +69,8 @@ def register(request, data: RegisterSchema):
     )
     return {"message": "User registered successfully"}
 
-@auth_router.post("/login", response=MessageSchema)
-def login(request, data: LoginSchema, response):
+@auth_router.post("/login", response=LoginResponseSchema)
+def login(request, data: LoginSchema, response: HttpResponse):
     user = authenticate(username=data.username, password=data.password)
     if not user:
         raise HttpError(401, "Invalid credentials")
@@ -68,10 +78,16 @@ def login(request, data: LoginSchema, response):
     refresh = RefreshToken.for_user(user)
     set_auth_cookies(response, refresh)
     
-    return {"message": "Login successful"}
+    return {
+        "message": "Login successful",
+        "user_id": str(user.id),
+        "username": user.username,
+        "role": user.role if hasattr(user, 'role') else 'SELLER',
+        "email": user.email or "",
+    }
 
 @auth_router.post("/refresh", response=MessageSchema)
-def refresh(request, response):
+def refresh(request, response: HttpResponse):
     refresh_token = request.COOKIES.get(settings.NINJA_JWT['AUTH_COOKIE_REFRESH'])
     if not refresh_token:
         raise HttpError(401, "No refresh token provided")
@@ -84,7 +100,95 @@ def refresh(request, response):
         raise HttpError(401, "Invalid refresh token")
 
 @auth_router.post("/logout", response=MessageSchema)
-def logout(request, response):
+def logout(request, response: HttpResponse):
     response.delete_cookie(settings.NINJA_JWT['AUTH_COOKIE'], domain=settings.NINJA_JWT['AUTH_COOKIE_DOMAIN'])
     response.delete_cookie(settings.NINJA_JWT['AUTH_COOKIE_REFRESH'], domain=settings.NINJA_JWT['AUTH_COOKIE_DOMAIN'])
     return {"message": "Logout successful"}
+
+# --- Profile Schemas ---
+class ProfileResponse(Schema):
+    id: str
+    username: str
+    email: str
+    first_name: str
+    last_name: str
+    phone_number: str
+    payout_mode: str
+    preferred_payout_type: Optional[str] = None
+    momo_number: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_name: Optional[str] = None
+    total_paystack_fees_ghs: Optional[float] = None
+
+class ProfileUpdateRequest(Schema):
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    payout_mode: Optional[str] = None
+    preferred_payout_type: Optional[str] = None
+    momo_number: Optional[str] = None
+    bank_account_number: Optional[str] = None
+    bank_name: Optional[str] = None
+
+class ProfileMessageResponse(Schema):
+    message: str
+
+def _build_profile_response(user) -> dict:
+    data = {
+        "id": str(user.id),
+        "username": user.username,
+        "email": user.email or "",
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "phone_number": user.phone_number or "",
+        "payout_mode": user.payout_mode,
+        "preferred_payout_type": None,
+        "momo_number": None,
+        "bank_account_number": None,
+        "bank_name": None,
+        "total_paystack_fees_ghs": None,
+    }
+    try:
+        wallet = user.wallet
+        data["preferred_payout_type"] = wallet.preferred_payout_type
+        data["momo_number"] = wallet.momo_number
+        data["bank_account_number"] = wallet.bank_account_number
+        data["bank_name"] = wallet.bank_name
+        data["total_paystack_fees_ghs"] = float(wallet.total_paystack_fees_ghs)
+    except Exception:
+        pass
+    return data
+
+@profile_router.get("/", response=ProfileResponse)
+def get_profile(request):
+    return _build_profile_response(request.user)
+
+@profile_router.patch("/", response=ProfileMessageResponse)
+def update_profile(request, data: ProfileUpdateRequest):
+    user = request.user
+    
+    if data.first_name is not None:
+        user.first_name = data.first_name
+    if data.last_name is not None:
+        user.last_name = data.last_name
+    if data.payout_mode is not None:
+        if data.payout_mode not in [PayoutMode.INSTANT, PayoutMode.MANUAL]:
+            raise HttpError(400, "Invalid payout_mode. Must be 'INSTANT' or 'MANUAL'.")
+        user.payout_mode = data.payout_mode
+    user.save()
+    
+    # Update wallet fields if provided
+    wallet_fields = {
+        "preferred_payout_type": data.preferred_payout_type,
+        "momo_number": data.momo_number,
+        "bank_account_number": data.bank_account_number,
+        "bank_name": data.bank_name,
+    }
+    if any(v is not None for v in wallet_fields.values()):
+        from apps.wallet.api import get_user_wallet
+        wallet = get_user_wallet(user)
+        for field, value in wallet_fields.items():
+            if value is not None:
+                setattr(wallet, field, value)
+        wallet.save()
+    
+    return {"message": "Profile updated successfully."}

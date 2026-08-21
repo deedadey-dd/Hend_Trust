@@ -1,7 +1,9 @@
 import os
+import subprocess as _sp
 from pathlib import Path
 import environ
 from datetime import timedelta
+import sentry_sdk
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -15,9 +17,23 @@ env = environ.Env(
 # Root of the monorepo is BASE_DIR.parent
 environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
 
+# Sentry Error Tracking
+sentry_dsn = env('SENTRY_DSN', default='')
+if sentry_dsn:
+    from django.core.exceptions import DisallowedHost
+    sentry_sdk.init(
+        dsn=sentry_dsn,
+        traces_sample_rate=1.0,
+        profiles_sample_rate=1.0,
+        ignore_errors=[DisallowedHost]
+    )
+
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-replace-me-with-a-secure-key-in-production')
 DEBUG = env('DEBUG')
-ALLOWED_HOSTS = ['*'] # Configure properly in production
+ALLOWED_HOSTS = env('ALLOWED_HOSTS', default='*').split(',')
+
+PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default='')
+PAYSTACK_PUBLIC_KEY = env('PAYSTACK_PUBLIC_KEY', default='')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -28,10 +44,12 @@ INSTALLED_APPS = [
     'django.contrib.staticfiles',
     
     # Third party apps
+    'corsheaders',
     'ninja_jwt',
     'ninja_extra',
     
     # Local apps
+    'apps.core',
     'apps.users',
     'apps.ledger',
     'apps.links',
@@ -43,6 +61,7 @@ INSTALLED_APPS = [
 ]
 
 MIDDLEWARE = [
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -72,9 +91,36 @@ TEMPLATES = [
 
 WSGI_APPLICATION = 'hendaxis_trust.wsgi.application'
 
-DATABASES = {
-    'default': env.db('DATABASE_URL', default=f"sqlite:///{BASE_DIR / 'db.sqlite3'}")
-}
+# Database
+# SQLite for development, PostgreSQL for production
+if not DEBUG and env('DATABASE_URL', default=''):
+    # Production: PostgreSQL
+    import dj_database_url
+    DATABASES = {
+        'default': dj_database_url.config(default=env('DATABASE_URL'))
+    }
+else:
+    # Development: SQLite — one database per git branch
+    try:
+        _branch = _sp.check_output(
+            ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
+            cwd=BASE_DIR,
+            stderr=_sp.DEVNULL,
+            text=True
+        ).strip() or 'main'
+    except Exception:
+        _branch = 'main'
+
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.sqlite3',
+            'NAME': BASE_DIR / f'db_{_branch}.sqlite3',
+            # Always use an in-memory database for the test suite
+            'TEST': {
+                'NAME': ':memory:',
+            },
+        }
+    }
 
 AUTH_PASSWORD_VALIDATORS = [
     {
@@ -108,7 +154,7 @@ NINJA_JWT = {
     'SIGNING_KEY': env('JWT_SECRET_KEY', default=SECRET_KEY),
     'AUTH_COOKIE': 'access_token',
     'AUTH_COOKIE_REFRESH': 'refresh_token',
-    'AUTH_COOKIE_DOMAIN': '.hendaxis.com',
+    'AUTH_COOKIE_DOMAIN': None if DEBUG else '.hendaxis.com',
     'AUTH_COOKIE_SECURE': not DEBUG,
     'AUTH_COOKIE_HTTP_ONLY': True,
     'AUTH_COOKIE_PATH': '/',
@@ -125,4 +171,119 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.escrow.tasks.check_expired_inspections',
         'schedule': 300.0, # 5 minutes in seconds
     },
+    'check-delivery-reminders-every-15-mins': {
+        'task': 'apps.escrow.tasks.check_delivery_reminders',
+        'schedule': 900.0, # 15 minutes
+    },
+    'process-auto-deliveries-every-15-mins': {
+        'task': 'apps.escrow.tasks.process_auto_deliveries',
+        'schedule': 900.0, # 15 minutes
+    },
 }
+
+# CORS Configuration
+if DEBUG:
+    CORS_ALLOW_ALL_ORIGINS = True
+    
+    # Dynamically trust all local IP addresses for CSRF in development
+    import socket
+    local_ips = ['localhost', '127.0.0.1']
+    try:
+        local_ips.extend(socket.gethostbyname_ex(socket.gethostname())[2])
+    except Exception:
+        pass
+    
+    CSRF_TRUSTED_ORIGINS = [f'http://{ip}:5173' for ip in local_ips] + [f'https://{ip}:5173' for ip in local_ips]
+else:
+    CORS_ALLOWED_ORIGINS = env('CORS_ALLOWED_ORIGINS', default='http://localhost:5173').split(',')
+    CSRF_TRUSTED_ORIGINS = env('CSRF_TRUSTED_ORIGINS', default='https://hendaxis.com').split(',')
+CORS_ALLOW_CREDENTIALS = True
+
+# Email Configuration
+if DEBUG:
+    EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
+else:
+    EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
+EMAIL_HOST = env('EMAIL_HOST', default='smtp.gmail.com')
+EMAIL_PORT = env('EMAIL_PORT', cast=int, default=587)
+EMAIL_USE_TLS = env('EMAIL_USE_TLS', cast=bool, default=True)
+EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
+EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
+DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@hendaxistrust.com')
+
+# Logging Configuration
+LOGS_DIR = BASE_DIR / 'logs'
+LOGS_DIR.mkdir(exist_ok=True)
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'formatters': {
+        'verbose': {
+            'format': '{levelname} {asctime} {module} {message}',
+            'style': '{',
+        },
+        'simple': {
+            'format': '{levelname} {message}',
+            'style': '{',
+        },
+        'django.server': {
+            '()': 'django.utils.log.ServerFormatter',
+            'format': '[{server_time}] {message}',
+            'style': '{',
+        },
+    },
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+            'formatter': 'simple',
+        },
+        'django.server': {
+            'level': 'INFO',
+            'class': 'logging.StreamHandler',
+            'formatter': 'django.server',
+        },
+        'file': {
+            'class': 'logging.handlers.RotatingFileHandler',
+            'filename': LOGS_DIR / 'django.log',
+            'maxBytes': 1024 * 1024 * 5,  # 5 MB
+            'backupCount': 5,
+            'formatter': 'verbose',
+        },
+    },
+    'root': {
+        'handlers': ['console', 'file'] if not DEBUG else ['console'],
+        'level': 'INFO',
+    },
+    'loggers': {
+        'django': {
+            'level': 'INFO',
+            'propagate': True,
+        },
+        'django.server': {
+            'handlers': ['django.server'],
+            'level': 'INFO',
+            'propagate': False,
+        },
+        'django.db.backends': {
+            'level': 'WARNING',
+        },
+    },
+}
+
+# Security Settings (Production)
+if not DEBUG:
+    # HTTPS/SSL settings
+    SECURE_SSL_REDIRECT = True
+    SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+    SESSION_COOKIE_SECURE = True
+    CSRF_COOKIE_SECURE = True
+    
+    # HSTS settings
+    SECURE_HSTS_SECONDS = 31536000  # 1 year
+    SECURE_HSTS_INCLUDE_SUBDOMAINS = True
+    SECURE_HSTS_PRELOAD = True
+    
+    # Other security headers
+    SECURE_CONTENT_TYPE_NOSNIFF = True
+    X_FRAME_OPTIONS = 'DENY'

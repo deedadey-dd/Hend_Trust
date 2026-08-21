@@ -50,6 +50,10 @@ def paystack_webhook(request):
                 if txn.status == TransactionStatus.AWAITING_PAYMENT:
                     txn.status = TransactionStatus.PAYMENT_RECEIVED
                     txn.save()
+                    
+                    from apps.core.tasks import notify_buyer_payment_received_task, notify_seller_payment_received_task
+                    notify_buyer_payment_received_task.delay(txn.id)
+                    notify_seller_payment_received_task.delay(txn.id)
             except Transaction.DoesNotExist:
                 pass
                 

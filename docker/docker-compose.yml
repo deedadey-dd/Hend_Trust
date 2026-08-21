@@ -8,7 +8,7 @@ services:
       POSTGRES_USER: hendaxis_user
       POSTGRES_PASSWORD: hendaxis_pass
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
@@ -51,6 +51,34 @@ services:
     depends_on:
       - db
       - redis
+    restart: unless-stopped
+  celery-beat:
+    image: python:3.11-slim
+    working_dir: /app
+    command: bash -c "pip install -r requirements.txt && celery -A hendaxis_trust.celery beat -l info"
+    volumes:
+      - ../backend:/app
+    environment:
+      - DATABASE_URL=postgres://hendaxis_user:hendaxis_pass@db:5432/hendaxis_trust_db
+      - REDIS_URL=redis://redis:6379/0
+      - DEBUG=True
+    depends_on:
+      - db
+      - redis
+    restart: unless-stopped
+
+  frontend:
+    image: node:20-slim
+    working_dir: /app
+    command: bash -c "npm install && npm run dev -- --host 0.0.0.0"
+    volumes:
+      - ../frontend:/app
+    ports:
+      - "5173:5173"
+    environment:
+      - VITE_API_URL=http://localhost:8000
+    depends_on:
+      - web
     restart: unless-stopped
 
 volumes:

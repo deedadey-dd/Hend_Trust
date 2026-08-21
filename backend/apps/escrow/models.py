@@ -18,6 +18,7 @@ class TransactionStatus(models.TextChoices):
 class Transaction(models.Model):
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     link = models.ForeignKey(PaymentLink, on_delete=models.PROTECT, related_name='transactions')
+    buyer_name = models.CharField(max_length=255, blank=True)
     buyer_phone = models.CharField(max_length=20)
     buyer_email = models.EmailField(blank=True)
     shipping_address = models.TextField(blank=True)
@@ -30,6 +31,15 @@ class Transaction(models.Model):
     dispatched_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
     inspection_starts_at = models.DateTimeField(null=True, blank=True)
+
+    # 6-digit confirmation code shared by seller → buyer to confirm delivery
+    delivery_confirmation_code = models.CharField(max_length=6, blank=True)
+    
+    # Reminder tracking
+    reminder_30h_sent = models.BooleanField(default=False)
+    reminder_36h_sent = models.BooleanField(default=False)
+    reminder_42h_sent = models.BooleanField(default=False)
+
     
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)

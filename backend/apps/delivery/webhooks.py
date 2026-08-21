@@ -38,6 +38,8 @@ def courier_status(request, payload: CourierStatusWebhookSchema):
         
         if payload.status == "DELIVERED" and transaction.status == TransactionStatus.DELIVERY_IN_PROGRESS:
             transition_to_inspection(transaction)
+            from apps.escrow.api import _notify_buyer_inspection_started
+            _notify_buyer_inspection_started(transaction)
             
         log_webhook_event(
             provider="COURIER_API",

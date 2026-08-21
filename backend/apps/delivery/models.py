@@ -20,8 +20,12 @@ class DeliveryLog(models.Model):
     
     # Path B specific
     driver_phone = models.CharField(max_length=20, null=True, blank=True)
+    driver_car_number = models.CharField(max_length=50, null=True, blank=True)
     destination_station = models.CharField(max_length=255, null=True, blank=True)
     waybill_photo_url = models.URLField(max_length=500, null=True, blank=True)
+    
+    # ID Verification during collection
+    buyer_id_photo_url = models.URLField(max_length=500, null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True)
 

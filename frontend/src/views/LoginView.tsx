@@ -1,10 +1,11 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
 import { ShieldCheck, User, Lock, Loader2 } from 'lucide-react';
+import { apiClient } from '../api/client';
+import { useAuthStore } from '../store/authStore';
 
 // Ensure cookies are sent with requests
-axios.defaults.withCredentials = true;
+apiClient.defaults.withCredentials = true;
 
 export default function LoginView() {
   const [username, setUsername] = useState('');
@@ -12,19 +13,19 @@ export default function LoginView() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
+  const { login } = useAuthStore();
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      await axios.post('http://localhost:8000/api/v1/auth/login', {
-        username,
-        password
-      });
-      navigate('/dashboard/create-link');
+      const res = await apiClient.post('/auth/login', { username, password });
+      const { user_id, username: uname, role, email } = res.data;
+      login('', { id: user_id, role, email, name: uname });
+      navigate('/dashboard');
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid credentials. Please try again.');
+      setError(err.response?.data?.message || err.response?.data?.detail || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }
