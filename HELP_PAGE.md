@@ -28,9 +28,10 @@ Sellers can create secure Payment Links to send to their buyers.
 ---
 
 ## 3. Making a Payment (For Buyers)
-1. Buyer opens the Payment Link and reviews item details, shipping costs, and fee breakdown in GHS.
-2. Buyer pays securely via **Paystack** (Mobile Money or Card).
-3. **Funds are locked in Escrow**: Money is held safely in double-entry clearing accounts while SMS and Email notifications (with direct action links) are sent to both parties.
+1. **Open the Payment Link**: View the item description, total price, and clear merchant identification showing the **Shop Name** along with the `@username` handle (e.g., `Accra Electronics Hub (@accra_tech)`).
+2. **Enter Delivery Details**: Provide your Name, Phone Number, and Shipping Address.
+3. **Pay via Paystack**: Use Mobile Money (MTN, Telecel, AT) or Bank Card.
+4. **Escrow Hold**: Your money is held securely in the **HendAxis System Escrow Account**. The seller is notified to dispatch your package.
 
 ---
 
@@ -50,18 +51,18 @@ Once delivery is confirmed, the buyer inspection timer starts automatically:
   - `< GHS 2,000`: **24 Hours**
   - `GHS 2,000 – GHS 9,999.99`: **48 Hours**
   - `>= GHS 10,000`: **72 Hours**
-- **Automatic Completion**: If the buyer approves or the inspection timer expires without a dispute, funds are released automatically to the seller's wallet.
-- **Navbar Tracking Modal**: Anyone can track order status or check tracking history using the 2-tab OTP / Order ID tracking modal accessible directly from the top navigation bar.
+- **Automatic Completion & Rating Modal**: Once the buyer confirms receipt via their 6-digit confirmation code, payment is released to the seller, and the **3-Axis Rate Seller Modal** automatically launches on screen so the buyer can instantly leave a review.
+- **Navbar & Payment Link Management**: Buyers can confirm receipt or raise disputes either on the direct Payment Status URL (`/l/:id`) or using the Navbar Order Tracking Modal (`/track`).
 
 ---
 
 ## 6. How Disputes & 5-Image Evidence Work
 If a buyer receives a damaged or incorrect item during the inspection period:
 
-- **Buyer Claim & Evidence**: Buyers raise a dispute with a claim description and up to **5 evidence photos**.
+- **Buyer Claim & Evidence Modal**: Clicking **Raise Dispute** opens an interactive modal where the buyer enters their claim description and uploads up to **5 evidence photos** directly to `/api/v1/escrow/{id}/raise-dispute`.
 - **Seller Counter Response**: The seller receives SMS & Email notifications and can submit a counter statement with up to **5 seller evidence photos**.
 - **Dispute Review Suppression**: Raising a dispute automatically suppresses and clears any reviews or star ratings submitted for that transaction.
-- **Manager Arbitration**: Platform managers inspect evidence in high-resolution lightboxes, upload manager ruling photos, and execute binding rulings (Release to Seller, 100% Refund to Buyer, or Custom Partial Split).
+- **Manager Arbitration & 1MB Post-Resolution Image Compression**: Platform managers inspect evidence in high-resolution lightboxes, upload manager ruling photos, and execute binding rulings (Release to Seller, 100% Refund to Buyer, or Custom Partial Split). Upon dispute resolution, all accumulated dispute photos (buyer, seller, and manager evidence) are automatically compressed server-side to a combined total size of **1MB or less** for long-term audit storage efficiency.
 
 ---
 
@@ -87,6 +88,14 @@ Superusers and platform administrators have complete visibility over all financi
   - Filter ledger entries by **Entry Type** (`BUYER_DEPOSIT`, `ESCROW_RELEASE`, `AD_PROMOTION_FEE`, `FULL_REFUND`, `PARTIAL_REFUND`, `WITHDRAWAL`), **Account Type** (`ASSET`, `LIABILITY`, `REVENUE`, `EXPENSE`), and **Specific Account**.
   - Query transactions by **Custom Date Ranges** (`From Date` / `To Date`) or search by transaction UUID.
   - Sort ledger entries dynamically by Timestamp, Amount (GHS), Entry Type, or Account Names in ascending or descending order.
+
+---
+
+## 10. Automated Unit Testing & Master Test Runner
+To maintain quality and prevent regressions across new features:
+
+- **Pytest Unit Test Suite**: Comprehensive tests covering Checkout, Escalated Escrow, Double-Entry Ledger, Tiered Delivery & OTP, Seller Reviews, Marketplace Shops, Verification Workflows, and 1MB Dispute Image Compression (`python -m pytest`).
+- **Master Test Runner Script**: Run `python run_all_tests.py` or `run_all_tests.bat` at the project root to automatically execute all backend unit tests, Django system checks, and frontend TypeScript compilation checks.
 
 ---
 

@@ -47,6 +47,7 @@ class TransactionStatusSchema(Schema):
     paystack_reference: str
     inspection_starts_at: Optional[str] = None
     seller_username: Optional[str] = ""
+    shop_name: Optional[str] = ""
     seller_email: Optional[str] = ""
     seller_phone: Optional[str] = ""
 
@@ -88,6 +89,7 @@ def track_orders(request, data: TrackRequestSchema):
             "paystack_reference": t.paystack_reference,
             "inspection_starts_at": t.inspection_starts_at.isoformat() if t.inspection_starts_at else None,
             "seller_username": t.link.seller.username or t.link.seller.email.split('@')[0],
+            "shop_name": t.link.seller.shop_name or f"@{t.link.seller.username}'s Store",
             "seller_email": getattr(t.link.seller, 'email', ''),
             "seller_phone": getattr(t.link.seller, 'phone_number', ''),
         } for t in txns
@@ -113,6 +115,7 @@ def track_orders_by_phone(request, data: TrackByPhoneSchema):
             "paystack_reference": t.paystack_reference,
             "inspection_starts_at": t.inspection_starts_at.isoformat() if t.inspection_starts_at else None,
             "seller_username": t.link.seller.username or t.link.seller.email.split('@')[0],
+            "shop_name": t.link.seller.shop_name or f"@{t.link.seller.username}'s Store",
             "seller_email": getattr(t.link.seller, 'email', ''),
             "seller_phone": getattr(t.link.seller, 'phone_number', ''),
         } for t in txns
@@ -141,6 +144,7 @@ def track_order_by_id(request, data: TrackByIdSchema):
             "paystack_reference": txn.paystack_reference,
             "inspection_starts_at": txn.inspection_starts_at.isoformat() if txn.inspection_starts_at else None,
             "seller_username": txn.link.seller.username or txn.link.seller.email.split('@')[0],
+            "shop_name": txn.link.seller.shop_name or f"@{txn.link.seller.username}'s Store",
             "seller_email": getattr(txn.link.seller, 'email', ''),
             "seller_phone": getattr(txn.link.seller, 'phone_number', ''),
         }
@@ -148,7 +152,7 @@ def track_order_by_id(request, data: TrackByIdSchema):
 
 @checkout_router.get("/transaction/{reference}", response=TransactionStatusSchema)
 def get_transaction_status(request, reference: str):
-    txn = get_object_or_404(Transaction, paystack_reference=reference)
+    txn = get_object_or_404(Transaction.objects.select_related('link', 'link__seller'), paystack_reference=reference)
     
     # Actively verify with Paystack if still awaiting payment (in case webhook was missed/delayed)
     if txn.status == TransactionStatus.AWAITING_PAYMENT:
@@ -176,6 +180,10 @@ def get_transaction_status(request, reference: str):
         "created_at": str(txn.created_at),
         "paystack_reference": txn.paystack_reference,
         "inspection_starts_at": str(txn.inspection_starts_at) if txn.inspection_starts_at else None,
+        "seller_username": txn.link.seller.username or txn.link.seller.email.split('@')[0],
+        "shop_name": txn.link.seller.shop_name or f"@{txn.link.seller.username}'s Store",
+        "seller_email": getattr(txn.link.seller, 'email', ''),
+        "seller_phone": getattr(txn.link.seller, 'phone_number', ''),
     }
 
 from typing import List

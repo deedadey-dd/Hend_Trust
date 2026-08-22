@@ -84,10 +84,16 @@ def test_get_seller_transactions(seller_user, transaction_awaiting_shipping):
 @pytest.mark.django_db
 def test_seller_dispatch(seller_user, transaction_awaiting_shipping):
     request = MockRequest(seller_user)
-    from apps.escrow.api import seller_dispatch
+    from apps.escrow.api import seller_dispatch, SellerDispatchSchema
     
-    res = seller_dispatch(request, transaction_awaiting_shipping.id)
-    assert res['message'] == "Transaction marked as in transit."
+    dispatch_data = SellerDispatchSchema(
+        delivery_method="COURIER_API",
+        courier_name="FedEx",
+        tracking_number="TRACK123"
+    )
+    
+    res = seller_dispatch(request, transaction_awaiting_shipping.id, dispatch_data)
+    assert "DELIVERY_IN_PROGRESS" in res['message']
     
     transaction_awaiting_shipping.refresh_from_db()
     assert transaction_awaiting_shipping.status == TransactionStatus.DELIVERY_IN_PROGRESS

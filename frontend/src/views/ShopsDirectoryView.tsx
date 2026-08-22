@@ -107,7 +107,7 @@ export default function ShopsDirectoryView() {
             <div className={`h-12 w-12 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-sm ${
               isAd ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-blue-600 to-indigo-700'
             }`}>
-              @{shop.seller_username.charAt(0).toUpperCase()}
+              {(shop.shop_name || shop.seller_username).charAt(0).toUpperCase()}
             </div>
             <div>
               <div className="flex items-center gap-1.5 flex-wrap">

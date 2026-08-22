@@ -20,6 +20,7 @@ interface ReviewItem {
 interface SellerStorefront {
   seller_id: string;
   seller_username: string;
+  shop_name?: string;
   joined_at: string;
   total_completed_escrows: number;
   total_reviews_count: number;
@@ -103,12 +104,12 @@ export default function SellerStoreView() {
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
                 <div className="h-12 w-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center font-black text-xl text-white">
-                  @{store.seller_username.charAt(0).toUpperCase()}
+                  {(store.shop_name || store.seller_username).charAt(0).toUpperCase()}
                 </div>
                 <div>
-                  <h1 className="text-2xl font-black tracking-tight">@{store.seller_username}</h1>
+                  <h1 className="text-2xl font-black tracking-tight">{store.shop_name || `@${store.seller_username}'s Store`}</h1>
                   <p className="text-xs text-blue-200 flex items-center gap-2 mt-0.5">
-                    <Calendar className="h-3.5 w-3.5" /> Member since {new Date(store.joined_at).getFullYear()}
+                    <span className="font-semibold text-white">@{store.seller_username}</span> • <Calendar className="h-3.5 w-3.5 inline" /> Member since {new Date(store.joined_at).getFullYear()}
                   </p>
                 </div>
               </div>
@@ -239,7 +240,7 @@ export default function SellerStoreView() {
                   {r.seller_reply && (
                     <div className="ml-4 pl-4 border-l-2 border-blue-500 bg-blue-50/50 p-3 rounded-r-xl space-y-1">
                       <div className="flex items-center justify-between text-xs font-bold text-blue-900">
-                        <span>@{store.seller_username} (Seller Reply)</span>
+                        <span>{store.shop_name ? `${store.shop_name} (@${store.seller_username})` : `@${store.seller_username}`} (Seller Reply)</span>
                         <span className="text-[10px] text-blue-400">{r.seller_replied_at ? new Date(r.seller_replied_at).toLocaleDateString() : ''}</span>
                       </div>
                       <p className="text-xs text-blue-800">{r.seller_reply}</p>

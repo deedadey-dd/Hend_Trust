@@ -3,8 +3,9 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   ShieldCheck, Truck, ArrowRight, Loader2,
-  Package, CheckCircle, Clock, AlertTriangle, X, KeyRound
+  Package, CheckCircle, Clock, AlertTriangle, X, KeyRound, Store
 } from 'lucide-react';
+import RateSellerModal from '../components/RateSellerModal';
 
 interface LinkData {
   id: string;
@@ -14,6 +15,7 @@ interface LinkData {
   shipping_fee_ghs: string;
   fee_handling: string;
   seller_username?: string;
+  shop_name?: string;
   seller_email?: string;
   seller_phone?: string;
 }
@@ -28,6 +30,8 @@ interface TxnDetail {
   created_at: string;
   paystack_reference: string;
   inspection_starts_at?: string;
+  seller_username?: string;
+  shop_name?: string;
 }
 
 const STATUS_CONFIG: Record<string, { icon: typeof ShieldCheck; color: string; bg: string; label: string }> = {
@@ -79,6 +83,16 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState('');
 
+  // Rating Modal state
+  const [showRatingModal, setShowRatingModal] = useState(false);
+
+  // Dispute Modal state
+  const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeReason, setDisputeReason] = useState('');
+  const [buyerPhotos, setBuyerPhotos] = useState<string[]>([]);
+  const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
+  const [disputeError, setDisputeError] = useState('');
+
   const handleOpenConfirmModal = async () => {
     setIsSendingCode(true);
     try {
@@ -97,12 +111,82 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     setIsConfirming(true);
     try {
       await axios.post(`/api/v1/escrow/${txn.id}/confirm-receipt`, { confirmation_code: confirmCode.trim() });
-      alert('Receipt confirmed! Payment released. Thank you.');
-      window.location.reload();
+      setShowConfirmModal(false);
+      setShowRatingModal(true);
     } catch (err: any) { 
       setConfirmError(err.response?.data?.message || 'Failed to confirm receipt. Please check the code and try again.'); 
     } finally {
       setIsConfirming(false);
+    }
+  };
+
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1024;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+    };
+  });
+};
+
+  const handleBuyerPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (buyerPhotos.length + files.length > 5) {
+      alert("You can upload a maximum of 5 evidence photos.");
+      return;
+    }
+    for (const file of files) {
+      try {
+        const compressed = await compressImage(file);
+        setBuyerPhotos(prev => [...prev, compressed].slice(0, 5));
+      } catch {
+        console.error("Failed to compress evidence photo.");
+      }
+    }
+  };
+
+  const handleRaiseDisputeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!disputeReason.trim()) {
+      setDisputeError('Please describe the reason for your dispute.');
+      return;
+    }
+    setDisputeError('');
+    setIsSubmittingDispute(true);
+    try {
+      await axios.post(`/api/v1/escrow/${txn.id}/raise-dispute`, {
+        reason: disputeReason.trim(),
+        photos: buyerPhotos
+      });
+      alert('Dispute and evidence photos submitted successfully. Management team will arbitrate.');
+      setShowDisputeModal(false);
+      window.location.reload();
+    } catch (err: any) {
+      setDisputeError(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit dispute.');
+    } finally {
+      setIsSubmittingDispute(false);
     }
   };
 
@@ -189,14 +273,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
               )}
               {canDispute && (
                 <button
-                  onClick={async () => {
-                    if (!confirm('Are you sure you want to raise a dispute?')) return;
-                    try {
-                      await axios.post(`/api/v1/escrow/${txn.id}/dispute`);
-                      alert('Dispute raised. Our team will be in touch.');
-                      window.location.reload();
-                    } catch { alert('Failed. Try again.'); }
-                  }}
+                  onClick={() => { setShowDisputeModal(true); setDisputeReason(''); setBuyerPhotos([]); setDisputeError(''); }}
                   className="flex-1 py-2.5 px-4 rounded-lg bg-red-50 text-red-600 border border-red-200 text-sm font-semibold hover:bg-red-100 transition"
                 >
                   ⚠ Raise Dispute
@@ -296,6 +373,78 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
           </div>
         </div>
       )}
+
+      {/* Raise Dispute Sub-Modal */}
+      {showDisputeModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
+            <button onClick={() => setShowDisputeModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+              <X className="h-5 w-5" />
+            </button>
+            <h4 className="text-base font-bold text-gray-900">Raise Transaction Dispute</h4>
+            {disputeError && <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-xl border border-red-100">{disputeError}</p>}
+            <form onSubmit={handleRaiseDisputeSubmit} className="space-y-4">
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Reason for Dispute *</label>
+                <textarea
+                  required
+                  rows={3}
+                  value={disputeReason}
+                  onChange={e => setDisputeReason(e.target.value)}
+                  placeholder="Describe the issue with your item..."
+                  className="w-full border border-gray-300 rounded-xl p-3 text-xs focus:ring-2 focus:ring-red-500 outline-none"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-semibold text-gray-700 mb-1">Evidence Photos (Max 5)</label>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  onChange={handleBuyerPhotoUpload}
+                  disabled={buyerPhotos.length >= 5}
+                  className="block w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer"
+                />
+                {buyerPhotos.length > 0 && (
+                  <div className="flex gap-2 mt-2 flex-wrap">
+                    {buyerPhotos.map((photo, i) => (
+                      <div key={i} className="relative group">
+                        <img src={photo} alt={`Evidence ${i}`} className="h-12 w-12 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          type="button"
+                          onClick={() => setBuyerPhotos(prev => prev.filter((_, idx) => idx !== i))}
+                          className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <button
+                type="submit"
+                disabled={isSubmittingDispute}
+                className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-red-500/20 disabled:opacity-70 flex justify-center items-center"
+              >
+                {isSubmittingDispute ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Dispute & Evidence"}
+              </button>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Rate Seller Sub-Modal */}
+      {showRatingModal && (
+        <RateSellerModal
+          transactionId={txn.id}
+          sellerName={txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller')}
+          itemTitle={txn.title}
+          onClose={() => { setShowRatingModal(false); window.location.reload(); }}
+        />
+      )}
     </div>
   );
 }
@@ -394,10 +543,15 @@ export default function PublicCheckoutView() {
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 text-white relative overflow-hidden">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-xl" />
           
-          {link.seller_username && (
+          {(link.shop_name || link.seller_username) && (
             <div className="inline-flex items-center gap-2 text-xs text-blue-100 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm mb-3 border border-white/10">
-              <span>Sold by: <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-white font-bold hover:underline">@{link.seller_username}</a></span>
-              <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-[10px] text-blue-200 bg-white/10 px-1.5 py-0.5 rounded hover:bg-white/20 transition">
+              <Store className="h-3.5 w-3.5 text-blue-200" />
+              <span>
+                Sold by: <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-white font-bold hover:underline">
+                  {link.shop_name || `@${link.seller_username}`}
+                </a> {link.shop_name && link.seller_username && <span className="text-blue-200 text-[11px]">(@{link.seller_username})</span>}
+              </span>
+              <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-[10px] text-blue-200 bg-white/10 px-1.5 py-0.5 rounded hover:bg-white/20 transition ml-1">
                 View Store Ratings ↗
               </a>
             </div>

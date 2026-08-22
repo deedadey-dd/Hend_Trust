@@ -455,6 +455,91 @@ def confirm_receipt(request, transaction_id: uuid.UUID, data: ConfirmReceiptSche
     
     return {"message": "Receipt confirmed. Order is now in Inspection Mode."}
 
+
+def compress_dispute_images_total_1mb(transaction):
+    """
+    Compresses all dispute evidence photos (buyer, seller, and manager photos)
+    on the transaction after dispute resolution so that their combined total 
+    Base64 size is 1MB (1,048,576 bytes) or less.
+    """
+    import io
+    import base64
+    from PIL import Image
+
+    buyer_photos = list(transaction.buyer_dispute_photos or [])
+    seller_photos = list(transaction.seller_dispute_photos or [])
+    manager_photos = list(transaction.manager_dispute_photos or [])
+
+    all_lists = [buyer_photos, seller_photos, manager_photos]
+    
+    items = []
+    for l_idx, photo_list in enumerate(all_lists):
+        for p_idx, photo in enumerate(photo_list):
+            if isinstance(photo, str) and photo.startswith('data:image'):
+                items.append((l_idx, p_idx, photo))
+
+    if not items:
+        return
+
+    MAX_TOTAL_BYTES = 1048576  # 1MB in Base64 characters
+
+    def total_size(lists):
+        return sum(len(p) for l in lists for p in l if isinstance(p, str))
+
+    if total_size(all_lists) <= MAX_TOTAL_BYTES:
+        return
+
+    settings = [
+        (800, 60),
+        (600, 50),
+        (400, 40),
+        (300, 30),
+        (200, 20)
+    ]
+
+    new_lists = [list(buyer_photos), list(seller_photos), list(manager_photos)]
+
+    for max_dim, quality in settings:
+        new_lists = [list(buyer_photos), list(seller_photos), list(manager_photos)]
+        for l_idx, p_idx, raw_b64 in items:
+            try:
+                header, encoded = raw_b64.split(',', 1) if ',' in raw_b64 else ('data:image/jpeg;base64', raw_b64)
+                img_data = base64.b64decode(encoded)
+                img = Image.open(io.BytesIO(img_data))
+                if img.mode in ('RGBA', 'P', 'LA'):
+                    img = img.convert('RGB')
+
+                w, h = img.size
+                if w > max_dim or h > max_dim:
+                    if w > h:
+                        new_h = max(1, int(h * (max_dim / w)))
+                        new_w = max_dim
+                    else:
+                        new_w = max(1, int(w * (max_dim / h)))
+                        new_h = max_dim
+                    img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+                buf = io.BytesIO()
+                img.save(buf, format='JPEG', quality=quality, optimize=True)
+                new_b64 = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
+                new_lists[l_idx][p_idx] = new_b64
+            except Exception as e:
+                print(f"Error compressing dispute image: {e}")
+
+        if total_size(new_lists) <= MAX_TOTAL_BYTES:
+            transaction.buyer_dispute_photos = new_lists[0]
+            transaction.seller_dispute_photos = new_lists[1]
+            transaction.manager_dispute_photos = new_lists[2]
+            transaction.save(update_fields=['buyer_dispute_photos', 'seller_dispute_photos', 'manager_dispute_photos'])
+            return
+
+    # Fallback to last iteration if still over 1MB
+    transaction.buyer_dispute_photos = new_lists[0]
+    transaction.seller_dispute_photos = new_lists[1]
+    transaction.manager_dispute_photos = new_lists[2]
+    transaction.save(update_fields=['buyer_dispute_photos', 'seller_dispute_photos', 'manager_dispute_photos'])
+
+
 @escrow_router.post("/{transaction_id}/resolve-dispute", response=MessageResponse)
 def resolve_dispute(request, transaction_id: uuid.UUID, data: ResolveDisputeSchema):
     transaction = get_object_or_404(Transaction, id=transaction_id)
@@ -469,13 +554,13 @@ def resolve_dispute(request, transaction_id: uuid.UUID, data: ResolveDisputeSche
         # Trigger payout immediately as requested
         execute_payout_for_transaction(transaction)
         
+        compress_dispute_images_total_1mb(transaction)
         return {"message": "Dispute resolved to COMPLETED. Funds transferred to seller."}
         
     elif data.resolution == 'CANCELLED':
-        # Custom logic for cancelled, potentially refunding buyer
-        # Not fully spec'd out in prompt, just handling status change
-        transaction.status = 'CANCELLED' # Assuming this exists or just arbitrary string for now
+        transaction.status = 'CANCELLED'
         transaction.save(update_fields=['status', 'updated_at'])
+        compress_dispute_images_total_1mb(transaction)
         return {"message": "Dispute resolved to CANCELLED. Funds hold."}
         
     raise HttpError(400, "Invalid resolution. Use 'COMPLETED' or 'CANCELLED'.")
@@ -628,6 +713,7 @@ def get_disputes(request):
             "paystack_reference": t.paystack_reference,
             "link_title": t.link.title,
             "seller_username": t.link.seller.username,
+            "shop_name": t.link.seller.shop_name or f"@{t.link.seller.username}'s Store",
             "seller_email": getattr(t.link.seller, 'email', ''),
             "seller_phone": getattr(t.link.seller, 'phone_number', ''),
             "buyer_name": t.buyer_name,
@@ -675,6 +761,7 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
         transaction.status = TransactionStatus.COMPLETED
         transaction.save()
         execute_payout_for_transaction(transaction)
+        compress_dispute_images_total_1mb(transaction)
         return {"message": "Funds released to seller."}
         
     elif data.action == "FULL_REFUND_TO_BUYER":
@@ -687,6 +774,7 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
         )
         transaction.status = TransactionStatus.REFUNDED
         transaction.save()
+        compress_dispute_images_total_1mb(transaction)
         return {"message": "Full refund issued to buyer. Seller charged for platform fee."}
         
     elif data.action in ["PARTIAL_REFUND_TO_BUYER", "PARTIAL_REFUND"]:
@@ -731,6 +819,7 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
         if s_phone: dispatch_sms_task.delay(s_phone, s_msg)
         if s_email: dispatch_email_task.delay(s_email, "Partial Refund Settlement", s_msg)
 
+        compress_dispute_images_total_1mb(transaction)
         return {"message": f"Partial refund executed: GHS {refund_val:.2f} to buyer, GHS {seller_val:.2f} to seller, GHS {fee_val:.2f} retained by platform."}
     
     raise HttpError(400, "Invalid action")
@@ -764,6 +853,7 @@ def get_all_transactions_admin(request, status: Optional[str] = None, search: Op
             "paystack_reference": t.paystack_reference,
             "title": t.link.title,
             "seller_username": t.link.seller.username,
+            "shop_name": t.link.seller.shop_name or f"@{t.link.seller.username}'s Store",
             "seller_email": getattr(t.link.seller, 'email', ''),
             "seller_phone": getattr(t.link.seller, 'phone_number', ''),
             "buyer_name": t.buyer_name,
@@ -823,6 +913,7 @@ def get_transaction_detail_admin(request, id: uuid.UUID):
         "seller": {
             "id": str(t.link.seller.id),
             "username": t.link.seller.username,
+            "shop_name": t.link.seller.shop_name or f"@{t.link.seller.username}'s Store",
             "email": getattr(t.link.seller, 'email', ''),
             "phone_number": getattr(t.link.seller, 'phone_number', ''),
         },
@@ -1037,7 +1128,8 @@ def get_pending_seller_verifications(request):
 
 @admin_router.post("/verifications/{user_id}/approve", response=dict)
 def approve_seller_verification(request, user_id: uuid.UUID):
-    _verify_admin_access(request.user)
+    is_admin_user(request)
+    from apps.users.models import User, VerificationStatus
     seller = get_object_or_404(User, id=user_id)
     from apps.users.models import VerificationStatus
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
@@ -1063,7 +1155,7 @@ def approve_seller_verification(request, user_id: uuid.UUID):
 
 @admin_router.post("/verifications/{user_id}/reject", response=dict)
 def reject_seller_verification(request, user_id: uuid.UUID, data: RejectVerificationSchema):
-    _verify_admin_access(request.user)
+    is_admin_user(request)
     seller = get_object_or_404(User, id=user_id)
     from apps.users.models import VerificationStatus
     from apps.core.tasks import dispatch_sms_task

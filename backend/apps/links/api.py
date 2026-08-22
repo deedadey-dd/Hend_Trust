@@ -30,6 +30,7 @@ class LinkDetailSchema(Schema):
     shipping_fee_ghs: Decimal
     fee_handling: str
     seller_username: Optional[str] = ""
+    shop_name: Optional[str] = ""
     seller_email: Optional[str] = ""
     seller_phone: Optional[str] = ""
 
@@ -94,6 +95,7 @@ def get_link(request, link_id: uuid.UUID):
         "shipping_fee_ghs": link.shipping_fee_ghs,
         "fee_handling": link.fee_handling,
         "seller_username": link.seller.username or link.seller.email.split('@')[0],
+        "shop_name": link.seller.shop_name or f"@{link.seller.username}'s Store",
         "seller_email": getattr(link.seller, 'email', ''),
         "seller_phone": getattr(link.seller, 'phone_number', ''),
     }

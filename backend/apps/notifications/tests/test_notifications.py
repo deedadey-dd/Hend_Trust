@@ -14,8 +14,10 @@ def auth_user(db):
     return User.objects.create_user(username="notif_user", phone_number="999888777")
 
 @pytest.fixture
-def notif_client():
-    return TestClient(notifications_router)
+def notif_client(auth_user):
+    from ninja_jwt.tokens import AccessToken
+    token = str(AccessToken.for_user(auth_user))
+    return TestClient(notifications_router, headers={"Authorization": f"Bearer {token}"})
 
 @pytest.fixture
 def webhook_client():
@@ -31,43 +33,29 @@ def test_create_and_fetch_notifications(auth_user, notif_client):
     n2.is_read = True
     n2.save()
     
-    def mock_auth_call(request, *args, **kwargs):
-        request.user = auth_user
-        return True
-        
-    from unittest.mock import patch
-    with patch('ninja_jwt.authentication.JWTAuth.__call__', side_effect=mock_auth_call):
-        
-        # Fetch all
-        res = notif_client.get("/")
-        assert res.status_code == 200
-        data = res.json()
-        assert len(data['items']) == 2
-        
-        # Fetch unread only
-        res_unread = notif_client.get("/?unread_only=true")
-        assert res_unread.status_code == 200
-        data_unread = res_unread.json()
-        assert len(data_unread['items']) == 1
-        assert data_unread['items'][0]['title'] == "Welcome"
+    # Fetch all
+    res = notif_client.get("/")
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data['items']) == 2
+    
+    # Fetch unread only
+    res_unread = notif_client.get("/?unread_only=true")
+    assert res_unread.status_code == 200
+    data_unread = res_unread.json()
+    assert len(data_unread['items']) == 1
+    assert data_unread['items'][0]['title'] == "Welcome"
 
 @pytest.mark.django_db
 def test_mark_notification_read(auth_user, notif_client):
     n = create_notification(auth_user, "Update", "Please read this")
     assert not n.is_read
     
-    def mock_auth_call(request, *args, **kwargs):
-        request.user = auth_user
-        return True
-        
-    from unittest.mock import patch
-    with patch('ninja_jwt.authentication.JWTAuth.__call__', side_effect=mock_auth_call):
-        
-        res = notif_client.patch(f"/{n.id}/read")
-        assert res.status_code == 200
-        
-        n.refresh_from_db()
-        assert n.is_read
+    res = notif_client.patch(f"/{n.id}/read")
+    assert res.status_code == 200
+    
+    n.refresh_from_db()
+    assert n.is_read
 
 @pytest.mark.django_db
 def test_webhook_event_logging(webhook_client):
@@ -77,7 +65,7 @@ def test_webhook_event_logging(webhook_client):
         "tracking_number": "TRK123"
     }
     
-    res = webhook_client.post("/courier-status", json=payload)
+    res = webhook_client.post("/courier-status", json=payload, headers={"x-courier-token": "secret_courier_key"})
     assert res.status_code == 404
     
     # Check that it logged

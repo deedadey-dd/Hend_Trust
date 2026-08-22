@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X } from 'lucide-react';
 import axios from 'axios';
-import { apiClient } from '../api/client';
+import { apiClient, getErrorMessage } from '../api/client';
 import { STATUS_CONFIG } from '../views/DashboardView';
 import RateSellerModal from './RateSellerModal';
 
@@ -11,6 +11,37 @@ type HistoryStep = 'INPUT' | 'OTP';
 interface TrackingModalProps {
   onClose: () => void;
 }
+
+const compressImage = (file: File): Promise<string> => {
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.readAsDataURL(file);
+    reader.onload = (event) => {
+      const img = new Image();
+      img.src = event.target?.result as string;
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        let width = img.width;
+        let height = img.height;
+        const maxDim = 1024;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+    };
+  });
+};
 
 export default function TrackingModal({ onClose }: TrackingModalProps) {
   const [tab, setTab] = useState<TabMode>('SINGLE');
@@ -156,8 +187,14 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
     setConfirmError('');
     try {
       await axios.post(`/api/v1/escrow/${confirmTxnId}/confirm-receipt`, { confirmation_code: confirmCode.trim() });
-      alert('Receipt confirmed! Funds released to seller.');
-      window.location.reload();
+      const targetTxn = txns.find(t => t.id === confirmTxnId);
+      setConfirmTxnId(null);
+      if (targetTxn) {
+        setRateTxn(targetTxn);
+      } else {
+        alert('Receipt confirmed! Funds released to seller.');
+        window.location.reload();
+      }
     } catch (err: any) { 
       setConfirmError(err.response?.data?.message || 'Failed to confirm receipt. Please try again.'); 
     } finally {
@@ -165,21 +202,20 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
     }
   };
 
-  const handleBuyerPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleBuyerPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (buyerPhotos.length + files.length > 5) {
       alert("You can upload a maximum of 5 evidence photos.");
       return;
     }
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (reader.result) {
-          setBuyerPhotos(prev => [...prev, reader.result as string].slice(0, 5));
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    for (const file of files) {
+      try {
+        const compressed = await compressImage(file);
+        setBuyerPhotos(prev => [...prev, compressed].slice(0, 5));
+      } catch {
+        console.error("Failed to compress evidence photo.");
+      }
+    }
   };
 
   const handleRaiseDisputeSubmit = async (e: React.FormEvent) => {
@@ -192,14 +228,15 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
     setDisputeError('');
     setIsSubmittingDispute(true);
     try {
-      await apiClient.post(`/escrow/${disputeTxnId}/raise-dispute`, {
-        reason: disputeReason,
+      await axios.post(`/api/v1/escrow/${disputeTxnId}/raise-dispute`, {
+        reason: disputeReason.trim(),
         photos: buyerPhotos
       });
       alert('Dispute and evidence submitted successfully. Management team will arbitrate.');
+      setDisputeTxnId(null);
       window.location.reload();
     } catch (err: any) {
-      setDisputeError(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit dispute.');
+      setDisputeError(getErrorMessage(err));
     } finally {
       setIsSubmittingDispute(false);
     }
@@ -407,12 +444,14 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                   {Math.ceil(txns.filter(t => 
                     t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                     t.paystack_reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (t.shop_name && t.shop_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
                     (t.seller_username && t.seller_username.toLowerCase().includes(searchQuery.toLowerCase()))
                   ).length / itemsPerPage) > 1 && (
                     <div className="flex items-center gap-2 text-xs text-gray-600">
                       <span>Page {currentPage} of {Math.ceil(txns.filter(t => 
                         t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                         t.paystack_reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                        (t.shop_name && t.shop_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
                         (t.seller_username && t.seller_username.toLowerCase().includes(searchQuery.toLowerCase()))
                       ).length / itemsPerPage)}</span>
                       <button
@@ -426,6 +465,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                         disabled={currentPage >= Math.ceil(txns.filter(t => 
                           t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                           t.paystack_reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          (t.shop_name && t.shop_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
                           (t.seller_username && t.seller_username.toLowerCase().includes(searchQuery.toLowerCase()))
                         ).length / itemsPerPage)}
                         onClick={() => setCurrentPage(p => p + 1)}
@@ -444,12 +484,14 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                   .filter(t => 
                     t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                     t.paystack_reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (t.shop_name && t.shop_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
                     (t.seller_username && t.seller_username.toLowerCase().includes(searchQuery.toLowerCase()))
                   )
                   .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                   .map(txn => {
                     const cfg = STATUS_CONFIG[txn.status] || STATUS_CONFIG['AWAITING_PAYMENT'];
                     const Icon = cfg.icon;
+                    const sellerDisplayName = txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller');
                     return (
                       <div key={txn.id} className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm space-y-3">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
@@ -463,7 +505,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                                 {cfg.label}
                               </span>
                               <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
-                                Sold by: @{txn.seller_username || 'Seller'}
+                                Sold by: {sellerDisplayName}
                               </span>
                             </div>
                             <h4 className="text-sm font-bold text-gray-900">{txn.title}</h4>
@@ -575,12 +617,22 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                   accept="image/*"
                   multiple
                   onChange={handleBuyerPhotoUpload}
-                  className="w-full text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl p-2 cursor-pointer"
+                  disabled={buyerPhotos.length >= 5}
+                  className="w-full text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl p-2 cursor-pointer disabled:opacity-50"
                 />
                 {buyerPhotos.length > 0 && (
-                  <div className="flex gap-2 mt-2">
+                  <div className="flex gap-2 mt-2 flex-wrap">
                     {buyerPhotos.map((img, idx) => (
-                      <img key={idx} src={img} alt="Evidence" className="w-12 h-12 object-cover rounded-lg border" />
+                      <div key={idx} className="relative group">
+                        <img src={img} alt={`Evidence ${idx + 1}`} className="w-12 h-12 object-cover rounded-lg border border-gray-200" />
+                        <button
+                          type="button"
+                          onClick={() => setBuyerPhotos(prev => prev.filter((_, i) => i !== idx))}
+                          className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -589,9 +641,16 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
               <button
                 type="submit"
                 disabled={isSubmittingDispute}
-                className="w-full py-2.5 bg-red-600 text-white font-bold rounded-xl text-sm hover:bg-red-700 transition"
+                className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition shadow flex justify-center items-center gap-2 disabled:opacity-70"
               >
-                {isSubmittingDispute ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Submit Dispute Claim"}
+                {isSubmittingDispute ? (
+                  <>
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    <span>Submitting Dispute & Evidence...</span>
+                  </>
+                ) : (
+                  "Submit Dispute Claim"
+                )}
               </button>
             </form>
           </div>

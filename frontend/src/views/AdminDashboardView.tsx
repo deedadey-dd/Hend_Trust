@@ -538,7 +538,7 @@ export const AdminDashboardView: React.FC = () => {
                           <td className="px-5 py-4 font-mono font-bold text-blue-400">{t.paystack_reference}</td>
                           <td className="px-5 py-4">
                             <p className="font-semibold text-white">{t.title}</p>
-                            <p className="text-xs text-slate-500">Seller: @{t.seller_username}</p>
+                            <p className="text-xs text-slate-400 font-medium">Seller: <strong className="text-white">{(t as any).shop_name || `@${t.seller_username}`}</strong> {(t as any).shop_name && <span className="text-slate-500 font-normal">(@{t.seller_username})</span>}</p>
                           </td>
                           <td className="px-5 py-4">
                             <p className="font-semibold text-slate-200">{t.buyer_name}</p>
@@ -613,7 +613,7 @@ export const AdminDashboardView: React.FC = () => {
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800 text-xs">
                         <div>
                           <p className="text-slate-500 font-mono">SELLER DETAILS</p>
-                          <p className="font-bold text-slate-200 mt-1">@{d.seller_username}</p>
+                          <p className="font-bold text-slate-200 mt-1">{(d as any).shop_name ? `${(d as any).shop_name} (@${d.seller_username})` : `@${d.seller_username}`}</p>
                           <p className="text-slate-400">{d.seller_phone || 'No phone'}</p>
                           <p className="text-slate-400">{d.seller_email || 'No email'}</p>
                         </div>

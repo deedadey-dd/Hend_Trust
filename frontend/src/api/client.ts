@@ -27,8 +27,10 @@ apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
     if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      const url = error.config?.url || '';
+      const isPublicEndpoint = url.includes('/checkout/') || url.includes('/links/') || url.includes('/raise-dispute') || url.includes('/confirm-receipt') || url.includes('/send-confirmation-code');
       const isPublicPath = window.location.pathname.startsWith('/l/') || window.location.pathname === '/track';
-      if (!isPublicPath) {
+      if (!isPublicPath && !isPublicEndpoint) {
         useAuthStore.getState().logout();
         if (!window.location.pathname.includes('/login')) {
           window.location.href = '/login?expired=true';

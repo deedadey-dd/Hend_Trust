@@ -128,6 +128,17 @@ npm install
 npm run dev
 ```
 
+### 5. Running Automated Unit Tests
+To run the complete automated test suite (backend pytest unit tests, Django system checks, and frontend TypeScript build verification):
+
+```bash
+# Run from root directory:
+python run_all_tests.py
+
+# Or on Windows CMD/PowerShell:
+run_all_tests
+```
+
 ---
 
 ## 🔒 Security & Verification Controls

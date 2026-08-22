@@ -38,8 +38,10 @@ def transaction(payment_link, db):
     )
 
 @pytest.fixture
-def delivery_client():
-    return TestClient(delivery_router)
+def delivery_client(seller_user):
+    from ninja_jwt.tokens import AccessToken
+    token = str(AccessToken.for_user(seller_user))
+    return TestClient(delivery_router, headers={"Authorization": f"Bearer {token}"})
 
 @pytest.fixture
 def webhook_client():
@@ -70,7 +72,7 @@ def test_dispatch_courier_and_webhook(delivery_client, webhook_client, transacti
         "status": "DELIVERED",
         "tracking_number": "123456789"
     }
-    wh_res = webhook_client.post("/courier-status", json=wh_payload)
+    wh_res = webhook_client.post("/courier-status", json=wh_payload, headers={"x-courier-token": "secret_courier_key"})
     assert wh_res.status_code == 200
     
     transaction.refresh_from_db()
@@ -135,8 +137,11 @@ def test_unresponsive_buyer_safeguard_success(delivery_client, transaction):
     # Advance time by 25 hours
     future_time = initial_time + timedelta(hours=25)
     with freeze_time(future_time):
+        from ninja_jwt.tokens import AccessToken
+        token = str(AccessToken.for_user(transaction.link.seller))
+        fresh_client = TestClient(delivery_router, headers={"Authorization": f"Bearer {token}"})
         payload = {"transaction_id": str(transaction.id)}
-        res = delivery_client.post("/seller-claim-delivery", json=payload)
+        res = fresh_client.post("/seller-claim-delivery", json=payload)
         assert res.status_code == 200
         
         transaction.refresh_from_db()
