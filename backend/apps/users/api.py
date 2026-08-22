@@ -106,6 +106,8 @@ def logout(request, response: HttpResponse):
     return {"message": "Logout successful"}
 
 # --- Profile Schemas ---
+from typing import Optional, List
+
 class ProfileResponse(Schema):
     id: str
     username: str
@@ -119,6 +121,18 @@ class ProfileResponse(Schema):
     bank_account_number: Optional[str] = None
     bank_name: Optional[str] = None
     total_paystack_fees_ghs: Optional[float] = None
+    # Shop Details
+    shop_name: Optional[str] = ""
+    shop_description: Optional[str] = ""
+    shop_category: Optional[str] = "General"
+    shop_categories: List[str] = []
+    # Verification
+    verification_status: str
+    national_id_number: Optional[str] = ""
+    national_id_photo_url: Optional[str] = ""
+    business_license_photo_url: Optional[str] = ""
+    verification_rejection_reason: Optional[str] = ""
+    verified_at: Optional[str] = None
 
 class ProfileUpdateRequest(Schema):
     first_name: Optional[str] = None
@@ -129,10 +143,24 @@ class ProfileUpdateRequest(Schema):
     bank_account_number: Optional[str] = None
     bank_name: Optional[str] = None
 
+class UpdateShopProfileRequest(Schema):
+    shop_name: Optional[str] = ""
+    shop_description: Optional[str] = ""
+    shop_categories: Optional[List[str]] = []
+
+class SubmitVerificationRequest(Schema):
+    national_id_number: str
+    national_id_photo_url: str
+    business_license_photo_url: Optional[str] = ""
+
 class ProfileMessageResponse(Schema):
     message: str
 
 def _build_profile_response(user) -> dict:
+    cats = user.shop_categories if isinstance(user.shop_categories, list) else []
+    if not cats and user.shop_category:
+        cats = [user.shop_category]
+
     data = {
         "id": str(user.id),
         "username": user.username,
@@ -146,6 +174,16 @@ def _build_profile_response(user) -> dict:
         "bank_account_number": None,
         "bank_name": None,
         "total_paystack_fees_ghs": None,
+        "shop_name": user.shop_name or "",
+        "shop_description": user.shop_description or "",
+        "shop_category": user.shop_category or "General",
+        "shop_categories": cats[:3],
+        "verification_status": user.verification_status,
+        "national_id_number": user.national_id_number or "",
+        "national_id_photo_url": user.national_id_photo_url or "",
+        "business_license_photo_url": user.business_license_photo_url or "",
+        "verification_rejection_reason": user.verification_rejection_reason or "",
+        "verified_at": user.verified_at.isoformat() if user.verified_at else None,
     }
     try:
         wallet = user.wallet
@@ -192,3 +230,44 @@ def update_profile(request, data: ProfileUpdateRequest):
         wallet.save()
     
     return {"message": "Profile updated successfully."}
+
+@profile_router.put("/shop", response=ProfileMessageResponse)
+def update_shop_profile(request, data: UpdateShopProfileRequest):
+    user = request.user
+    if data.shop_name is not None:
+        user.shop_name = data.shop_name.strip()
+    if data.shop_description is not None:
+        user.shop_description = data.shop_description.strip()
+    
+    if data.shop_categories is not None:
+        if len(data.shop_categories) > 3:
+            raise HttpError(400, "You can select at most 3 product categories.")
+        user.shop_categories = data.shop_categories
+        if len(data.shop_categories) > 0:
+            user.shop_category = data.shop_categories[0]
+
+    user.save(update_fields=['shop_name', 'shop_description', 'shop_category', 'shop_categories'])
+    return {"message": "Shop details updated successfully."}
+
+@profile_router.post("/submit-verification", response=ProfileMessageResponse)
+def submit_verification_documents(request, data: SubmitVerificationRequest):
+    user = request.user
+    if not data.national_id_number.strip():
+        raise HttpError(400, "Please provide your National ID / Ghana Card number.")
+    if not data.national_id_photo_url.strip():
+        raise HttpError(400, "Please upload a photo of your National ID / Ghana Card.")
+
+    from apps.users.models import VerificationStatus
+    user.national_id_number = data.national_id_number.strip()
+    user.national_id_photo_url = data.national_id_photo_url.strip()
+    user.business_license_photo_url = (data.business_license_photo_url or "").strip()
+    user.verification_status = VerificationStatus.PENDING
+    user.verification_rejection_reason = ""
+    user.save(update_fields=[
+        'national_id_number', 'national_id_photo_url', 
+        'business_license_photo_url', 'verification_status', 
+        'verification_rejection_reason'
+    ])
+
+    return {"message": "Verification documents submitted successfully! A manager will review your submission."}
+

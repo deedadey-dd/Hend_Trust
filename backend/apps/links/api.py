@@ -29,6 +29,9 @@ class LinkDetailSchema(Schema):
     price_ghs: Decimal
     shipping_fee_ghs: Decimal
     fee_handling: str
+    seller_username: Optional[str] = ""
+    seller_email: Optional[str] = ""
+    seller_phone: Optional[str] = ""
 
 class SellerLinkSchema(Schema):
     id: uuid.UUID
@@ -79,7 +82,7 @@ def create_link(request, data: CreateLinkSchema):
 
 @links_router.get("/{link_id}", response=LinkDetailSchema, auth=None)
 def get_link(request, link_id: uuid.UUID):
-    link = get_object_or_404(PaymentLink, id=link_id)
+    link = get_object_or_404(PaymentLink.objects.select_related('seller'), id=link_id)
     if not link.is_active:
         raise HttpError(404, "Payment link is inactive")
         
@@ -89,5 +92,8 @@ def get_link(request, link_id: uuid.UUID):
         "description": link.description,
         "price_ghs": link.price_ghs,
         "shipping_fee_ghs": link.shipping_fee_ghs,
-        "fee_handling": link.fee_handling
+        "fee_handling": link.fee_handling,
+        "seller_username": link.seller.username or link.seller.email.split('@')[0],
+        "seller_email": getattr(link.seller, 'email', ''),
+        "seller_phone": getattr(link.seller, 'phone_number', ''),
     }

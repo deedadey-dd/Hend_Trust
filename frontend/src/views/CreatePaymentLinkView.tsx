@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { ArrowRight, Link as LinkIcon, DollarSign, Truck, Copy, Check, Share2, X } from 'lucide-react';
+import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X } from 'lucide-react';
 import { apiClient } from '../api/client';
 
 export default function CreatePaymentLinkView() {
@@ -79,68 +79,68 @@ export default function CreatePaymentLinkView() {
                 <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border"></textarea>
               </div>
               
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Price (GHS)</label>
+                  <label className="block text-sm font-medium text-gray-700">Price (GHS) *</label>
                   <div className="mt-1 relative rounded-md shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <DollarSign className="h-4 w-4 text-gray-400" />
+                      <span className="text-gray-500 font-bold text-xs">GHS</span>
                     </div>
-                    <input type="number" step="0.01" required value={price} onChange={e => setPrice(e.target.value)} className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border" />
+                    <input type="number" step="0.01" min="0" required value={price} onChange={e => setPrice(e.target.value)} className="pl-12 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border font-mono" />
                   </div>
                 </div>
+
                 <div>
                   <label className="block text-sm font-medium text-gray-700">Shipping (GHS)</label>
                   <div className="mt-1 relative rounded-md shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                       <Truck className="h-4 w-4 text-gray-400" />
                     </div>
-                    <input type="number" step="0.01" value={shipping} onChange={e => setShipping(e.target.value)} className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border" />
+                    <input type="number" step="0.01" min="0" value={shipping} onChange={e => setShipping(e.target.value)} className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border font-mono" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700">Escrow Fee (GHS)</label>
+                  <div className="mt-1 relative rounded-md shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <span className="text-gray-400 font-mono text-xs">1.5%+10</span>
+                    </div>
+                    <input type="text" readOnly value={`GHS ${platformFee.toFixed(2)}`} className="pl-16 block w-full rounded-lg border-gray-200 bg-gray-100 text-gray-600 sm:text-sm p-3 border font-mono font-bold cursor-not-allowed" />
                   </div>
                 </div>
               </div>
 
-              <div>
-                <label className="block text-sm font-medium text-gray-700 mb-2">Fee Handling</label>
-                <div className="grid grid-cols-2 gap-4">
-                  <div 
-                    onClick={() => setFeeHandling('PASS_TO_BUYER')}
-                    className={`cursor-pointer rounded-lg border p-4 text-center transition-all ${feeHandling === 'PASS_TO_BUYER' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-gray-200 hover:border-blue-300'}`}
-                  >
-                    <p className="font-semibold text-gray-900">Pass to Buyer</p>
-                    <p className="text-xs text-gray-500 mt-1">Buyer pays the escrow fee</p>
+              {/* Compact Fee Handling Toggle Checkbox */}
+              <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3.5 flex items-center justify-between">
+                <label className="flex items-center gap-3 cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={feeHandling === 'PASS_TO_BUYER'}
+                    onChange={e => setFeeHandling(e.target.checked ? 'PASS_TO_BUYER' : 'ABSORB_FEE')}
+                    className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
+                  />
+                  <div>
+                    <span className="text-sm font-bold text-gray-900 block">Pass Platform Fee (GHS {platformFee.toFixed(2)}) to Buyer</span>
+                    <span className="text-xs text-gray-500">
+                      {feeHandling === 'PASS_TO_BUYER' 
+                        ? 'Buyer pays item price + shipping + escrow fee. You receive 100% of price + shipping.' 
+                        : 'You absorb the escrow fee. Fee will be deducted from your final payout.'}
+                    </span>
                   </div>
-                  <div 
-                    onClick={() => setFeeHandling('ABSORB_FEE')}
-                    className={`cursor-pointer rounded-lg border p-4 text-center transition-all ${feeHandling === 'ABSORB_FEE' ? 'border-blue-500 bg-blue-50 ring-1 ring-blue-500' : 'border-gray-200 hover:border-blue-300'}`}
-                  >
-                    <p className="font-semibold text-gray-900">Absorb Fee</p>
-                    <p className="text-xs text-gray-500 mt-1">Deducted from your payout</p>
-                  </div>
-                </div>
+                </label>
               </div>
             </div>
 
-            {/* Dynamic Calculator */}
-            <div className="bg-gray-50 rounded-lg p-6 border border-gray-200">
-              <h3 className="text-sm font-medium text-gray-900 mb-4">Transaction Summary</h3>
-              <div className="space-y-3 text-sm">
-                <div className="flex justify-between text-gray-500">
-                  <span>Product & Shipping</span>
-                  <span>GHS {grossTotal.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-gray-500">
-                  <span>Platform Escrow Fee (1.5% + GHS 10)</span>
-                  <span>GHS {platformFee.toFixed(2)}</span>
-                </div>
-                <div className="pt-3 border-t border-gray-200 flex justify-between font-medium text-gray-900">
-                  <span>Buyer Will Pay</span>
-                  <span>GHS {buyerPays.toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between font-bold text-blue-600 text-lg">
-                  <span>You Will Receive</span>
-                  <span>GHS {sellerReceives.toFixed(2)}</span>
-                </div>
+            {/* Dynamic Calculator Summary */}
+            <div className="bg-gray-50 rounded-xl p-5 border border-gray-200 text-sm space-y-2 font-mono">
+              <div className="flex justify-between text-gray-600">
+                <span>Buyer Total Payment:</span>
+                <span className="font-bold text-gray-900">GHS {buyerPays.toFixed(2)}</span>
+              </div>
+              <div className="flex justify-between text-blue-700 font-bold border-t border-gray-200 pt-2 text-base">
+                <span>Net Seller Payout:</span>
+                <span>GHS {sellerReceives.toFixed(2)}</span>
               </div>
             </div>
 

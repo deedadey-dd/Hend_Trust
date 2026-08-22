@@ -39,8 +39,14 @@ class Transaction(models.Model):
     reminder_30h_sent = models.BooleanField(default=False)
     reminder_36h_sent = models.BooleanField(default=False)
     reminder_42h_sent = models.BooleanField(default=False)
+    # Dispute Evidence & Resolution Photos (Max 5 photos per party)
+    buyer_dispute_reason = models.TextField(blank=True)
+    buyer_dispute_photos = models.JSONField(default=list, blank=True)
+    seller_dispute_response = models.TextField(blank=True)
+    seller_dispute_photos = models.JSONField(default=list, blank=True)
+    manager_dispute_notes = models.TextField(blank=True)
+    manager_dispute_photos = models.JSONField(default=list, blank=True)
 
-    
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 

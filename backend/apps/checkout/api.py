@@ -46,10 +46,17 @@ class TransactionStatusSchema(Schema):
     created_at: str
     paystack_reference: str
     inspection_starts_at: Optional[str] = None
+    seller_username: Optional[str] = ""
+    seller_email: Optional[str] = ""
+    seller_phone: Optional[str] = ""
 
 class InitializeResponse(Schema):
     authorization_url: str
     reference: str
+
+class TrackByPhoneSchema(Schema):
+    phone_number: str
+    otp_code: str
 
 @checkout_router.post("/send-otp", response=MessageResponse)
 def send_otp(request, data: SendOtpSchema):
@@ -66,7 +73,7 @@ def track_orders(request, data: TrackRequestSchema):
     if not verify_otp(data.email, data.otp_code):
         raise HttpError(400, "Invalid or expired OTP.")
     
-    txns = Transaction.objects.filter(buyer_email=data.email).order_by('-created_at')
+    txns = Transaction.objects.filter(buyer_email=data.email).select_related('link', 'link__seller').order_by('-created_at')
     
     return [
         {
@@ -79,17 +86,44 @@ def track_orders(request, data: TrackRequestSchema):
             "title": t.link.title,
             "created_at": t.created_at.isoformat(),
             "paystack_reference": t.paystack_reference,
-            "inspection_starts_at": t.inspection_starts_at.isoformat() if t.inspection_starts_at else None
+            "inspection_starts_at": t.inspection_starts_at.isoformat() if t.inspection_starts_at else None,
+            "seller_username": t.link.seller.username or t.link.seller.email.split('@')[0],
+            "seller_email": getattr(t.link.seller, 'email', ''),
+            "seller_phone": getattr(t.link.seller, 'phone_number', ''),
+        } for t in txns
+    ]
+
+@checkout_router.post("/track/phone", response=list[TransactionStatusSchema])
+def track_orders_by_phone(request, data: TrackByPhoneSchema):
+    if not verify_otp(data.phone_number, data.otp_code):
+        raise HttpError(400, "Invalid or expired OTP.")
+    
+    txns = Transaction.objects.filter(buyer_phone=data.phone_number).select_related('link', 'link__seller').order_by('-created_at')
+    
+    return [
+        {
+            "id": t.id,
+            "status": t.status,
+            "total_amount_ghs": float(t.total_amount_ghs),
+            "buyer_name": t.buyer_name,
+            "buyer_email": t.buyer_email,
+            "shipping_address": t.shipping_address,
+            "title": t.link.title,
+            "created_at": t.created_at.isoformat(),
+            "paystack_reference": t.paystack_reference,
+            "inspection_starts_at": t.inspection_starts_at.isoformat() if t.inspection_starts_at else None,
+            "seller_username": t.link.seller.username or t.link.seller.email.split('@')[0],
+            "seller_email": getattr(t.link.seller, 'email', ''),
+            "seller_phone": getattr(t.link.seller, 'phone_number', ''),
         } for t in txns
     ]
 
 @checkout_router.post("/track/id", response=list[TransactionStatusSchema])
 def track_order_by_id(request, data: TrackByIdSchema):
-    # Returns a list so the frontend doesn't need to change its state handling much
     txn = Transaction.objects.filter(
         paystack_reference=data.paystack_reference,
         buyer_phone=data.phone_number
-    ).first()
+    ).select_related('link', 'link__seller').first()
     
     if not txn:
         raise HttpError(404, "Order not found. Please check your Transaction ID and Phone Number.")
@@ -105,7 +139,10 @@ def track_order_by_id(request, data: TrackByIdSchema):
             "title": txn.link.title,
             "created_at": txn.created_at.isoformat(),
             "paystack_reference": txn.paystack_reference,
-            "inspection_starts_at": txn.inspection_starts_at.isoformat() if txn.inspection_starts_at else None
+            "inspection_starts_at": txn.inspection_starts_at.isoformat() if txn.inspection_starts_at else None,
+            "seller_username": txn.link.seller.username or txn.link.seller.email.split('@')[0],
+            "seller_email": getattr(txn.link.seller, 'email', ''),
+            "seller_phone": getattr(txn.link.seller, 'phone_number', ''),
         }
     ]
 

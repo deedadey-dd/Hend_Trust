@@ -27,17 +27,72 @@ def dispatch_sms_task(phone: str, message: str):
         logger.warning(f"Failed to dispatch SMS to {phone}")
     return success
 
+def _build_default_html_email(subject: str, message: str, html_message: str = None) -> str:
+    if html_message:
+        return html_message
+        
+    import re
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    
+    # Extract any URL in the message body
+    urls = re.findall(r'https?://[^\s<>"]+', message)
+    target_link = urls[0] if urls else frontend_url
+    
+    formatted_body = message.replace('\n', '<br>')
+    
+    button_label = "Review Dispute & Submit Evidence" if "dispute" in subject.lower() or "dispute" in message.lower() else "View Details on HendAxis Trust"
+    
+    return f"""<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body {{ font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; background-color: #f4f6f9; margin: 0; padding: 20px; color: #1e293b; }}
+    .container {{ max-width: 600px; margin: 0 auto; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 20px rgba(0,0,0,0.06); border: 1px solid #e2e8f0; }}
+    .header {{ background: linear-gradient(135deg, #1e3a8a, #2563eb); color: #ffffff; padding: 24px; text-align: center; }}
+    .header h1 {{ margin: 0; font-size: 22px; font-weight: 800; letter-spacing: -0.5px; }}
+    .content {{ padding: 32px 28px; font-size: 15px; line-height: 1.6; color: #334155; }}
+    .content h2 {{ font-size: 18px; color: #0f172a; margin-top: 0; margin-bottom: 16px; border-bottom: 2px solid #f1f5f9; padding-bottom: 10px; }}
+    .btn-container {{ text-align: center; margin: 32px 0 20px 0; }}
+    .btn {{ background-color: #2563eb; color: #ffffff !important; padding: 14px 30px; border-radius: 8px; font-weight: bold; text-decoration: none; display: inline-block; font-size: 14px; box-shadow: 0 4px 12px rgba(37,99,235,0.3); }}
+    .footer {{ background-color: #f8fafc; border-top: 1px solid #e2e8f0; padding: 18px; text-align: center; font-size: 12px; color: #94a3b8; line-height: 1.5; }}
+    .footer a {{ color: #2563eb; text-decoration: underline; }}
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <h1>HendAxis Trust</h1>
+    </div>
+    <div class="content">
+      <h2>{subject}</h2>
+      <div>{formatted_body}</div>
+      <div class="btn-container">
+        <a href="{target_link}" class="btn" target="_blank">{button_label}</a>
+      </div>
+    </div>
+    <div class="footer">
+      &copy; HendAxis Trust Escrow Platform. All rights reserved.<br>
+      <a href="{frontend_url}" target="_blank">Visit HendAxis Trust Platform</a>
+    </div>
+  </div>
+</body>
+</html>"""
+
 @shared_task
 def dispatch_email_task(email: str, subject: str, message: str, html_message: str = None):
     """
-    Asynchronously sends an Email. Supports HTML emails.
+    Asynchronously sends an Email. Guarantees all emails contain clickable action links.
     """
+    html_message = _build_default_html_email(subject, message, html_message)
+
     if getattr(settings, 'DEBUG', False):
         print("\n" + "="*50)
         print("DEV MOCKED EMAIL NOTIFICATION")
         print(f"To: {email}")
         print(f"Subject: {subject}")
         print(f"Message: {message}")
+        print(f"HTML Link Included: Yes")
         print("="*50 + "\n")
         return True
 

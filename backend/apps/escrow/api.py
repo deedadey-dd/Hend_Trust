@@ -1,3 +1,4 @@
+from typing import List, Optional
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from django.shortcuts import get_object_or_404
@@ -35,6 +36,12 @@ class SellerTransactionSchema(Schema):
     inspection_starts_at: Optional[str] = None
     delivery_method: Optional[str] = None
     dispatched_at: Optional[str] = None
+    buyer_dispute_reason: Optional[str] = None
+    buyer_dispute_photos: Optional[list[str]] = []
+    seller_dispute_response: Optional[str] = None
+    seller_dispute_photos: Optional[list[str]] = []
+    manager_dispute_notes: Optional[str] = None
+    manager_dispute_photos: Optional[list[str]] = []
 
 @escrow_router.get("/seller/transactions", response=list[SellerTransactionSchema])
 @paginate(LimitOffsetPagination)
@@ -85,6 +92,12 @@ def get_seller_transactions(request, search: str = None, status: str = None, sta
             t.delivery_logs.order_by('-created_at').values_list('delivery_method', flat=True).first()
         ),
         "dispatched_at": t.dispatched_at.isoformat() if t.dispatched_at else None,
+        "buyer_dispute_reason": t.buyer_dispute_reason,
+        "buyer_dispute_photos": t.buyer_dispute_photos or [],
+        "seller_dispute_response": t.seller_dispute_response,
+        "seller_dispute_photos": t.seller_dispute_photos or [],
+        "manager_dispute_notes": t.manager_dispute_notes,
+        "manager_dispute_photos": t.manager_dispute_photos or [],
     } for t in txns.prefetch_related('delivery_logs')]
 
 
@@ -97,6 +110,8 @@ class SellerDispatchSchema(Schema):
     driver_phone: Optional[str] = None
     driver_car_number: Optional[str] = None
     destination_station: Optional[str] = None
+    # Optional package/waybill photo
+    waybill_photo_url: Optional[str] = None
 
 
 @escrow_router.post("/seller/transactions/{transaction_id}/dispatch", response=MessageResponse)
@@ -122,6 +137,7 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
             delivery_method=DeliveryMethod.COURIER_API,
             courier_name=data.courier_name,
             tracking_number=data.tracking_number,
+            waybill_photo_url=data.waybill_photo_url or "",
         )
         from apps.core.tasks import dispatch_sms_task, dispatch_email_task
         courier_msg = (
@@ -145,6 +161,7 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
             driver_phone=data.driver_phone,
             driver_car_number=data.driver_car_number,
             destination_station=data.destination_station,
+            waybill_photo_url=data.waybill_photo_url or "",
         )
         generate_delivery_otp(str(transaction.id))
         return {"message": "Dispatched via informal bus. Buyer has been sent driver info and Secret OTP via SMS."}
@@ -472,7 +489,92 @@ admin_router = Router(tags=["Admin Operations"], auth=JWTCookieAuth())
 
 class DisputeResolutionAdminSchema(Schema):
     action: str  # 'RELEASE_TO_SELLER', 'FULL_REFUND_TO_BUYER', 'PARTIAL_REFUND_TO_BUYER'
+    refund_amount_ghs: Optional[float] = 0.0
+    seller_amount_ghs: Optional[float] = 0.0
+    platform_retained_fee_ghs: Optional[float] = 0.0
     admin_notes: Optional[str] = None
+    manager_photos: Optional[List[str]] = []
+
+class RaiseDisputeSchema(Schema):
+    reason: str
+    photos: Optional[List[str]] = []
+
+class SellerDisputeResponseSchema(Schema):
+    response: str
+    photos: Optional[List[str]] = []
+
+@escrow_router.post("/{transaction_id}/raise-dispute", response=MessageResponse, auth=None)
+def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSchema):
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    if transaction.status in [TransactionStatus.COMPLETED, TransactionStatus.REFUNDED, TransactionStatus.CANCELLED]:
+        raise HttpError(400, f"Cannot raise dispute when transaction is in {transaction.status} status.")
+    
+    photos = data.photos or []
+    if len(photos) > 5:
+        raise HttpError(400, "Maximum of 5 evidence photos allowed.")
+        
+    transaction.status = TransactionStatus.DISPUTED
+    transaction.buyer_dispute_reason = data.reason
+    transaction.buyer_dispute_photos = photos[:5]
+    transaction.save(update_fields=['status', 'buyer_dispute_reason', 'buyer_dispute_photos', 'updated_at'])
+    
+    # Auto-clear/Deactivate any review submitted by the buyer for this transaction
+    if hasattr(transaction, 'review') and transaction.review:
+        transaction.review.is_active = False
+        transaction.review.save(update_fields=['is_active'])
+    
+    # Notify Seller
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from django.conf import settings
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    dash_link = f"{frontend_url}/dashboard?search={transaction.paystack_reference}"
+    
+    # SMS (no link to avoid multi-page SMS)
+    s_sms = (
+        f"Dispute Raised: A buyer raised a dispute for order {transaction.paystack_reference} ({transaction.link.title}). "
+        f"Reason: {data.reason}. Please log in to your seller dashboard to review the claim and submit counter evidence."
+    )
+    
+    # Email (with direct link to dashboard & transaction)
+    s_email_body = (
+        f"Action Required: A dispute has been raised by the buyer for order {transaction.paystack_reference} ({transaction.link.title}).\n\n"
+        f"Buyer Claim Reason:\n\"{data.reason}\"\n\n"
+        f"Please log in to your seller dashboard to review the dispute claim, view buyer evidence photos, and submit your counter-evidence or photos.\n\n"
+        f"Review Dispute Now: {dash_link}"
+    )
+    
+    seller = transaction.link.seller
+    s_phone = getattr(seller, 'phone_number', None)
+    s_email = getattr(seller, 'email', None)
+    if s_phone:
+        dispatch_sms_task.delay(s_phone, s_sms)
+    if s_email:
+        dispatch_email_task.delay(
+            s_email, 
+            f"Action Required: Dispute Raised on Order {transaction.paystack_reference}", 
+            s_email_body
+        )
+    
+    return {"message": "Dispute and evidence photos submitted successfully."}
+
+@escrow_router.post("/{transaction_id}/seller-dispute-response", response=MessageResponse, auth=JWTCookieAuth())
+def seller_dispute_response(request, transaction_id: uuid.UUID, data: SellerDisputeResponseSchema):
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    if transaction.link.seller != request.user:
+        raise HttpError(403, "You are not authorized to respond to this dispute.")
+        
+    if transaction.status != TransactionStatus.DISPUTED:
+        raise HttpError(400, "Transaction is not currently in DISPUTED status.")
+        
+    photos = data.photos or []
+    if len(photos) > 5:
+        raise HttpError(400, "Maximum of 5 evidence photos allowed.")
+        
+    transaction.seller_dispute_response = data.response
+    transaction.seller_dispute_photos = photos[:5]
+    transaction.save(update_fields=['seller_dispute_response', 'seller_dispute_photos', 'updated_at'])
+    
+    return {"message": "Seller dispute response and evidence photos submitted successfully."}
 
 class BroadcastMessageSchema(Schema):
     target_group: str  # 'ALL_USERS', 'ALL_SELLERS', 'ALL_BUYERS', 'USERS_WITH_ACTIVE_ESCROW', 'USERS_WITH_DISPUTES', 'CUSTOM'
@@ -534,6 +636,12 @@ def get_disputes(request):
             "total_amount_ghs": float(t.total_amount_ghs),
             "platform_fee_ghs": float(t.platform_fee_ghs),
             "status": t.status,
+            "buyer_dispute_reason": t.buyer_dispute_reason,
+            "buyer_dispute_photos": t.buyer_dispute_photos or [],
+            "seller_dispute_response": t.seller_dispute_response,
+            "seller_dispute_photos": t.seller_dispute_photos or [],
+            "manager_dispute_notes": t.manager_dispute_notes,
+            "manager_dispute_photos": t.manager_dispute_photos or [],
             "created_at": t.created_at.isoformat(),
             "dispatched_at": t.dispatched_at.isoformat() if t.dispatched_at else None,
             "delivered_at": t.delivered_at.isoformat() if t.delivered_at else None,
@@ -553,6 +661,15 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
     transaction = get_object_or_404(Transaction, id=id)
     if transaction.status != TransactionStatus.DISPUTED:
         raise HttpError(400, "Transaction is not in a DISPUTED state")
+
+    manager_photos = data.manager_photos or []
+    if len(manager_photos) > 5:
+        raise HttpError(400, "Managers can upload a maximum of 5 ruling photos.")
+
+    if data.admin_notes:
+        transaction.manager_dispute_notes = data.admin_notes
+    if manager_photos:
+        transaction.manager_dispute_photos = manager_photos[:5]
         
     if data.action == "RELEASE_TO_SELLER":
         transaction.status = TransactionStatus.COMPLETED
@@ -572,10 +689,49 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
         transaction.save()
         return {"message": "Full refund issued to buyer. Seller charged for platform fee."}
         
-    elif data.action == "PARTIAL_REFUND_TO_BUYER":
+    elif data.action in ["PARTIAL_REFUND_TO_BUYER", "PARTIAL_REFUND"]:
+        from decimal import Decimal
+        refund_val = Decimal(str(data.refund_amount_ghs or 0.0))
+        seller_val = Decimal(str(data.seller_amount_ghs or 0.0))
+        fee_val = Decimal(str(data.platform_retained_fee_ghs or 0.0))
+        
+        total_split = refund_val + seller_val + fee_val
+        if total_split > transaction.total_amount_ghs:
+            raise HttpError(
+                400, 
+                f"The sum of buyer refund (GHS {refund_val:.2f}), seller payout (GHS {seller_val:.2f}), and platform fee (GHS {fee_val:.2f}) is GHS {total_split:.2f}, which exceeds the total amount paid by the buyer (GHS {transaction.total_amount_ghs:.2f})."
+            )
+            
+        # Any remaining unallocated funds are attributed to platform retained fee
+        leftover = transaction.total_amount_ghs - total_split
+        if leftover > 0:
+            fee_val += leftover
+
+        from apps.ledger.services import execute_partial_refund
+        execute_partial_refund(
+            reference_id=str(transaction.id),
+            seller_user_id=transaction.link.seller.id,
+            refund_amount_ghs=refund_val,
+            seller_amount_ghs=seller_val,
+            platform_retained_fee_ghs=fee_val
+        )
         transaction.status = TransactionStatus.REFUNDED
         transaction.save()
-        return {"message": "Partial refund recorded."}
+        
+        from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+        b_msg = f"Partial Refund Processed: GHS {refund_val:.2f} has been refunded for order {transaction.paystack_reference} ({transaction.link.title})."
+        dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
+        if transaction.buyer_email:
+            dispatch_email_task.delay(transaction.buyer_email, "Partial Refund Issued", b_msg)
+            
+        s_msg = f"Dispute Partial Settlement: GHS {seller_val:.2f} has been credited to your wallet for order {transaction.paystack_reference}."
+        seller = transaction.link.seller
+        s_phone = getattr(seller, 'phone_number', None)
+        s_email = getattr(seller, 'email', None)
+        if s_phone: dispatch_sms_task.delay(s_phone, s_msg)
+        if s_email: dispatch_email_task.delay(s_email, "Partial Refund Settlement", s_msg)
+
+        return {"message": f"Partial refund executed: GHS {refund_val:.2f} to buyer, GHS {seller_val:.2f} to seller, GHS {fee_val:.2f} retained by platform."}
     
     raise HttpError(400, "Invalid action")
 
@@ -679,6 +835,12 @@ def get_transaction_detail_admin(request, id: uuid.UUID):
         "total_amount_ghs": float(t.total_amount_ghs),
         "platform_fee_ghs": float(t.platform_fee_ghs),
         "status": t.status,
+        "buyer_dispute_reason": t.buyer_dispute_reason,
+        "buyer_dispute_photos": t.buyer_dispute_photos or [],
+        "seller_dispute_response": t.seller_dispute_response,
+        "seller_dispute_photos": t.seller_dispute_photos or [],
+        "manager_dispute_notes": t.manager_dispute_notes,
+        "manager_dispute_photos": t.manager_dispute_photos or [],
         "created_at": t.created_at.isoformat(),
         "dispatched_at": t.dispatched_at.isoformat() if t.dispatched_at else None,
         "delivered_at": t.delivered_at.isoformat() if t.delivered_at else None,
@@ -691,7 +853,7 @@ def get_transaction_detail_admin(request, id: uuid.UUID):
 def get_sellers_admin(request, search: Optional[str] = None):
     is_admin_user(request)
     from apps.users.models import User
-    from apps.wallet.models import Wallet
+    from apps.wallet.models import SellerWallet
     
     sellers = User.objects.filter(Q(role='SELLER') | Q(payment_links__isnull=False)).distinct()
     
@@ -710,8 +872,8 @@ def get_sellers_admin(request, search: Optional[str] = None):
         
         completed_gmv = txns.filter(status=TransactionStatus.COMPLETED).aggregate(total=Sum('total_amount_ghs'))['total'] or 0
         
-        wallet = Wallet.objects.filter(user=s).first()
-        wallet_balance = float(wallet.balance_ghs) if wallet else 0.0
+        wallet = SellerWallet.objects.filter(user=s).first()
+        wallet_balance = float(wallet.available_balance_ghs) if wallet else 0.0
         payout_mode = getattr(s, 'payout_mode', 'INSTANT')
         
         res.append({
@@ -841,7 +1003,223 @@ def broadcast_message_admin(request, data: BroadcastMessageSchema):
             email_count += 1
             
     return {
-        "message": f"Broadcast dispatched! Queued {sms_count} SMS and {email_count} Email messages.",
+        "message": f"Broadcast dispatched to {sms_count} SMS and {email_count} Email recipients.",
         "sms_count": sms_count,
-        "email_count": email_count,
+        "email_count": email_count
     }
+
+
+class RejectVerificationSchema(Schema):
+    reason: str
+
+@admin_router.get("/verifications", response=List[dict])
+def get_pending_seller_verifications(request):
+    _verify_admin_access(request.user)
+    users = User.objects.exclude(verification_status='UNSUBMITTED').order_by('-date_joined')
+    return [
+        {
+            "id": str(u.id),
+            "username": u.username,
+            "email": u.email or "",
+            "phone_number": u.phone_number,
+            "shop_name": u.shop_name or f"@{u.username}'s Shop",
+            "shop_description": u.shop_description or "",
+            "shop_categories": u.shop_categories if isinstance(u.shop_categories, list) else [],
+            "verification_status": u.verification_status,
+            "national_id_number": u.national_id_number,
+            "national_id_photo_url": u.national_id_photo_url,
+            "business_license_photo_url": u.business_license_photo_url,
+            "verification_rejection_reason": u.verification_rejection_reason,
+            "verified_at": u.verified_at.isoformat() if u.verified_at else None,
+            "joined_at": u.date_joined.isoformat()
+        } for u in users
+    ]
+
+@admin_router.post("/verifications/{user_id}/approve", response=dict)
+def approve_seller_verification(request, user_id: uuid.UUID):
+    _verify_admin_access(request.user)
+    seller = get_object_or_404(User, id=user_id)
+    from apps.users.models import VerificationStatus
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from django.utils import timezone
+    seller.verification_status = VerificationStatus.APPROVED
+    seller.verified_at = timezone.now()
+    seller.verification_rejection_reason = ""
+    seller.save(update_fields=['verification_status', 'verified_at', 'verification_rejection_reason'])
+    
+    # Send SMS & Email notification to seller
+    dispatch_sms_task.delay(
+        seller.phone_number, 
+        f"Congratulations! Your seller verification documents for {seller.shop_name or seller.username} have been approved by management. Your account has earned the Verified Seller badge."
+    )
+    if seller.email:
+        dispatch_email_task.delay(
+            seller.email,
+            "Verification Approved - HendAxis Trust",
+            f"Dear @{seller.username},\n\nYour identity and business verification documents have been officially approved by management. Your store now features the Verified Seller badge on all payment links and directory listings."
+        )
+
+    return {"message": f"Seller @{seller.username} has been verified and granted the Verified Seller badge."}
+
+@admin_router.post("/verifications/{user_id}/reject", response=dict)
+def reject_seller_verification(request, user_id: uuid.UUID, data: RejectVerificationSchema):
+    _verify_admin_access(request.user)
+    seller = get_object_or_404(User, id=user_id)
+    from apps.users.models import VerificationStatus
+    from apps.core.tasks import dispatch_sms_task
+    seller.verification_status = VerificationStatus.REJECTED
+    seller.verification_rejection_reason = data.reason or "Submitted documents were unclear or invalid."
+    seller.save(update_fields=['verification_status', 'verification_rejection_reason'])
+    
+    dispatch_sms_task.delay(
+        seller.phone_number, 
+        f"Verification Request Update: Your document submission was not approved. Reason: {seller.verification_rejection_reason}. Please re-submit valid documents on your profile page."
+    )
+
+    return {"message": f"Verification for @{seller.username} rejected."}
+
+
+@admin_router.get("/funds/accounts", response=dict)
+def get_platform_accounts_summary(request):
+    is_admin_user(request)
+    from apps.ledger.models import LedgerAccount
+    from django.db.models import Sum
+
+    accounts = LedgerAccount.objects.all().select_related('user').order_by('account_type', 'name')
+
+    sys_bank = LedgerAccount.objects.filter(name='SYSTEM_BANK_ASSET').aggregate(total=Sum('balance'))['total'] or 0
+    buyer_escrow = LedgerAccount.objects.filter(name='BUYER_ESCROW_DEPOSIT').aggregate(total=Sum('balance'))['total'] or 0
+    platform_revenue = LedgerAccount.objects.filter(name='PLATFORM_FEE_REVENUE').aggregate(total=Sum('balance'))['total'] or 0
+    paystack_expense = LedgerAccount.objects.filter(name='PAYSTACK_FEE_EXPENSE').aggregate(total=Sum('balance'))['total'] or 0
+
+    seller_wallets_total = LedgerAccount.objects.filter(
+        name__startswith='SELLER_INTERNAL_WALLET'
+    ).aggregate(total=Sum('balance'))['total'] or 0
+
+    total_assets = sys_bank
+    total_liabilities = buyer_escrow + seller_wallets_total
+    total_revenue = platform_revenue
+    total_expenses = paystack_expense
+    net_profit = platform_revenue - paystack_expense
+
+    account_list = []
+    for acc in accounts:
+        account_list.append({
+            "id": str(acc.id),
+            "name": acc.name,
+            "account_type": acc.account_type,
+            "balance": float(acc.balance),
+            "user_username": acc.user.username if acc.user else None,
+            "user_id": str(acc.user.id) if acc.user else None,
+        })
+
+    return {
+        "summary": {
+            "system_bank_asset_ghs": float(sys_bank),
+            "buyer_escrow_deposit_ghs": float(buyer_escrow),
+            "seller_wallets_liabilities_ghs": float(seller_wallets_total),
+            "platform_revenue_ghs": float(platform_revenue),
+            "paystack_expense_ghs": float(paystack_expense),
+            "net_platform_profit_ghs": float(net_profit),
+            "total_assets_ghs": float(total_assets),
+            "total_liabilities_ghs": float(total_liabilities),
+            "is_ledger_balanced": bool(total_assets >= total_liabilities)
+        },
+        "accounts": account_list
+    }
+
+
+@admin_router.get("/funds/ledger", response=dict)
+def get_platform_ledger_entries(
+    request, 
+    entry_type: Optional[str] = None, 
+    account_type: Optional[str] = None,
+    account_id: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    search: Optional[str] = None,
+    sort_by: Optional[str] = 'timestamp',
+    order: Optional[str] = 'desc',
+    limit: int = 50,
+    offset: int = 0
+):
+    is_admin_user(request)
+    from apps.ledger.models import LedgerEntry
+    from django.db.models import Q, Sum
+
+    qs = LedgerEntry.objects.select_related('debit_account', 'credit_account').all()
+
+    if entry_type and entry_type.upper() != 'ALL':
+        qs = qs.filter(entry_type__iexact=entry_type.strip())
+
+    if account_type and account_type.upper() != 'ALL':
+        qs = qs.filter(
+            Q(debit_account__account_type__iexact=account_type.strip()) |
+            Q(credit_account__account_type__iexact=account_type.strip())
+        )
+
+    if account_id and account_id.strip():
+        qs = qs.filter(
+            Q(debit_account__id=account_id) |
+            Q(credit_account__id=account_id) |
+            Q(debit_account__name__icontains=account_id) |
+            Q(credit_account__name__icontains=account_id)
+        )
+
+    if start_date:
+        qs = qs.filter(timestamp__gte=start_date)
+
+    if end_date:
+        target_end = end_date
+        if 'T' not in target_end and len(target_end) == 10:
+            target_end = f"{target_end}T23:59:59"
+        qs = qs.filter(timestamp__lte=target_end)
+
+    if search and search.strip():
+        q_str = search.strip()
+        qs = qs.filter(
+            Q(reference_id__icontains=q_str) |
+            Q(entry_type__icontains=q_str) |
+            Q(debit_account__name__icontains=q_str) |
+            Q(credit_account__name__icontains=q_str)
+        )
+
+    # Sorting
+    sort_field = 'timestamp'
+    if sort_by in ['timestamp', 'amount_ghs', 'entry_type']:
+        sort_field = sort_by
+    elif sort_by == 'debit_account':
+        sort_field = 'debit_account__name'
+    elif sort_by == 'credit_account':
+        sort_field = 'credit_account__name'
+
+    if order == 'desc':
+        sort_field = f"-{sort_field}"
+
+    qs = qs.order_by(sort_field)
+
+    total_count = qs.count()
+    total_volume_ghs = qs.aggregate(total=Sum('amount_ghs'))['total'] or 0
+
+    entries = list(qs[offset:offset+limit])
+
+    items = [
+        {
+            "id": str(e.id),
+            "reference_id": str(e.reference_id),
+            "entry_type": e.entry_type,
+            "debit_account_name": e.debit_account.name,
+            "debit_account_type": e.debit_account.account_type,
+            "credit_account_name": e.credit_account.name,
+            "credit_account_type": e.credit_account.account_type,
+            "amount_ghs": float(e.amount_ghs),
+            "timestamp": e.timestamp.isoformat()
+        } for e in entries
+    ]
+
+    return {
+        "total_count": total_count,
+        "total_volume_ghs": float(total_volume_ghs),
+        "items": items
+    }
+

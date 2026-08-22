@@ -1,30 +1,63 @@
 # HendAxis Trust
 
-**HendAxis Trust** is an advanced, production-grade escrow and payment routing platform engineered for ultimate security and transparency. The platform sits between buyers and sellers, holding funds securely in escrow while dual-path delivery verification and a strict tiered buyer inspection period (24h to 72h) guarantee fairness before payouts are mathematically settled.
+**HendAxis Trust** is an advanced, production-grade escrow, marketplace trust framework, and payment routing platform engineered for ultimate security and transparency. The platform sits between buyers and sellers, holding funds securely in escrow while dual-path delivery verification and a strict tiered buyer inspection period (24h to 72h) guarantee fairness before payouts are mathematically settled.
 
 At the core of HendAxis Trust is an immutable, double-entry accounting ledger that tracks every single pesewa (GHS) through intermediate clearing accounts. This guarantees that funds can never be artificially inflated, lost, or misplaced without triggering cryptographic imbalances.
 
 ---
 
-## 🔄 The 8-Step Escrow & Logistics Lifecycle
+## 🔄 The Complete Escrow, Logistics & Trust Architecture
 
-1. **Seller Authentication & Setup**: Seller registers, logs in, and manages their store profile.
-2. **Payment Link Generation**: Seller creates a payment link specifying item title, description, price, shipping fee, and fee handling (`ABSORB_FEE` vs `PASS_TO_BUYER`).
-3. **Link Distribution**: Seller shares the unique URL with the buyer.
-4. **Buyer Checkout & Payment**: Buyer enters shipping details and pays via Paystack (Mobile Money / Card). Money is locked in double-entry escrow clearing accounts. **Automated SMS + Email notifications** are dispatched to both buyer and seller.
-5. **Dispatch & Dual-Path Shipping**:
-   - **Path A (Courier API)**: Seller dispatches via integrated courier with tracking number. SMS/Email notification sent to buyer with tracking details.
-   - **Path B (Informal Bus / Terminal)**: Seller enters driver phone, vehicle number, and destination station. System dispatches **SMS + Email** to buyer with driver details and a Secret 6-Digit OTP.
-6. **Delivery Verification & Inspection Start**:
-   - **Courier**: Verified automatically via Courier API webhook or seller 36h force-delivered check.
-   - **Informal Bus**: Verified when Buyer confirms receipt on tracking page OR Seller enters buyer's Secret OTP under "Verify Delivery OTP".
-   - **Unresponsive Buyer Auto-Delivery**: Automated Celery task sends SMS/Email reminders at 30h, 36h, and 42h post-dispatch. At 48h, the transaction is automatically marked as Delivered, starting the inspection period and notifying the buyer.
-7. **Tiered Inspection Period & Release**:
-   - `< GHS 2,000`: **24 Hours**
-   - `GHS 2,000 – 9,999.99`: **48 Hours**
-   - `>= GHS 10,000`: **72 Hours**
-   - Upon timer expiry (or manual buyer confirmation), funds are released from escrow to the seller's wallet via double-entry ledger settlement. **SMS + Email notifications** are sent to seller (funds credited) and buyer (transaction completed).
-8. **Dispute Resolution & Penalties**: If a buyer disputes within the inspection window, payouts freeze instantly. Platform Admins review evidence and can either release funds to the seller or trigger a 100% full refund to the buyer (charging platform/payout fees to the defaulting seller's internal account).
+### 1. Seller Authentication & Document Verification
+- **Profile & Storefront Setup**: Sellers register and set up their store name, description, and up to **3 product categories**.
+- **Manual Identity & License Verification**: Sellers submit their Ghana Card / National ID number, Ghana Card photo, and optional Business Registration license.
+- **Strict `🛡️ Verified Seller` Badge Policy**: The `🛡️ Verified Seller` badge is **NEVER** granted automatically based on completed transactions alone. Management MUST manually inspect and approve submitted documents in the Manager Portal before the badge is displayed across payment links, public storefronts, and directory listings. Unverified sellers are clearly marked as `🆕 New Shop`.
+
+### 2. Payment Link Generation & Dynamic Platform Fee Calculation
+- **Link Creation**: Seller creates payment links with price, shipping fee, item description, and fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`).
+- **Dynamic Fee Transparency**: Platform fees are calculated transparently in GHS and displayed in real-time.
+
+### 3. Buyer Checkout & Escrow Locking
+- **Paystack Integration**: Buyers enter delivery details and pay via Paystack (Mobile Money / Card).
+- **Double-Entry Escrow Ledger**: Funds are securely locked in double-entry escrow clearing accounts. Automated SMS and Email notifications (containing direct transaction action links) are sent to both parties.
+
+### 4. Dispatch & Package Evidence
+- **Optional Package Photo**: Sellers can upload a photo of the packaged item during dispatch for verification.
+- **Dual Logistics Paths**:
+  - **Path A (Formal Courier API)**: Tracking number assignment with automated webhook status updates.
+  - **Path B (Informal Bus / Station)**: Driver phone, vehicle number, station details, and a 6-digit Secret OTP sent to the buyer.
+
+### 5. Delivery Verification & Tiered Inspection Period
+- **Verification Trigger**: Verified via Courier API webhooks, Secret Bus OTP handoff, or Buyer Receipt Confirmation.
+- **Automated Delivery Escalation**: Celery tasks send SMS/Email reminders at 30h, 36h, and 42h post-dispatch. Unresponsive buyer transactions auto-deliver at 48h.
+- **Tiered Inspection Timeframes**:
+  - `< GHS 2,000`: **24 Hours**
+  - `GHS 2,000 – 9,999.99`: **48 Hours**
+  - `>= GHS 10,000`: **72 Hours**
+
+### 6. Dispute Resolution & 5-Image Inspection
+- **Dispute Uploads**: Buyers can raise disputes with a claim description and up to **5 evidence photos**.
+- **Seller Counter Response**: Sellers can submit a counter response with up to **5 seller evidence photos**.
+- **Manager Arbitration**: Staff/Admins inspect evidence photos in high-res lightboxes, upload manager ruling photos, and execute binding rulings (Release, Refund, or Custom Partial Split).
+- **Automated Review Suppression**: Raising a dispute automatically suppresses and clears any review ratings submitted for that transaction.
+
+### 7. Escrow-Gated Reviews & Trustpilot Rating System
+- **Verified Buyer Reviews**: Reviews can **ONLY** be submitted by buyers who have completed an escrow purchase.
+- **3-Axis Seller Rating**: Speed, Communication, and Overall Satisfaction (1 to 5 stars).
+- **Public Storefronts (`/store/:username`)**: Shows seller rating breakdown, verified review history, and seller reply responses.
+
+### 8. Public Marketplace Directory & Paid Advertised Shops (`/shops`)
+### 9. Superuser Platform Funds & Immutable Ledger Audit (`/admin/dashboard`)
+- **System-Wide Balances Overview**: Superusers and staff can view complete real-time balances across:
+  - 🏦 **System Bank Asset**: Gross bank & Paystack clearing funds.
+  - 🔒 **Buyer Escrow Deposit**: Funds locked in escrow for active transactions.
+  - 📈 **Platform Fee Revenue**: Cumulative earned commission + paid ad promotions.
+  - 💳 **Paystack Fee Expense**: Cumulative gateway fees.
+  - 💼 **Seller Wallet Liabilities**: Total balances held in seller spendable wallets.
+- **Granular Ledger Filtering & Sorting**:
+  - Filter ledger entries by **Entry Type** (`BUYER_DEPOSIT`, `ESCROW_RELEASE`, `AD_PROMOTION_FEE`, `FULL_REFUND`, `PARTIAL_REFUND`, `WITHDRAWAL`), **Account Type** (`ASSET`, `LIABILITY`, `REVENUE`, `EXPENSE`), **Specific Account**, and **Custom Date Ranges** (`From Date` / `To Date`).
+  - Search by reference UUID, account names, or type.
+  - Flexible multi-column sorting (Date, Amount, Entry Type, Accounts) in ascending or descending order.
 
 ---
 
@@ -40,18 +73,19 @@ The repository is structured as a Monorepo:
 
 **Core Backend Modules**:
 - `apps.core`: Foundational configuration, JWT authentication, and background notification tasks.
-- `apps.users`: Custom user models (`Buyer`, `Seller`, `Admin`) and Role-Based Access Control (RBAC).
+- `apps.users`: Custom user models (`Buyer`, `Seller`, `Admin`), document verification statuses, and Role-Based Access Control (RBAC).
 - `apps.ledger`: Strict double-entry ledger tracking all movements between Asset, Liability, Revenue, and Expense accounts.
 - `apps.checkout`: Secure handling of Paystack checkouts and platform fee algorithms (`ABSORB_FEE` vs `PASS_TO_BUYER`).
-- `apps.escrow`: The robust State Machine that transitions transactions from `AWAITING_PAYMENT` -> `DELIVERY_IN_PROGRESS` -> `INSPECTION_PERIOD` -> `COMPLETED`/`DISPUTED`/`REFUNDED`.
-- `apps.delivery`: Dual-Path Logistics engine for Formal Courier API Webhooks and Informal Station (Bus OTP) SMS handoffs.
-- `apps.wallet`: Abstraction layer presenting ledger balances to sellers as spendable wallet balances with instant withdrawal options.
+- `apps.escrow`: Robust State Machine managing transaction lifecycles and dispute arbitration.
+- `apps.delivery`: Dual-Path Logistics engine for Formal Courier API Webhooks and Informal Bus OTP handoffs.
+- `apps.reviews`: Trustpilot-style seller ratings, storefront APIs, and shop promotion payments.
+- `apps.wallet`: Wallet abstraction presenting ledger balances with instant MoMo/Bank payout options.
 - `apps.notifications`: Centralized User notification engine and Webhook Event Audit logger.
 
 ### Frontend (React + Vite)
 - **Framework**: React 18 + Vite
 - **Styling**: Tailwind CSS
-- **Views**: Seller Dashboard, Public Checkout, Tracking Portal, Admin Operations
+- **Views**: Seller Dashboard, Profile & Verification Setup, Public Checkout, Tracking Portal with OTP Modal, Marketplace Directory (`/shops`), Public Seller Storefronts (`/store/:username`), and Manager Operations Center.
 
 ---
 
@@ -68,75 +102,35 @@ The repository is structured as a Monorepo:
 CREATE DATABASE hend_trust_db;
 ```
 
-### 2. Backend Installation
+### 2. Backend Setup
 ```bash
 cd backend
 python -m venv venv
-
-# Activate Virtual Environment (Windows)
-.\venv\Scripts\activate
-# Activate Virtual Environment (Mac/Linux)
-# source venv/bin/activate
-
+venv\Scripts\activate  # Windows
 pip install -r requirements.txt
-```
-
-### 3. Environment Variables
-Create `.env` in `backend/`:
-```env
-DEBUG=True
-SECRET_KEY=your-super-secret-django-key
-DATABASE_URL=postgres://user:password@localhost:5432/hend_trust_db
-REDIS_URL=redis://localhost:6379/0
-PAYSTACK_SECRET_KEY=sk_test_your_paystack_key
-```
-
-### 4. Migrations & Initial Setup
-```bash
 python manage.py migrate
-python manage.py createsuperuser
-```
-
-### 5. Running Backend & Celery
-**Terminal 1 (Django API):**
-```bash
-cd backend
-.\venv\Scripts\activate
 python manage.py runserver
 ```
 
-**Terminal 2 (Celery Worker):**
+### 3. Celery Tasks & Beat
 ```bash
-cd backend
-.\venv\Scripts\activate
-celery -A hendaxis_trust worker --pool=solo -l info
-```
+# Terminal 1: Worker
+celery -A hendaxis_trust worker -l info -P solo
 
-**Terminal 3 (Celery Beat for Reminders/Auto-Deliveries):**
-```bash
-cd backend
-.\venv\Scripts\activate
+# Terminal 2: Beat Scheduler
 celery -A hendaxis_trust beat -l info
 ```
 
-### 6. Frontend Installation
+### 4. Frontend Setup
 ```bash
 cd frontend
 npm install
 npm run dev
 ```
 
-React App: `http://localhost:5173/`  
-Swagger API Docs: `http://127.0.0.1:8000/api/docs/`
-
 ---
 
-## 🔒 Ledger Integrity & Fee Handling
-1. **ABSORB_FEE**: Seller absorbs fee (1.5% + GHS 10). Buyer pays item price + shipping.
-2. **PASS_TO_BUYER**: Buyer pays item price + shipping + platform fee. Seller receives full item price + shipping fee.
-
-**Double-Entry Accounting Example (GHS 100 payment)**:
-- Payment: `Debit` SYSTEM_BANK_ASSET (GHS 100.00) / `Credit` BUYER_ESCROW_DEPOSIT (GHS 100.00)
-- Completion: `Debit` BUYER_ESCROW_DEPOSIT (GHS 100.00) / `Credit` PLATFORM_FEE_REVENUE (GHS 11.50) / `Credit` SELLER_INTERNAL_WALLET (GHS 88.50)
-
-The mathematical sum of the ledger always equals zero and perfectly matches bank balances.
+## 🔒 Security & Verification Controls
+- **Manager Portal Restricted Access**: Navbar link and `/admin/dashboard` route are strictly hidden and forbidden to users who are not `is_staff` or `ADMIN`.
+- **Double-Entry Accounting Guardrails**: Ledger balances must strictly equal zero (`Assets = Liabilities + Equity`).
+- **Dispute Suppression**: Fake or dispute-tainted reviews are automatically purged to protect market integrity.

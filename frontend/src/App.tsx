@@ -10,6 +10,8 @@ import { LedgerView } from './views/LedgerView';
 import { TrackingView } from './views/TrackingView';
 import { LinksView } from './views/LinksView';
 import ProfileView from './views/ProfileView';
+import SellerStoreView from './views/SellerStoreView';
+import ShopsDirectoryView from './views/ShopsDirectoryView';
 import { AdminDashboardView } from './views/AdminDashboardView';
 import { useAuthStore } from './store/authStore';
 
@@ -29,10 +31,14 @@ function App() {
         <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <HomeView />} />
         <Route path="/login" element={<LoginView />} />
         <Route path="/register" element={<RegisterView />} />
+        <Route path="/shops" element={<ShopsDirectoryView />} />
+        <Route path="/directory" element={<ShopsDirectoryView />} />
 
         {/* Public Checkout (no navbar shown) */}
         <Route path="/l/:linkId" element={<PublicCheckoutView />} />
         <Route path="/track" element={<TrackingView />} />
+        <Route path="/store/:username" element={<SellerStoreView />} />
+        <Route path="/seller/:username" element={<SellerStoreView />} />
 
         {/* Protected Seller & Manager Dashboards */}
         <Route path="/admin/dashboard" element={

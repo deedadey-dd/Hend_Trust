@@ -9,19 +9,30 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
-// No Authorization header needed — auth is fully cookie-based (HttpOnly cookies
-// are forwarded automatically by the browser through the Vite proxy).
+export function getErrorMessage(err: any): string {
+  if (!err) return 'An unexpected error occurred.';
+  if (typeof err === 'string') return err;
+  const detail = err?.response?.data?.detail || err?.response?.data?.message || err?.message;
+  if (typeof detail === 'string') return detail;
+  if (Array.isArray(detail) && detail[0]?.msg) return detail[0].msg;
+  if (typeof detail === 'object' && detail !== null) {
+    if (detail.string) return detail.string;
+    return JSON.stringify(detail);
+  }
+  return 'An unexpected error occurred.';
+}
 
-// Response Interceptor: On 401, log out and redirect to login only for
-// protected seller pages — not for public checkout API calls.
+// Response Interceptor: On 401/403 (token invalid or expired), log out and redirect to login
 apiClient.interceptors.response.use(
   (response) => response,
   (error) => {
-    if (error.response && error.response.status === 401) {
-      const protectedPaths = ['/dashboard'];
-      if (protectedPaths.some(p => window.location.pathname.startsWith(p))) {
+    if (error.response && (error.response.status === 401 || error.response.status === 403)) {
+      const isPublicPath = window.location.pathname.startsWith('/l/') || window.location.pathname === '/track';
+      if (!isPublicPath) {
         useAuthStore.getState().logout();
-        window.location.href = '/login';
+        if (!window.location.pathname.includes('/login')) {
+          window.location.href = '/login?expired=true';
+        }
       }
     }
     return Promise.reject(error);

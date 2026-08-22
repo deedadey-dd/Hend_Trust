@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   ShieldCheck, Truck, ArrowRight, Loader2,
-  Package, CheckCircle, Clock, AlertTriangle, Search, X, KeyRound
+  Package, CheckCircle, Clock, AlertTriangle, X, KeyRound
 } from 'lucide-react';
 
 interface LinkData {
@@ -13,6 +13,9 @@ interface LinkData {
   price_ghs: string;
   shipping_fee_ghs: string;
   fee_handling: string;
+  seller_username?: string;
+  seller_email?: string;
+  seller_phone?: string;
 }
 
 interface TxnDetail {
@@ -25,16 +28,6 @@ interface TxnDetail {
   created_at: string;
   paystack_reference: string;
   inspection_starts_at?: string;
-}
-
-interface TxnListItem {
-  id: string;
-  status: string;
-  total_amount_ghs: number;
-  title: string;
-  created_at: string;
-  paystack_reference: string;
-  link_id: string;
 }
 
 const STATUS_CONFIG: Record<string, { icon: typeof ShieldCheck; color: string; bg: string; label: string }> = {
@@ -307,113 +300,6 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   );
 }
 
-// ─── Buyer Phone Lookup Screen (OTP-gated) ────────────────────────────────
-function BuyerLookupScreen() {
-  const [lookupPhone, setLookupPhone] = useState('');
-  const [otpSent, setOtpSent] = useState(false);
-  const [lookupOtp, setLookupOtp] = useState('');
-  const [txns, setTxns] = useState<TxnListItem[] | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  const handleRequestOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      await axios.post('/api/v1/checkout/lookup/request-otp', { phone_number: lookupPhone });
-      setOtpSent(true);
-    } catch { alert('Could not send OTP. Try again.'); }
-    finally { setBusy(false); }
-  };
-
-  const handleVerifyAndLookup = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setBusy(true);
-    try {
-      const res = await axios.post('/api/v1/checkout/my-transactions', {
-        phone_number: lookupPhone,
-        otp_code: lookupOtp,
-      });
-      setTxns(res.data);
-    } catch { alert('Invalid or expired OTP. Please try again.'); }
-    finally { setBusy(false); }
-  };
-
-  return (
-    <div className="bg-gray-50/80 border-t border-gray-200 p-6 rounded-b-2xl">
-      <p className="text-sm font-medium text-gray-700 mb-3 flex items-center gap-2">
-        <Search className="h-4 w-4 text-gray-400" /> Already paid? Track your order
-      </p>
-
-      {!otpSent ? (
-        <form onSubmit={handleRequestOtp} className="flex gap-2">
-          <input
-            required type="tel" value={lookupPhone}
-            onChange={e => setLookupPhone(e.target.value)}
-            placeholder="Your phone number"
-            className="flex-1 rounded-lg border border-gray-200 p-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-          />
-          <button type="submit" disabled={busy}
-            className="px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-60">
-            {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Send OTP'}
-          </button>
-        </form>
-      ) : (
-        <form onSubmit={handleVerifyAndLookup} className="space-y-2">
-          <p className="text-xs text-gray-500">Enter the OTP sent to {lookupPhone}</p>
-          <div className="flex gap-2">
-            <input
-              required type="text" maxLength={6} value={lookupOtp}
-              onChange={e => setLookupOtp(e.target.value)}
-              placeholder="6-digit OTP"
-              className="flex-1 rounded-lg border border-gray-200 p-2.5 text-sm font-mono tracking-widest focus:ring-2 focus:ring-blue-500 outline-none"
-            />
-            <button type="submit" disabled={busy}
-              className="px-4 py-2.5 rounded-lg bg-blue-600 text-white text-sm font-semibold hover:bg-blue-700 transition disabled:opacity-60">
-              {busy ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Verify'}
-            </button>
-          </div>
-          <button type="button" onClick={() => { setOtpSent(false); setLookupOtp(''); }}
-            className="text-xs text-gray-400 hover:text-gray-600 transition">
-            ← Change number
-          </button>
-        </form>
-      )}
-
-      {txns !== null && (
-        <div className="mt-4 space-y-2">
-          {txns.length === 0 ? (
-            <p className="text-sm text-gray-500 text-center py-3">No transactions found for this number.</p>
-          ) : txns.map(t => {
-            const cfg = STATUS_CONFIG[t.status] || STATUS_CONFIG['AWAITING_PAYMENT'];
-            const Icon = cfg.icon;
-            return (
-              <a
-                key={t.id}
-                href={`/l/${t.link_id}?reference=${t.paystack_reference}`}
-                className="flex items-center justify-between p-3 bg-white rounded-xl border border-gray-100 hover:border-blue-300 transition group"
-              >
-                <div className="flex items-center gap-3">
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center ${cfg.bg}`}>
-                    <Icon className={`h-4 w-4 ${cfg.color}`} />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900">{t.title}</p>
-                    <p className="text-xs text-gray-400">{new Date(t.created_at).toLocaleDateString()}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="text-sm font-semibold text-gray-900">GHS {t.total_amount_ghs.toFixed(2)}</p>
-                  <p className={`text-xs font-medium ${cfg.color}`}>{cfg.label}</p>
-                </div>
-              </a>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
 // ─── Main Checkout View ────────────────────────────────────────────────────
 export default function PublicCheckoutView() {
   const { linkId } = useParams();
@@ -507,6 +393,16 @@ export default function PublicCheckoutView() {
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 text-white relative overflow-hidden">
           <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-xl" />
+          
+          {link.seller_username && (
+            <div className="inline-flex items-center gap-2 text-xs text-blue-100 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm mb-3 border border-white/10">
+              <span>Sold by: <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-white font-bold hover:underline">@{link.seller_username}</a></span>
+              <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-[10px] text-blue-200 bg-white/10 px-1.5 py-0.5 rounded hover:bg-white/20 transition">
+                View Store Ratings ↗
+              </a>
+            </div>
+          )}
+
           <h1 className="text-2xl font-bold mb-1">{link.title}</h1>
           {link.description && <p className="text-blue-100 text-sm mb-4 opacity-90">{link.description}</p>}
           <div className="text-4xl font-black mt-4">
@@ -575,8 +471,15 @@ export default function PublicCheckoutView() {
           </form>
         </div>
 
-        {/* Buyer Lookup */}
-        <BuyerLookupScreen />
+        {/* Streamlined Redirect to Tracking Portal */}
+        <div className="bg-gray-50 border-t border-gray-100 p-4 text-center text-xs">
+          <p className="text-gray-500">
+            Already placed an order?{' '}
+            <a href="/track" className="text-blue-600 font-bold hover:underline inline-flex items-center gap-1">
+              Track your package status here <ArrowRight className="h-3 w-3" />
+            </a>
+          </p>
+        </div>
       </div>
 
       {/* OTP Modal */}

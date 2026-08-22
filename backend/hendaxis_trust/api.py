@@ -8,6 +8,7 @@ from apps.escrow.api import escrow_router, admin_router
 from apps.escrow.webhooks import escrow_webhooks_router
 from apps.wallet.api import wallet_router
 from apps.notifications.api import notifications_router
+from apps.reviews.api import reviews_router
 
 api = NinjaAPI(
     title="HendAxis Trust API",
@@ -26,3 +27,4 @@ api.add_router("/wallet", wallet_router)
 api.add_router("/admin", admin_router)
 api.add_router("/notifications", notifications_router)
 api.add_router("/profile", profile_router)
+api.add_router("/reviews", reviews_router)

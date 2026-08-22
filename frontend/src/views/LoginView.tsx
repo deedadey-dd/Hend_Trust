@@ -1,13 +1,15 @@
 import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { ShieldCheck, User, Lock, Loader2 } from 'lucide-react';
-import { apiClient } from '../api/client';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { ShieldCheck, User, Lock, Loader2, LogOut } from 'lucide-react';
+import { apiClient, getErrorMessage } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 
 // Ensure cookies are sent with requests
 apiClient.defaults.withCredentials = true;
 
 export default function LoginView() {
+  const [searchParams] = useSearchParams();
+  const isExpired = searchParams.get('expired') === 'true';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -23,9 +25,13 @@ export default function LoginView() {
       const res = await apiClient.post('/auth/login', { username, password });
       const { user_id, username: uname, role, email } = res.data;
       login('', { id: user_id, role, email, name: uname });
-      navigate('/dashboard');
+      if (role === 'ADMIN') {
+        navigate('/admin/dashboard');
+      } else {
+        navigate('/dashboard');
+      }
     } catch (err: any) {
-      setError(err.response?.data?.message || err.response?.data?.detail || 'Invalid credentials. Please try again.');
+      setError(getErrorMessage(err) || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -55,6 +61,16 @@ export default function LoginView() {
       <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="bg-white/80 backdrop-blur-xl py-8 px-4 shadow-2xl sm:rounded-2xl sm:px-10 border border-white/20">
           <form className="space-y-6" onSubmit={handleLogin}>
+            {isExpired && (
+              <div className="p-4 rounded-xl bg-amber-50 border border-amber-200 text-sm text-amber-900 font-medium flex items-center gap-3 shadow-sm">
+                <LogOut className="h-5 w-5 text-amber-600 shrink-0" />
+                <div>
+                  <p className="font-bold text-amber-900">Session Expired</p>
+                  <p className="text-xs text-amber-700">Your session has timed out. Please log in again to continue.</p>
+                </div>
+              </div>
+            )}
+
             {error && (
               <div className="p-3 rounded-lg bg-red-50 border border-red-100 text-sm text-red-600 font-medium">
                 {error}

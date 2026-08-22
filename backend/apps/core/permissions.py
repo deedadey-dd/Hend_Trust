@@ -9,7 +9,7 @@ def is_admin_user(request):
     if not hasattr(request, 'user') or not request.user.is_authenticated:
         raise HttpError(401, "Authentication required")
         
-    if request.user.role == Role.ADMIN or request.user.is_superuser:
+    if request.user.role == Role.ADMIN or request.user.is_superuser or request.user.is_staff:
         return request.user
         
     raise HttpError(403, "Forbidden. Admin access required.")

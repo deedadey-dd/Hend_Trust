@@ -22,6 +22,12 @@ interface SellerTxn {
   inspection_starts_at?: string;
   delivery_method?: string;
   dispatched_at?: string;
+  buyer_dispute_reason?: string;
+  buyer_dispute_photos?: string[];
+  seller_dispute_response?: string;
+  seller_dispute_photos?: string[];
+  manager_dispute_notes?: string;
+  manager_dispute_photos?: string[];
 }
 
 export const STATUS_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
@@ -52,15 +58,31 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
   const [driverPhone, setDriverPhone] = useState('');
   const [driverCar, setDriverCar] = useState('');
   const [station, setStation] = useState('');
+  const [waybillPhoto, setWaybillPhoto] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onloadend = () => {
+      if (reader.result) {
+        setWaybillPhoto(reader.result as string);
+      }
+    };
+    reader.readAsDataURL(file);
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
-      const payload: any = { delivery_method: path };
+      const payload: any = { 
+        delivery_method: path,
+        waybill_photo_url: waybillPhoto || undefined
+      };
       if (path === 'COURIER_API') {
         payload.courier_name = courierName;
         payload.tracking_number = trackingNumber;
@@ -198,6 +220,29 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
               </div>
             </div>
           )}
+
+          {/* Package / Waybill Photo Upload */}
+          <div>
+            <label className="block text-xs font-semibold text-gray-700 mb-1">Attach Package / Waybill Photo</label>
+            <input
+              type="file"
+              accept="image/*"
+              onChange={handlePhotoUpload}
+              className="w-full bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-xl p-2 cursor-pointer"
+            />
+            {waybillPhoto && (
+              <div className="mt-2 relative inline-block">
+                <img src={waybillPhoto} alt="Package preview" className="w-16 h-16 object-cover rounded-lg border border-gray-300" />
+                <button
+                  type="button"
+                  onClick={() => setWaybillPhoto('')}
+                  className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            )}
+          </div>
 
           {error && (
             <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
@@ -511,6 +556,175 @@ function ForceCourierDeliveredModal({ txn, onClose, onSuccess }: ForceCourierDel
   );
 }
 
+// ─── Seller Dispute Modal ───────────────────────────────────────────────────
+
+interface SellerDisputeModalProps {
+  txn: SellerTxn;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps) {
+  const [response, setResponse] = useState('');
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+  const [previewImg, setPreviewImg] = useState<string | null>(null);
+
+  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (photos.length + files.length > 5) {
+      alert("You can upload a maximum of 5 evidence photos.");
+      return;
+    }
+    files.forEach(file => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        if (reader.result) {
+          setPhotos(prev => [...prev, reader.result as string].slice(0, 5));
+        }
+      };
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!response.trim()) {
+      setError('Please provide your response details.');
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiClient.post(`/escrow/${txn.id}/seller-dispute-response`, {
+        response,
+        photos
+      });
+      alert('Your dispute response and evidence photos have been submitted.');
+      onSuccess();
+      onClose();
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit response.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 backdrop-blur-sm">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden p-6 relative">
+        <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+          <X className="h-5 w-5" />
+        </button>
+        <div className="mb-4">
+          <span className="text-xs font-mono font-bold text-red-600 bg-red-50 px-2.5 py-1 rounded">
+            {txn.paystack_reference}
+          </span>
+          <h3 className="text-lg font-bold text-gray-900 mt-2">Dispute Evidence & Response</h3>
+        </div>
+
+        {/* Buyer Claim */}
+        <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-4 text-xs space-y-2">
+          <span className="font-bold text-red-600 block uppercase">Buyer Dispute Claim:</span>
+          <p className="text-gray-800">{txn.buyer_dispute_reason || 'No detailed claim provided by buyer.'}</p>
+          
+          {txn.buyer_dispute_photos && txn.buyer_dispute_photos.length > 0 && (
+            <div>
+              <span className="text-gray-500 font-medium block mt-2 mb-1">Buyer Evidence Photos ({txn.buyer_dispute_photos.length}/5):</span>
+              <div className="flex flex-wrap gap-2">
+                {txn.buyer_dispute_photos.map((url: string, idx: number) => (
+                  <img
+                    key={idx}
+                    src={url}
+                    alt={`Buyer evidence ${idx + 1}`}
+                    onClick={() => setPreviewImg(url)}
+                    className="w-14 h-14 object-cover rounded-lg border border-gray-200 hover:border-red-500 transition cursor-pointer"
+                  />
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {error && (
+          <div className="mb-4 bg-red-50 text-red-600 p-3 rounded-lg text-xs font-medium border border-red-100">
+            {error}
+          </div>
+        )}
+
+        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+          <div>
+            <label className="block text-gray-700 font-semibold mb-1">Your Counter Response *</label>
+            <textarea
+              rows={3}
+              required
+              value={response}
+              onChange={e => setResponse(e.target.value)}
+              placeholder="Explain your side of the dispute (e.g. proof of shipping condition, waybill receipt, item matches link description)..."
+              className="w-full rounded-xl border border-gray-300 p-3 text-gray-900 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+            />
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-gray-700 font-semibold">Upload Seller Evidence Photos (Max 5)</label>
+              <span className="text-[11px] font-mono text-gray-500">{photos.length}/5 photos</span>
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={photos.length >= 5}
+              onChange={handlePhotoUpload}
+              className="w-full bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-xl p-2.5 cursor-pointer disabled:opacity-50"
+            />
+            {photos.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {photos.map((img, idx) => (
+                  <div key={idx} className="relative group">
+                    <img src={img} alt={`Seller evidence ${idx + 1}`} className="w-14 h-14 object-cover rounded-lg border border-gray-200" />
+                    <button
+                      type="button"
+                      onClick={() => setPhotos(prev => prev.filter((_, i) => i !== idx))}
+                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow"
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-700 font-semibold rounded-xl transition"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Response"}
+            </button>
+          </div>
+        </form>
+
+        {previewImg && (
+          <div onClick={() => setPreviewImg(null)} className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-gray-900/80 cursor-zoom-out">
+            <img src={previewImg} alt="Preview" className="max-w-full max-h-[80vh] object-contain rounded-xl" />
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Dashboard View ─────────────────────────────────────────────────────
 
 export default function DashboardView() {
@@ -540,6 +754,9 @@ export default function DashboardView() {
 
   // Force courier delivered modal (Path A)
   const [forceCourierTxn, setForceCourierTxn] = useState<SellerTxn | null>(null);
+
+  // Seller dispute response modal
+  const [disputeTxn, setDisputeTxn] = useState<SellerTxn | null>(null);
 
   const fetchTransactions = async () => {
     setLoading(true);
@@ -815,6 +1032,14 @@ export default function DashboardView() {
                             </button>
                             <p className="text-xs text-orange-500 text-right w-48">Over 36h since dispatch. Check courier status or override with a reason.</p>
                           </div>
+                        ) : txn.status === 'DISPUTED' ? (
+                          <button
+                            onClick={() => setDisputeTxn(txn)}
+                            className="text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors font-semibold flex items-center gap-1.5 shadow-sm"
+                          >
+                            <AlertTriangle className="h-4 w-4" />
+                            View Dispute & Respond
+                          </button>
                         ) : (
                           <span className="text-gray-400 text-xs italic">No actions</span>
                         )}
@@ -950,6 +1175,15 @@ export default function DashboardView() {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Seller Dispute Response Modal */}
+      {disputeTxn && (
+        <SellerDisputeModal
+          txn={disputeTxn}
+          onClose={() => setDisputeTxn(null)}
+          onSuccess={fetchTransactions}
+        />
       )}
     </div>
   );

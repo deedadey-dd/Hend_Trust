@@ -136,7 +136,15 @@ export const useAdminBuyersQuery = (search?: string) => {
 export const useResolveDisputeMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (resolveData: { transaction_id: string; action: string; admin_notes?: string }) => {
+    mutationFn: async (resolveData: { 
+      transaction_id: string; 
+      action: string; 
+      refund_amount_ghs?: number;
+      seller_amount_ghs?: number;
+      platform_retained_fee_ghs?: number;
+      admin_notes?: string;
+      manager_photos?: string[];
+    }) => {
       const { data } = await apiClient.post(`/admin/disputes/${resolveData.transaction_id}/resolve`, resolveData);
       return data;
     },
