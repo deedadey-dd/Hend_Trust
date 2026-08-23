@@ -37,6 +37,9 @@ class ReviewItemSchema(Schema):
 class SellerStorefrontSchema(Schema):
     seller_id: uuid.UUID
     seller_username: str
+    shop_name: Optional[str] = ""
+    profile_picture_url: Optional[str] = ""
+    banner_url: Optional[str] = ""
     joined_at: str
     total_completed_escrows: int
     total_reviews_count: int
@@ -83,11 +86,16 @@ def submit_seller_review(request, data: SubmitReviewSchema):
 
 @reviews_router.get("/seller/{identifier}", response=SellerStorefrontSchema, auth=None)
 def get_seller_storefront(request, identifier: str):
+    from django.db.models import Q
     try:
         seller_uuid = uuid.UUID(identifier)
         seller = get_object_or_404(User, id=seller_uuid)
     except ValueError:
-        seller = get_object_or_404(User, username__iexact=identifier)
+        seller = User.objects.filter(
+            Q(username__iexact=identifier) | Q(shop_name__iexact=identifier)
+        ).first()
+        if not seller:
+            raise HttpError(404, "Seller profile not found")
 
     # Completed escrows count
     completed_escrows = Transaction.objects.filter(
@@ -138,6 +146,9 @@ def get_seller_storefront(request, identifier: str):
     return {
         "seller_id": seller.id,
         "seller_username": seller.username or seller.email.split('@')[0],
+        "shop_name": seller.shop_name or f"@{seller.username}'s Store",
+        "profile_picture_url": seller.profile_picture_url or "",
+        "banner_url": seller.banner_url or "",
         "joined_at": seller.date_joined.isoformat(),
         "total_completed_escrows": completed_escrows,
         "total_reviews_count": total_reviews,
@@ -167,6 +178,8 @@ class UpdateShopProfileSchema(Schema):
     shop_name: Optional[str] = ""
     shop_description: Optional[str] = ""
     shop_category: Optional[str] = "General"
+    profile_picture_url: Optional[str] = None
+    banner_url: Optional[str] = None
 
 class PromoteShopSchema(Schema):
     duration_days: int # 7 or 30
@@ -183,6 +196,8 @@ class ShopCardSchema(Schema):
     shop_description: str
     shop_category: str
     shop_categories: List[str] = []
+    profile_picture_url: Optional[str] = ""
+    banner_url: Optional[str] = ""
     joined_at: str
     total_completed_escrows: int
     total_reviews_count: int
@@ -285,6 +300,8 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
             "shop_description": seller.shop_description or f"Escrow Merchant on HendAxis Trust.",
             "shop_category": seller.shop_category or "General",
             "shop_categories": cats[:3],
+            "profile_picture_url": seller.profile_picture_url or "",
+            "banner_url": seller.banner_url or "",
             "joined_at": seller.date_joined.isoformat(),
             "total_completed_escrows": completed_escrows,
             "total_reviews_count": total_reviews,
@@ -309,13 +326,25 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
 @reviews_router.put("/shop/profile", response=dict, auth=JWTCookieAuth())
 def update_shop_profile(request, data: UpdateShopProfileSchema):
     user = request.user
+    update_fields = []
     if data.shop_name is not None:
         user.shop_name = data.shop_name.strip()
+        update_fields.append('shop_name')
     if data.shop_description is not None:
         user.shop_description = data.shop_description.strip()
+        update_fields.append('shop_description')
     if data.shop_category is not None:
         user.shop_category = data.shop_category.strip()
-    user.save(update_fields=['shop_name', 'shop_description', 'shop_category'])
+        update_fields.append('shop_category')
+    if data.profile_picture_url is not None:
+        user.profile_picture_url = data.profile_picture_url.strip()
+        update_fields.append('profile_picture_url')
+    if data.banner_url is not None:
+        user.banner_url = data.banner_url.strip()
+        update_fields.append('banner_url')
+
+    if update_fields:
+        user.save(update_fields=update_fields)
     return {"message": "Shop profile updated successfully."}
 
 

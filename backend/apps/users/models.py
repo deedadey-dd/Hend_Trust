@@ -38,6 +38,8 @@ class User(AbstractUser):
     shop_category = models.CharField(max_length=50, default='General', blank=True)
     shop_categories = models.JSONField(default=list, blank=True, help_text="Up to 3 product categories associated with this shop.")
     advertised_until = models.DateTimeField(null=True, blank=True, help_text="Timestamp until which the shop is featured as a paid ad.")
+    profile_picture_url = models.TextField(blank=True, default='')
+    banner_url = models.TextField(blank=True, default='')
 
     # Verification Documents & Manual Approval
     verification_status = models.CharField(

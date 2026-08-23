@@ -44,6 +44,7 @@ class TransactionStatusSchema(Schema):
     buyer_email: str
     shipping_address: str
     title: str
+    image_url: Optional[str] = ""
     created_at: str
     paystack_reference: str
     inspection_starts_at: Optional[str] = None
@@ -51,6 +52,7 @@ class TransactionStatusSchema(Schema):
     shop_name: Optional[str] = ""
     seller_email: Optional[str] = ""
     seller_phone: Optional[str] = ""
+    seller_profile_picture_url: Optional[str] = ""
     delivery_method: Optional[str] = None
     courier_name: Optional[str] = None
     tracking_number: Optional[str] = None
@@ -119,6 +121,7 @@ def _build_txn_status_dict(t):
         "buyer_email": str(t.buyer_email or ''),
         "shipping_address": str(t.shipping_address or ''),
         "title": str(t.link.title if t.link else 'Escrow Purchase'),
+        "image_url": t.link.image_url if (t.link and getattr(t.link, 'image_url', None)) else "",
         "created_at": t.created_at.isoformat() if t.created_at else '',
         "paystack_reference": str(t.paystack_reference or ''),
         "inspection_starts_at": t.inspection_starts_at.isoformat() if t.inspection_starts_at else None,
@@ -126,6 +129,7 @@ def _build_txn_status_dict(t):
         "shop_name": shop_n,
         "seller_email": getattr(seller, 'email', '') if seller else '',
         "seller_phone": getattr(seller, 'phone_number', '') if seller else '',
+        "seller_profile_picture_url": getattr(seller, 'profile_picture_url', '') if seller else '',
         "delivery_method": log.delivery_method if log else None,
         "courier_name": log.courier_name if log else None,
         "tracking_number": log.tracking_number if log else None,

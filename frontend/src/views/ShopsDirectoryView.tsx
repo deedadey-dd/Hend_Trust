@@ -17,6 +17,8 @@ interface ShopCard {
   shop_description: string;
   shop_category: string;
   shop_categories?: string[];
+  profile_picture_url?: string;
+  banner_url?: string;
   joined_at: string;
   total_completed_escrows: number;
   total_reviews_count: number;
@@ -49,13 +51,13 @@ export default function ShopsDirectoryView() {
   const fetchShops = async () => {
     try {
       setLoading(true);
-      const params: any = {};
-      if (query.trim()) params.query = query.trim();
-      if (selectedCategory !== 'All') params.category = selectedCategory;
+      const params = new URLSearchParams();
+      if (query.trim()) params.append('query', query.trim());
+      if (selectedCategory !== 'All') params.append('category', selectedCategory);
       
-      const res = await apiClient.get('/reviews/shops', { params });
-      setFeaturedShops(res.data.featured_shops);
-      setStandardShops(res.data.standard_shops);
+      const res = await apiClient.get(`/reviews/shops?${params.toString()}`);
+      setFeaturedShops(res.data.featured_shops || []);
+      setStandardShops(res.data.standard_shops || []);
     } catch {
       console.error("Failed to load directory.");
     } finally {
@@ -94,21 +96,38 @@ export default function ShopsDirectoryView() {
   const renderShopCard = (shop: ShopCard, isAd: boolean = false) => (
     <div
       key={shop.seller_id}
-      className={`bg-white rounded-2xl border transition-all hover:shadow-lg flex flex-col justify-between overflow-hidden relative ${
-        isAd ? 'border-amber-300 ring-2 ring-amber-400/30 shadow-md' : 'border-gray-200'
+      className={`bg-white rounded-3xl border transition-all duration-300 hover:shadow-xl flex flex-col justify-between overflow-hidden ${
+        isAd 
+          ? 'border-amber-400/80 shadow-md ring-1 ring-amber-400/30' 
+          : 'border-gray-200/80 shadow-sm hover:border-blue-300'
       }`}
     >
+      {/* Cover Banner Strip if available */}
+      {shop.banner_url && (
+        <div className="h-16 w-full relative overflow-hidden bg-slate-900">
+          <img src={shop.banner_url} alt={shop.shop_name} className="w-full h-full object-cover opacity-60" />
+        </div>
+      )}
+
       {/* Card Header & Content */}
       <div className="p-6 space-y-4">
         
         {/* Top Header Row */}
         <div className="flex items-start justify-between gap-3">
           <div className="flex items-center gap-3">
-            <div className={`h-12 w-12 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-sm ${
-              isAd ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-blue-600 to-indigo-700'
-            }`}>
-              {(shop.shop_name || shop.seller_username).charAt(0).toUpperCase()}
-            </div>
+            {shop.profile_picture_url ? (
+              <img
+                src={shop.profile_picture_url}
+                alt={shop.shop_name}
+                className="h-12 w-12 rounded-xl object-cover border border-gray-200 shadow-sm"
+              />
+            ) : (
+              <div className={`h-12 w-12 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-sm ${
+                isAd ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-blue-600 to-indigo-700'
+              }`}>
+                {(shop.shop_name || shop.seller_username).charAt(0).toUpperCase()}
+              </div>
+            )}
             <div>
               <div className="flex items-center gap-1.5 flex-wrap">
                 <h3 className="font-bold text-gray-900 text-base">{shop.shop_name}</h3>
@@ -118,10 +137,10 @@ export default function ShopsDirectoryView() {
                   </span>
                 )}
               </div>
-              <div className="flex items-center gap-1 mt-1 flex-wrap">
-                <span className="text-xs text-gray-500 font-medium mr-1">@{shop.seller_username}</span>
+              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                <span className="text-sm text-gray-500 font-medium mr-1">@{shop.seller_username}</span>
                 {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).slice(0, 3).map((cat, i) => (
-                  <span key={i} className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
+                  <span key={i} className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full">
                     {cat}
                   </span>
                 ))}
@@ -131,46 +150,46 @@ export default function ShopsDirectoryView() {
         </div>
 
         {/* Rating & Badges */}
-        <div className="flex items-center gap-2 flex-wrap text-xs">
+        <div className="flex items-center gap-2 flex-wrap text-sm">
           <span className="flex items-center gap-1 font-bold text-gray-900 bg-amber-50 text-amber-900 border border-amber-200/60 px-2.5 py-1 rounded-lg">
-            <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
             {shop.avg_overall > 0 ? `${shop.avg_overall} / 5.0` : 'New Seller'}
             {shop.total_reviews_count > 0 && <span className="text-gray-500 font-normal">({shop.total_reviews_count})</span>}
           </span>
 
           {shop.badge_title && (
             <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 rounded-lg">
-              <Award className="h-3.5 w-3.5" /> {shop.badge_title}
+              <Award className="h-4 w-4" /> {shop.badge_title}
             </span>
           )}
 
-          <span className="text-gray-400 font-mono">
+          <span className="text-gray-400 font-mono text-xs">
             {shop.total_completed_escrows} Escrows Completed
           </span>
         </div>
 
         {/* Shop Description */}
-        <p className="text-xs text-gray-600 line-clamp-2 leading-relaxed">
+        <p className="text-sm text-gray-700 line-clamp-2 leading-relaxed">
           {shop.shop_description}
         </p>
 
         {/* Featured Products List */}
         {shop.featured_products.length > 0 && (
           <div className="pt-2 border-t border-gray-100 space-y-1.5">
-            <span className="text-[11px] font-bold text-gray-400 uppercase tracking-wider block">Available Payment Links</span>
-            <div className="space-y-1">
+            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Available Payment Links</span>
+            <div className="space-y-1.5">
               {shop.featured_products.map(prod => (
                 <Link
                   key={prod.link_id}
                   to={`/l/${prod.link_id}`}
-                  className="flex items-center justify-between p-2 rounded-lg bg-gray-50 hover:bg-blue-50/70 border border-gray-100 transition group text-xs"
+                  className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 hover:bg-blue-50/70 border border-gray-100 transition group text-sm"
                 >
-                  <span className="font-medium text-gray-700 group-hover:text-blue-700 truncate max-w-[200px]">
+                  <span className="font-medium text-gray-800 group-hover:text-blue-700 truncate max-w-[220px]">
                     {prod.title}
                   </span>
                   <span className="font-bold text-gray-900 group-hover:text-blue-600 flex items-center gap-0.5">
                     GHS {prod.price_ghs.toFixed(2)}
-                    <ArrowUpRight className="h-3 w-3 text-gray-400 group-hover:text-blue-600" />
+                    <ArrowUpRight className="h-3.5 w-3.5 text-gray-400 group-hover:text-blue-600" />
                   </span>
                 </Link>
               ))}
@@ -183,7 +202,7 @@ export default function ShopsDirectoryView() {
       <div className="p-4 bg-gray-50 border-t border-gray-100">
         <Link
           to={`/store/${shop.seller_username}`}
-          className="w-full py-2 px-4 rounded-xl text-xs font-bold text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 transition flex items-center justify-center gap-1 group"
+          className="w-full py-2.5 px-4 rounded-xl text-sm font-bold text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 transition flex items-center justify-center gap-1 group"
         >
           View Full Store Ratings & Reviews
           <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />

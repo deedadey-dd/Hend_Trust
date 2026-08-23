@@ -18,6 +18,7 @@ class PaymentLink(models.Model):
     shipping_fee_ghs = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)
     fee_handling = models.CharField(max_length=20, choices=FeeHandling.choices, default=FeeHandling.PASS_TO_BUYER)
     intended_buyer_phone = models.CharField(max_length=20, null=True, blank=True)
+    image_url = models.TextField(blank=True, default='')
     is_active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
 

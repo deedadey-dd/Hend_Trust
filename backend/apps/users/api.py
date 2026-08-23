@@ -126,6 +126,8 @@ class ProfileResponse(Schema):
     shop_description: Optional[str] = ""
     shop_category: Optional[str] = "General"
     shop_categories: List[str] = []
+    profile_picture_url: Optional[str] = ""
+    banner_url: Optional[str] = ""
     # Verification
     verification_status: str
     national_id_number: Optional[str] = ""
@@ -147,6 +149,8 @@ class UpdateShopProfileRequest(Schema):
     shop_name: Optional[str] = ""
     shop_description: Optional[str] = ""
     shop_categories: Optional[List[str]] = []
+    profile_picture_url: Optional[str] = None
+    banner_url: Optional[str] = None
 
 class SubmitVerificationRequest(Schema):
     national_id_number: str
@@ -178,6 +182,8 @@ def _build_profile_response(user) -> dict:
         "shop_description": user.shop_description or "",
         "shop_category": user.shop_category or "General",
         "shop_categories": cats[:3],
+        "profile_picture_url": user.profile_picture_url or "",
+        "banner_url": user.banner_url or "",
         "verification_status": user.verification_status,
         "national_id_number": user.national_id_number or "",
         "national_id_photo_url": user.national_id_photo_url or "",
@@ -234,19 +240,31 @@ def update_profile(request, data: ProfileUpdateRequest):
 @profile_router.put("/shop", response=ProfileMessageResponse)
 def update_shop_profile(request, data: UpdateShopProfileRequest):
     user = request.user
+    update_fields = []
     if data.shop_name is not None:
         user.shop_name = data.shop_name.strip()
+        update_fields.append('shop_name')
     if data.shop_description is not None:
         user.shop_description = data.shop_description.strip()
+        update_fields.append('shop_description')
+    if data.profile_picture_url is not None:
+        user.profile_picture_url = data.profile_picture_url.strip()
+        update_fields.append('profile_picture_url')
+    if data.banner_url is not None:
+        user.banner_url = data.banner_url.strip()
+        update_fields.append('banner_url')
     
     if data.shop_categories is not None:
         if len(data.shop_categories) > 3:
             raise HttpError(400, "You can select at most 3 product categories.")
         user.shop_categories = data.shop_categories
+        update_fields.append('shop_categories')
         if len(data.shop_categories) > 0:
             user.shop_category = data.shop_categories[0]
+            update_fields.append('shop_category')
 
-    user.save(update_fields=['shop_name', 'shop_description', 'shop_category', 'shop_categories'])
+    if update_fields:
+        user.save(update_fields=update_fields)
     return {"message": "Shop details updated successfully."}
 
 @profile_router.post("/submit-verification", response=ProfileMessageResponse)

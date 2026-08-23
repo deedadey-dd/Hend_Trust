@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, Wallet, Zap, PiggyBank, Phone, Building2, 
-  Save, Loader2, CheckCircle, AlertTriangle, ShieldCheck, FileCheck, Store, Clock, XCircle
+  Save, Loader2, CheckCircle, AlertTriangle, ShieldCheck, FileCheck, Store, Clock, XCircle, Image as ImageIcon, Camera, X
 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { compressImageToWebP } from '../utils/imageUtils';
 
 interface ProfileData {
   id: string;
@@ -23,6 +24,8 @@ interface ProfileData {
   shop_description: string;
   shop_category: string;
   shop_categories: string[];
+  profile_picture_url?: string;
+  banner_url?: string;
   // Verification
   verification_status: 'UNSUBMITTED' | 'PENDING' | 'APPROVED' | 'REJECTED';
   national_id_number: string;
@@ -56,6 +59,10 @@ export default function ProfileView() {
   const [shopName, setShopName] = useState('');
   const [shopDescription, setShopDescription] = useState('');
   const [selectedCategories, setSelectedCategories] = useState<string[]>([]);
+  const [profilePicture, setProfilePicture] = useState('');
+  const [banner, setBanner] = useState('');
+  const [isCompressingProfilePic, setIsCompressingProfilePic] = useState(false);
+  const [isCompressingBanner, setIsCompressingBanner] = useState(false);
 
   // Verification fields
   const [idNumber, setIdNumber] = useState('');
@@ -78,6 +85,8 @@ export default function ProfileView() {
       setShopName(data.shop_name || '');
       setShopDescription(data.shop_description || '');
       setSelectedCategories(data.shop_categories || []);
+      setProfilePicture(data.profile_picture_url || '');
+      setBanner(data.banner_url || '');
 
       setIdNumber(data.national_id_number || '');
       setIdPhoto(data.national_id_photo_url || '');
@@ -128,15 +137,45 @@ export default function ProfileView() {
       await apiClient.put('/profile/shop', {
         shop_name: shopName,
         shop_description: shopDescription,
-        shop_categories: selectedCategories
+        shop_categories: selectedCategories,
+        profile_picture_url: profilePicture,
+        banner_url: banner
       });
-      setSuccess('Shop details & product categories updated!');
+      setSuccess('Shop details, logo, banner & categories updated!');
       setTimeout(() => setSuccess(''), 4000);
       fetchProfile();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to update shop profile.');
     } finally {
       setSavingShop(false);
+    }
+  };
+
+  const handleProfilePictureUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsCompressingProfilePic(true);
+    try {
+      const webp = await compressImageToWebP(file);
+      setProfilePicture(webp);
+    } catch {
+      alert("Failed to process profile picture.");
+    } finally {
+      setIsCompressingProfilePic(false);
+    }
+  };
+
+  const handleBannerUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsCompressingBanner(true);
+    try {
+      const webp = await compressImageToWebP(file);
+      setBanner(webp);
+    } catch {
+      alert("Failed to process cover banner image.");
+    } finally {
+      setIsCompressingBanner(false);
     }
   };
 
@@ -341,30 +380,93 @@ export default function ProfileView() {
           </div>
           
           <div className="px-6 py-5 space-y-5">
+            {/* Branding Images: Logo & Banner */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50/80 p-4 rounded-xl border border-gray-200/80">
+              {/* Profile Picture / Logo */}
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                    <Camera className="h-4 w-4 text-blue-600" /> Storefront Logo / Profile Picture
+                  </label>
+                  {isCompressingProfilePic && <span className="text-xs text-blue-600 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={isCompressingProfilePic}
+                  onChange={handleProfilePictureUpload}
+                  className="w-full text-sm text-gray-600 border border-gray-300 rounded-xl p-2 bg-white cursor-pointer disabled:opacity-50"
+                />
+                {profilePicture && (
+                  <div className="mt-2 relative inline-block">
+                    <img src={profilePicture} alt="Profile Logo" className="h-16 w-16 object-cover rounded-xl border border-gray-300 shadow-sm" />
+                    <button
+                      type="button"
+                      onClick={() => setProfilePicture('')}
+                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700"
+                      title="Remove Logo"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Cover Banner */}
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-sm font-semibold text-gray-700 flex items-center gap-1.5">
+                    <ImageIcon className="h-4 w-4 text-indigo-600" /> Storefront Cover Banner
+                  </label>
+                  {isCompressingBanner && <span className="text-xs text-indigo-600 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={isCompressingBanner}
+                  onChange={handleBannerUpload}
+                  className="w-full text-sm text-gray-600 border border-gray-300 rounded-xl p-2 bg-white cursor-pointer disabled:opacity-50"
+                />
+                {banner && (
+                  <div className="mt-2 relative inline-block">
+                    <img src={banner} alt="Cover Banner" className="h-16 w-36 object-cover rounded-xl border border-gray-300 shadow-sm" />
+                    <button
+                      type="button"
+                      onClick={() => setBanner('')}
+                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700"
+                      title="Remove Banner"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Shop Name</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Shop Name</label>
               <input
                 type="text"
                 value={shopName}
                 onChange={e => setShopName(e.target.value)}
                 placeholder="e.g. Accra Gadgets Hub"
-                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-1">Shop Description</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-1">Shop Description</label>
               <textarea
                 rows={3}
                 value={shopDescription}
                 onChange={e => setShopDescription(e.target.value)}
                 placeholder="Briefly describe your business, shipping options, and warranty terms..."
-                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-xs text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Product Categories (Select at most 3)</label>
+              <label className="block text-sm font-semibold text-gray-700 mb-2">Product Categories (Select at most 3)</label>
               <div className="flex items-center gap-2 flex-wrap">
                 {CATEGORY_OPTIONS.map(cat => {
                   const isSelected = selectedCategories.includes(cat);

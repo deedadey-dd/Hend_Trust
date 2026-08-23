@@ -21,6 +21,8 @@ interface SellerStorefront {
   seller_id: string;
   seller_username: string;
   shop_name?: string;
+  profile_picture_url?: string;
+  banner_url?: string;
   joined_at: string;
   total_completed_escrows: number;
   total_reviews_count: number;
@@ -97,17 +99,37 @@ export default function SellerStoreView() {
       <div className="max-w-4xl mx-auto space-y-8">
         
         {/* Seller Hero Profile Header */}
-        <div className="bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-900 rounded-3xl p-8 text-white shadow-xl relative overflow-hidden">
-          <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+        <div className={`rounded-3xl p-8 text-white shadow-xl relative overflow-hidden ${
+          store.banner_url ? 'bg-slate-950' : 'bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-900'
+        }`}>
+          {/* Custom Banner Image Background */}
+          {store.banner_url ? (
+            <div className="absolute inset-0 z-0">
+              <img src={store.banner_url} alt="Store Cover Banner" className="w-full h-full object-cover opacity-85" />
+              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-black/20" />
+            </div>
+          ) : (
+            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+          )}
           
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
             <div className="space-y-2">
               <div className="flex items-center gap-3 flex-wrap">
-                <div className="h-12 w-12 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center font-black text-xl text-white">
-                  {(store.shop_name || store.seller_username).charAt(0).toUpperCase()}
-                </div>
+                {store.profile_picture_url ? (
+                  <img
+                    src={store.profile_picture_url}
+                    alt={store.shop_name || store.seller_username}
+                    className="h-16 w-16 rounded-2xl object-cover border-2 border-white/40 shadow-md bg-white/10"
+                  />
+                ) : (
+                  <div className="h-14 w-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center font-black text-2xl text-white shadow-sm">
+                    {(store.shop_name || store.seller_username).charAt(0).toUpperCase()}
+                  </div>
+                )}
                 <div>
-                  <h1 className="text-2xl font-black tracking-tight">{store.shop_name || `@${store.seller_username}'s Store`}</h1>
+                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+                    {store.shop_name || `@${store.seller_username}'s Store`}
+                  </h1>
                   <p className="text-xs text-blue-200 flex items-center gap-2 mt-0.5">
                     <span className="font-semibold text-white">@{store.seller_username}</span> • <Calendar className="h-3.5 w-3.5 inline" /> Member since {new Date(store.joined_at).getFullYear()}
                   </p>
@@ -202,96 +224,100 @@ export default function SellerStoreView() {
           {store.reviews.length === 0 ? (
             <div className="p-12 text-center text-gray-500">
               <Shield className="h-12 w-12 mx-auto text-gray-300 mb-3" />
-              <p className="font-semibold text-gray-700">No verified reviews yet.</p>
-              <p className="text-xs text-gray-400 mt-1">Reviews appear here once buyers confirm receipt of their orders.</p>
+              <p className="font-semibold text-gray-700 text-base">No verified reviews yet.</p>
+              <p className="text-sm text-gray-400 mt-1">Reviews appear here once buyers confirm receipt of their orders.</p>
             </div>
           ) : (
-            <ul className="divide-y divide-gray-100">
-              {store.reviews.map(r => (
-                <li key={r.id} className="p-6 space-y-3 hover:bg-gray-50/50 transition">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <div className="flex items-center gap-2">
-                        <span className="font-bold text-gray-900 text-sm">{r.buyer_name}</span>
-                        <span className="inline-flex items-center gap-1 text-[11px] text-green-700 bg-green-50 border border-green-100 px-2 py-0.5 rounded-full font-medium">
-                          <CheckCircle2 className="h-3 w-3" /> Verified Buyer
-                        </span>
-                      </div>
-                      <span className="text-xs text-gray-400 block mt-0.5">Purchased: {r.item_title} • {new Date(r.created_at).toLocaleDateString()}</span>
-                    </div>
-
-                    <div className="text-right">
-                      <div className="flex items-center gap-1 text-amber-400">
-                        {[1, 2, 3, 4, 5].map(s => (
-                          <Star key={s} className={`h-3.5 w-3.5 ${s <= r.rating_overall ? 'fill-amber-400' : 'text-gray-200'}`} />
-                        ))}
-                      </div>
-                      <span className="text-[11px] text-gray-500 font-mono block mt-0.5">Speed: {r.rating_speed}⭐ | Comm: {r.rating_communication}⭐</span>
-                    </div>
-                  </div>
-
-                  {r.comment && (
-                    <p className="text-xs text-gray-700 bg-gray-50 p-3 rounded-xl border border-gray-200/60 leading-relaxed italic">
-                      "{r.comment}"
-                    </p>
-                  )}
-
-                  {/* Seller Reply Display */}
-                  {r.seller_reply && (
-                    <div className="ml-4 pl-4 border-l-2 border-blue-500 bg-blue-50/50 p-3 rounded-r-xl space-y-1">
-                      <div className="flex items-center justify-between text-xs font-bold text-blue-900">
-                        <span>{store.shop_name ? `${store.shop_name} (@${store.seller_username})` : `@${store.seller_username}`} (Seller Reply)</span>
-                        <span className="text-[10px] text-blue-400">{r.seller_replied_at ? new Date(r.seller_replied_at).toLocaleDateString() : ''}</span>
-                      </div>
-                      <p className="text-xs text-blue-800">{r.seller_reply}</p>
-                    </div>
-                  )}
-
-                  {/* Seller Reply Action Form (for owner) */}
-                  {isOwner && !r.seller_reply && (
-                    <div className="pt-2">
-                      {replyingReviewId === r.id ? (
-                        <div className="space-y-2">
-                          <textarea
-                            rows={2}
-                            value={replyText}
-                            onChange={e => setReplyText(e.target.value)}
-                            placeholder="Type a polite public reply to this review..."
-                            className="w-full text-xs border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-blue-500 outline-none"
-                          />
-                          <div className="flex justify-end gap-2">
-                            <button
-                              type="button"
-                              onClick={() => { setReplyingReviewId(null); setReplyText(''); }}
-                              className="px-3 py-1.5 text-xs text-gray-500 hover:text-gray-700"
-                            >
-                              Cancel
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => handleSellerReplySubmit(r.id)}
-                              disabled={isSubmittingReply || !replyText.trim()}
-                              className="px-3 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition flex items-center gap-1 disabled:opacity-50"
-                            >
-                              {isSubmittingReply ? <Loader2 className="h-3 w-3 animate-spin" /> : <Send className="h-3 w-3" />}
-                              Publish Reply
-                            </button>
+            <div className="p-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {store.reviews.map(r => (
+                  <div key={r.id} className="bg-gray-50/70 p-5 rounded-2xl border border-gray-200/90 space-y-3 hover:bg-white hover:shadow-md transition flex flex-col justify-between">
+                    <div className="space-y-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="font-bold text-gray-900 text-base">{r.buyer_name}</span>
+                            <span className="inline-flex items-center gap-1 text-xs text-green-700 bg-green-50 border border-green-200 px-2 py-0.5 rounded-full font-semibold">
+                              <CheckCircle2 className="h-3.5 w-3.5" /> Verified Buyer
+                            </span>
                           </div>
+                          <span className="text-xs text-gray-500 block mt-0.5">Purchased: <strong className="text-gray-700">{r.item_title}</strong> • {new Date(r.created_at).toLocaleDateString()}</span>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => { setReplyingReviewId(r.id); setReplyText(''); }}
-                          className="text-xs font-semibold text-blue-600 hover:underline"
-                        >
-                          + Reply to this review
-                        </button>
+
+                        <div className="text-right shrink-0">
+                          <div className="flex items-center gap-0.5 text-amber-400">
+                            {[1, 2, 3, 4, 5].map(s => (
+                              <Star key={s} className={`h-4 w-4 ${s <= r.rating_overall ? 'fill-amber-400' : 'text-gray-200'}`} />
+                            ))}
+                          </div>
+                          <span className="text-xs text-gray-500 font-mono block mt-1">Speed: {r.rating_speed}⭐ | Comm: {r.rating_communication}⭐</span>
+                        </div>
+                      </div>
+
+                      {r.comment && (
+                        <p className="text-sm text-gray-800 bg-white p-3.5 rounded-xl border border-gray-200/80 leading-relaxed italic shadow-2xs">
+                          "{r.comment}"
+                        </p>
+                      )}
+
+                      {/* Seller Reply Display */}
+                      {r.seller_reply && (
+                        <div className="border-l-4 border-blue-600 bg-blue-50/70 p-3.5 rounded-r-xl space-y-1 mt-2">
+                          <div className="flex items-center justify-between text-xs font-bold text-blue-900">
+                            <span>{store.shop_name ? `${store.shop_name} (@${store.seller_username})` : `@${store.seller_username}`} (Seller Reply)</span>
+                            <span className="text-xs text-blue-500 font-medium">{r.seller_replied_at ? new Date(r.seller_replied_at).toLocaleDateString() : ''}</span>
+                          </div>
+                          <p className="text-sm text-blue-950 leading-relaxed">{r.seller_reply}</p>
+                        </div>
                       )}
                     </div>
-                  )}
-                </li>
-              ))}
-            </ul>
+
+                    {/* Seller Reply Action Form (for owner) */}
+                    {isOwner && !r.seller_reply && (
+                      <div className="pt-2 border-t border-gray-200/60">
+                        {replyingReviewId === r.id ? (
+                          <div className="space-y-2">
+                            <textarea
+                              rows={2}
+                              value={replyText}
+                              onChange={e => setReplyText(e.target.value)}
+                              placeholder="Type a polite public reply to this review..."
+                              className="w-full text-sm border border-gray-300 rounded-xl p-3 focus:ring-2 focus:ring-blue-500 outline-none"
+                            />
+                            <div className="flex justify-end gap-2">
+                              <button
+                                type="button"
+                                onClick={() => { setReplyingReviewId(null); setReplyText(''); }}
+                                className="px-3.5 py-1.5 text-xs font-medium text-gray-500 hover:text-gray-700"
+                              >
+                                Cancel
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleSellerReplySubmit(r.id)}
+                                disabled={isSubmittingReply || !replyText.trim()}
+                                className="px-3.5 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50"
+                              >
+                                {isSubmittingReply ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                                Publish Reply
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setReplyingReviewId(r.id); setReplyText(''); }}
+                            className="text-xs font-bold text-blue-600 hover:underline"
+                          >
+                            + Reply to this review
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </div>
           )}
         </div>
 

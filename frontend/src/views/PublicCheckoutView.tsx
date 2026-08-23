@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   ShieldCheck, Truck, ArrowRight, Loader2,
-  Package, CheckCircle, Clock, AlertTriangle, X, KeyRound, Store
+  CheckCircle, Clock, AlertTriangle, X, KeyRound, Store
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -15,10 +15,12 @@ interface LinkData {
   price_ghs: string;
   shipping_fee_ghs: string;
   fee_handling: string;
+  image_url?: string;
   seller_username?: string;
   shop_name?: string;
   seller_email?: string;
   seller_phone?: string;
+  seller_profile_picture_url?: string;
 }
 
 interface TxnDetail {
@@ -28,11 +30,16 @@ interface TxnDetail {
   buyer_email: string;
   shipping_address: string;
   title: string;
+  image_url?: string;
   created_at: string;
   paystack_reference: string;
   inspection_starts_at?: string;
   seller_username?: string;
   shop_name?: string;
+  seller_email?: string;
+  seller_phone?: string;
+  seller_profile_picture_url?: string;
+  waybill_photo_url?: string;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -166,11 +173,16 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         {/* Status Card */}
         <div className="bg-white rounded-2xl shadow-md border border-gray-100 overflow-hidden">
           <div className={`p-8 text-center ${cfg.bg}`}>
+            {txn.image_url && (
+              <div className="mb-4 mx-auto max-w-xs rounded-xl overflow-hidden shadow-sm border border-gray-200 bg-white">
+                <img src={txn.image_url} alt={txn.title} className="w-full h-44 object-cover" />
+              </div>
+            )}
             <div className={`mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-white/60 mb-4 ${cfg.color}`}>
               <Icon className="h-8 w-8" />
             </div>
             <h1 className={`text-2xl font-bold mb-1 ${cfg.color}`}>{cfg.label}</h1>
-            <p className="text-gray-500 text-sm">{txn.title}</p>
+            <p className="text-gray-500 text-sm font-medium">{txn.title}</p>
           </div>
 
           <div className="p-6 space-y-3 text-sm">
@@ -589,16 +601,26 @@ export default function PublicCheckoutView() {
           <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-xl" />
           
           {(link.shop_name || link.seller_username) && (
-            <div className="inline-flex items-center gap-2 text-xs text-blue-100 bg-white/10 px-3 py-1.5 rounded-lg backdrop-blur-sm mb-3 border border-white/10">
-              <Store className="h-3.5 w-3.5 text-blue-200" />
+            <div className="inline-flex items-center gap-2 text-sm text-blue-100 bg-white/10 px-3.5 py-1.5 rounded-xl backdrop-blur-sm mb-3 border border-white/10">
+              {link.seller_profile_picture_url ? (
+                <img src={link.seller_profile_picture_url} alt={link.shop_name || link.seller_username} className="h-5 w-5 rounded-lg object-cover border border-white/20" />
+              ) : (
+                <Store className="h-4 w-4 text-blue-200" />
+              )}
               <span>
                 Sold by: <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-white font-bold hover:underline">
                   {link.shop_name || `@${link.seller_username}`}
-                </a> {link.shop_name && link.seller_username && <span className="text-blue-200 text-[11px]">(@{link.seller_username})</span>}
+                </a> {link.shop_name && link.seller_username && <span className="text-blue-200 text-xs">(@{link.seller_username})</span>}
               </span>
-              <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-[10px] text-blue-200 bg-white/10 px-1.5 py-0.5 rounded hover:bg-white/20 transition ml-1">
+              <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-xs text-blue-200 bg-white/10 px-2 py-0.5 rounded-md hover:bg-white/20 transition ml-1 font-medium">
                 View Store Ratings ↗
               </a>
+            </div>
+          )}
+
+          {link.image_url && (
+            <div className="mb-4 rounded-xl overflow-hidden border border-white/20 shadow-lg bg-black/20 max-h-56 flex items-center justify-center">
+              <img src={link.image_url} alt={link.title} className="w-full h-56 object-cover" />
             </div>
           )}
 

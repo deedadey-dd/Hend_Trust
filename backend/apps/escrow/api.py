@@ -447,6 +447,10 @@ def send_confirmation_code(request, transaction_id: uuid.UUID):
     transaction.delivery_confirmation_code = code
     transaction.save(update_fields=['delivery_confirmation_code'])
     
+    print("\n" + "="*50)
+    print(f"DEV CONFIRMATION CODE FOR {transaction.buyer_phone}: {code}")
+    print("="*50 + "\n")
+
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
     msg = f"Your HendAxis Trust order ({transaction.paystack_reference}) delivery confirmation code is: {code}"
     dispatch_sms_task.delay(transaction.buyer_phone, msg)

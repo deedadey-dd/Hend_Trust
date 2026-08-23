@@ -211,7 +211,7 @@ export const AdminDashboardView: React.FC = () => {
   const [sellerAmountGhs, setSellerAmountGhs] = useState<number>(0);
   const [platformFeeGhs, setPlatformFeeGhs] = useState<number>(0);
   const [managerPhotos, setManagerPhotos] = useState<string[]>([]);
-  const [isCompressingManagerPhotos, setIsCompressingManagerPhotos] = useState<boolean>(false);
+  const [_isCompressingManagerPhotos, setIsCompressingManagerPhotos] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
   const handleManagerPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {

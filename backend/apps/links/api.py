@@ -17,6 +17,7 @@ class CreateLinkSchema(Schema):
     shipping_fee_ghs: Optional[Decimal] = Decimal('0.00')
     fee_handling: str = FeeHandling.PASS_TO_BUYER
     intended_buyer_phone: Optional[str] = None
+    image_url: Optional[str] = ""
 
 class LinkResponseSchema(Schema):
     id: uuid.UUID
@@ -29,15 +30,18 @@ class LinkDetailSchema(Schema):
     price_ghs: Decimal
     shipping_fee_ghs: Decimal
     fee_handling: str
+    image_url: Optional[str] = ""
     seller_username: Optional[str] = ""
     shop_name: Optional[str] = ""
     seller_email: Optional[str] = ""
     seller_phone: Optional[str] = ""
+    seller_profile_picture_url: Optional[str] = ""
 
 class SellerLinkSchema(Schema):
     id: uuid.UUID
     title: str
     price_ghs: Decimal
+    image_url: Optional[str] = ""
     created_at: str
     url: str
 
@@ -58,7 +62,11 @@ def list_seller_links(request, search: str = None, start_date: str = None, end_d
             {
                 "id": str(l.id),
                 "title": l.title,
+                "description": l.description,
                 "price_ghs": str(l.price_ghs),
+                "shipping_fee_ghs": str(l.shipping_fee_ghs),
+                "fee_handling": l.fee_handling,
+                "image_url": l.image_url or "",
                 "created_at": l.created_at.isoformat(),
                 "url": f"https://pay.hendaxis.com/l/{l.id}"
             } for l in page
@@ -75,7 +83,8 @@ def create_link(request, data: CreateLinkSchema):
         price_ghs=data.price_ghs,
         shipping_fee_ghs=data.shipping_fee_ghs,
         fee_handling=data.fee_handling,
-        intended_buyer_phone=data.intended_buyer_phone
+        intended_buyer_phone=data.intended_buyer_phone,
+        image_url=data.image_url or ''
     )
     
     # Return a mocked short URL based on ID
@@ -94,8 +103,10 @@ def get_link(request, link_id: uuid.UUID):
         "price_ghs": link.price_ghs,
         "shipping_fee_ghs": link.shipping_fee_ghs,
         "fee_handling": link.fee_handling,
+        "image_url": link.image_url or "",
         "seller_username": link.seller.username or link.seller.email.split('@')[0],
         "shop_name": link.seller.shop_name or f"@{link.seller.username}'s Store",
         "seller_email": getattr(link.seller, 'email', ''),
         "seller_phone": getattr(link.seller, 'phone_number', ''),
+        "seller_profile_picture_url": getattr(link.seller, 'profile_picture_url', '') or "",
     }

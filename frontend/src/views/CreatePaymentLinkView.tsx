@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles } from 'lucide-react';
+import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { compressImageToWebP } from '../utils/imageUtils';
 
 export default function CreatePaymentLinkView() {
   const [title, setTitle] = useState('');
@@ -8,6 +9,8 @@ export default function CreatePaymentLinkView() {
   const [price, setPrice] = useState('0');
   const [shipping, setShipping] = useState('0');
   const [feeHandling, setFeeHandling] = useState('PASS_TO_BUYER');
+  const [imageUrl, setImageUrl] = useState('');
+  const [isCompressingImage, setIsCompressingImage] = useState(false);
   const [createdUrl, setCreatedUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [showModal, setShowModal] = useState(false);
@@ -39,8 +42,24 @@ export default function CreatePaymentLinkView() {
     setPrice(linkItem.price_ghs ? String(linkItem.price_ghs) : '0');
     setShipping(linkItem.shipping_fee_ghs ? String(linkItem.shipping_fee_ghs) : '0');
     setFeeHandling(linkItem.fee_handling || 'PASS_TO_BUYER');
+    if (linkItem.image_url) setImageUrl(linkItem.image_url);
     setAutofillNotice(`⚡ Autofilled details from previous product: "${linkItem.title}"`);
     setTimeout(() => setAutofillNotice(''), 4000);
+  };
+
+  const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setIsCompressingImage(true);
+    try {
+      const webp = await compressImageToWebP(file);
+      setImageUrl(webp);
+    } catch (err) {
+      console.error('Failed to compress product image:', err);
+      alert('Failed to process selected image.');
+    } finally {
+      setIsCompressingImage(false);
+    }
   };
 
   const handleCopy = (url: string) => {
@@ -79,7 +98,8 @@ export default function CreatePaymentLinkView() {
         description,
         price_ghs: parseFloat(price),
         shipping_fee_ghs: parseFloat(shipping),
-        fee_handling: feeHandling
+        fee_handling: feeHandling,
+        image_url: imageUrl
       });
       const url = response.data.url.replace('https://pay.hendaxis.com', window.location.origin);
       setCreatedUrl(url);
@@ -166,6 +186,44 @@ export default function CreatePaymentLinkView() {
               <div>
                 <label className="block text-sm font-medium text-gray-700">Description (Optional)</label>
                 <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border"></textarea>
+              </div>
+
+              {/* Product Image Field */}
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-sm font-medium text-gray-700 flex items-center gap-1.5">
+                    <ImageIcon className="h-4 w-4 text-blue-600" />
+                    Product Image (Optional)
+                  </label>
+                  {isCompressingImage && (
+                    <span className="text-xs text-blue-600 font-medium flex items-center gap-1">
+                      <Loader2 className="h-3 w-3 animate-spin" /> Optimizing WebP...
+                    </span>
+                  )}
+                </div>
+                <p className="text-xs text-gray-500 mb-2">
+                  Add a photo of the product. This will be shown to the buyer on the payment page so they can verify what they are paying for.
+                </p>
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={isCompressingImage}
+                  onChange={handleImageUpload}
+                  className="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer border border-gray-300 rounded-lg p-1.5 disabled:opacity-50"
+                />
+                {imageUrl && (
+                  <div className="mt-3 relative inline-block group">
+                    <img src={imageUrl} alt="Product preview" className="w-24 h-24 object-cover rounded-xl border border-gray-300 shadow-sm" />
+                    <button
+                      type="button"
+                      onClick={() => setImageUrl('')}
+                      className="absolute -top-2 -right-2 bg-red-600 text-white rounded-full p-1 shadow-md hover:bg-red-700 transition"
+                      title="Remove Image"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                )}
               </div>
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">

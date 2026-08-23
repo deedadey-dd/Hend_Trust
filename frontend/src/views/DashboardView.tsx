@@ -1,9 +1,9 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
-  Search, Filter, Package, AlertCircle, CheckCircle, Clock, 
+  Search, Filter, Package, CheckCircle, 
   Printer, X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
-  ShieldAlert
+  ShieldAlert, MapPin, Copy
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -63,6 +63,7 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
   const [loading, setLoading] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState('');
+  const [copiedAddress, setCopiedAddress] = useState(false);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -121,6 +122,47 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
         </div>
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
+          {/* Buyer Delivery Reference Card */}
+          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 space-y-1.5 text-xs text-blue-950 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-blue-900 text-xs flex items-center gap-1.5">
+                <MapPin className="h-4 w-4 text-blue-600" />
+                Buyer Delivery Details
+              </span>
+              {copiedAddress ? (
+                <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded">Copied!</span>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(`${txn.buyer_name || ''} | ${txn.buyer_phone || ''} | ${txn.shipping_address || 'No address'}`);
+                    setCopiedAddress(true);
+                    setTimeout(() => setCopiedAddress(false), 2000);
+                  }}
+                  className="text-[10px] font-semibold text-blue-700 hover:text-blue-900 bg-white hover:bg-blue-100/60 border border-blue-200 px-2 py-0.5 rounded transition flex items-center gap-1"
+                >
+                  <Copy className="h-3 w-3" /> Copy Details
+                </button>
+              )}
+            </div>
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-blue-200/60 font-medium">
+              <div>
+                <span className="text-gray-500 block text-[10px] uppercase font-bold">Buyer Name</span>
+                <span className="text-gray-900 font-semibold">{txn.buyer_name || 'N/A'}</span>
+              </div>
+              <div>
+                <span className="text-gray-500 block text-[10px] uppercase font-bold">Buyer Phone</span>
+                <span className="text-gray-900 font-mono font-semibold">{txn.buyer_phone || 'N/A'}</span>
+              </div>
+            </div>
+            <div className="pt-1">
+              <span className="text-gray-500 block text-[10px] uppercase font-bold">Delivery Address / Destination</span>
+              <span className="text-gray-900 font-semibold block bg-white p-2 rounded border border-blue-100 mt-0.5">
+                {txn.shipping_address || 'No specific address specified by buyer'}
+              </span>
+            </div>
+          </div>
+
           {/* Path Selector */}
           <div>
             <label className="block text-sm font-semibold text-gray-700 mb-2">Delivery Method</label>
