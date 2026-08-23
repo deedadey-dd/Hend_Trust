@@ -159,6 +159,14 @@ def execute_full_refund(reference_id: str, seller_user_id, gross_amount: Decimal
         )
         _apply_entry_to_balances(seller_wallet, revenue, platform_fee)
 
+    # Sync seller wallet object
+    from apps.wallet.models import SellerWallet
+    wallet = SellerWallet.objects.filter(user_id=seller_user_id).first()
+    if wallet:
+        seller_wallet.refresh_from_db()
+        wallet.available_balance_ghs = seller_wallet.balance
+        wallet.save(update_fields=['available_balance_ghs', 'updated_at'])
+
 @transaction.atomic
 def execute_partial_refund(
     reference_id: str, 
@@ -211,6 +219,7 @@ def execute_partial_refund(
         from apps.wallet.models import SellerWallet
         wallet = SellerWallet.objects.filter(user_id=seller_user_id).first()
         if wallet:
+            seller_wallet.refresh_from_db()
             wallet.available_balance_ghs = seller_wallet.balance
             wallet.save(update_fields=['available_balance_ghs', 'updated_at'])
 
@@ -252,6 +261,69 @@ def record_ad_promotion_fee(reference_id, seller_user_id, fee_amount: Decimal):
     from apps.wallet.models import SellerWallet
     wallet = SellerWallet.objects.filter(user_id=seller_user_id).first()
     if wallet:
+        seller_wallet.refresh_from_db()
+        wallet.available_balance_ghs = seller_wallet.balance
+        wallet.save(update_fields=['available_balance_ghs', 'updated_at'])
+
+@transaction.atomic
+def execute_non_dispatch_auto_refund(reference_id: str, seller_user_id, gross_amount: Decimal, platform_fee: Decimal):
+    """
+    Called when a seller fails to dispatch an order within 4 days (96 hours).
+    - Returns 100% of gross_amount to buyer asset from escrow liability.
+    - Penalizes seller by debiting SELLER_INTERNAL_WALLET for platform_fee + 1.95% Paystack charges.
+    - Credits PLATFORM_FEE_REVENUE and PAYSTACK_FEE_EXPENSE.
+    """
+    escrow = _get_system_account('BUYER_ESCROW_DEPOSIT', AccountType.LIABILITY)
+    sys_bank = _get_system_account('SYSTEM_BANK_ASSET', AccountType.ASSET)
+    revenue = _get_system_account('PLATFORM_FEE_REVENUE', AccountType.REVENUE)
+    fee_expense = _get_system_account('PAYSTACK_FEE_EXPENSE', AccountType.EXPENSE)
+
+    seller_wallet, _ = LedgerAccount.objects.get_or_create(
+        name=f'SELLER_INTERNAL_WALLET_{seller_user_id}',
+        defaults={
+            'account_type': AccountType.LIABILITY,
+            'user_id': seller_user_id
+        }
+    )
+
+    # 1. Refund 100% to buyer
+    LedgerEntry.objects.create(
+        reference_id=reference_id,
+        debit_account=escrow,
+        credit_account=sys_bank,
+        amount_ghs=gross_amount,
+        entry_type="NON_DISPATCH_FULL_REFUND"
+    )
+    _apply_entry_to_balances(escrow, sys_bank, gross_amount)
+
+    # 2. Charge seller penalty: platform fee + 1.95% Paystack fee
+    paystack_gateway_fee = (gross_amount * Decimal('0.0195')).quantize(Decimal('0.01'))
+    
+    if platform_fee > 0:
+        LedgerEntry.objects.create(
+            reference_id=reference_id,
+            debit_account=seller_wallet,
+            credit_account=revenue,
+            amount_ghs=platform_fee,
+            entry_type="NON_DISPATCH_SELLER_PENALTY_PLATFORM_FEE"
+        )
+        _apply_entry_to_balances(seller_wallet, revenue, platform_fee)
+
+    if paystack_gateway_fee > 0:
+        LedgerEntry.objects.create(
+            reference_id=reference_id,
+            debit_account=seller_wallet,
+            credit_account=fee_expense,
+            amount_ghs=paystack_gateway_fee,
+            entry_type="NON_DISPATCH_SELLER_PENALTY_GATEWAY_FEE"
+        )
+        _apply_entry_to_balances(seller_wallet, fee_expense, paystack_gateway_fee)
+
+    # Sync seller wallet
+    from apps.wallet.models import SellerWallet
+    wallet = SellerWallet.objects.filter(user_id=seller_user_id).first()
+    if wallet:
+        seller_wallet.refresh_from_db()
         wallet.available_balance_ghs = seller_wallet.balance
         wallet.save(update_fields=['available_balance_ghs', 'updated_at'])
 

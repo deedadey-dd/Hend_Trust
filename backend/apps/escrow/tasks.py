@@ -130,3 +130,57 @@ def process_auto_deliveries():
             auto_delivered_count += 1
             
     return f"Auto-delivered {auto_delivered_count} transactions."
+
+@shared_task
+def check_expired_dispatches():
+    """
+    Periodic task: Auto-cancels and refunds orders in PAYMENT_RECEIVED status 
+    if the seller fails to dispatch within 4 days (96 hours).
+    Refunds 100% to buyer and charges non-dispatch penalty to seller.
+    """
+    now = timezone.now()
+    four_days_ago = now - timedelta(days=4)
+    
+    transactions = Transaction.objects.filter(
+        status=TransactionStatus.PAYMENT_RECEIVED,
+        created_at__lte=four_days_ago
+    )
+    
+    expired_count = 0
+    from apps.ledger.services import execute_non_dispatch_auto_refund
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    
+    for tx in transactions:
+        tx.status = TransactionStatus.REFUNDED
+        tx.save(update_fields=['status', 'updated_at'])
+        
+        execute_non_dispatch_auto_refund(
+            reference_id=str(tx.id),
+            seller_user_id=tx.link.seller.id,
+            gross_amount=tx.total_amount_ghs,
+            platform_fee=tx.platform_fee_ghs
+        )
+        
+        # Notify buyer
+        b_msg = (
+            f"Order Cancelled & 100% Refunded: Order {tx.paystack_reference} ({tx.link.title}) was not dispatched by the seller "
+            f"within the required 4-day limit. A full refund of GHS {tx.total_amount_ghs:.2f} has been processed back to your payment method."
+        )
+        dispatch_sms_task.delay(tx.buyer_phone, b_msg)
+        if tx.buyer_email:
+            dispatch_email_task.delay(tx.buyer_email, "Order Auto-Cancelled & Refunded (Non-Dispatch)", b_msg)
+            
+        # Notify seller
+        seller = tx.link.seller
+        s_msg = (
+            f"Order Auto-Cancelled (Default Penalty): Order {tx.paystack_reference} ({tx.link.title}) was not dispatched within 4 days. "
+            f"The buyer has been refunded 100%. A non-dispatch penalty (Platform fee + Paystack fees) has been charged to your account."
+        )
+        s_phone = getattr(seller, 'phone_number', None)
+        s_email = getattr(seller, 'email', None)
+        if s_phone: dispatch_sms_task.delay(s_phone, s_msg)
+        if s_email: dispatch_email_task.delay(s_email, "Order Cancelled - Non-Dispatch Penalty", s_msg)
+        
+        expired_count += 1
+        
+    return f"Auto-refunded {expired_count} undispatched transactions older than 4 days."

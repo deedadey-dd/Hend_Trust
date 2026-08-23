@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles } from 'lucide-react';
 import { apiClient } from '../api/client';
 
 export default function CreatePaymentLinkView() {
@@ -11,6 +11,37 @@ export default function CreatePaymentLinkView() {
   const [createdUrl, setCreatedUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [showModal, setShowModal] = useState(false);
+
+  // Past products autosuggestion & quick fill
+  const [pastLinks, setPastLinks] = useState<any[]>([]);
+  const [selectedPastId, setSelectedPastId] = useState('');
+  const [autofillNotice, setAutofillNotice] = useState('');
+
+  useEffect(() => {
+    apiClient.get('/links/?limit=50')
+      .then(res => {
+        const items = res.data?.items || [];
+        const uniqueMap = new Map();
+        items.forEach((item: any) => {
+          if (item.title && !uniqueMap.has(item.title.toLowerCase())) {
+            uniqueMap.set(item.title.toLowerCase(), item);
+          }
+        });
+        setPastLinks(Array.from(uniqueMap.values()));
+      })
+      .catch(err => console.error('Failed to load past links for autosuggestion:', err));
+  }, []);
+
+  const handleAutofill = (linkItem: any) => {
+    if (!linkItem) return;
+    setTitle(linkItem.title || '');
+    setDescription(linkItem.description || '');
+    setPrice(linkItem.price_ghs ? String(linkItem.price_ghs) : '0');
+    setShipping(linkItem.shipping_fee_ghs ? String(linkItem.shipping_fee_ghs) : '0');
+    setFeeHandling(linkItem.fee_handling || 'PASS_TO_BUYER');
+    setAutofillNotice(`⚡ Autofilled details from previous product: "${linkItem.title}"`);
+    setTimeout(() => setAutofillNotice(''), 4000);
+  };
 
   const handleCopy = (url: string) => {
     navigator.clipboard.writeText(url);
@@ -67,12 +98,70 @@ export default function CreatePaymentLinkView() {
           <p className="mt-2 text-sm text-gray-500">Generate a single-use escrow link for your buyer.</p>
         </div>
 
+        {/* Quick Autofill Selector from Past Products */}
+        {pastLinks.length > 0 && (
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 space-y-2">
+            <div className="flex items-center justify-between">
+              <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4 text-blue-600" />
+                Quick Autofill from Previous Products
+              </label>
+              <span className="text-[11px] text-blue-700 font-medium">{pastLinks.length} products saved</span>
+            </div>
+            <select
+              value={selectedPastId}
+              onChange={e => {
+                setSelectedPastId(e.target.value);
+                const found = pastLinks.find(p => p.id === e.target.value);
+                if (found) handleAutofill(found);
+              }}
+              className="w-full text-xs border border-blue-200 rounded-xl p-2.5 bg-white font-medium text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+            >
+              <option value="">-- Select a previous product to autofill details --</option>
+              {pastLinks.map(p => (
+                <option key={p.id} value={p.id}>
+                  {p.title} — GHS {Number(p.price_ghs).toFixed(2)} (Shipping: GHS {Number(p.shipping_fee_ghs || 0).toFixed(2)})
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
+
+        {autofillNotice && (
+          <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 p-3 rounded-xl text-xs font-bold flex items-center justify-between">
+            <span>{autofillNotice}</span>
+            <button onClick={() => setAutofillNotice('')} className="text-emerald-600 hover:text-emerald-900">
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
           <form onSubmit={handleSubmit} className="p-8 space-y-6">
             <div className="space-y-4">
               <div>
                 <label className="block text-sm font-medium text-gray-700">Product Title</label>
-                <input required type="text" value={title} onChange={e => setTitle(e.target.value)} className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border" placeholder="e.g., iPhone 13 Pro Max" />
+                <input
+                  required
+                  type="text"
+                  list="past-products-datalist"
+                  value={title}
+                  onChange={e => {
+                    const newTitle = e.target.value;
+                    setTitle(newTitle);
+                    const matchingPast = pastLinks.find(p => p.title.toLowerCase() === newTitle.toLowerCase());
+                    if (matchingPast) {
+                      handleAutofill(matchingPast);
+                    }
+                  }}
+                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border"
+                  placeholder="e.g., iPhone 13 Pro Max"
+                />
+                <datalist id="past-products-datalist">
+                  {pastLinks.map(p => (
+                    <option key={p.id} value={p.title}>{`GHS ${Number(p.price_ghs).toFixed(2)} — ${p.description || ''}`}</option>
+                  ))}
+                </datalist>
               </div>
               <div>
                 <label className="block text-sm font-medium text-gray-700">Description (Optional)</label>

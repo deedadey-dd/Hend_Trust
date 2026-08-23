@@ -6,6 +6,7 @@ import {
   Package, CheckCircle, Clock, AlertTriangle, X, KeyRound, Store
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
+import { compressImageToWebP } from '../utils/imageUtils';
 
 interface LinkData {
   id: string;
@@ -34,16 +35,7 @@ interface TxnDetail {
   shop_name?: string;
 }
 
-const STATUS_CONFIG: Record<string, { icon: typeof ShieldCheck; color: string; bg: string; label: string }> = {
-  AWAITING_PAYMENT:    { icon: Clock,         color: 'text-yellow-600', bg: 'bg-yellow-50', label: 'Awaiting Payment' },
-  PAYMENT_RECEIVED:    { icon: CheckCircle,   color: 'text-blue-600',   bg: 'bg-blue-50',   label: 'Awaiting Shipping' },
-  DELIVERY_IN_PROGRESS:{ icon: Truck,         color: 'text-indigo-600', bg: 'bg-indigo-50', label: 'Delivery In Progress' },
-  INSPECTION_PERIOD:   { icon: Package,       color: 'text-purple-600', bg: 'bg-purple-50', label: 'Inspection Period' },
-  COMPLETED:           { icon: CheckCircle,   color: 'text-green-600',  bg: 'bg-green-50',  label: 'Completed' },
-  DISPUTED:            { icon: AlertTriangle, color: 'text-red-600',    bg: 'bg-red-50',    label: 'Disputed' },
-  CANCELLED:           { icon: AlertTriangle, color: 'text-gray-600',   bg: 'bg-gray-50',   label: 'Cancelled' },
-  REFUNDED:            { icon: CheckCircle,   color: 'text-teal-600',   bg: 'bg-teal-50',   label: 'Refunded' },
-};
+import { STATUS_CONFIG } from '../constants/statusConfig';
 
 // ─── Transaction Status Screen (post-payment) ──────────────────────────────
 function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string }) {
@@ -91,6 +83,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const [disputeReason, setDisputeReason] = useState('');
   const [buyerPhotos, setBuyerPhotos] = useState<string[]>([]);
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
+  const [isCompressingBuyerPhotos, setIsCompressingBuyerPhotos] = useState(false);
   const [disputeError, setDisputeError] = useState('');
 
   const handleOpenConfirmModal = async () => {
@@ -120,50 +113,26 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     }
   };
 
-const compressImage = (file: File): Promise<string> => {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const maxDim = 1024;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      };
-    };
-  });
-};
-
   const handleBuyerPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (buyerPhotos.length + files.length > 5) {
       alert("You can upload a maximum of 5 evidence photos.");
       return;
     }
-    for (const file of files) {
-      try {
-        const compressed = await compressImage(file);
-        setBuyerPhotos(prev => [...prev, compressed].slice(0, 5));
-      } catch {
-        console.error("Failed to compress evidence photo.");
+    setIsCompressingBuyerPhotos(true);
+    setDisputeError('');
+    try {
+      const compressedList: string[] = [];
+      for (const file of files) {
+        const webp = await compressImageToWebP(file);
+        compressedList.push(webp);
       }
+      setBuyerPhotos(prev => [...prev, ...compressedList].slice(0, 5));
+    } catch (err) {
+      console.error("Failed to compress evidence photo:", err);
+      setDisputeError("Failed to process selected evidence photo.");
+    } finally {
+      setIsCompressingBuyerPhotos(false);
     }
   };
 
@@ -207,7 +176,7 @@ const compressImage = (file: File): Promise<string> => {
           <div className="p-6 space-y-3 text-sm">
             <div className="flex justify-between py-2 border-b border-gray-100">
               <span className="text-gray-500">Amount Paid</span>
-              <span className="font-semibold text-gray-900">GHS {txn.total_amount_ghs.toFixed(2)}</span>
+              <span className="font-semibold text-gray-900">GHS {Number(txn.total_amount_ghs || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-gray-100">
               <span className="text-gray-500">Email</span>
@@ -249,6 +218,72 @@ const compressImage = (file: File): Promise<string> => {
             );
           })}
         </div>
+
+        {txn.waybill_photo_url && (
+          <div className="bg-blue-50 border border-blue-200 rounded-2xl p-4 flex items-center gap-4">
+            <img
+              src={txn.waybill_photo_url}
+              alt="Package waybill proof"
+              className="w-16 h-16 object-cover rounded-xl border border-blue-200"
+            />
+            <div>
+              <span className="text-xs font-bold text-blue-900 block">Dispatch / Package Proof</span>
+              <span className="text-xs text-blue-700 block mt-0.5">Uploaded by seller during dispatch</span>
+            </div>
+          </div>
+        )}
+
+        {txn.status === 'PAYMENT_RECEIVED' && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 flex items-center gap-3">
+            <Clock className="h-5 w-5 text-amber-600 flex-shrink-0" />
+            <div className="text-xs text-amber-900">
+              <span className="font-bold block">4-Day Seller Dispatch Guarantee</span>
+              <span>The seller has 4 days to dispatch your item. If not dispatched on time, your funds will be 100% automatically refunded.</span>
+            </div>
+          </div>
+        )}
+
+        {/* Refund & Dispute Settlement Audit Card */}
+        {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED') && (
+          <div className="bg-red-50/80 border border-red-200 rounded-2xl p-5 space-y-3 text-xs">
+            <div className="flex justify-between items-center border-b border-red-200/80 pb-3">
+              <span className="font-bold text-red-700 text-sm flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-red-600" />
+                {txn.status === 'REFUNDED' ? 'Dispute Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : 'Dispute Under Review'}
+              </span>
+              {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED') && (
+                <span className="font-mono font-black text-emerald-800 bg-emerald-100 px-3 py-1 rounded-lg text-sm shadow-sm">
+                  Refund: GHS {Number((txn as any).buyer_refund_amount_ghs || txn.total_amount_ghs).toFixed(2)}
+                </span>
+              )}
+            </div>
+
+            <p className="text-red-900 font-medium leading-relaxed">
+              ⏱ <strong>24-Hour Settlement Guarantee:</strong> All refunds are automatically returned via your original payment channel (Paystack MoMo/Card) within 24 hours.
+            </p>
+
+            {(txn as any).manager_dispute_notes && (
+              <div className="bg-white p-3.5 rounded-xl border border-red-200 space-y-1.5 shadow-sm">
+                <span className="font-mono text-red-600 font-bold uppercase text-[10px] block">Manager Resolution Notes:</span>
+                <p className="text-gray-800 text-xs font-sans leading-relaxed">{(txn as any).manager_dispute_notes}</p>
+                {(txn as any).manager_dispute_photos && (txn as any).manager_dispute_photos.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {(txn as any).manager_dispute_photos.map((url: string, idx: number) => (
+                      <img key={idx} src={url} alt="Manager ruling proof" className="w-14 h-14 object-cover rounded-lg border border-gray-200" />
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {(txn as any).buyer_dispute_reason && (
+              <div className="bg-white p-3.5 rounded-xl border border-red-200 space-y-1 shadow-sm">
+                <span className="font-mono text-gray-500 font-bold uppercase text-[10px] block">Your Dispute Claim:</span>
+                <p className="text-gray-800 text-xs font-sans">{(txn as any).buyer_dispute_reason}</p>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Buyer Actions */}
         {(canConfirm || canDispute || isInspection) && (
@@ -397,15 +432,25 @@ const compressImage = (file: File): Promise<string> => {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Evidence Photos (Max 5)</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-gray-700">Evidence Photos (Max 5)</label>
+                  <span className="text-[11px] font-mono text-gray-500">
+                    {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length}/5 photos`}
+                  </span>
+                </div>
                 <input
                   type="file"
                   accept="image/*"
                   multiple
                   onChange={handleBuyerPhotoUpload}
-                  disabled={buyerPhotos.length >= 5}
-                  className="block w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer"
+                  disabled={buyerPhotos.length >= 5 || isCompressingBuyerPhotos}
+                  className="block w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer disabled:opacity-50"
                 />
+                {isCompressingBuyerPhotos && (
+                  <div className="flex items-center gap-2 mt-2 text-xs text-red-600 font-medium">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to WebP...
+                  </div>
+                )}
                 {buyerPhotos.length > 0 && (
                   <div className="flex gap-2 mt-2 flex-wrap">
                     {buyerPhotos.map((photo, i) => (
@@ -426,7 +471,7 @@ const compressImage = (file: File): Promise<string> => {
 
               <button
                 type="submit"
-                disabled={isSubmittingDispute}
+                disabled={isSubmittingDispute || isCompressingBuyerPhotos}
                 className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-red-500/20 disabled:opacity-70 flex justify-center items-center"
               >
                 {isSubmittingDispute ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Dispute & Evidence"}

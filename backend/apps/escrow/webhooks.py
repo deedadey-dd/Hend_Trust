@@ -74,6 +74,13 @@ def paystack_webhook(request):
                     txn.status = TransactionStatus.PAYMENT_RECEIVED
                     txn.save()
                     
+                    from apps.ledger.services import record_buyer_deposit
+                    try:
+                        gateway_fee = (txn.total_amount_ghs * Decimal('0.0195')).quantize(Decimal('0.01'))
+                        record_buyer_deposit(reference_id=str(txn.id), gross_amount=txn.total_amount_ghs, gateway_fee=gateway_fee)
+                    except Exception as e:
+                        print(f"Ledger record_buyer_deposit error: {e}")
+
                     from apps.core.tasks import notify_buyer_payment_received_task, notify_seller_payment_received_task
                     notify_buyer_payment_received_task.delay(txn.id)
                     notify_seller_payment_received_task.delay(txn.id)

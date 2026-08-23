@@ -1,6 +1,6 @@
-# HendAxis Trust: How It Works & Platform Guide
+# HendAxis Trust: How It Works & Platform Guide (Source of Truth)
 
-Welcome to **HendAxis Trust**, the secure bridge between buyers and sellers. We protect your money and your merchandise using state-of-the-art escrow technology, double-entry accounting, and a verified Trustpilot-style seller rating system.
+Welcome to **HendAxis Trust**, the secure bridge between buyers and sellers. We protect your money and your merchandise using state-of-the-art escrow technology, double-entry accounting, strict dispatch guarantees, and a verified Trustpilot-style seller rating system.
 
 Whether you are an Instagram vendor, a marketplace shopper, or an independent contractor, HendAxis Trust ensures you get what you paid for—or you get paid for what you sent.
 
@@ -15,30 +15,33 @@ To build trust with buyers, sellers can customize their public store presence an
 
 ---
 
-## 2. Creating a Payment Link (For Sellers)
+## 2. Creating a Payment Link & 4-Day Seller Dispatch Rule
 Sellers can create secure Payment Links to send to their buyers.
 
 1. **Log in** to your Seller Dashboard and click **Create Payment Link**.
-2. Enter item details: Title, Description, and Price in GHS.
+2. Enter item details: Title, Description, Price in GHS, and Shipping Fee.
 3. **Choose Fee Handling**:
    - **Absorb Fee**: Seller pays the platform fee. The buyer pays only the exact item price.
    - **Pass to Buyer**: The buyer pays the item price + platform fee. Seller receives 100% of their item price.
-4. **Share the Link**: Send the unique URL to your buyer via WhatsApp, Instagram, or SMS.
+4. **4-Day Seller Dispatch Guarantee**: Once the buyer pays, the seller has **4 days (96 hours)** to dispatch the package.
+   - If the seller fails to dispatch within 4 days, the order is automatically cancelled.
+   - The buyer gets a **100% full refund** (including all fees).
+   - The defaulting seller is charged a **Non-Dispatch Default Penalty** (Platform Fee + 1.95% Paystack charges).
 
 ---
 
 ## 3. Making a Payment (For Buyers)
-1. **Open the Payment Link**: View the item description, total price, and clear merchant identification showing the **Shop Name** along with the `@username` handle (e.g., `Accra Electronics Hub (@accra_tech)`).
+1. **Open the Payment Link**: View the item description, total price, and clear merchant identification showing the **Shop Name** along with the `@username` handle.
 2. **Enter Delivery Details**: Provide your Name, Phone Number, and Shipping Address.
 3. **Pay via Paystack**: Use Mobile Money (MTN, Telecel, AT) or Bank Card.
-4. **Escrow Hold**: Your money is held securely in the **HendAxis System Escrow Account**. The seller is notified to dispatch your package.
+4. **Escrow Hold**: Your money is held securely in the **HendAxis System Escrow Account**. The seller is notified to dispatch your package within 4 days.
 
 ---
 
 ## 4. Dispatch & Logistics Verification
 Sellers must dispatch items promptly after receiving payment notification:
 
-- **Optional Package Photo**: Sellers can upload a photo of the packaged item during dispatch for extra delivery assurance.
+- **WebP Package Photo**: Sellers attach a photo of the packaged item during dispatch for verification.
 - **Path A (Formal Courier Delivery)**: Seller enters tracking number. Courier API webhooks notify HendAxis Trust when the package is delivered.
 - **Path B (Informal Station / Bus OTP Delivery)**: Seller enters driver phone, vehicle number, and destination station. The buyer receives driver details and a Secret 6-Digit OTP to present at the station. Once the OTP is verified, delivery is confirmed.
 
@@ -52,22 +55,27 @@ Once delivery is confirmed, the buyer inspection timer starts automatically:
   - `GHS 2,000 – GHS 9,999.99`: **48 Hours**
   - `>= GHS 10,000`: **72 Hours**
 - **Automatic Completion & Rating Modal**: Once the buyer confirms receipt via their 6-digit confirmation code, payment is released to the seller, and the **3-Axis Rate Seller Modal** automatically launches on screen so the buyer can instantly leave a review.
-- **Navbar & Payment Link Management**: Buyers can confirm receipt or raise disputes either on the direct Payment Status URL (`/l/:id`) or using the Navbar Order Tracking Modal (`/track`).
 
 ---
 
-## 6. How Disputes & 5-Image Evidence Work
+## 6. How Disputes, 24-Hour Settlement & Manager Extra Fees Work
 If a buyer receives a damaged or incorrect item during the inspection period:
 
-- **Buyer Claim & Evidence Modal**: Clicking **Raise Dispute** opens an interactive modal where the buyer enters their claim description and uploads up to **5 evidence photos** directly to `/api/v1/escrow/{id}/raise-dispute`.
+- **Buyer Claim & Evidence Modal**: Clicking **Raise Dispute** opens an interactive modal where the buyer enters their claim description and uploads up to **5 evidence photos**.
 - **Seller Counter Response**: The seller receives SMS & Email notifications and can submit a counter statement with up to **5 seller evidence photos**.
 - **Dispute Review Suppression**: Raising a dispute automatically suppresses and clears any reviews or star ratings submitted for that transaction.
-- **Manager Arbitration & 1MB Post-Resolution Image Compression**: Platform managers inspect evidence in high-resolution lightboxes, upload manager ruling photos, and execute binding rulings (Release to Seller, 100% Refund to Buyer, or Custom Partial Split). Upon dispute resolution, all accumulated dispute photos (buyer, seller, and manager evidence) are automatically compressed server-side to a combined total size of **1MB or less** for long-term audit storage efficiency.
+- **24-Hour Dispute Settlement**: Rulings execute payouts within **24 hours**:
+  - **Buyer Refund**: Issued via the **same payment medium** (Paystack MoMo/Card) used at checkout.
+  - **Seller Payout**: Sent to seller's registered payout details.
+- **Dispute Fund Allocation & Extra Fee Rules**:
+  - Incurred shipping costs are non-refundable if shipping was performed.
+  - Managers can specify platform retained fees or levy custom extra penalty fees for damaged/incorrect items. Any unallocated split funds accrue to platform fee revenue.
+- **1MB Image Compression**: Accumulated dispute photos are compressed server-side to $\le 1\text{MB}$ total per transaction post-resolution.
 
 ---
 
 ## 7. Escrow-Gated Reviews & Trustpilot Rating Framework
-- **Escrow-Gated Reviews**: Only buyers who have completed an escrow transaction can rate a seller.
+- **Escrow-Gated Reviews**: Only buyers who have completed an escrow purchase can rate a seller.
 - **3-Axis Ratings**: Speed, Communication, and Overall Satisfaction (1 to 5 stars).
 - **Public Storefront (`/store/:username`)**: Shows seller ratings, public review feedback, and seller replies.
 
@@ -76,28 +84,9 @@ If a buyer receives a damaged or incorrect item during the inspection period:
 ## 8. Marketplace Directory & Paid Shop Promotion (`/shops`)
 - **Public Marketplace**: Buyers can explore seller shops, filter by product categories, and search products.
 - **Paid Shop Promotions (`⚡ Featured Ad`)**: Sellers can feature their store at the top of the directory (GHS 50 for 7 Days / GHS 150 for 30 Days).
-- **Flexible Ad Payment**:
-  - **Wallet Balance**: Fee is debited from available seller wallet funds.
-  - **Direct Paystack Checkout**: If wallet balance is insufficient, sellers are seamlessly redirected to Paystack to complete ad payment.
-
-## 9. Superuser Platform Funds & Ledger Audit Studio
-Superusers and platform administrators have complete visibility over all financial accounts and double-entry ledger records:
-
-- **Complete Financial Breakdown**: Real-time account balances for System Bank Assets, Buyer Escrow Deposits, Platform Fee Revenue, Paystack Fee Expenses, and total Seller Wallet Liabilities.
-- **Ledger Entries Audit & Filtering**:
-  - Filter ledger entries by **Entry Type** (`BUYER_DEPOSIT`, `ESCROW_RELEASE`, `AD_PROMOTION_FEE`, `FULL_REFUND`, `PARTIAL_REFUND`, `WITHDRAWAL`), **Account Type** (`ASSET`, `LIABILITY`, `REVENUE`, `EXPENSE`), and **Specific Account**.
-  - Query transactions by **Custom Date Ranges** (`From Date` / `To Date`) or search by transaction UUID.
-  - Sort ledger entries dynamically by Timestamp, Amount (GHS), Entry Type, or Account Names in ascending or descending order.
 
 ---
 
-## 10. Automated Unit Testing & Master Test Runner
-To maintain quality and prevent regressions across new features:
-
-- **Pytest Unit Test Suite**: Comprehensive tests covering Checkout, Escalated Escrow, Double-Entry Ledger, Tiered Delivery & OTP, Seller Reviews, Marketplace Shops, Verification Workflows, and 1MB Dispute Image Compression (`python -m pytest`).
-- **Master Test Runner Script**: Run `python run_all_tests.py` or `run_all_tests.bat` at the project root to automatically execute all backend unit tests, Django system checks, and frontend TypeScript compilation checks.
-
----
-
-### Need Help or Escalation?
-Contact our operations team at **support@hendaxis.com** for technical assistance or dispute support.
+## 9. Superuser Platform Funds & Double-Entry Ledger Audit
+- Real-time balances across System Bank Assets, Buyer Escrow Deposits, Platform Fee Revenue, Paystack Fee Expenses, and Seller Wallet Liabilities.
+- Comprehensive ledger entries audit, date filtering, and multi-column sorting.

@@ -14,6 +14,7 @@ import {
   useResolveDisputeMutation, 
   useBroadcastMessageMutation 
 } from '../hooks/api/useAdminPortal';
+import { compressImageToWebP } from '../utils/imageUtils';
 import { apiClient } from '../api/client';
 
 type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST';
@@ -210,23 +211,28 @@ export const AdminDashboardView: React.FC = () => {
   const [sellerAmountGhs, setSellerAmountGhs] = useState<number>(0);
   const [platformFeeGhs, setPlatformFeeGhs] = useState<number>(0);
   const [managerPhotos, setManagerPhotos] = useState<string[]>([]);
+  const [isCompressingManagerPhotos, setIsCompressingManagerPhotos] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
 
-  const handleManagerPhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleManagerPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (managerPhotos.length + files.length > 5) {
       alert("You can upload a maximum of 5 manager evidence photos.");
       return;
     }
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (reader.result) {
-          setManagerPhotos(prev => [...prev, reader.result as string].slice(0, 5));
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    setIsCompressingManagerPhotos(true);
+    try {
+      const compressedList: string[] = [];
+      for (const file of files) {
+        const webp = await compressImageToWebP(file);
+        compressedList.push(webp);
+      }
+      setManagerPhotos(prev => [...prev, ...compressedList].slice(0, 5));
+    } catch (err) {
+      console.error("Failed to compress manager photo:", err);
+    } finally {
+      setIsCompressingManagerPhotos(false);
+    }
   };
 
   // Sellers State & Query
@@ -248,14 +254,18 @@ export const AdminDashboardView: React.FC = () => {
 
   const activeDisputeTxn = disputes?.find((d: any) => d.id === resolvingTxnId);
   const totalPaidByBuyer = activeDisputeTxn?.total_amount_ghs || 0;
-  const partialSum = (Number(refundAmountGhs) || 0) + (Number(sellerAmountGhs) || 0) + (Number(platformFeeGhs) || 0);
-  const isPartialOverLimit = partialSum > totalPaidByBuyer;
+  const platformFeeGhsConst = activeDisputeTxn?.platform_fee_ghs || 0;
+  const incurredShippingGhs = (activeDisputeTxn?.dispatched_at || activeDisputeTxn?.delivery_method) ? (activeDisputeTxn?.shipping_fee_ghs || 0) : 0;
+  const maxNetPool = Math.max(0, totalPaidByBuyer - platformFeeGhsConst - incurredShippingGhs);
+  
+  const totalSplitSum = (Number(refundAmountGhs) || 0) + (Number(sellerAmountGhs) || 0) + (Number(platformFeeGhs) || 0);
+  const isPartialOverLimit = totalSplitSum > totalPaidByBuyer;
 
   const handleResolveDispute = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!resolvingTxnId) return;
     if (resolveAction === 'PARTIAL_REFUND_TO_BUYER' && isPartialOverLimit) {
-      setResolveMsg(`The total allocated (GHS ${partialSum.toFixed(2)}) cannot exceed the total amount paid by the buyer (GHS ${totalPaidByBuyer.toFixed(2)}).`);
+      setResolveMsg(`The total allocated (GHS ${totalSplitSum.toFixed(2)}) cannot exceed the total amount paid by the buyer (GHS ${totalPaidByBuyer.toFixed(2)}).`);
       return;
     }
     setResolveMsg('');
@@ -647,6 +657,21 @@ export const AdminDashboardView: React.FC = () => {
                                   className="w-16 h-16 object-cover rounded-lg border border-slate-700 hover:border-rose-500 hover:scale-105 transition cursor-pointer"
                                 />
                               ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {d.waybill_photo_url && (
+                          <div className="pt-2 border-t border-slate-800">
+                            <span className="font-mono text-emerald-400 font-bold uppercase block mb-1">DISPATCH / WAYBILL PHOTO (FROM SELLER):</span>
+                            <div className="flex items-center gap-3">
+                              <img
+                                src={d.waybill_photo_url}
+                                alt="Dispatch waybill evidence"
+                                onClick={() => setPreviewImage(d.waybill_photo_url)}
+                                className="w-20 h-20 object-cover rounded-lg border border-emerald-500/40 hover:border-emerald-400 hover:scale-105 transition cursor-pointer"
+                              />
+                              <span className="text-[11px] text-slate-400">Click photo to zoom. Submitted by seller during dispatch.</span>
                             </div>
                           </div>
                         )}
@@ -1413,19 +1438,30 @@ export const AdminDashboardView: React.FC = () => {
             </div>
 
             <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-300">
-              {detailLoading ? (
-                <div className="py-12 text-center text-slate-500">Fetching audit trail…</div>
+              {detailLoading || !txnDetail ? (
+                <div className="py-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
+                  <RefreshCw className="h-6 w-6 animate-spin text-blue-400" />
+                  <span>Fetching transaction audit trail…</span>
+                </div>
               ) : (
                 <>
                   {/* Summary Header */}
-                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 grid grid-cols-2 gap-4">
+                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 grid grid-cols-3 gap-4">
                     <div>
-                      <span className="text-slate-500 font-mono">PRODUCT TITLE</span>
-                      <p className="font-bold text-white text-sm mt-0.5">{txnDetail?.title}</p>
+                      <span className="text-slate-500 font-mono text-[10px]">PRODUCT TITLE</span>
+                      <p className="font-bold text-white text-xs mt-0.5">{txnDetail?.title || 'N/A'}</p>
+                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">Status: <span className="text-amber-400 font-bold">{txnDetail?.status}</span></p>
                     </div>
                     <div>
-                      <span className="text-slate-500 font-mono">TOTAL AMOUNT</span>
-                      <p className="font-black text-emerald-400 text-base mt-0.5">GHS {txnDetail?.total_amount_ghs?.toFixed(2)}</p>
+                      <span className="text-slate-500 font-mono text-[10px]">TOTAL AMOUNT PAID</span>
+                      <p className="font-black text-emerald-400 text-sm mt-0.5">GHS {Number(txnDetail?.total_amount_ghs || 0).toFixed(2)}</p>
+                      {txnDetail?.shipping_fee_ghs > 0 && (
+                        <p className="text-[10px] text-slate-400">Shipping: GHS {Number(txnDetail.shipping_fee_ghs).toFixed(2)}</p>
+                      )}
+                    </div>
+                    <div>
+                      <span className="text-slate-500 font-mono text-[10px]">PLATFORM FEE</span>
+                      <p className="font-bold text-blue-400 text-xs mt-0.5">GHS {Number(txnDetail?.platform_fee_ghs || 0).toFixed(2)}</p>
                     </div>
                   </div>
 
@@ -1433,16 +1469,51 @@ export const AdminDashboardView: React.FC = () => {
                   <div className="grid grid-cols-2 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
                     <div>
                       <span className="text-slate-500 font-mono">SELLER ACCOUNT</span>
-                      <p className="font-bold text-slate-200 mt-1">@{txnDetail?.seller?.username}</p>
-                      <p className="text-slate-400">{txnDetail?.seller?.phone_number}</p>
+                      <p className="font-bold text-slate-200 mt-1">@{txnDetail?.seller?.username || 'seller'}</p>
+                      <p className="text-slate-400">{txnDetail?.seller?.phone_number || 'No phone'}</p>
+                      <p className="text-slate-500 text-[10px]">{txnDetail?.seller?.email || 'No email'}</p>
                     </div>
                     <div>
                       <span className="text-slate-500 font-mono">BUYER DETAILS</span>
-                      <p className="font-bold text-slate-200 mt-1">{txnDetail?.buyer?.name}</p>
+                      <p className="font-bold text-slate-200 mt-1">{txnDetail?.buyer?.name || 'Guest Buyer'}</p>
                       <p className="text-slate-400 font-mono">{txnDetail?.buyer?.phone}</p>
-                      <p className="text-slate-400 mt-0.5">{txnDetail?.buyer?.shipping_address}</p>
+                      <p className="text-slate-400 mt-0.5">{txnDetail?.buyer?.shipping_address || 'No shipping address'}</p>
                     </div>
                   </div>
+
+                  {/* Waybill / Package Proof if present */}
+                  {txnDetail?.waybill_photo_url && (
+                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
+                      <span className="font-mono text-emerald-400 font-bold uppercase block mb-1">DISPATCH / WAYBILL PHOTO:</span>
+                      <img
+                        src={txnDetail.waybill_photo_url}
+                        alt="Dispatch proof"
+                        onClick={() => setPreviewImage(txnDetail.waybill_photo_url)}
+                        className="w-24 h-24 object-cover rounded-lg border border-slate-700 hover:border-emerald-400 transition cursor-pointer"
+                      />
+                    </div>
+                  )}
+
+                  {/* Dispute Evidence if present */}
+                  {txnDetail?.buyer_dispute_reason && (
+                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                      <span className="font-mono text-rose-400 font-bold uppercase block">BUYER CLAIM REASON:</span>
+                      <p className="text-slate-200 bg-slate-900 p-2.5 rounded-lg border border-slate-800">{txnDetail.buyer_dispute_reason}</p>
+                      {txnDetail.buyer_dispute_photos?.length > 0 && (
+                        <div className="flex flex-wrap gap-2 pt-1">
+                          {txnDetail.buyer_dispute_photos.map((url: string, idx: number) => (
+                            <img
+                              key={idx}
+                              src={url}
+                              alt="Buyer evidence"
+                              onClick={() => setPreviewImage(url)}
+                              className="w-16 h-16 object-cover rounded-lg border border-slate-700 hover:border-rose-500 transition cursor-pointer"
+                            />
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   {/* Delivery Logs */}
                   <div>
@@ -1450,10 +1521,10 @@ export const AdminDashboardView: React.FC = () => {
                       <Package className="h-4 w-4 text-blue-400" />
                       Delivery Logs & Status
                     </h4>
-                    {txnDetail?.delivery_logs?.length === 0 ? (
-                      <p className="text-slate-500 italic">No delivery log recorded yet.</p>
+                    {!txnDetail?.delivery_logs || txnDetail.delivery_logs.length === 0 ? (
+                      <p className="text-slate-500 italic bg-slate-950 p-3 rounded-lg border border-slate-800">No delivery log recorded yet.</p>
                     ) : (
-                      txnDetail?.delivery_logs?.map((l: any) => (
+                      txnDetail.delivery_logs.map((l: any) => (
                         <div key={l.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1 mb-2">
                           <div className="flex justify-between font-bold text-slate-200">
                             <span>Method: {l.delivery_method}</span>
@@ -1472,17 +1543,21 @@ export const AdminDashboardView: React.FC = () => {
                       <Layers className="h-4 w-4 text-indigo-400" />
                       Double-Entry Ledger Audit Trail
                     </h4>
-                    <div className="space-y-1.5">
-                      {txnDetail?.ledger_entries?.map((e: any) => (
-                        <div key={e.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center font-mono">
-                          <div>
-                            <span className="text-blue-400 font-bold">{e.entry_type}</span>
-                            <p className="text-[10px] text-slate-500">{e.debit_account} → {e.credit_account}</p>
+                    {!txnDetail?.ledger_entries || txnDetail.ledger_entries.length === 0 ? (
+                      <p className="text-slate-500 italic bg-slate-950 p-3 rounded-lg border border-slate-800">No double-entry ledger records found for this transaction.</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {txnDetail.ledger_entries.map((e: any) => (
+                          <div key={e.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center font-mono">
+                            <div>
+                              <span className="text-blue-400 font-bold">{e.entry_type}</span>
+                              <p className="text-[10px] text-slate-500">{e.debit_account} → {e.credit_account}</p>
+                            </div>
+                            <span className="font-bold text-emerald-400">GHS {Number(e.amount_ghs || 0).toFixed(2)}</span>
                           </div>
-                          <span className="font-bold text-emerald-400">GHS {e.amount_ghs.toFixed(2)}</span>
-                        </div>
-                      ))}
-                    </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </>
               )}
@@ -1503,8 +1578,8 @@ export const AdminDashboardView: React.FC = () => {
       {/* ─── MODAL: RESOLVE DISPUTE ──────────────────────────────────────────── */}
       {resolvingTxnId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full overflow-hidden shadow-2xl">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
+            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950 flex-shrink-0">
               <h3 className="text-base font-bold text-rose-400 flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5" />
                 Arbitrate Dispute Claim
@@ -1514,7 +1589,7 @@ export const AdminDashboardView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleResolveDispute} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleResolveDispute} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
               <div>
                 <label className="block text-slate-400 font-mono uppercase mb-1">Arbitration Resolution Action *</label>
                 <select
@@ -1530,9 +1605,25 @@ export const AdminDashboardView: React.FC = () => {
 
               {resolveAction === 'PARTIAL_REFUND_TO_BUYER' && (
                 <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                  <div className="flex justify-between items-center text-xs text-slate-400 font-mono border-b border-slate-800 pb-2">
-                    <span>TOTAL PAID BY BUYER:</span>
-                    <span className="font-bold text-emerald-400">GHS {totalPaidByBuyer.toFixed(2)}</span>
+                  <div className="space-y-1 text-xs text-slate-400 font-mono border-b border-slate-800 pb-2">
+                    <div className="flex justify-between items-center">
+                      <span>TOTAL PAID BY BUYER:</span>
+                      <span className="font-bold text-slate-200">GHS {totalPaidByBuyer.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between items-center text-[11px] text-slate-400">
+                      <span>LESS PLATFORM FEE:</span>
+                      <span>- GHS {platformFeeGhsConst.toFixed(2)}</span>
+                    </div>
+                    {incurredShippingGhs > 0 && (
+                      <div className="flex justify-between items-center text-[11px] text-amber-400">
+                        <span>LESS INCURRED SHIPPING:</span>
+                        <span>- GHS {incurredShippingGhs.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between items-center pt-1 text-xs font-bold text-emerald-400 border-t border-slate-800/60">
+                      <span>MAX NET ALLOCATABLE POOL:</span>
+                      <span>GHS {maxNetPool.toFixed(2)}</span>
+                    </div>
                   </div>
 
                   <div>
@@ -1546,9 +1637,10 @@ export const AdminDashboardView: React.FC = () => {
                       onChange={e => {
                         const r = Math.round(((parseFloat(e.target.value) || 0) + Number.EPSILON) * 100) / 100;
                         setRefundAmountGhs(r);
-                        const rem = Math.round((Math.max(0, totalPaidByBuyer - r) + Number.EPSILON) * 100) / 100;
-                        setSellerAmountGhs(rem);
-                        setPlatformFeeGhs(0);
+                        const s = Math.round((Math.max(0, maxNetPool - r) + Number.EPSILON) * 100) / 100;
+                        setSellerAmountGhs(s);
+                        const p = Math.round((Math.max(0, totalPaidByBuyer - r - s) + Number.EPSILON) * 100) / 100;
+                        setPlatformFeeGhs(p);
                       }}
                       className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-blue-500"
                     />
@@ -1560,20 +1652,23 @@ export const AdminDashboardView: React.FC = () => {
                       type="number"
                       step="0.01"
                       min="0"
-                      max={totalPaidByBuyer}
+                      max={maxNetPool}
                       value={sellerAmountGhs !== undefined ? (Math.round((Number(sellerAmountGhs) + Number.EPSILON) * 100) / 100) : ''}
                       onChange={e => {
                         const s = Math.round(((parseFloat(e.target.value) || 0) + Number.EPSILON) * 100) / 100;
                         setSellerAmountGhs(s);
-                        const rem = Math.round((Math.max(0, totalPaidByBuyer - (Number(refundAmountGhs) || 0) - s) + Number.EPSILON) * 100) / 100;
-                        setPlatformFeeGhs(rem);
+                        const p = Math.round((Math.max(0, totalPaidByBuyer - (Number(refundAmountGhs) || 0) - s) + Number.EPSILON) * 100) / 100;
+                        setPlatformFeeGhs(p);
                       }}
                       className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 font-mono uppercase mb-1">3. Platform Retained Fee (GHS)</label>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-slate-400 font-mono uppercase">3. Platform Retained Fee / Extra Fee (GHS)</label>
+                      <span className="text-[10px] text-slate-400 font-mono">Base GHS {platformFeeGhsConst.toFixed(2)} + Shipping GHS {incurredShippingGhs.toFixed(2)}</span>
+                    </div>
                     <input
                       type="number"
                       step="0.01"
@@ -1586,6 +1681,9 @@ export const AdminDashboardView: React.FC = () => {
                       }}
                       className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-blue-500"
                     />
+                    <p className="text-[10px] text-slate-400 mt-1 font-mono">
+                      Managers can adjust extra platform fees / penalties here. Unallocated split funds accrue to platform fee.
+                    </p>
                   </div>
 
                   <div className={`p-2.5 rounded-lg text-xs font-mono flex justify-between items-center ${
@@ -1593,16 +1691,26 @@ export const AdminDashboardView: React.FC = () => {
                       ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' 
                       : 'bg-slate-900 text-slate-300 border border-slate-800'
                   }`}>
-                    <span>SUM OF SPLIT: GHS {partialSum.toFixed(2)}</span>
-                    <span>{totalPaidByBuyer > 0 ? ((partialSum / totalPaidByBuyer) * 100).toFixed(1) : 0}%</span>
+                    <span>TOTAL SPLIT: GHS {totalSplitSum.toFixed(2)} / {totalPaidByBuyer.toFixed(2)}</span>
+                    <span>{totalPaidByBuyer > 0 ? ((totalSplitSum / totalPaidByBuyer) * 100).toFixed(1) : 0}%</span>
                   </div>
                   {isPartialOverLimit && (
                     <p className="text-rose-400 text-[11px] font-bold">
-                      ⚠️ Sum exceeds buyer payment (GHS {totalPaidByBuyer.toFixed(2)}) by GHS {(partialSum - totalPaidByBuyer).toFixed(2)}!
+                      ⚠ Total split (GHS {totalSplitSum.toFixed(2)}) exceeds total paid by buyer (GHS {totalPaidByBuyer.toFixed(2)}).
                     </p>
                   )}
                 </div>
               )}
+
+              <div className="bg-blue-950/40 border border-blue-900/50 rounded-xl p-3 text-[11px] text-blue-300 space-y-1 font-sans">
+                <span className="font-bold block text-blue-200">⏱ 24-Hour Settlement Policy:</span>
+                <p>
+                  • Buyer refund (if &gt; 0) is returned via the <strong>same payment medium</strong> (Paystack MoMo/Card) within 24 hours.
+                </p>
+                <p>
+                  • Seller payout (if &gt; 0) is disbursed using their registered account details within 24 hours.
+                </p>
+              </div>
 
               <div>
                 <label className="block text-slate-400 font-mono uppercase mb-1">Manager Arbitration Notes / Reason</label>

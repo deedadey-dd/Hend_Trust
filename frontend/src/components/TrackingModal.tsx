@@ -1,9 +1,10 @@
 import React, { useState } from 'react';
-import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X } from 'lucide-react';
+import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X, AlertTriangle } from 'lucide-react';
 import axios from 'axios';
 import { apiClient, getErrorMessage } from '../api/client';
-import { STATUS_CONFIG } from '../views/DashboardView';
+import { STATUS_CONFIG } from '../constants/statusConfig';
 import RateSellerModal from './RateSellerModal';
+import { compressImageToWebP } from '../utils/imageUtils';
 
 type TabMode = 'SINGLE' | 'HISTORY';
 type HistoryStep = 'INPUT' | 'OTP';
@@ -11,37 +12,6 @@ type HistoryStep = 'INPUT' | 'OTP';
 interface TrackingModalProps {
   onClose: () => void;
 }
-
-const compressImage = (file: File): Promise<string> => {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.readAsDataURL(file);
-    reader.onload = (event) => {
-      const img = new Image();
-      img.src = event.target?.result as string;
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        let width = img.width;
-        let height = img.height;
-        const maxDim = 1024;
-        if (width > maxDim || height > maxDim) {
-          if (width > height) {
-            height = Math.round((height * maxDim) / width);
-            width = maxDim;
-          } else {
-            width = Math.round((width * maxDim) / height);
-            height = maxDim;
-          }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext('2d');
-        ctx?.drawImage(img, 0, 0, width, height);
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
-      };
-    };
-  });
-};
 
 export default function TrackingModal({ onClose }: TrackingModalProps) {
   const [tab, setTab] = useState<TabMode>('SINGLE');
@@ -83,6 +53,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   const [disputeReason, setDisputeReason] = useState('');
   const [buyerPhotos, setBuyerPhotos] = useState<string[]>([]);
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
+  const [isCompressingBuyerPhotos, setIsCompressingBuyerPhotos] = useState(false);
   const [disputeError, setDisputeError] = useState('');
 
   // Single Order Submit
@@ -99,7 +70,8 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
         paystack_reference: txnId.trim(), 
         phone_number: phone.trim() 
       });
-      setTxns(res.data);
+      const dataArr = Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []);
+      setTxns(dataArr);
       setShowResults(true);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Order not found. Please verify details.');
@@ -152,7 +124,8 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
       } else {
         res = await apiClient.post('/checkout/track/phone', { phone_number: identifier.trim(), otp_code: otp.trim() });
       }
-      setTxns(res.data);
+      const dataArr = Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []);
+      setTxns(dataArr);
       setShowResults(true);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Invalid or expired OTP code.');
@@ -208,13 +181,20 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
       alert("You can upload a maximum of 5 evidence photos.");
       return;
     }
-    for (const file of files) {
-      try {
-        const compressed = await compressImage(file);
-        setBuyerPhotos(prev => [...prev, compressed].slice(0, 5));
-      } catch {
-        console.error("Failed to compress evidence photo.");
+    setIsCompressingBuyerPhotos(true);
+    setDisputeError('');
+    try {
+      const compressedList: string[] = [];
+      for (const file of files) {
+        const webp = await compressImageToWebP(file);
+        compressedList.push(webp);
       }
+      setBuyerPhotos(prev => [...prev, ...compressedList].slice(0, 5));
+    } catch (err) {
+      console.error("Failed to compress evidence photo:", err);
+      setDisputeError("Failed to process selected evidence photo.");
+    } finally {
+      setIsCompressingBuyerPhotos(false);
     }
   };
 
@@ -482,14 +462,15 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
               <div className="space-y-3">
                 {txns
                   .filter(t => 
-                    t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                    t.paystack_reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                    (t.title || '').toLowerCase().includes(searchQuery.toLowerCase()) || 
+                    (t.paystack_reference || '').toLowerCase().includes(searchQuery.toLowerCase()) ||
                     (t.shop_name && t.shop_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
                     (t.seller_username && t.seller_username.toLowerCase().includes(searchQuery.toLowerCase()))
                   )
                   .slice((currentPage - 1) * itemsPerPage, currentPage * itemsPerPage)
                   .map(txn => {
-                    const cfg = STATUS_CONFIG[txn.status] || STATUS_CONFIG['AWAITING_PAYMENT'];
+                    const statusKey = txn.status || 'AWAITING_PAYMENT';
+                    const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG['AWAITING_PAYMENT'];
                     const Icon = cfg.icon;
                     const sellerDisplayName = txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller');
                     return (
@@ -516,6 +497,62 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                             <span className="text-base font-black text-gray-900">GHS {Number(txn.total_amount_ghs).toFixed(2)}</span>
                           </div>
                         </div>
+
+                        {txn.waybill_photo_url && (
+                          <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl p-2.5 flex items-center gap-3">
+                            <img
+                              src={txn.waybill_photo_url}
+                              alt="Dispatch proof"
+                              className="w-14 h-14 object-cover rounded-lg border border-gray-200"
+                            />
+                            <div>
+                              <span className="text-xs font-bold text-gray-800 block">Dispatch / Package Proof</span>
+                              <span className="text-[11px] text-gray-500 block">Uploaded by seller at dispatch</span>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Refund & Dispute Settlement Audit Card */}
+                        {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED') && (
+                          <div className="bg-red-50/80 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs">
+                            <div className="flex justify-between items-center border-b border-red-200/80 pb-2">
+                              <span className="font-bold text-red-700 flex items-center gap-1.5">
+                                <AlertTriangle className="h-4 w-4" />
+                                {txn.status === 'REFUNDED' ? 'Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : 'Dispute Under Review'}
+                              </span>
+                              {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED') && (
+                                <span className="font-mono font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-xs">
+                                  Refund: GHS {Number(txn.buyer_refund_amount_ghs || txn.total_amount_ghs).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+
+                            <p className="text-red-900 font-medium text-[11px]">
+                              ⏱ Refund Policy: Payouts are returned directly to your original payment method (Paystack MoMo/Card) within 24 hours.
+                            </p>
+
+                            {txn.manager_dispute_notes && (
+                              <div className="bg-white p-2.5 rounded-lg border border-red-200 space-y-1">
+                                <span className="font-mono text-red-600 font-bold uppercase text-[10px] block">Manager Resolution Notes:</span>
+                                <p className="text-gray-800">{txn.manager_dispute_notes}</p>
+                                {txn.manager_dispute_photos && txn.manager_dispute_photos.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 pt-1">
+                                    {txn.manager_dispute_photos.map((url: string, idx: number) => (
+                                      <img key={idx} src={url} alt="Manager ruling" className="w-10 h-10 object-cover rounded border" />
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
+
+                            {txn.buyer_dispute_reason && (
+                              <div className="bg-white p-2.5 rounded-lg border border-red-200 space-y-1">
+                                <span className="font-mono text-gray-500 font-bold uppercase text-[10px] block">Your Dispute Claim:</span>
+                                <p className="text-gray-800">{txn.buyer_dispute_reason}</p>
+                              </div>
+                            )}
+                          </div>
+                        )}
 
                         {/* Action buttons */}
                         <div className="flex items-center justify-between gap-2 pt-1">
@@ -611,15 +648,25 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
               </div>
 
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Evidence Photos (Max 5)</label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-gray-700">Evidence Photos (Max 5)</label>
+                  <span className="text-[11px] font-mono text-gray-500">
+                    {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length}/5 photos`}
+                  </span>
+                </div>
                 <input
                   type="file"
                   accept="image/*"
                   multiple
                   onChange={handleBuyerPhotoUpload}
-                  disabled={buyerPhotos.length >= 5}
+                  disabled={buyerPhotos.length >= 5 || isCompressingBuyerPhotos}
                   className="w-full text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl p-2 cursor-pointer disabled:opacity-50"
                 />
+                {isCompressingBuyerPhotos && (
+                  <div className="flex items-center gap-2 mt-2 text-xs text-red-600 font-medium">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to WebP...
+                  </div>
+                )}
                 {buyerPhotos.length > 0 && (
                   <div className="flex gap-2 mt-2 flex-wrap">
                     {buyerPhotos.map((img, idx) => (
@@ -640,7 +687,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
               <button
                 type="submit"
-                disabled={isSubmittingDispute}
+                disabled={isSubmittingDispute || isCompressingBuyerPhotos}
                 className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition shadow flex justify-center items-center gap-2 disabled:opacity-70"
               >
                 {isSubmittingDispute ? (

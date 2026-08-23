@@ -6,11 +6,14 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { compressImageToWebP } from '../utils/imageUtils';
 
 interface SellerTxn {
   id: string;
   status: string;
   total_amount_ghs: number;
+  platform_fee_ghs?: number;
+  shipping_fee_ghs?: number;
   buyer_name: string;
   buyer_phone: string;
   buyer_email: string;
@@ -22,6 +25,13 @@ interface SellerTxn {
   inspection_starts_at?: string;
   delivery_method?: string;
   dispatched_at?: string;
+  delivered_at?: string;
+  waybill_photo_url?: string;
+  courier_name?: string;
+  tracking_number?: string;
+  driver_phone?: string;
+  driver_car_number?: string;
+  destination_station?: string;
   buyer_dispute_reason?: string;
   buyer_dispute_photos?: string[];
   seller_dispute_response?: string;
@@ -30,16 +40,7 @@ interface SellerTxn {
   manager_dispute_photos?: string[];
 }
 
-export const STATUS_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
-  AWAITING_PAYMENT:    { icon: Clock,         color: 'text-yellow-600', bg: 'bg-yellow-50', label: 'Awaiting Payment' },
-  PAYMENT_RECEIVED:    { icon: Package,       color: 'text-blue-600',   bg: 'bg-blue-50',   label: 'Awaiting Shipping' },
-  DELIVERY_IN_PROGRESS:{ icon: Truck,         color: 'text-indigo-600', bg: 'bg-indigo-50', label: 'In Transit' },
-  INSPECTION_PERIOD:   { icon: AlertCircle,   color: 'text-purple-600', bg: 'bg-purple-50', label: 'Inspection' },
-  COMPLETED:           { icon: CheckCircle,   color: 'text-green-600',  bg: 'bg-green-50',  label: 'Completed' },
-  DISPUTED:            { icon: AlertTriangle, color: 'text-red-600',    bg: 'bg-red-50',    label: 'Disputed' },
-  CANCELLED:           { icon: AlertTriangle, color: 'text-gray-600',   bg: 'bg-gray-50',   label: 'Cancelled' },
-  REFUNDED:            { icon: CheckCircle,   color: 'text-teal-600',   bg: 'bg-teal-50',   label: 'Refunded' },
-};
+import { STATUS_CONFIG } from '../constants/statusConfig';
 
 // ─── Dispatch Modal ─────────────────────────────────────────────────────────
 
@@ -60,18 +61,23 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
   const [station, setStation] = useState('');
   const [waybillPhoto, setWaybillPhoto] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState('');
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      if (reader.result) {
-        setWaybillPhoto(reader.result as string);
-      }
-    };
-    reader.readAsDataURL(file);
+    setIsCompressing(true);
+    setError('');
+    try {
+      const webp = await compressImageToWebP(file);
+      setWaybillPhoto(webp);
+    } catch (err) {
+      console.error("Failed to compress package photo:", err);
+      setError("Failed to process selected package photo.");
+    } finally {
+      setIsCompressing(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -223,12 +229,16 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
 
           {/* Package / Waybill Photo Upload */}
           <div>
-            <label className="block text-xs font-semibold text-gray-700 mb-1">Attach Package / Waybill Photo</label>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-xs font-semibold text-gray-700">Attach Package / Waybill Photo</label>
+              {isCompressing && <span className="text-[11px] font-mono text-blue-600 font-medium">Compressing WebP...</span>}
+            </div>
             <input
               type="file"
               accept="image/*"
+              disabled={isCompressing}
               onChange={handlePhotoUpload}
-              className="w-full bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-xl p-2 cursor-pointer"
+              className="w-full bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-xl p-2 cursor-pointer disabled:opacity-50"
             />
             {waybillPhoto && (
               <div className="mt-2 relative inline-block">
@@ -258,7 +268,7 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || isCompressing}
               className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2 disabled:opacity-70"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
@@ -568,24 +578,31 @@ function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps
   const [response, setResponse] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState('');
   const [previewImg, setPreviewImg] = useState<string | null>(null);
 
-  const handlePhotoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (photos.length + files.length > 5) {
       alert("You can upload a maximum of 5 evidence photos.");
       return;
     }
-    files.forEach(file => {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (reader.result) {
-          setPhotos(prev => [...prev, reader.result as string].slice(0, 5));
-        }
-      };
-      reader.readAsDataURL(file);
-    });
+    setIsCompressing(true);
+    setError('');
+    try {
+      const compressedList: string[] = [];
+      for (const file of files) {
+        const webp = await compressImageToWebP(file);
+        compressedList.push(webp);
+      }
+      setPhotos(prev => [...prev, ...compressedList].slice(0, 5));
+    } catch (err) {
+      console.error("Failed to compress image:", err);
+      setError("Failed to process selected image(s). Please try another image file.");
+    } finally {
+      setIsCompressing(false);
+    }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -598,10 +615,10 @@ function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps
     setLoading(true);
     try {
       await apiClient.post(`/escrow/${txn.id}/seller-dispute-response`, {
-        response,
+        response: response.trim(),
         photos
       });
-      alert('Your dispute response and evidence photos have been submitted.');
+      alert('Your dispute response and evidence photos have been submitted successfully.');
       onSuccess();
       onClose();
     } catch (err: any) {
@@ -613,7 +630,7 @@ function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 backdrop-blur-sm">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full overflow-hidden p-6 relative">
+      <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 relative">
         <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
           <X className="h-5 w-5" />
         </button>
@@ -669,16 +686,23 @@ function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps
           <div>
             <div className="flex justify-between items-center mb-1">
               <label className="block text-gray-700 font-semibold">Upload Seller Evidence Photos (Max 5)</label>
-              <span className="text-[11px] font-mono text-gray-500">{photos.length}/5 photos</span>
+              <span className="text-[11px] font-mono text-gray-500">
+                {isCompressing ? 'Compressing WebP...' : `${photos.length}/5 photos`}
+              </span>
             </div>
             <input
               type="file"
               accept="image/*"
               multiple
-              disabled={photos.length >= 5}
+              disabled={photos.length >= 5 || isCompressing}
               onChange={handlePhotoUpload}
               className="w-full bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-xl p-2.5 cursor-pointer disabled:opacity-50"
             />
+            {isCompressing && (
+              <div className="flex items-center gap-2 mt-2 text-xs text-blue-600 font-medium">
+                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to lightweight WebP...
+              </div>
+            )}
             {photos.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {photos.map((img, idx) => (
@@ -707,7 +731,7 @@ function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps
             </button>
             <button
               type="submit"
-              disabled={loading}
+              disabled={loading || isCompressing}
               className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Response"}
@@ -743,8 +767,9 @@ export default function DashboardView() {
   const limit = 10;
   const offset = parseInt(searchParams.get('offset') || '0', 10);
   
-  // Parcel tag modal
+  // Parcel tag & transaction detail modal
   const [selectedTxn, setSelectedTxn] = useState<SellerTxn | null>(null);
+  const [activeDetailTab, setActiveDetailTab] = useState<'AUDIT' | 'TAG'>('AUDIT');
 
   // Dispatch modal
   const [dispatchTxn, setDispatchTxn] = useState<SellerTxn | null>(null);
@@ -970,6 +995,19 @@ export default function DashboardView() {
                           <Icon className="mr-1 h-3 w-3" />
                           {cfg.label}
                         </span>
+                        {txn.status === 'PAYMENT_RECEIVED' && (
+                          (() => {
+                            const createdAt = new Date(txn.created_at).getTime();
+                            const dispatchDeadline = createdAt + 4 * 24 * 60 * 60 * 1000;
+                            const diff = dispatchDeadline - Date.now();
+                            if (diff <= 0) {
+                              return <div className="text-[11px] text-red-600 font-bold mt-1">⚠ Dispatch Overdue</div>;
+                            }
+                            const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+                            const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                            return <div className="text-[11px] text-amber-700 font-semibold mt-1">⏳ {days}d {hours}h to dispatch</div>;
+                          })()
+                        )}
                         {txn.delivery_method && txn.status === 'DELIVERY_IN_PROGRESS' && (
                           <div className="text-xs text-gray-400 mt-1">
                             {txn.delivery_method === 'INFORMAL_BUS' ? '🚌 Informal Bus' : '📦 Courier'}
@@ -1033,15 +1071,30 @@ export default function DashboardView() {
                             <p className="text-xs text-orange-500 text-right w-48">Over 36h since dispatch. Check courier status or override with a reason.</p>
                           </div>
                         ) : txn.status === 'DISPUTED' ? (
-                          <button
-                            onClick={() => setDisputeTxn(txn)}
-                            className="text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors font-semibold flex items-center gap-1.5 shadow-sm"
-                          >
-                            <AlertTriangle className="h-4 w-4" />
-                            View Dispute & Respond
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setSelectedTxn(txn)}
+                              className="text-gray-700 bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition"
+                              title="View Transaction Details & Refund Audit"
+                            >
+                              Details
+                            </button>
+                            <button
+                              onClick={() => setDisputeTxn(txn)}
+                              className="text-white bg-red-600 hover:bg-red-700 px-3 py-1.5 rounded-lg transition-colors font-semibold flex items-center gap-1.5 shadow-sm"
+                            >
+                              <AlertTriangle className="h-4 w-4" />
+                              Respond
+                            </button>
+                          </div>
                         ) : (
-                          <span className="text-gray-400 text-xs italic">No actions</span>
+                          <button
+                            onClick={() => setSelectedTxn(txn)}
+                            className="text-gray-700 bg-gray-100 hover:bg-gray-200 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition"
+                            title="View Transaction Details & Refund Audit"
+                          >
+                            Details
+                          </button>
                         )}
                       </td>
                     </tr>
@@ -1111,67 +1164,237 @@ export default function DashboardView() {
         />
       )}
 
-      {/* Modal / Parcel Tag for Printing */}
+      {/* ─── MODAL: SELLER TRANSACTION INSPECTION & PARCEL TAG ─────────────────── */}
       {selectedTxn && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 backdrop-blur-sm print:absolute print:inset-0 print:bg-white print:p-0">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden print:shadow-none print:max-w-none print:w-[10cm] print:border print:border-black print:rounded-none">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden print:shadow-none print:max-w-none print:w-[10cm] print:border print:border-black print:rounded-none">
             
             {/* Modal Header - Hidden on print */}
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between print:hidden">
-              <h3 className="text-lg font-bold text-gray-900">Parcel Tag</h3>
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50 flex-shrink-0 print:hidden">
+              <div>
+                <h3 className="text-base font-bold text-gray-900 flex items-center gap-2">
+                  <Package className="h-5 w-5 text-blue-600" />
+                  Transaction Details & Settlement Audit
+                </h3>
+                <p className="text-xs font-mono text-gray-500">{selectedTxn.paystack_reference}</p>
+              </div>
               <button 
-                onClick={() => setSelectedTxn(null)}
+                onClick={() => { setSelectedTxn(null); setActiveDetailTab('AUDIT'); }}
                 className="text-gray-400 hover:text-gray-600 transition"
               >
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {/* Printable Area */}
-            <div className="p-6 print:p-4 space-y-4 font-sans text-black bg-white">
-              <div className="border-b-2 border-black pb-4 text-center">
-                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 print:text-black mb-1">Transaction ID</p>
-                <p className="text-2xl font-black font-mono tracking-tight">{selectedTxn.paystack_reference}</p>
-              </div>
-              
-              <div className="text-center py-2">
-                <p className="text-xs font-bold uppercase tracking-widest text-gray-500 print:text-black mb-1">Contact Phone</p>
-                <p className="text-3xl font-black">{selectedTxn.buyer_phone}</p>
-              </div>
+            {/* Navigation Tabs - Hidden on print */}
+            <div className="flex border-b border-gray-200 bg-gray-100/60 px-6 pt-2 flex-shrink-0 print:hidden">
+              <button
+                onClick={() => setActiveDetailTab('AUDIT')}
+                className={`pb-2.5 px-4 text-xs font-bold font-mono transition-colors border-b-2 ${
+                  activeDetailTab === 'AUDIT'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                📋 Audit & Financials
+              </button>
+              <button
+                onClick={() => setActiveDetailTab('TAG')}
+                className={`pb-2.5 px-4 text-xs font-bold font-mono transition-colors border-b-2 ${
+                  activeDetailTab === 'TAG'
+                    ? 'border-blue-600 text-blue-600'
+                    : 'border-transparent text-gray-500 hover:text-gray-800'
+                }`}
+              >
+                🏷️ Print Parcel Tag
+              </button>
+            </div>
 
-              <div className="border-t-2 border-black pt-4 space-y-3">
-                <div>
-                  <p className="text-xs font-bold uppercase tracking-widest text-gray-500 print:text-black mb-1">Deliver To:</p>
-                  <div className="text-lg font-bold leading-snug">
-                    {selectedTxn.buyer_name || 'N/A'}<br />
-                    {selectedTxn.buyer_phone}<br />
-                    {selectedTxn.buyer_email || 'No email'}<br />
-                    {selectedTxn.shipping_address || 'No address provided'}
+            {/* Tab 1: AUDIT & FINANCIAL DETAILS */}
+            {activeDetailTab === 'AUDIT' && (
+              <div className="p-6 overflow-y-auto space-y-5 text-xs text-gray-700 print:hidden flex-1">
+                {/* Financial Overview */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 grid grid-cols-3 gap-3">
+                  <div>
+                    <span className="text-gray-400 font-mono text-[10px] block">TOTAL BUYER PAID</span>
+                    <span className="font-black text-gray-900 text-sm">GHS {Number(selectedTxn.total_amount_ghs).toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 font-mono text-[10px] block">PLATFORM FEE</span>
+                    <span className="font-bold text-gray-700 text-xs">GHS {Number(selectedTxn.platform_fee_ghs || 0).toFixed(2)}</span>
+                  </div>
+                  <div>
+                    <span className="text-gray-400 font-mono text-[10px] block">SHIPPING FEE</span>
+                    <span className="font-bold text-gray-700 text-xs">GHS {Number(selectedTxn.shipping_fee_ghs || 0).toFixed(2)}</span>
                   </div>
                 </div>
+
+                {/* Status & Milestones */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2">
+                  <div className="flex justify-between items-center border-b border-gray-200 pb-2">
+                    <span className="font-bold text-gray-700">Order Status:</span>
+                    <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
+                      STATUS_CONFIG[selectedTxn.status]?.bg || 'bg-gray-100'
+                    } ${STATUS_CONFIG[selectedTxn.status]?.color || 'text-gray-800'}`}>
+                      {STATUS_CONFIG[selectedTxn.status]?.label || selectedTxn.status}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 pt-1 font-mono">
+                    <div>Created: {new Date(selectedTxn.created_at).toLocaleString()}</div>
+                    <div>Dispatched: {selectedTxn.dispatched_at ? new Date(selectedTxn.dispatched_at).toLocaleString() : 'Not Dispatched'}</div>
+                    <div>Delivered: {selectedTxn.delivered_at ? new Date(selectedTxn.delivered_at).toLocaleString() : 'Not Delivered'}</div>
+                    <div>Inspection Start: {selectedTxn.inspection_starts_at ? new Date(selectedTxn.inspection_starts_at).toLocaleString() : 'N/A'}</div>
+                  </div>
+                </div>
+
+                {/* Refund & Dispute Audit Section */}
+                {(selectedTxn.status === 'REFUNDED' || selectedTxn.status === 'CANCELLED' || selectedTxn.status === 'DISPUTED') && (
+                  <div className="bg-red-50/70 border border-red-200 p-4 rounded-xl space-y-3">
+                    <div className="flex items-center gap-2 text-red-700 font-bold border-b border-red-200 pb-2">
+                      <AlertTriangle className="h-4 w-4" />
+                      <span>Settlement & Refund Audit Details</span>
+                    </div>
+
+                    {selectedTxn.status === 'REFUNDED' && (
+                      <div className="space-y-1.5 text-xs text-red-900">
+                        <p className="font-semibold">
+                          • Dispute Settlement: Payouts executed per arbitration ruling within 24 hours.
+                        </p>
+                        <p className="text-[11px] text-red-700">
+                          • Buyer refund amounts are processed directly to their original payment method (Paystack MoMo/Card).
+                        </p>
+                      </div>
+                    )}
+
+                    {selectedTxn.status === 'CANCELLED' && (
+                      <div className="space-y-1.5 text-xs text-red-900">
+                        <p className="font-semibold">
+                          • Order Cancelled: 100% full refund returned to the buyer via original payment medium.
+                        </p>
+                        <p className="text-[11px] text-red-700">
+                          • Note: Non-dispatch after 4 days automatically incurs platform fee + 1.95% Paystack charges penalty.
+                        </p>
+                      </div>
+                    )}
+
+                    {/* Manager Ruling Notes */}
+                    {selectedTxn.manager_dispute_notes && (
+                      <div className="bg-white p-3 rounded-lg border border-red-200 text-xs space-y-1">
+                        <span className="font-mono text-red-600 font-bold uppercase text-[10px] block">Manager Ruling Notes:</span>
+                        <p className="text-gray-800">{selectedTxn.manager_dispute_notes}</p>
+                        {selectedTxn.manager_dispute_photos && selectedTxn.manager_dispute_photos.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {selectedTxn.manager_dispute_photos.map((url, idx) => (
+                              <img key={idx} src={url} alt="Manager ruling proof" className="w-12 h-12 object-cover rounded border" />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Buyer Claim */}
+                    {selectedTxn.buyer_dispute_reason && (
+                      <div className="bg-white p-3 rounded-lg border border-red-200 text-xs space-y-1">
+                        <span className="font-mono text-red-600 font-bold uppercase text-[10px] block">Buyer Claim:</span>
+                        <p className="text-gray-800">{selectedTxn.buyer_dispute_reason}</p>
+                        {selectedTxn.buyer_dispute_photos && selectedTxn.buyer_dispute_photos.length > 0 && (
+                          <div className="flex flex-wrap gap-1.5 pt-1">
+                            {selectedTxn.buyer_dispute_photos.map((url, idx) => (
+                              <img key={idx} src={url} alt="Buyer proof" className="w-12 h-12 object-cover rounded border" />
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Logistics Details & Waybill Photo */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-2">
+                  <span className="font-bold text-gray-800 block">Logistics & Dispatch Proof</span>
+                  {selectedTxn.delivery_method ? (
+                    <div className="space-y-1 text-xs text-gray-600">
+                      <p>Method: <strong className="text-gray-900">{selectedTxn.delivery_method === 'INFORMAL_BUS' ? '🚌 Station / Bus OTP' : '📦 Courier API'}</strong></p>
+                      {selectedTxn.courier_name && <p>Courier: {selectedTxn.courier_name} (#{selectedTxn.tracking_number})</p>}
+                      {selectedTxn.driver_phone && <p>Driver: {selectedTxn.driver_phone} | Car: {selectedTxn.driver_car_number || 'N/A'} | Station: {selectedTxn.destination_station}</p>}
+                    </div>
+                  ) : (
+                    <p className="text-gray-400 italic">Not dispatched yet.</p>
+                  )}
+
+                  {selectedTxn.waybill_photo_url && (
+                    <div className="pt-2">
+                      <span className="text-[10px] font-mono font-bold text-gray-500 block mb-1 uppercase">Dispatch Waybill Photo:</span>
+                      <img
+                        src={selectedTxn.waybill_photo_url}
+                        alt="Waybill proof"
+                        className="w-20 h-20 object-cover rounded-lg border border-gray-300"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                {/* Buyer Information */}
+                <div className="bg-gray-50 p-4 rounded-xl border border-gray-200 space-y-1 text-xs">
+                  <span className="font-bold text-gray-800 block mb-1">Buyer Details</span>
+                  <p className="font-semibold text-gray-900">{selectedTxn.buyer_name || 'N/A'}</p>
+                  <p className="font-mono text-gray-600">{selectedTxn.buyer_phone}</p>
+                  <p className="text-gray-500">{selectedTxn.buyer_email}</p>
+                  <p className="text-gray-600 mt-1">{selectedTxn.shipping_address}</p>
+                </div>
               </div>
-              
-              <div className="pt-4 text-center">
-                <p className="text-[10px] uppercase font-bold tracking-widest text-gray-400 print:text-black border border-gray-300 print:border-black inline-block px-3 py-1 rounded-full print:rounded-none">
-                  HendAxis Trust Secure Escrow
-                </p>
+            )}
+
+            {/* Tab 2: PRINT PARCEL TAG */}
+            <div className={activeDetailTab === 'TAG' ? 'block' : 'hidden print:block'}>
+              {/* Printable Area */}
+              <div className="p-6 print:p-4 space-y-4 font-sans text-black bg-white">
+                <div className="border-b-2 border-black pb-4 text-center">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-500 print:text-black mb-1">Transaction ID</p>
+                  <p className="text-2xl font-black font-mono tracking-tight">{selectedTxn.paystack_reference}</p>
+                </div>
+                
+                <div className="text-center py-2">
+                  <p className="text-xs font-bold uppercase tracking-widest text-gray-500 print:text-black mb-1">Contact Phone</p>
+                  <p className="text-3xl font-black">{selectedTxn.buyer_phone}</p>
+                </div>
+
+                <div className="border-t-2 border-black pt-4 space-y-3">
+                  <div>
+                    <p className="text-xs font-bold uppercase tracking-widest text-gray-500 print:text-black mb-1">Deliver To:</p>
+                    <div className="text-lg font-bold leading-snug">
+                      {selectedTxn.buyer_name || 'N/A'}<br />
+                      {selectedTxn.buyer_phone}<br />
+                      {selectedTxn.buyer_email || 'No email'}<br />
+                      {selectedTxn.shipping_address || 'No address provided'}
+                    </div>
+                  </div>
+                </div>
+                
+                <div className="pt-4 text-center">
+                  <p className="text-[10px] uppercase font-bold tracking-widest text-gray-400 print:text-black border border-gray-300 print:border-black inline-block px-3 py-1 rounded-full print:rounded-none">
+                    HendAxis Trust Secure Escrow
+                  </p>
+                </div>
               </div>
             </div>
 
             {/* Modal Footer - Hidden on print */}
-            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3 print:hidden">
+            <div className="px-6 py-4 bg-gray-50 border-t border-gray-100 flex gap-3 flex-shrink-0 print:hidden">
               <button 
-                onClick={() => setSelectedTxn(null)}
-                className="flex-1 py-2.5 px-4 bg-white border border-gray-300 rounded-lg text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
+                onClick={() => { setSelectedTxn(null); setActiveDetailTab('AUDIT'); }}
+                className="flex-1 py-2.5 px-4 bg-white border border-gray-300 rounded-xl text-sm font-medium text-gray-700 hover:bg-gray-50 transition"
               >
                 Close
               </button>
-              <button 
-                onClick={handlePrint}
-                className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-lg text-sm font-medium hover:bg-blue-700 transition flex items-center justify-center gap-2"
-              >
-                <Printer className="h-4 w-4" /> Print Tag
-              </button>
+              {activeDetailTab === 'TAG' && (
+                <button 
+                  onClick={handlePrint}
+                  className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
+                >
+                  <Printer className="h-4 w-4" /> Print Tag
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -106,3 +106,36 @@ def test_resolve_dispute_release(admin_client, disputed_transaction, admin_user,
             disputed_transaction.refresh_from_db()
             assert disputed_transaction.status == TransactionStatus.COMPLETED
             mock_release.assert_called_once()
+
+@pytest.mark.django_db
+def test_get_pending_seller_verifications(admin_client, admin_user):
+    with patch('apps.escrow.api.is_admin_user') as mock_is_admin, \
+         patch('ninja_jwt.authentication.JWTAuth.__call__') as mock_auth:
+        mock_is_admin.return_value = True
+        mock_auth.return_value = admin_user
+        res = admin_client.get("/verifications")
+        assert res.status_code == 200
+        assert isinstance(res.json(), list)
+
+@pytest.mark.django_db
+def test_resolve_dispute_partial_refund(admin_client, disputed_transaction, admin_user, system_accounts, seller_user):
+    with patch('apps.escrow.api.is_admin_user') as mock_is_admin, \
+         patch('ninja_jwt.authentication.JWTAuth.__call__') as mock_auth:
+        mock_is_admin.return_value = True
+        mock_auth.return_value = admin_user
+        
+        # Max allocatable is 100.00 - 11.50 = 88.50
+        res = admin_client.post(
+            f"/disputes/{disputed_transaction.id}/resolve",
+            json={
+                "action": "PARTIAL_REFUND_TO_BUYER",
+                "refund_amount_ghs": 50.0,
+                "seller_amount_ghs": 38.5,
+                "platform_retained_fee_ghs": 11.5
+            }
+        )
+        assert res.status_code == 200
+        assert "24 hours" in res.json()["message"]
+        
+        disputed_transaction.refresh_from_db()
+        assert disputed_transaction.status == TransactionStatus.REFUNDED

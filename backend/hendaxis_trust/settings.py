@@ -180,6 +180,10 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.escrow.tasks.process_auto_deliveries',
         'schedule': 900.0, # 15 minutes
     },
+    'check-expired-dispatches-every-15-mins': {
+        'task': 'apps.escrow.tasks.check_expired_dispatches',
+        'schedule': 900.0, # 15 minutes
+    },
 }
 
 # CORS Configuration

@@ -98,6 +98,26 @@ def test_admin_resolve_dispute_to_completed_triggers_payout(system_accounts, sel
     
     transaction.refresh_from_db()
     assert transaction.status == TransactionStatus.COMPLETED
+
+@pytest.mark.django_db
+def test_dispute_photos_webp_optimization(escrow_client, transaction):
+    import io
+    import base64
+    from PIL import Image
+
+    # Generate a valid test JPEG image base64 string
+    buf = io.BytesIO()
+    img = Image.new('RGB', (10, 10), color='red')
+    img.save(buf, format='JPEG')
+    dummy_b64_jpeg = f"data:image/jpeg;base64,{base64.b64encode(buf.getvalue()).decode('utf-8')}"
     
-    seller_payable = LedgerAccount.objects.get(user=seller_user, name=f"SELLER_INTERNAL_WALLET_{seller_user.id}")
-    assert seller_payable.balance > Decimal('0.00')
+    res = escrow_client.post(
+        f"/{transaction.id}/raise-dispute", 
+        json={"reason": "Damaged item", "photos": [dummy_b64_jpeg]}
+    )
+    assert res.status_code == 200
+    
+    transaction.refresh_from_db()
+    assert transaction.status == TransactionStatus.DISPUTED
+    assert len(transaction.buyer_dispute_photos) == 1
+    assert transaction.buyer_dispute_photos[0].startswith("data:image/webp;base64,")

@@ -25,6 +25,8 @@ class SellerTransactionSchema(Schema):
     id: uuid.UUID
     status: str
     total_amount_ghs: float
+    platform_fee_ghs: Optional[float] = 0.0
+    shipping_fee_ghs: Optional[float] = 0.0
     buyer_name: str
     buyer_phone: str
     buyer_email: str
@@ -36,6 +38,13 @@ class SellerTransactionSchema(Schema):
     inspection_starts_at: Optional[str] = None
     delivery_method: Optional[str] = None
     dispatched_at: Optional[str] = None
+    delivered_at: Optional[str] = None
+    waybill_photo_url: Optional[str] = None
+    courier_name: Optional[str] = None
+    tracking_number: Optional[str] = None
+    driver_phone: Optional[str] = None
+    driver_car_number: Optional[str] = None
+    destination_station: Optional[str] = None
     buyer_dispute_reason: Optional[str] = None
     buyer_dispute_photos: Optional[list[str]] = []
     seller_dispute_response: Optional[str] = None
@@ -74,31 +83,43 @@ def get_seller_transactions(request, search: str = None, status: str = None, sta
             txns = txns.filter(created_at__lte=date_obj)
         except ValueError:
             pass
+
+    items = []
+    for t in txns.prefetch_related('delivery_logs'):
+        latest_log = t.delivery_logs.order_by('-created_at').first()
+        items.append({
+            "id": t.id,
+            "status": t.status,
+            "total_amount_ghs": float(t.total_amount_ghs),
+            "platform_fee_ghs": float(t.platform_fee_ghs or 0.0),
+            "shipping_fee_ghs": float(t.link.shipping_fee_ghs or 0.0),
+            "buyer_name": t.buyer_name,
+            "buyer_phone": t.buyer_phone,
+            "buyer_email": t.buyer_email,
+            "shipping_address": t.shipping_address,
+            "title": t.link.title,
+            "created_at": str(t.created_at),
+            "paystack_reference": t.paystack_reference,
+            "link_id": t.link.id,
+            "inspection_starts_at": t.inspection_starts_at.isoformat() if t.inspection_starts_at else None,
+            "delivery_method": latest_log.delivery_method if latest_log else None,
+            "dispatched_at": t.dispatched_at.isoformat() if t.dispatched_at else None,
+            "delivered_at": t.delivered_at.isoformat() if t.delivered_at else None,
+            "waybill_photo_url": latest_log.waybill_photo_url if latest_log else None,
+            "courier_name": latest_log.courier_name if latest_log else None,
+            "tracking_number": latest_log.tracking_number if latest_log else None,
+            "driver_phone": latest_log.driver_phone if latest_log else None,
+            "driver_car_number": latest_log.driver_car_number if latest_log else None,
+            "destination_station": latest_log.destination_station if latest_log else None,
+            "buyer_dispute_reason": t.buyer_dispute_reason,
+            "buyer_dispute_photos": t.buyer_dispute_photos or [],
+            "seller_dispute_response": t.seller_dispute_response,
+            "seller_dispute_photos": t.seller_dispute_photos or [],
+            "manager_dispute_notes": t.manager_dispute_notes,
+            "manager_dispute_photos": t.manager_dispute_photos or [],
+        })
             
-    return [{
-        "id": t.id,
-        "status": t.status,
-        "total_amount_ghs": float(t.total_amount_ghs),
-        "buyer_name": t.buyer_name,
-        "buyer_phone": t.buyer_phone,
-        "buyer_email": t.buyer_email,
-        "shipping_address": t.shipping_address,
-        "title": t.link.title,
-        "created_at": str(t.created_at),
-        "paystack_reference": t.paystack_reference,
-        "link_id": t.link.id,
-        "inspection_starts_at": t.inspection_starts_at.isoformat() if t.inspection_starts_at else None,
-        "delivery_method": (
-            t.delivery_logs.order_by('-created_at').values_list('delivery_method', flat=True).first()
-        ),
-        "dispatched_at": t.dispatched_at.isoformat() if t.dispatched_at else None,
-        "buyer_dispute_reason": t.buyer_dispute_reason,
-        "buyer_dispute_photos": t.buyer_dispute_photos or [],
-        "seller_dispute_response": t.seller_dispute_response,
-        "seller_dispute_photos": t.seller_dispute_photos or [],
-        "manager_dispute_notes": t.manager_dispute_notes,
-        "manager_dispute_photos": t.manager_dispute_photos or [],
-    } for t in txns.prefetch_related('delivery_logs')]
+    return items
 
 
 class SellerDispatchSchema(Schema):
@@ -128,6 +149,12 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
     from apps.delivery.services import transition_to_delivery, generate_delivery_otp
     from apps.delivery.models import DeliveryLog, DeliveryMethod
 
+    waybill_photo = data.waybill_photo_url or ""
+    if waybill_photo and waybill_photo.startswith('data:image'):
+        opt = process_and_optimize_dispute_photos([waybill_photo])
+        if opt:
+            waybill_photo = opt[0]
+
     if data.delivery_method == 'COURIER_API':
         if not data.courier_name or not data.tracking_number:
             raise HttpError(400, "courier_name and tracking_number are required for courier dispatch.")
@@ -137,7 +164,7 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
             delivery_method=DeliveryMethod.COURIER_API,
             courier_name=data.courier_name,
             tracking_number=data.tracking_number,
-            waybill_photo_url=data.waybill_photo_url or "",
+            waybill_photo_url=waybill_photo,
         )
         from apps.core.tasks import dispatch_sms_task, dispatch_email_task
         courier_msg = (
@@ -161,7 +188,7 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
             driver_phone=data.driver_phone,
             driver_car_number=data.driver_car_number,
             destination_station=data.destination_station,
-            waybill_photo_url=data.waybill_photo_url or "",
+            waybill_photo_url=waybill_photo,
         )
         generate_delivery_otp(str(transaction.id))
         return {"message": "Dispatched via informal bus. Buyer has been sent driver info and Secret OTP via SMS."}
@@ -417,9 +444,6 @@ def send_confirmation_code(request, transaction_id: uuid.UUID):
         raise HttpError(400, "Cannot send confirmation code for this transaction state.")
     
     code = str(random.randint(100000, 999999))
-    print(f"==================================================")
-    print(f"DEV Confirmation Code for {transaction.paystack_reference}: {code}")
-    print(f"==================================================")
     transaction.delivery_confirmation_code = code
     transaction.save(update_fields=['delivery_confirmation_code'])
     
@@ -453,7 +477,52 @@ def confirm_receipt(request, transaction_id: uuid.UUID, data: ConfirmReceiptSche
 
     _notify_buyer_inspection_started(transaction)
     
-    return {"message": "Receipt confirmed. Order is now in Inspection Mode."}
+def process_and_optimize_dispute_photos(photos: list[str], max_dim: int = 1200, quality: int = 75) -> list[str]:
+    """
+    Converts list of base64 image strings to optimized WebP format (data:image/webp;base64,...),
+    resizing to max_dim pixels if necessary. Reduces storage cost and network payload size.
+    """
+    import io
+    import base64
+    from PIL import Image
+
+    if not photos:
+        return []
+
+    optimized_photos = []
+    for raw_photo in photos:
+        if not isinstance(raw_photo, str) or not raw_photo.strip():
+            continue
+        if not raw_photo.startswith('data:image'):
+            optimized_photos.append(raw_photo)
+            continue
+        try:
+            header, encoded = raw_photo.split(',', 1) if ',' in raw_photo else ('data:image/jpeg;base64', raw_photo)
+            img_data = base64.b64decode(encoded)
+            img = Image.open(io.BytesIO(img_data))
+
+            w, h = img.size
+            if w > max_dim or h > max_dim:
+                if w > h:
+                    new_h = max(1, int(h * (max_dim / w)))
+                    new_w = max_dim
+                else:
+                    new_w = max(1, int(w * (max_dim / h)))
+                    new_h = max_dim
+                img = img.resize((new_w, new_h), Image.Resampling.LANCZOS)
+
+            if img.mode not in ('RGB', 'RGBA'):
+                img = img.convert('RGB')
+
+            buf = io.BytesIO()
+            img.save(buf, format='WEBP', quality=quality, method=4)
+            b64_str = base64.b64encode(buf.getvalue()).decode('utf-8')
+            optimized_photos.append(f"data:image/webp;base64,{b64_str}")
+        except Exception as e:
+            print(f"Error optimizing photo to WebP: {e}")
+            optimized_photos.append(raw_photo)
+
+    return optimized_photos
 
 
 def compress_dispute_images_total_1mb(transaction):
@@ -598,9 +667,11 @@ def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSc
     if len(photos) > 5:
         raise HttpError(400, "Maximum of 5 evidence photos allowed.")
         
+    photos = process_and_optimize_dispute_photos(photos[:5])
+
     transaction.status = TransactionStatus.DISPUTED
     transaction.buyer_dispute_reason = data.reason
-    transaction.buyer_dispute_photos = photos[:5]
+    transaction.buyer_dispute_photos = photos
     transaction.save(update_fields=['status', 'buyer_dispute_reason', 'buyer_dispute_photos', 'updated_at'])
     
     # Auto-clear/Deactivate any review submitted by the buyer for this transaction
@@ -655,8 +726,10 @@ def seller_dispute_response(request, transaction_id: uuid.UUID, data: SellerDisp
     if len(photos) > 5:
         raise HttpError(400, "Maximum of 5 evidence photos allowed.")
         
+    photos = process_and_optimize_dispute_photos(photos[:5])
+
     transaction.seller_dispute_response = data.response
-    transaction.seller_dispute_photos = photos[:5]
+    transaction.seller_dispute_photos = photos
     transaction.save(update_fields=['seller_dispute_response', 'seller_dispute_photos', 'updated_at'])
     
     return {"message": "Seller dispute response and evidence photos submitted successfully."}
@@ -737,6 +810,7 @@ def get_disputes(request):
             "tracking_number": log.tracking_number if log else None,
             "driver_phone": log.driver_phone if log else None,
             "destination_station": log.destination_station if log else None,
+            "waybill_photo_url": log.waybill_photo_url if log else None,
             "buyer_id_photo_url": log.buyer_id_photo_url if log else None,
         })
     return res
@@ -755,7 +829,7 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
     if data.admin_notes:
         transaction.manager_dispute_notes = data.admin_notes
     if manager_photos:
-        transaction.manager_dispute_photos = manager_photos[:5]
+        transaction.manager_dispute_photos = process_and_optimize_dispute_photos(manager_photos[:5])
         
     if data.action == "RELEASE_TO_SELLER":
         transaction.status = TransactionStatus.COMPLETED
@@ -781,19 +855,16 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
         from decimal import Decimal
         refund_val = Decimal(str(data.refund_amount_ghs or 0.0))
         seller_val = Decimal(str(data.seller_amount_ghs or 0.0))
-        fee_val = Decimal(str(data.platform_retained_fee_ghs or 0.0))
+        requested_fee = Decimal(str(data.platform_retained_fee_ghs or 0.0))
         
-        total_split = refund_val + seller_val + fee_val
+        total_split = refund_val + seller_val + requested_fee
         if total_split > transaction.total_amount_ghs:
             raise HttpError(
                 400, 
-                f"The sum of buyer refund (GHS {refund_val:.2f}), seller payout (GHS {seller_val:.2f}), and platform fee (GHS {fee_val:.2f}) is GHS {total_split:.2f}, which exceeds the total amount paid by the buyer (GHS {transaction.total_amount_ghs:.2f})."
+                f"The total allocated (GHS {total_split:.2f}) exceeds the total amount paid by the buyer (GHS {transaction.total_amount_ghs:.2f})."
             )
             
-        # Any remaining unallocated funds are attributed to platform retained fee
-        leftover = transaction.total_amount_ghs - total_split
-        if leftover > 0:
-            fee_val += leftover
+        fee_val = requested_fee + max(Decimal('0.00'), transaction.total_amount_ghs - total_split)
 
         from apps.ledger.services import execute_partial_refund
         execute_partial_refund(
@@ -807,20 +878,22 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
         transaction.save()
         
         from apps.core.tasks import dispatch_sms_task, dispatch_email_task
-        b_msg = f"Partial Refund Processed: GHS {refund_val:.2f} has been refunded for order {transaction.paystack_reference} ({transaction.link.title})."
-        dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
-        if transaction.buyer_email:
-            dispatch_email_task.delay(transaction.buyer_email, "Partial Refund Issued", b_msg)
+        if refund_val > 0:
+            b_msg = f"Dispute Refund Processed: A refund of GHS {refund_val:.2f} for order {transaction.paystack_reference} ({transaction.link.title}) has been queued to your original payment method and will be completed within 24 hours."
+            dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
+            if transaction.buyer_email:
+                dispatch_email_task.delay(transaction.buyer_email, "Dispute Refund Scheduled (24-Hour Settlement)", b_msg)
             
-        s_msg = f"Dispute Partial Settlement: GHS {seller_val:.2f} has been credited to your wallet for order {transaction.paystack_reference}."
-        seller = transaction.link.seller
-        s_phone = getattr(seller, 'phone_number', None)
-        s_email = getattr(seller, 'email', None)
-        if s_phone: dispatch_sms_task.delay(s_phone, s_msg)
-        if s_email: dispatch_email_task.delay(s_email, "Partial Refund Settlement", s_msg)
+        if seller_val > 0:
+            s_msg = f"Dispute Settlement: GHS {seller_val:.2f} has been credited for order {transaction.paystack_reference}. Disbursement to your registered payout account will process within 24 hours."
+            seller = transaction.link.seller
+            s_phone = getattr(seller, 'phone_number', None)
+            s_email = getattr(seller, 'email', None)
+            if s_phone: dispatch_sms_task.delay(s_phone, s_msg)
+            if s_email: dispatch_email_task.delay(s_email, "Dispute Settlement Credit (24-Hour Payout)", s_msg)
 
         compress_dispute_images_total_1mb(transaction)
-        return {"message": f"Partial refund executed: GHS {refund_val:.2f} to buyer, GHS {seller_val:.2f} to seller, GHS {fee_val:.2f} retained by platform."}
+        return {"message": f"Dispute settlement processed successfully. Payouts scheduled within 24 hours: GHS {refund_val:.2f} to buyer via original payment method, GHS {seller_val:.2f} to seller."}
     
     raise HttpError(400, "Invalid action")
 
@@ -891,25 +964,32 @@ def get_transaction_detail_admin(request, id: uuid.UUID):
         "driver_phone": l.driver_phone,
         "driver_car_number": l.driver_car_number,
         "destination_station": l.destination_station,
+        "waybill_photo_url": l.waybill_photo_url,
         "buyer_id_photo_url": l.buyer_id_photo_url,
         "created_at": l.created_at.isoformat(),
     } for l in t.delivery_logs.order_by('-created_at')]
     
     from apps.ledger.models import LedgerEntry
+    entries_qs = LedgerEntry.objects.filter(reference_id=t.id).select_related('debit_account', 'credit_account').order_by('timestamp')
     ledger_entries = [{
         "id": str(e.id),
         "entry_type": e.entry_type,
-        "debit_account": e.debit_account.name,
-        "credit_account": e.credit_account.name,
+        "debit_account": e.debit_account.name if e.debit_account else "N/A",
+        "credit_account": e.credit_account.name if e.credit_account else "N/A",
         "amount_ghs": float(e.amount_ghs),
-        "created_at": e.created_at.isoformat(),
-    } for e in LedgerEntry.objects.filter(reference_id=str(t.id)).order_by('created_at')]
+        "created_at": e.timestamp.isoformat(),
+    } for e in entries_qs]
+    
+    latest_log = t.delivery_logs.order_by('-created_at').first()
+    waybill_url = latest_log.waybill_photo_url if latest_log else None
     
     return {
         "id": str(t.id),
         "paystack_reference": t.paystack_reference,
         "title": t.link.title,
         "description": t.link.description,
+        "shipping_fee_ghs": float(t.link.shipping_fee_ghs or 0.0),
+        "waybill_photo_url": waybill_url,
         "seller": {
             "id": str(t.link.seller.id),
             "username": t.link.seller.username,
@@ -1105,7 +1185,8 @@ class RejectVerificationSchema(Schema):
 
 @admin_router.get("/verifications", response=List[dict])
 def get_pending_seller_verifications(request):
-    _verify_admin_access(request.user)
+    is_admin_user(request)
+    from apps.users.models import User
     users = User.objects.exclude(verification_status='UNSUBMITTED').order_by('-date_joined')
     return [
         {

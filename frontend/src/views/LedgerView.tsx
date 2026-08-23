@@ -107,12 +107,18 @@ export const LedgerView: React.FC = () => {
     }
   };
 
+  const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
+
   const ENTRY_TYPE_LABELS: Record<string, string> = {
-    ESCROW_RELEASE_NET: 'Sale Credit',
-    REFUND_FEE_PENALTY: 'Refund Penalty',
-    SELLER_WITHDRAWAL_REQUEST: 'Withdrawal',
-    PAYSTACK_PAYOUT_FEE: 'Transfer Fee',
-    PAYSTACK_REFUND_FEE: 'Refund Transfer Fee',
+    ESCROW_RELEASE_NET: 'Sale Payout Credit',
+    PARTIAL_REFUND_SELLER: 'Partial Dispute Payout Credit',
+    REFUND_FEE_PENALTY: 'Dispute Refund Penalty',
+    NON_DISPATCH_SELLER_PENALTY_PLATFORM_FEE: 'Non-Dispatch Penalty (Platform Fee)',
+    NON_DISPATCH_SELLER_PENALTY_GATEWAY_FEE: 'Non-Dispatch Penalty (Gateway Fee)',
+    SHOP_PROMOTION_AD_FEE: 'Shop Promotion Ad Fee',
+    SELLER_WITHDRAWAL_REQUEST: 'Payout Withdrawal',
+    PAYSTACK_PAYOUT_FEE: 'Transfer Gateway Fee',
+    PAYSTACK_REFUND_FEE: 'Refund Gateway Fee',
   };
 
   return (
@@ -346,49 +352,76 @@ export const LedgerView: React.FC = () => {
               <tr>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Date & Time</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Description</th>
+                <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Txn Reference</th>
                 <th scope="col" className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Type</th>
                 <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Amount (GHS)</th>
+                <th scope="col" className="px-6 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Details</th>
               </tr>
             </thead>
             <tbody className="bg-white divide-y divide-gray-200">
               {loading ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center">
+                  <td colSpan={6} className="px-6 py-12 text-center">
                     <Loader2 className="h-8 w-8 animate-spin text-blue-500 mx-auto" />
-                    <p className="mt-2 text-sm text-gray-500">Loading ledger...</p>
+                    <p className="mt-2 text-sm text-gray-500">Loading ledger entries...</p>
                   </td>
                 </tr>
               ) : entries.length === 0 ? (
                 <tr>
-                  <td colSpan={4} className="px-6 py-12 text-center">
+                  <td colSpan={6} className="px-6 py-12 text-center">
                     <p className="text-sm font-medium text-gray-900">No ledger entries found</p>
                     <p className="text-sm text-gray-500 mt-1">Your transaction history will appear here.</p>
                   </td>
                 </tr>
               ) : (
                 entries.map((entry) => (
-                  <tr key={entry.id} className="hover:bg-gray-50">
-                    <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                  <tr 
+                    key={entry.id} 
+                    onClick={() => setSelectedEntry(entry)}
+                    className="hover:bg-blue-50/50 cursor-pointer transition-colors"
+                  >
+                    <td className="px-6 py-4 whitespace-nowrap text-xs text-gray-500">
                       {new Date(entry.timestamp).toLocaleString()}
                     </td>
-                    <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-gray-900">
+                    <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-900">
                       {ENTRY_TYPE_LABELS[entry.entry_type] || entry.entry_type.replace(/_/g, ' ')}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
+                      {entry.paystack_reference ? (
+                        <span className="font-mono text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-1 rounded-lg">
+                          {entry.paystack_reference}
+                        </span>
+                      ) : entry.reference_id ? (
+                        <span className="font-mono text-xs text-gray-500 bg-gray-100 px-2 py-0.5 rounded">
+                          {entry.reference_id.slice(0, 8)}...
+                        </span>
+                      ) : (
+                        <span className="text-xs text-gray-400 italic">System Entry</span>
+                      )}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap">
                       {entry.type === 'CREDIT' ? (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-green-100 text-green-800">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-800">
                           <ArrowDownLeft className="mr-1 h-3 w-3" />
                           IN
                         </span>
                       ) : (
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-red-100 text-red-800">
+                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-800">
                           <ArrowUpRight className="mr-1 h-3 w-3" />
                           OUT
                         </span>
                       )}
                     </td>
-                    <td className={`px-6 py-4 whitespace-nowrap text-right text-sm font-bold font-mono ${entry.type === 'CREDIT' ? 'text-green-700' : 'text-red-600'}`}>
+                    <td className={`px-6 py-4 whitespace-nowrap text-right text-xs font-bold font-mono ${entry.type === 'CREDIT' ? 'text-green-700' : 'text-red-600'}`}>
                       {entry.type === 'CREDIT' ? '+' : '-'}{Number(entry.amount_ghs).toFixed(2)}
+                    </td>
+                    <td className="px-6 py-4 whitespace-nowrap text-right text-xs">
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setSelectedEntry(entry); }}
+                        className="py-1 px-2.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100 text-xs font-bold transition inline-flex items-center gap-1"
+                      >
+                        View Details
+                      </button>
                     </td>
                   </tr>
                 ))
@@ -399,21 +432,21 @@ export const LedgerView: React.FC = () => {
         
         {!loading && totalCount > limit && (
           <div className="bg-white px-6 py-3 border-t border-gray-200 flex items-center justify-between">
-            <p className="text-sm text-gray-700">
+            <p className="text-xs text-gray-700">
               Showing <span className="font-medium">{offset + 1}</span> to <span className="font-medium">{Math.min(offset + limit, totalCount)}</span> of <span className="font-medium">{totalCount}</span> results
             </p>
             <nav className="inline-flex rounded-lg shadow-sm border border-gray-200 overflow-hidden">
               <button
                 onClick={() => handlePageChange(Math.max(0, offset - limit))}
                 disabled={offset === 0}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 border-r border-gray-200"
+                className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40 border-r border-gray-200"
               >
                 ← Previous
               </button>
               <button
                 onClick={() => handlePageChange(offset + limit)}
                 disabled={offset + limit >= totalCount}
-                className="px-4 py-2 text-sm font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
+                className="px-3 py-1.5 text-xs font-medium text-gray-600 hover:bg-gray-50 disabled:opacity-40"
               >
                 Next →
               </button>
@@ -421,6 +454,141 @@ export const LedgerView: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Transaction & Ledger Entry Inspection Modal */}
+      {selectedEntry && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden relative">
+            
+            {/* Header */}
+            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
+              <div className="flex items-center gap-2.5">
+                <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+                  <Wallet className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-bold text-gray-900">Ledger Entry Audit</h3>
+                  <p className="text-xs text-gray-500 font-mono">ID: {selectedEntry.id.slice(0, 18)}...</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setSelectedEntry(null)}
+                className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-6 overflow-y-auto space-y-4 text-xs">
+              
+              {/* Entry Amount & Type Card */}
+              <div className={`p-4 rounded-xl border flex items-center justify-between ${
+                selectedEntry.type === 'CREDIT' ? 'bg-green-50/80 border-green-200' : 'bg-red-50/80 border-red-200'
+              }`}>
+                <div>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Entry Type</span>
+                  <span className="text-sm font-bold text-gray-900">
+                    {ENTRY_TYPE_LABELS[selectedEntry.entry_type] || selectedEntry.entry_type.replace(/_/g, ' ')}
+                  </span>
+                  <span className="text-[11px] text-gray-500 block mt-0.5">
+                    {new Date(selectedEntry.timestamp).toLocaleString()}
+                  </span>
+                </div>
+                <div className="text-right">
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 block">Amount</span>
+                  <span className={`text-lg font-black font-mono ${selectedEntry.type === 'CREDIT' ? 'text-green-700' : 'text-red-600'}`}>
+                    {selectedEntry.type === 'CREDIT' ? '+' : '-'}GHS {Number(selectedEntry.amount_ghs).toFixed(2)}
+                  </span>
+                </div>
+              </div>
+
+              {/* Transaction Reference Section */}
+              <div className="bg-gray-50 rounded-xl p-3.5 border border-gray-200 space-y-2">
+                <span className="font-bold text-gray-700 block uppercase text-[10px]">Transaction & Reference Details</span>
+                <div className="flex justify-between items-center">
+                  <span className="text-gray-500">Paystack Reference:</span>
+                  {selectedEntry.paystack_reference ? (
+                    <span className="font-mono font-bold text-blue-700 bg-blue-100 px-2 py-0.5 rounded">
+                      {selectedEntry.paystack_reference}
+                    </span>
+                  ) : (
+                    <span className="text-gray-400 italic">N/A (System Direct Entry)</span>
+                  )}
+                </div>
+                {selectedEntry.reference_id && (
+                  <div className="flex justify-between items-center">
+                    <span className="text-gray-500">System Reference UUID:</span>
+                    <span className="font-mono text-[11px] text-gray-700">{selectedEntry.reference_id}</span>
+                  </div>
+                )}
+              </div>
+
+              {/* Order & Buyer Details (if available) */}
+              {selectedEntry.transaction_title ? (
+                <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3 shadow-sm">
+                  <div className="border-b border-gray-100 pb-2 flex justify-between items-center">
+                    <span className="font-bold text-gray-900 text-sm">{selectedEntry.transaction_title}</span>
+                    {selectedEntry.status && (
+                      <span className="px-2 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 text-blue-700 border border-blue-100">
+                        {selectedEntry.status.replace(/_/g, ' ')}
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="space-y-1.5 text-gray-600">
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Buyer Name:</span>
+                      <span className="font-semibold text-gray-800">{selectedEntry.buyer_name || 'N/A'}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-500">Buyer Phone:</span>
+                      <span className="font-mono text-gray-800">{selectedEntry.buyer_phone || 'N/A'}</span>
+                    </div>
+                    {selectedEntry.buyer_email && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Buyer Email:</span>
+                        <span className="text-gray-800">{selectedEntry.buyer_email}</span>
+                      </div>
+                    )}
+                    {selectedEntry.shipping_address && (
+                      <div className="flex justify-between">
+                        <span className="text-gray-500">Delivery Address:</span>
+                        <span className="text-gray-800 text-right max-w-[60%]">{selectedEntry.shipping_address}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dispatch / Logistics Proof */}
+                  {selectedEntry.waybill_photo_url && (
+                    <div className="bg-gray-50 border border-gray-200 rounded-xl p-2.5 flex items-center gap-3 mt-2">
+                      <img
+                        src={selectedEntry.waybill_photo_url}
+                        alt="Dispatch proof"
+                        className="w-14 h-14 object-cover rounded-lg border border-gray-200"
+                      />
+                      <div>
+                        <span className="text-xs font-bold text-gray-800 block">Dispatch Proof / Waybill</span>
+                        {selectedEntry.courier_name && (
+                          <span className="text-[11px] text-gray-500 block">Courier: {selectedEntry.courier_name} ({selectedEntry.tracking_number || 'No tracking #'})</span>
+                        )}
+                        {selectedEntry.driver_phone && (
+                          <span className="text-[11px] text-gray-500 block">Driver Phone: {selectedEntry.driver_phone}</span>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-amber-900 text-xs">
+                  ℹ This ledger record is a system fee or wallet withdrawal entry not directly linked to a specific buyer purchase order.
+                </div>
+              )}
+
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

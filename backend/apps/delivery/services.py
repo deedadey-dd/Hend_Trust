@@ -1,10 +1,12 @@
 import random
+from datetime import timedelta
 from django.utils import timezone
 from django.core.cache import cache
+from ninja.errors import HttpError
 from apps.escrow.models import Transaction, TransactionStatus
 from apps.delivery.models import DeliveryLog
-from ninja.errors import HttpError
-from datetime import timedelta
+from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+
 
 OTP_CACHE_TIMEOUT = 604800  # 7 days
 
@@ -62,11 +64,6 @@ def generate_delivery_otp(transaction_id: str) -> str:
         txn = Transaction.objects.get(id=transaction_id)
         msg = _build_delivery_sms(txn, otp)
 
-        print(f"==================================================")
-        print(f"[DEV] SMS to {txn.buyer_phone}: {msg}")
-        print(f"==================================================")
-
-        from apps.core.tasks import dispatch_sms_task, dispatch_email_task
         dispatch_sms_task.delay(txn.buyer_phone, msg)
         if txn.buyer_email:
             dispatch_email_task.delay(
@@ -92,11 +89,6 @@ def resend_delivery_otp(transaction_id: str) -> str:
         txn = Transaction.objects.get(id=transaction_id)
         msg = _build_delivery_sms(txn, otp)
 
-        print(f"==================================================")
-        print(f"[DEV] Resend OTP for {txn.paystack_reference}: {otp}")
-        print(f"==================================================")
-
-        from apps.core.tasks import dispatch_sms_task, dispatch_email_task
         dispatch_sms_task.delay(txn.buyer_phone, msg)
         if txn.buyer_email:
             dispatch_email_task.delay(

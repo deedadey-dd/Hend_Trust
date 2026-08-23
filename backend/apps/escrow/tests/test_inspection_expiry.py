@@ -100,3 +100,25 @@ class TestInspectionExpiry:
             
             txn3.refresh_from_db()
             assert txn3.status == TransactionStatus.COMPLETED
+
+    @freeze_time("2026-08-01 12:00:00")
+    def test_check_expired_dispatches(self, transaction_factory):
+        txn = transaction_factory(
+            status=TransactionStatus.PAYMENT_RECEIVED,
+            total_amount_ghs=Decimal('200.00'),
+            platform_fee_ghs=Decimal('10.00'),
+            paystack_reference='DISPATCH_EXPIRE_REF'
+        )
+        
+        from apps.escrow.tasks import check_expired_dispatches
+        
+        with freeze_time("2026-08-04 11:00:00"):
+            res = check_expired_dispatches()
+            txn.refresh_from_db()
+            assert txn.status == TransactionStatus.PAYMENT_RECEIVED
+            
+        with freeze_time("2026-08-05 13:00:00"):
+            res = check_expired_dispatches()
+            assert "Auto-refunded 1 undispatched transactions" in res
+            txn.refresh_from_db()
+            assert txn.status == TransactionStatus.REFUNDED
