@@ -594,14 +594,14 @@ export default function PublicCheckoutView() {
 
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8 font-sans">
-      <div className="max-w-lg mx-auto bg-white rounded-2xl shadow-xl overflow-hidden border border-gray-100">
+      <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
 
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-indigo-700 p-8 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-24 h-24 bg-white opacity-10 rounded-full blur-xl" />
+        <div className="bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-900 p-6 sm:p-8 text-white relative overflow-hidden">
+          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl pointer-events-none" />
           
           {(link.shop_name || link.seller_username) && (
-            <div className="inline-flex items-center gap-2 text-sm text-blue-100 bg-white/10 px-3.5 py-1.5 rounded-xl backdrop-blur-sm mb-3 border border-white/10">
+            <div className="inline-flex items-center gap-2 text-sm text-blue-100 bg-white/10 px-3.5 py-1.5 rounded-xl backdrop-blur-sm mb-4 border border-white/10 flex-wrap">
               {link.seller_profile_picture_url ? (
                 <img src={link.seller_profile_picture_url} alt={link.shop_name || link.seller_username} className="h-5 w-5 rounded-lg object-cover border border-white/20" />
               ) : (
@@ -618,18 +618,47 @@ export default function PublicCheckoutView() {
             </div>
           )}
 
-          {link.image_url && (
-            <div className="mb-4 rounded-xl overflow-hidden border border-white/20 shadow-lg bg-black/20 max-h-56 flex items-center justify-center">
-              <img src={link.image_url} alt={link.title} className="w-full h-56 object-cover" />
+          {/* Side-by-Side Details & Image Row */}
+          {link.image_url ? (
+            <div className="grid grid-cols-1 sm:grid-cols-12 gap-6 items-center">
+              {/* Left Column: Product Details */}
+              <div className="sm:col-span-7 space-y-2">
+                <h1 className="text-2xl sm:text-3xl font-black leading-tight text-white">{link.title}</h1>
+                {link.description && (
+                  <p className="text-blue-100/90 text-sm leading-relaxed max-h-36 overflow-y-auto pr-1">
+                    {link.description}
+                  </p>
+                )}
+                <div className="text-3xl sm:text-4xl font-black pt-2">
+                  <span className="text-blue-200 text-lg mr-1 font-bold">GHS</span>
+                  {totalToPay.toFixed(2)}
+                </div>
+              </div>
+
+              {/* Right Column: Product Image (Portrait friendly object-contain without cropping) */}
+              <div className="sm:col-span-5 flex justify-center">
+                <div className="w-full max-w-[260px] sm:max-w-none h-60 sm:h-64 rounded-2xl overflow-hidden border border-white/20 shadow-xl bg-slate-950/60 p-2 flex items-center justify-center backdrop-blur-xs">
+                  <img
+                    src={link.image_url}
+                    alt={link.title}
+                    className="w-full h-full object-contain rounded-xl"
+                  />
+                </div>
+              </div>
+            </div>
+          ) : (
+            /* Fallback when no image exists */
+            <div className="space-y-2">
+              <h1 className="text-2xl sm:text-3xl font-black leading-tight text-white">{link.title}</h1>
+              {link.description && (
+                <p className="text-blue-100/90 text-sm leading-relaxed">{link.description}</p>
+              )}
+              <div className="text-3xl sm:text-4xl font-black pt-2">
+                <span className="text-blue-200 text-lg mr-1 font-bold">GHS</span>
+                {totalToPay.toFixed(2)}
+              </div>
             </div>
           )}
-
-          <h1 className="text-2xl font-bold mb-1">{link.title}</h1>
-          {link.description && <p className="text-blue-100 text-sm mb-4 opacity-90">{link.description}</p>}
-          <div className="text-4xl font-black mt-4">
-            <span className="text-blue-200 text-xl mr-1">GHS</span>
-            {totalToPay.toFixed(2)}
-          </div>
         </div>
 
         {/* Breakdown */}

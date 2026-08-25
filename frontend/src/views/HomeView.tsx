@@ -1,9 +1,11 @@
-import { Link } from 'react-router-dom';
+import { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import {
   Shield, Link2, Truck, CheckCircle, ArrowRight,
-  Lock, Phone, Star, Zap, Users, BarChart3
+  Lock, Phone, Star, Zap, Users, BarChart3, Search, Store
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
+import heroBanner from '../assets/hero_banner.jpg';
 
 const STEPS = [
   {
@@ -78,51 +80,75 @@ const STATS = [
 
 export default function HomeView() {
   const { isAuthenticated } = useAuthStore();
+  const [searchQuery, setSearchQuery] = useState('');
+  const navigate = useNavigate();
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (searchQuery.trim()) {
+      navigate(`/shops?query=${encodeURIComponent(searchQuery.trim())}`);
+    } else {
+      navigate('/shops');
+    }
+  };
 
   return (
     <div className="font-sans text-gray-900">
 
       {/* ── Hero ── */}
-      <section className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-blue-950 to-indigo-900 text-white">
-        <div className="absolute inset-0 opacity-20"
-          style={{ backgroundImage: 'radial-gradient(circle at 20% 50%, #3b82f6 0%, transparent 50%), radial-gradient(circle at 80% 20%, #6366f1 0%, transparent 40%)' }}
-        />
-        <div className="relative max-w-5xl mx-auto px-6 py-24 sm:py-36 text-center">
-          <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-sm font-medium mb-8 backdrop-blur-sm">
-            <Star className="h-3.5 w-3.5 text-yellow-400" />
-            Ghana's trusted buyer–seller escrow platform
-          </div>
+      <section className="relative overflow-hidden bg-slate-950 text-white min-h-[500px] sm:min-h-[600px] flex flex-col justify-between">
+        <div className="absolute inset-0 z-0">
+          <img src={heroBanner} alt="Hero Banner" className="w-full h-full object-cover opacity-100" />
+        </div>
+        <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-16 sm:pt-28 pb-4 sm:pb-8 flex flex-col justify-between flex-1">
+          {/* Top: Trust Badge */}
+          {/* <div className="text-center">
+            <div className="inline-flex items-center gap-2 bg-white/10 border border-white/20 rounded-full px-4 py-1.5 text-xs sm:text-sm font-medium backdrop-blur-sm shadow-md">
+              <Star className="h-3.5 w-3.5 text-yellow-400" />
+              Ghana's trusted buyer–seller escrow platform
+            </div>
+          </div> */}
 
-          <h1 className="text-4xl sm:text-6xl font-black leading-tight mb-6">
-            Buy and sell online<br />
-            <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-indigo-400">
-              without the risk
-            </span>
-          </h1>
+          {/* Bottom: Marketplace Search Box & Action Buttons */}
+          <div className="text-center space-y-4 sm:space-y-6 mt-auto">
+            {/* Marketplace Search Box */}
+            <form onSubmit={handleSearchSubmit} className="relative max-w-xl mx-auto shadow-2xl">
+              <Search className="h-4 w-4 sm:h-5 sm:w-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-gray-500 z-10" />
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={e => setSearchQuery(e.target.value)}
+                placeholder="Search verified shops, sellers, or products (e.g. 'iPhone 15', 'Accra Gadgets')..."
+                className="w-full pl-10 sm:pl-12 pr-32 py-2 sm:py-2.5 bg-white/20 backdrop-blur-xs text-gray-600 placeholder-gray-600 rounded-2xl text-xs sm:text-sm border border-white/40 focus:bg-white/95 focus:ring-4 focus:ring-blue-500/40 outline-none font-medium transition-all"
+              />
+              <button
+                type="submit"
+                className="absolute right-1 top-1 bottom-1 px-3.5 sm:px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow flex items-center gap-1.5"
+              >
+                <Store className="h-4 w-4" /> Search Shops
+              </button>
+            </form>
 
-          <p className="text-lg sm:text-xl text-blue-100/80 max-w-2xl mx-auto mb-10 leading-relaxed">
-            HendAxis Trust holds payment in escrow until the buyer receives their item.
-            No more advance payment fraud. No more buyer disputes.
-          </p>
-
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            {isAuthenticated ? (
-              <Link to="/dashboard/create-link"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-bold text-lg transition-all shadow-lg shadow-blue-900/40 hover:shadow-xl hover:-translate-y-0.5">
-                Create a Payment Link <ArrowRight className="h-5 w-5" />
-              </Link>
-            ) : (
-              <>
-                <Link to="/register"
-                  className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-bold text-lg transition-all shadow-lg shadow-blue-900/40 hover:shadow-xl hover:-translate-y-0.5">
-                  Start Selling Free <ArrowRight className="h-5 w-5" />
+            {/* Action Buttons: 2 Buttons in 1 Row on Mobile */}
+            {/* <div className="flex flex-row gap-2.5 sm:gap-4 justify-center items-center">
+              {isAuthenticated ? (
+                <Link to="/dashboard/create-link"
+                  className="inline-flex items-center justify-center gap-1.5 px-5 sm:px-8 py-3 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-bold text-xs sm:text-lg transition-all shadow-lg shadow-blue-900/40 hover:shadow-xl hover:-translate-y-0.5 shrink-0">
+                  Create a Payment Link <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Link>
-                <Link to="/login"
-                  className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-lg transition-all backdrop-blur-sm">
-                  Log in
-                </Link>
-              </>
-            )}
+              ) : (
+                <>
+                  <Link to="/register"
+                    className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-8 py-3 rounded-xl bg-blue-500 hover:bg-blue-400 text-white font-bold text-xs sm:text-lg transition-all shadow-lg shadow-blue-900/40 hover:shadow-xl hover:-translate-y-0.5 shrink-0">
+                    Start Selling Free <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
+                  </Link>
+                  <Link to="/login"
+                    className="inline-flex items-center justify-center gap-1.5 px-5 sm:px-8 py-3 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-white font-semibold text-xs sm:text-lg transition-all backdrop-blur-sm shrink-0">
+                    Log in
+                  </Link>
+                </>
+              )}
+            </div> */}
           </div>
         </div>
       </section>

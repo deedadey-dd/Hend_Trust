@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { Search, Store, Star, Zap, Shield, ChevronRight, Loader2, Award, ArrowUpRight, X, CheckCircle2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import heroBanner from '../assets/hero_banner.jpg';
 
 interface ShopProduct {
   link_id: string;
@@ -110,52 +111,59 @@ export default function ShopsDirectoryView() {
       )}
 
       {/* Card Header & Content */}
-      <div className="p-6 space-y-4">
+      <div className="p-4 sm:p-5 space-y-3">
         
         {/* Top Header Row */}
         <div className="flex items-start justify-between gap-3">
-          <div className="flex items-center gap-3">
+          <Link to={`/store/${shop.seller_username}`} className="flex items-center gap-3 group flex-1">
             {shop.profile_picture_url ? (
               <img
                 src={shop.profile_picture_url}
                 alt={shop.shop_name}
-                className="h-12 w-12 rounded-xl object-cover border border-gray-200 shadow-sm"
+                className="h-11 w-11 rounded-xl object-cover border border-gray-200 shadow-sm group-hover:scale-105 transition-transform"
               />
             ) : (
-              <div className={`h-12 w-12 rounded-xl flex items-center justify-center font-black text-lg text-white shadow-sm ${
+              <div className={`h-11 w-11 rounded-xl flex items-center justify-center font-black text-base text-white shadow-sm group-hover:scale-105 transition-transform ${
                 isAd ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-blue-600 to-indigo-700'
               }`}>
                 {(shop.shop_name || shop.seller_username).charAt(0).toUpperCase()}
               </div>
             )}
-            <div>
-              <div className="flex items-center gap-1.5 flex-wrap">
-                <h3 className="font-bold text-gray-900 text-base">{shop.shop_name}</h3>
-                {isAd && (
-                  <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full border border-amber-200">
-                    <Zap className="h-3 w-3 fill-amber-500" /> Featured Ad
-                  </span>
-                )}
+            <div className="min-w-0 flex-1">
+              <div className="flex items-baseline gap-2 flex-wrap">
+                <h3 className="font-bold text-gray-900 text-base group-hover:text-blue-600 transition-colors flex items-center gap-1">
+                  {shop.shop_name}
+                  <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
+                </h3>
+                <span className="text-xs text-gray-500 font-medium">@{shop.seller_username}</span>
               </div>
               <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                <span className="text-sm text-gray-500 font-medium mr-1">@{shop.seller_username}</span>
-                {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).slice(0, 3).map((cat, i) => (
-                  <span key={i} className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full">
+                {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).map((cat, i) => (
+                  <span key={i} className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full whitespace-nowrap">
                     {cat}
                   </span>
                 ))}
               </div>
             </div>
-          </div>
+          </Link>
         </div>
 
         {/* Rating & Badges */}
         <div className="flex items-center gap-2 flex-wrap text-sm">
-          <span className="flex items-center gap-1 font-bold text-gray-900 bg-amber-50 text-amber-900 border border-amber-200/60 px-2.5 py-1 rounded-lg">
-            <Star className="h-4 w-4 fill-amber-400 text-amber-400" />
-            {shop.avg_overall > 0 ? `${shop.avg_overall} / 5.0` : 'New Seller'}
-            {shop.total_reviews_count > 0 && <span className="text-gray-500 font-normal">({shop.total_reviews_count})</span>}
-          </span>
+          <Link to={`/store/${shop.seller_username}`} className="flex items-center gap-1.5 font-bold text-gray-900 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/60 px-2.5 py-1 rounded-lg transition">
+            {shop.avg_overall > 0 ? (
+              <div className="flex items-center gap-1">
+                <div className="flex text-amber-400">
+                  {[1, 2, 3, 4, 5].map(s => (
+                    <Star key={s} className={`h-4 w-4 ${s <= Math.round(shop.avg_overall) ? 'fill-amber-400 text-amber-400' : 'text-gray-200'}`} />
+                  ))}
+                </div>
+                {shop.total_reviews_count > 0 && <span className="text-xs text-gray-500 font-normal ml-0.5">({shop.total_reviews_count})</span>}
+              </div>
+            ) : (
+              <span className="text-xs font-semibold text-amber-800">New Seller</span>
+            )}
+          </Link>
 
           {shop.badge_title && (
             <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 rounded-lg">
@@ -197,17 +205,6 @@ export default function ShopsDirectoryView() {
           </div>
         )}
       </div>
-
-      {/* Card Footer Action */}
-      <div className="p-4 bg-gray-50 border-t border-gray-100">
-        <Link
-          to={`/store/${shop.seller_username}`}
-          className="w-full py-2.5 px-4 rounded-xl text-sm font-bold text-blue-600 hover:text-white bg-blue-50 hover:bg-blue-600 transition flex items-center justify-center gap-1 group"
-        >
-          View Full Store Ratings & Reviews
-          <ChevronRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-        </Link>
-      </div>
     </div>
   );
 
@@ -215,60 +212,66 @@ export default function ShopsDirectoryView() {
     <div className="min-h-screen bg-gray-50/60 pb-16">
       
       {/* Hero Banner Section */}
-      <div className="bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 text-white py-14 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-        <div className="absolute top-0 right-0 -mt-10 -mr-10 w-64 h-64 bg-blue-500/10 rounded-full blur-3xl" />
+      <div className="bg-slate-950 text-white min-h-[320px] sm:min-h-[380px] px-4 sm:px-6 lg:px-8 py-6 relative overflow-hidden flex flex-col justify-between">
+        <div className="absolute inset-0 z-0">
+          <img src={heroBanner} alt="Marketplace Banner" className="w-full h-full object-cover opacity-100" />
+        </div>
         
-        <div className="max-w-5xl mx-auto space-y-6 relative z-10">
+        <div className="max-w-5xl w-full mx-auto relative z-10 flex flex-col justify-between flex-1">
+          {/* TOP: Escrow Merchant Marketplace Directory label & Advertise button */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-300 bg-white/10 px-3 py-1 rounded-full backdrop-blur-sm border border-white/10 mb-3">
+              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-200 bg-black/40 px-3.5 py-1.5 rounded-full backdrop-blur-md border border-white/20 shadow-md">
                 <Store className="h-3.5 w-3.5 text-blue-400" /> Escrow Merchant Marketplace Directory
               </span>
-              <h1 className="text-3xl sm:text-4xl font-black tracking-tight">
-                Discover Verified Escrow Shops & Products
-              </h1>
-              <p className="text-sm text-blue-200 mt-1 max-w-xl">
-                Browse rated sellers, search products, and buy with 100% money-back escrow protection.
-              </p>
             </div>
 
             {user && (
               <button
                 onClick={() => setShowPromoteModal(true)}
-                className="py-3 px-5 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-xs shadow-lg shadow-amber-500/20 transition flex items-center gap-2 self-start sm:self-auto"
+                className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-xs shadow-lg shadow-amber-500/20 backdrop-blur-md transition flex items-center gap-2 self-start sm:self-auto"
               >
                 <Zap className="h-4 w-4 fill-white" /> Advertise Your Shop Here
               </button>
             )}
           </div>
 
-          {/* Search Box */}
-          <div className="relative max-w-2xl">
-            <Search className="h-5 w-5 absolute left-4 top-3.5 text-gray-400" />
-            <input
-              type="text"
-              value={query}
-              onChange={e => setQuery(e.target.value)}
-              placeholder="Search shop name, seller username, or product (e.g. 'iPhone 15', 'Sneakers')..."
-              className="w-full pl-11 pr-4 py-3 bg-white text-gray-900 rounded-2xl text-sm shadow-xl focus:ring-4 focus:ring-blue-500/30 outline-none"
-            />
-          </div>
-
-          {/* Category Filter Pills */}
-          <div className="flex items-center gap-2 overflow-x-auto pb-2 scrollbar-none">
-            {CATEGORIES.map(cat => (
+          {/* BOTTOM: Search Box & Category Filter Pills */}
+          <div className="space-y-4 mt-auto pt-8">
+            {/* Search Box */}
+            <form onSubmit={(e) => { e.preventDefault(); fetchShops(); }} className="relative max-w-sm">
+              <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 z-10" />
+              <input
+                type="text"
+                value={query}
+                onChange={e => setQuery(e.target.value)}
+                placeholder="Search shop name, seller username, or product..."
+                className="w-full pl-10 pr-28 py-2 bg-white/20 backdrop-blur-xs text-gray-900 placeholder-gray-600 rounded-2xl text-xs sm:text-sm border border-white/40 shadow-2xl focus:bg-white/95 focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all"
+              />
               <button
-                key={cat}
-                onClick={() => setSelectedCategory(cat)}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition ${
-                  selectedCategory === cat
-                    ? 'bg-blue-600 text-white shadow'
-                    : 'bg-white/10 hover:bg-white/20 text-blue-100'
-                }`}
+                type="submit"
+                className="absolute right-1 top-1 bottom-1 px-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5"
               >
-                {cat}
+                <Store className="h-3.5 w-3.5" /> Search
               </button>
-            ))}
+            </form>
+
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-2 overflow-x-auto pb-0 scrollbar-none">
+              {CATEGORIES.map(cat => (
+                <button
+                  key={cat}
+                  onClick={() => setSelectedCategory(cat)}
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition backdrop-blur-md ${
+                    selectedCategory === cat
+                      ? 'bg-blue-600 text-white shadow-md'
+                      : 'bg-black/30 hover:bg-black/50 text-white border border-white/10'
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       </div>
@@ -292,7 +295,7 @@ export default function ShopsDirectoryView() {
                       <Zap className="h-5 w-5 fill-white" />
                     </div>
                     <div>
-                      <h2 className="text-base font-bold text-gray-900">Featured Advertised Shops</h2>
+                      <h2 className="text-base font-bold text-gray-900">Featured Shops</h2>
                       <p className="text-xs text-gray-500">Promoted escrow merchants with verified products</p>
                     </div>
                   </div>

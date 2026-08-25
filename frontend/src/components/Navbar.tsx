@@ -4,6 +4,8 @@ import { useAuthStore } from '../store/authStore';
 import { apiClient } from '../api/client';
 import { Shield, LayoutDashboard, Link2, LogIn, UserPlus, LogOut, Menu, X, Wallet, MapPin, UserCircle, Store } from 'lucide-react';
 import TrackingModal from './TrackingModal';
+import logo from '../assets/hendaxis_trust_logo.svg';
+import logoSymbol from '../assets/logo_symbol.webp';
 
 export default function Navbar() {
   const { isAuthenticated, user, logout } = useAuthStore();
@@ -48,18 +50,14 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-md border-b border-gray-200 shadow-sm">
+      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-sm">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
 
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2.5 group" onClick={() => setMenuOpen(false)}>
-              <div className="h-8 w-8 bg-gradient-to-br from-blue-600 to-indigo-700 rounded-lg flex items-center justify-center shadow-sm group-hover:shadow-md transition-shadow">
-                <Shield className="h-4 w-4 text-white" />
-              </div>
-              <span className="font-bold text-gray-900 text-lg tracking-tight">
-                Hend<span className="text-blue-600">Axis Trust</span>
-              </span>
+              <img src={logo} alt="HendAxis Trust Logo" className="h-9 w-auto object-contain hidden sm:block group-hover:scale-102 transition-transform" />
+              <img src={logoSymbol} alt="HendAxis Symbol" className="h-8 w-8 object-contain sm:hidden group-hover:scale-105 transition-transform" />
             </Link>
 
             {/* Desktop nav */}
@@ -148,6 +146,7 @@ export default function Navbar() {
                 {(user?.role === 'ADMIN' || user?.role === 'SUPPORT_AGENT') &&
                   navLink('/admin/dashboard', 'Manager Portal', <Shield className="h-4 w-4 text-amber-500" />)
                 }
+                {navLink('/shops', 'Shops Marketplace', <Store className="h-4 w-4 text-blue-600" />)}
                 {navLink('/create-link', 'Create Link', <Link2 className="h-4 w-4" />)}
                 {navLink('/links', 'My Links', <Link2 className="h-4 w-4" />)}
                 {navLink('/dashboard', 'Dashboard', <LayoutDashboard className="h-4 w-4" />)}
@@ -182,6 +181,7 @@ export default function Navbar() {
               </>
             ) : (
               <>
+                {navLink('/shops', 'Shops Marketplace', <Store className="h-4 w-4 text-blue-600" />)}
                 <button
                   onClick={() => { setShowTrackModal(true); setMenuOpen(false); }}
                   className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"

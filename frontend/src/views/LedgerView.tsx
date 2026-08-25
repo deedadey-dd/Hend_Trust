@@ -42,6 +42,13 @@ export const LedgerView: React.FC = () => {
       setBalanceData(res.data);
       // Pre-fill destination from profile
       if (res.data.momo_number) setWithdrawDest(res.data.momo_number);
+
+      // Pre-fill maximum possible withdrawable amount
+      const avail = Number(res.data.available_balance_ghs || 0);
+      if (avail > 0) {
+        const maxAmt = Math.floor((avail / (1 + PAYSTACK_FEE_RATE)) * 100) / 100;
+        setWithdrawAmount(maxAmt.toFixed(2));
+      }
     } catch (err) {
       console.error(err);
     }
@@ -77,8 +84,9 @@ export const LedgerView: React.FC = () => {
   const parsedAmount = parseFloat(withdrawAmount) || 0;
   const paystackFee = parsedAmount * PAYSTACK_FEE_RATE;
   const totalDeducted = parsedAmount + paystackFee;
-  const youReceive = parsedAmount - paystackFee;
+  const youReceive = parsedAmount;
   const availableBalance = Number(balanceData?.available_balance_ghs || 0);
+  const maxPossibleWithdraw = availableBalance > 0 ? Math.floor((availableBalance / (1 + PAYSTACK_FEE_RATE)) * 100) / 100 : 0;
   const hasInsufficientFunds = totalDeducted > availableBalance;
 
   const handleWithdraw = async (e: React.FormEvent) => {
@@ -142,7 +150,17 @@ export const LedgerView: React.FC = () => {
                 GHS {Number(balanceData.available_balance_ghs).toFixed(2)}
               </div>
               <button
-                onClick={() => { setShowWithdraw(v => !v); setWithdrawError(''); setWithdrawSuccess(''); }}
+                onClick={() => {
+                  setShowWithdraw(v => {
+                    const next = !v;
+                    if (next && maxPossibleWithdraw > 0 && !withdrawAmount) {
+                      setWithdrawAmount(maxPossibleWithdraw.toFixed(2));
+                    }
+                    return next;
+                  });
+                  setWithdrawError('');
+                  setWithdrawSuccess('');
+                }}
                 className="text-sm font-bold bg-white text-blue-600 hover:bg-gray-50 px-4 py-2.5 rounded-xl transition-all shadow-md hover:shadow-lg flex items-center gap-2 flex-shrink-0"
               >
                 <Send className="h-4 w-4" />
@@ -183,7 +201,18 @@ export const LedgerView: React.FC = () => {
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Amount input */}
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1.5">Amount to Withdraw (GHS)</label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="block text-sm font-medium text-gray-700">Amount to Withdraw (GHS)</label>
+                  {maxPossibleWithdraw > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setWithdrawAmount(maxPossibleWithdraw.toFixed(2))}
+                      className="text-xs font-bold text-blue-600 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 px-2 py-0.5 rounded-md transition"
+                    >
+                      Max: GHS {maxPossibleWithdraw.toFixed(2)}
+                    </button>
+                  )}
+                </div>
                 <div className="relative">
                   <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 font-medium text-sm">GHS</span>
                   <input
@@ -244,12 +273,12 @@ export const LedgerView: React.FC = () => {
               <div className={`rounded-xl border p-4 space-y-2 text-sm ${hasInsufficientFunds ? 'bg-red-50 border-red-200' : 'bg-blue-50 border-blue-100'}`}>
                 <p className="font-semibold text-gray-800 mb-3">Fee Breakdown</p>
                 <div className="flex justify-between text-gray-600">
-                  <span>You requested:</span>
+                  <span>Requested payout:</span>
                   <span className="font-mono font-medium">GHS {parsedAmount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-amber-700">
                   <span>Paystack transfer fee (1.95%):</span>
-                  <span className="font-mono font-medium">– GHS {paystackFee.toFixed(2)}</span>
+                  <span className="font-mono font-medium">+ GHS {paystackFee.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-gray-900 border-t border-current/20 pt-2 mt-2">
                   <span>You will receive:</span>
@@ -257,12 +286,12 @@ export const LedgerView: React.FC = () => {
                 </div>
                 <div className="flex justify-between text-xs text-gray-500">
                   <span>Total deducted from wallet:</span>
-                  <span className="font-mono">GHS {totalDeducted.toFixed(2)}</span>
+                  <span className="font-mono font-bold text-gray-700">GHS {totalDeducted.toFixed(2)}</span>
                 </div>
                 {hasInsufficientFunds && (
                   <div className="flex items-center gap-1.5 text-red-600 text-xs font-semibold mt-1">
                     <AlertTriangle className="h-3.5 w-3.5" />
-                    Insufficient balance. Available: GHS {availableBalance.toFixed(2)}
+                    Insufficient balance. Max withdrawable: GHS {maxPossibleWithdraw.toFixed(2)} (Available balance: GHS {availableBalance.toFixed(2)})
                   </div>
                 )}
               </div>

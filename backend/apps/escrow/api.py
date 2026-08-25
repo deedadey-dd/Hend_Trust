@@ -480,6 +480,7 @@ def confirm_receipt(request, transaction_id: uuid.UUID, data: ConfirmReceiptSche
     transaction.save(update_fields=['status', 'inspection_starts_at', 'updated_at'])
 
     _notify_buyer_inspection_started(transaction)
+    return {"message": "Receipt confirmed. Inspection period started."}
     
 def process_and_optimize_dispute_photos(photos: list[str], max_dim: int = 1200, quality: int = 75) -> list[str]:
     """
