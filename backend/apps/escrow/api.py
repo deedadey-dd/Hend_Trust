@@ -126,6 +126,7 @@ class SellerDispatchSchema(Schema):
     delivery_method: str  # 'COURIER_API' or 'INFORMAL_BUS'
     # Path A fields
     courier_name: Optional[str] = None
+    carrier_code: Optional[str] = 'OTHERS'
     tracking_number: Optional[str] = None
     # Path B fields
     driver_phone: Optional[str] = None
@@ -148,6 +149,14 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
 
     from apps.delivery.services import transition_to_delivery, generate_delivery_otp
     from apps.delivery.models import DeliveryLog, DeliveryMethod
+    from apps.delivery.tracking import generate_carrier_tracking_url
+
+    settings_cfg = get_platform_settings()
+    enabled_methods = settings_cfg.get('enabled_delivery_methods', ['COURIER_API', 'INFORMAL_BUS'])
+    enabled_carriers = settings_cfg.get('enabled_carriers', ['DHL', 'FEDEX', 'UPS', 'EMS', 'SPEEDAF', 'OTHERS'])
+
+    if data.delivery_method not in enabled_methods:
+        raise HttpError(400, f"Delivery method '{data.delivery_method}' is currently disabled by system management.")
 
     waybill_photo = data.waybill_photo_url or ""
     if waybill_photo and waybill_photo.startswith('data:image'):
@@ -158,25 +167,38 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
     if data.delivery_method == 'COURIER_API':
         if not data.courier_name or not data.tracking_number:
             raise HttpError(400, "courier_name and tracking_number are required for courier dispatch.")
+        
+        carrier_code = (data.carrier_code or 'OTHERS').upper()
+        if carrier_code not in enabled_carriers:
+            raise HttpError(400, f"Courier carrier '{carrier_code}' is currently disabled by system management.")
+
+        tracking_url = generate_carrier_tracking_url(
+            carrier_code=carrier_code,
+            tracking_number=data.tracking_number,
+            courier_name=data.courier_name
+        )
+
         transition_to_delivery(transaction)
         DeliveryLog.objects.create(
             transaction=transaction,
             delivery_method=DeliveryMethod.COURIER_API,
             courier_name=data.courier_name,
+            carrier_code=carrier_code,
             tracking_number=data.tracking_number,
+            carrier_tracking_url=tracking_url,
             waybill_photo_url=waybill_photo,
         )
         from apps.core.tasks import dispatch_sms_task, dispatch_email_task
         courier_msg = (
             f"Your HendAxis Trust order ({transaction.paystack_reference}) has been shipped via {data.courier_name}! "
             f"Tracking Number: {data.tracking_number}. "
-            f"Track status at http://localhost:5173/track?ref={transaction.paystack_reference}"
+            f"Track Package: {tracking_url}"
         )
         dispatch_sms_task.delay(transaction.buyer_phone, courier_msg)
         if transaction.buyer_email:
             dispatch_email_task.delay(transaction.buyer_email, "Order Shipped via Courier", courier_msg)
 
-        return {"message": "Courier dispatched. Transaction state updated to DELIVERY_IN_PROGRESS."}
+        return {"message": "Courier dispatched. Tracking URL generated and transaction state updated to DELIVERY_IN_PROGRESS."}
 
     elif data.delivery_method == 'INFORMAL_BUS':
         if not data.driver_phone or not data.destination_station:
@@ -1400,4 +1422,75 @@ def get_platform_ledger_entries(
         "total_volume_ghs": float(total_volume_ghs),
         "items": items
     }
+
+
+# ─── Admin Platform Settings Controls ───────────────────────────────────────
+
+from apps.escrow.models import PlatformSetting
+
+DEFAULT_SYSTEM_SETTINGS = {
+    "active_payment_gateway": "PAYSTACK",
+    "enabled_delivery_methods": ["COURIER_API", "INFORMAL_BUS"],
+    "enabled_carriers": ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"]
+}
+
+
+def get_platform_settings():
+    try:
+        setting = PlatformSetting.objects.filter(key="system_config").first()
+        if not setting or not setting.value:
+            return DEFAULT_SYSTEM_SETTINGS.copy()
+        val = setting.value
+        return {
+            "active_payment_gateway": val.get("active_payment_gateway", "PAYSTACK"),
+            "enabled_delivery_methods": val.get("enabled_delivery_methods", ["COURIER_API", "INFORMAL_BUS"]),
+            "enabled_carriers": val.get("enabled_carriers", ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"])
+        }
+    except Exception:
+        return DEFAULT_SYSTEM_SETTINGS.copy()
+
+
+class PlatformSettingsSchema(Schema):
+    active_payment_gateway: str
+    enabled_delivery_methods: List[str]
+    enabled_carriers: List[str]
+
+
+class UpdatePlatformSettingsSchema(Schema):
+    active_payment_gateway: Optional[str] = None
+    enabled_delivery_methods: Optional[List[str]] = None
+    enabled_carriers: Optional[List[str]] = None
+
+
+@escrow_router.get("/admin/settings", response=PlatformSettingsSchema)
+def get_admin_settings(request):
+    """Retrieve current platform settings (Active Payment Gateway, Enabled Channels & Carriers)."""
+    return get_platform_settings()
+
+
+@escrow_router.post("/admin/settings", response=PlatformSettingsSchema)
+def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
+    """Superuser endpoint to update active payment gateway and toggle delivery channels/carriers."""
+    from apps.core.permissions import is_admin_user
+    user = is_admin_user(request)
+
+    current = get_platform_settings()
+    if data.active_payment_gateway:
+        gw = data.active_payment_gateway.upper()
+        if gw not in ["PAYSTACK", "APPSNMOBILE", "HUBTEL"]:
+            raise HttpError(400, "Invalid payment gateway choice.")
+        current["active_payment_gateway"] = gw
+
+    if data.enabled_delivery_methods is not None:
+        current["enabled_delivery_methods"] = data.enabled_delivery_methods
+
+    if data.enabled_carriers is not None:
+        current["enabled_carriers"] = [c.upper() for c in data.enabled_carriers]
+
+    setting, _ = PlatformSetting.objects.get_or_create(key="system_config")
+    setting.value = current
+    setting.save()
+
+    return current
+
 

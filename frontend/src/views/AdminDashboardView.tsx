@@ -69,8 +69,53 @@ interface LedgerEntryRecord {
   timestamp: string;
 }
 
+interface PlatformSettings {
+  active_payment_gateway: string;
+  enabled_delivery_methods: string[];
+  enabled_carriers: string[];
+}
+
 export const AdminDashboardView: React.FC = () => {
   const [activeTab, setActiveTab] = useState<AdminTab>('OVERVIEW');
+
+  // Platform Settings State
+  const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
+    active_payment_gateway: 'PAYSTACK',
+    enabled_delivery_methods: ['COURIER_API', 'INFORMAL_BUS'],
+    enabled_carriers: ['DHL', 'FEDEX', 'UPS', 'EMS', 'SPEEDAF', 'OTHERS']
+  });
+  const [loadingSettings, setLoadingSettings] = useState(false);
+  const [settingsSaveMsg, setSettingsSaveMsg] = useState('');
+
+  const fetchSettings = async () => {
+    try {
+      setLoadingSettings(true);
+      const res = await apiClient.get('/escrow/admin/settings');
+      setPlatformSettings(res.data);
+    } catch {
+      console.error("Failed to load platform settings");
+    } finally {
+      setLoadingSettings(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchSettings();
+  }, []);
+
+  const handleUpdateSettings = async (updates: Partial<PlatformSettings>) => {
+    setSettingsSaveMsg('');
+    const newSettings = { ...platformSettings, ...updates };
+    setPlatformSettings(newSettings);
+    try {
+      const res = await apiClient.post('/escrow/admin/settings', updates);
+      setPlatformSettings(res.data);
+      setSettingsSaveMsg('System settings updated successfully!');
+      setTimeout(() => setSettingsSaveMsg(''), 3000);
+    } catch (err: any) {
+      setSettingsSaveMsg(err.response?.data?.detail || 'Failed to update settings.');
+    }
+  };
 
   // Verifications State
   const [verifications, setVerifications] = useState<SellerVerificationRecord[]>([]);
@@ -346,6 +391,7 @@ export const AdminDashboardView: React.FC = () => {
             { id: 'SELLERS', label: 'Sellers Directory', icon: Users },
             { id: 'BUYERS', label: 'Buyer Phone Registry', icon: PhoneCall },
             { id: 'BROADCAST', label: 'Broadcast Messaging Studio', icon: Send },
+            { id: 'SETTINGS', label: '⚙️ Gateway & Logistics Settings', icon: Layers },
           ].map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1417,6 +1463,185 @@ export const AdminDashboardView: React.FC = () => {
                   {broadcastMutation.isPending ? 'Dispatching Broadcast…' : 'Send Broadcast Notification'}
                 </button>
               </form>
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB 7: GATEWAY & LOGISTICS SYSTEM SETTINGS ───────────────────── */}
+        {activeTab === 'SETTINGS' && (
+          <div className="max-w-4xl mx-auto space-y-8">
+            {/* Header & Status Alert */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl flex items-center justify-between">
+              <div>
+                <h3 className="text-xl font-extrabold text-white flex items-center gap-2">
+                  <Layers className="h-6 w-6 text-amber-400" />
+                  Live Platform Configuration & Gateway Controls
+                </h3>
+                <p className="text-xs text-slate-400 mt-1">
+                  Switch the active payment processing engine in real-time and toggle supported shipping channels & carrier options.
+                </p>
+              </div>
+              <button
+                onClick={fetchSettings}
+                className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs font-bold rounded-xl border border-slate-700 transition flex items-center gap-1.5"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingSettings ? 'animate-spin' : ''}`} />
+                Reload
+              </button>
+            </div>
+
+            {settingsSaveMsg && (
+              <div className={`p-4 rounded-xl text-sm font-semibold border ${
+                settingsSaveMsg.includes('successfully') 
+                  ? 'bg-emerald-500/10 text-emerald-300 border-emerald-500/30' 
+                  : 'bg-rose-500/10 text-rose-300 border-rose-500/30'
+              }`}>
+                {settingsSaveMsg}
+              </div>
+            )}
+
+            {/* Section 1: Active Payment Gateway Switcher */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between border-b border-slate-800 pb-3">
+                <div>
+                  <h4 className="text-base font-bold text-white">Active Payment Provider Engine</h4>
+                  <p className="text-xs text-slate-400">Select which payment processing provider handles incoming buyer checkout payments.</p>
+                </div>
+                <span className="bg-blue-500/10 text-blue-400 border border-blue-500/20 text-xs font-mono font-bold px-3 py-1 rounded-full uppercase">
+                  Current: {platformSettings.active_payment_gateway}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+                {[
+                  { id: 'PAYSTACK', title: 'Paystack Multi-Channel', desc: 'MoMo (MTN, Telecel, AT) & Cards (Visa, Mastercard)', badge: 'Default' },
+                  { id: 'APPSNMOBILE', title: 'AppsNMobile (The Orchard)', desc: 'Direct MoMo Collections & Bulk Disbursement Engine', badge: 'Disbursements' },
+                  { id: 'HUBTEL', title: 'Hubtel Ghana PSP', desc: 'Hubtel POS, Direct MoMo & Bank Card Gateways', badge: 'Alternative' }
+                ].map(gw => {
+                  const isActive = platformSettings.active_payment_gateway === gw.id;
+                  return (
+                    <div
+                      key={gw.id}
+                      onClick={() => handleUpdateSettings({ active_payment_gateway: gw.id })}
+                      className={`p-5 rounded-2xl border cursor-pointer transition flex flex-col justify-between ${
+                        isActive
+                          ? 'bg-blue-600/15 border-blue-500 shadow-lg shadow-blue-500/10'
+                          : 'bg-slate-950/60 border-slate-800 hover:border-slate-700 hover:bg-slate-950'
+                      }`}
+                    >
+                      <div>
+                        <div className="flex items-center justify-between mb-2">
+                          <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
+                            isActive ? 'bg-blue-500 text-white' : 'bg-slate-800 text-slate-400'
+                          }`}>
+                            {gw.badge}
+                          </span>
+                          {isActive && <CheckCircle2 className="h-5 w-5 text-blue-400" />}
+                        </div>
+                        <h5 className="font-bold text-slate-100 text-sm mb-1">{gw.title}</h5>
+                        <p className="text-xs text-slate-400">{gw.desc}</p>
+                      </div>
+
+                      <button
+                        type="button"
+                        className={`w-full mt-4 py-2 rounded-xl text-xs font-bold transition border ${
+                          isActive
+                            ? 'bg-blue-600 text-white border-blue-500'
+                            : 'bg-slate-900 hover:bg-slate-800 text-slate-300 border-slate-700'
+                        }`}
+                      >
+                        {isActive ? 'Active Engine' : 'Switch to Gateway'}
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section 2: Shipping Channel Toggles */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+              <div className="border-b border-slate-800 pb-3">
+                <h4 className="text-base font-bold text-white">Allowed Delivery Channels</h4>
+                <p className="text-xs text-slate-400">Enable or disable entire delivery fulfillment methods across the platform.</p>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[
+                  { id: 'COURIER_API', label: 'Path A: Formal Courier API', desc: 'Tracking URL generation, webhook delivery confirmations & carrier status polling.' },
+                  { id: 'INFORMAL_BUS', label: 'Path B: Informal Bus / Station OTP', desc: 'Driver info SMS, buyer Secret 6-Digit OTP verification & station collection.' }
+                ].map(method => {
+                  const isEnabled = platformSettings.enabled_delivery_methods.includes(method.id);
+                  return (
+                    <div key={method.id} className="bg-slate-950 p-4 rounded-xl border border-slate-800 flex items-center justify-between">
+                      <div className="pr-4">
+                        <span className="font-bold text-sm text-slate-200 block mb-0.5">{method.label}</span>
+                        <p className="text-xs text-slate-400">{method.desc}</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const updated = isEnabled
+                            ? platformSettings.enabled_delivery_methods.filter(m => m !== method.id)
+                            : [...platformSettings.enabled_delivery_methods, method.id];
+                          handleUpdateSettings({ enabled_delivery_methods: updated });
+                        }}
+                        className={`w-12 h-6 rounded-full transition p-1 flex items-center ${
+                          isEnabled ? 'bg-emerald-500 justify-end' : 'bg-slate-700 justify-start'
+                        }`}
+                      >
+                        <div className="w-4 h-4 rounded-full bg-white shadow-md" />
+                      </button>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Section 3: Courier Carrier Activation Toggles */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+              <div className="border-b border-slate-800 pb-3">
+                <h4 className="text-base font-bold text-white">Formal Courier Options (Path A)</h4>
+                <p className="text-xs text-slate-400">Toggle individual courier providers available for seller selection in the dispatch modal.</p>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {[
+                  { id: 'DHL', label: 'DHL Express', color: 'text-amber-400' },
+                  { id: 'FEDEX', label: 'FedEx Express', color: 'text-purple-400' },
+                  { id: 'UPS', label: 'UPS', color: 'text-amber-500' },
+                  { id: 'EMS', label: 'EMS / Ghana Post', color: 'text-blue-400' },
+                  { id: 'SPEEDAF', label: 'Speedaf Express', color: 'text-rose-400' },
+                  { id: 'OTHERS', label: 'Others (Custom Courier)', color: 'text-slate-300' }
+                ].map(c => {
+                  const isEnabled = platformSettings.enabled_carriers.includes(c.id);
+                  return (
+                    <div
+                      key={c.id}
+                      onClick={() => {
+                        const updated = isEnabled
+                          ? platformSettings.enabled_carriers.filter(x => x !== c.id)
+                          : [...platformSettings.enabled_carriers, c.id];
+                        handleUpdateSettings({ enabled_carriers: updated });
+                      }}
+                      className={`p-3.5 rounded-xl border cursor-pointer transition flex items-center justify-between ${
+                        isEnabled
+                          ? 'bg-slate-950 border-slate-700'
+                          : 'bg-slate-950/40 border-slate-800 opacity-50'
+                      }`}
+                    >
+                      <div>
+                        <span className={`text-xs font-bold block ${c.color}`}>{c.label}</span>
+                        <span className="text-[10px] font-mono text-slate-500">{isEnabled ? '● Active' : '○ Disabled'}</span>
+                      </div>
+                      <div className={`w-9 h-5 rounded-full transition p-0.5 flex items-center ${
+                        isEnabled ? 'bg-emerald-500 justify-end' : 'bg-slate-700 justify-start'
+                      }`}>
+                        <div className="w-3.5 h-3.5 rounded-full bg-white shadow-sm" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}

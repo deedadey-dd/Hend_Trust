@@ -55,7 +55,9 @@ class TransactionStatusSchema(Schema):
     seller_profile_picture_url: Optional[str] = ""
     delivery_method: Optional[str] = None
     courier_name: Optional[str] = None
+    carrier_code: Optional[str] = None
     tracking_number: Optional[str] = None
+    carrier_tracking_url: Optional[str] = None
     driver_phone: Optional[str] = None
     destination_station: Optional[str] = None
     waybill_photo_url: Optional[str] = None
@@ -132,7 +134,9 @@ def _build_txn_status_dict(t):
         "seller_profile_picture_url": getattr(seller, 'profile_picture_url', '') if seller else '',
         "delivery_method": log.delivery_method if log else None,
         "courier_name": log.courier_name if log else None,
+        "carrier_code": getattr(log, 'carrier_code', None) if log else None,
         "tracking_number": log.tracking_number if log else None,
+        "carrier_tracking_url": getattr(log, 'carrier_tracking_url', None) if log else None,
         "driver_phone": log.driver_phone if log else None,
         "destination_station": log.destination_station if log else None,
         "waybill_photo_url": log.waybill_photo_url if log else None,
@@ -293,17 +297,30 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
         origin = request.headers.get('origin', 'http://localhost:5173')
         cb_url = f"{origin}/l/{link.id}?reference={paystack_ref}"
         
-        paystack_data = PaystackAdapter.initialize_transaction(
-            email=data.email, 
-            amount_ghs=float(total_amount), 
-            reference=paystack_ref,
-            callback_url=cb_url
-        )
+        from apps.escrow.api import get_platform_settings
+        active_gw = get_platform_settings().get('active_payment_gateway', 'PAYSTACK')
+
+        if active_gw == 'APPSNMOBILE':
+            from apps.checkout.adapters.appsnmobile import AppsNMobileAdapter
+            pay_data = AppsNMobileAdapter.initialize_transaction(
+                email=data.email,
+                amount_ghs=float(total_amount),
+                reference=paystack_ref,
+                callback_url=cb_url
+            )
+        else:
+            pay_data = PaystackAdapter.initialize_transaction(
+                email=data.email, 
+                amount_ghs=float(total_amount), 
+                reference=paystack_ref,
+                callback_url=cb_url
+            )
+
         return {
-            "authorization_url": paystack_data['authorization_url'],
+            "authorization_url": pay_data['authorization_url'],
             "reference": paystack_ref
         }
     except Exception as e:
         txn.status = TransactionStatus.DISPUTED
         txn.save()
-        raise HttpError(500, f"Paystack initialization failed: {str(e)}")
+        raise HttpError(500, f"Payment gateway initialization failed: {str(e)}")

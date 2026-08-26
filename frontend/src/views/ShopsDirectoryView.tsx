@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Store, Star, Zap, Shield, ChevronRight, Loader2, Award, ArrowUpRight, X, CheckCircle2 } from 'lucide-react';
+import { Search, Store, Star, Zap, Shield, ShieldCheck, ChevronRight, Loader2, Award, ArrowUpRight, X, CheckCircle2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.jpg';
@@ -31,6 +31,18 @@ interface ShopCard {
 }
 
 const CATEGORIES = ['All', 'Electronics', 'Fashion', 'Beauty', 'Home & Living', 'Services', 'General'];
+
+const IconTooltip = ({ text, children }: { text: string; children: React.ReactNode }) => (
+  <div className="group/tooltip relative inline-flex items-center justify-center cursor-help">
+    {children}
+    <div className="pointer-events-none absolute bottom-full mb-1.5 hidden group-hover/tooltip:flex flex-col items-center z-30 whitespace-nowrap animate-in fade-in zoom-in-95 duration-150">
+      <span className="bg-slate-900 text-white text-[11px] font-semibold py-1 px-2.5 rounded-lg shadow-xl border border-slate-700/80">
+        {text}
+      </span>
+      <div className="w-2 h-2 -mt-1 bg-slate-900 rotate-45 border-r border-b border-slate-700/80" />
+    </div>
+  </div>
+);
 
 export default function ShopsDirectoryView() {
   const { user } = useAuthStore();
@@ -97,102 +109,130 @@ export default function ShopsDirectoryView() {
   const renderShopCard = (shop: ShopCard, isAd: boolean = false) => (
     <div
       key={shop.seller_id}
-      className={`bg-white rounded-3xl border transition-all duration-300 hover:shadow-xl flex flex-col justify-between overflow-hidden ${
+      className={`bg-white rounded-3xl border transition-all duration-300 hover:shadow-xl flex flex-col justify-between ${
         isAd 
           ? 'border-amber-400/80 shadow-md ring-1 ring-amber-400/30' 
           : 'border-gray-200/80 shadow-sm hover:border-blue-300'
       }`}
     >
-      {/* Cover Banner Strip if available */}
-      {shop.banner_url && (
-        <div className="h-16 w-full relative overflow-hidden bg-slate-900">
-          <img src={shop.banner_url} alt={shop.shop_name} className="w-full h-full object-cover opacity-60" />
-        </div>
-      )}
+      {/* 1. Cover Banner Strip (Height: 80px mobile / 96px desktop) */}
+      <div className="h-20 sm:h-24 w-full relative bg-slate-900 rounded-t-3xl overflow-hidden">
+        {shop.banner_url ? (
+          <img src={shop.banner_url} alt={shop.shop_name} className="w-full h-full object-cover opacity-85" />
+        ) : (
+          <div className={`w-full h-full ${
+            isAd ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 opacity-90' : 'bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 opacity-90'
+          }`} />
+        )}
+      </div>
 
-      {/* Card Header & Content */}
-      <div className="p-4 sm:p-5 space-y-3">
-        
-        {/* Top Header Row */}
-        <div className="flex items-start justify-between gap-3">
-          <Link to={`/store/${shop.seller_username}`} className="flex items-center gap-3 group flex-1">
-            {shop.profile_picture_url ? (
-              <img
-                src={shop.profile_picture_url}
-                alt={shop.shop_name}
-                className="h-11 w-11 rounded-xl object-cover border border-gray-200 shadow-sm group-hover:scale-105 transition-transform"
-              />
-            ) : (
-              <div className={`h-11 w-11 rounded-xl flex items-center justify-center font-black text-base text-white shadow-sm group-hover:scale-105 transition-transform ${
-                isAd ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-blue-600 to-indigo-700'
-              }`}>
-                {(shop.shop_name || shop.seller_username).charAt(0).toUpperCase()}
-              </div>
-            )}
-            <div className="min-w-0 flex-1">
-              <div className="flex items-baseline gap-2 flex-wrap">
-                <h3 className="font-bold text-gray-900 text-base group-hover:text-blue-600 transition-colors flex items-center gap-1">
-                  {shop.shop_name}
-                  <ChevronRight className="h-4 w-4 text-gray-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-all" />
-                </h3>
-                <span className="text-xs text-gray-500 font-medium">@{shop.seller_username}</span>
-              </div>
-              <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).map((cat, i) => (
-                  <span key={i} className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100 px-2.5 py-0.5 rounded-full whitespace-nowrap">
-                    {cat}
-                  </span>
-                ))}
-              </div>
-            </div>
-          </Link>
-        </div>
-
-        {/* Rating & Badges */}
-        <div className="flex items-center gap-2 flex-wrap text-sm">
-          <Link to={`/store/${shop.seller_username}`} className="flex items-center gap-1.5 font-bold text-gray-900 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/60 px-2.5 py-1 rounded-lg transition">
-            {shop.avg_overall > 0 ? (
-              <div className="flex items-center gap-1">
-                <div className="flex text-amber-400">
-                  {[1, 2, 3, 4, 5].map(s => (
-                    <Star key={s} className={`h-4 w-4 ${s <= Math.round(shop.avg_overall) ? 'fill-amber-400 text-amber-400' : 'text-gray-200'}`} />
-                  ))}
+      {/* Card Content Body */}
+      <div className="p-4 sm:p-5 pt-0 flex-1 flex flex-col justify-between">
+        <div>
+          {/* Header Row: Overlapping Logo (50% banner overlap) + Shop Details */}
+          <div className="flex items-start gap-3.5 mb-2">
+            {/* Logo: -mt-7 (28px) on mobile / -mt-8 (32px) on desktop for exact 50% overlap */}
+            <Link to={`/store/${shop.seller_username}`} className="-mt-7 sm:-mt-8 shrink-0 relative z-20 group block">
+              {shop.profile_picture_url ? (
+                <img
+                  src={shop.profile_picture_url}
+                  alt={shop.shop_name}
+                  className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl object-cover border-4 border-white shadow-md bg-white group-hover:scale-105 transition-transform"
+                />
+              ) : (
+                <div className={`h-14 w-14 sm:h-16 sm:w-16 rounded-2xl flex items-center justify-center font-black text-lg sm:text-xl text-white shadow-md border-4 border-white group-hover:scale-105 transition-transform ${
+                  isAd ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-blue-600 to-indigo-700'
+                }`}>
+                  {(shop.shop_name || shop.seller_username).charAt(0).toUpperCase()}
                 </div>
-                {shop.total_reviews_count > 0 && <span className="text-xs text-gray-500 font-normal ml-0.5">({shop.total_reviews_count})</span>}
-              </div>
-            ) : (
-              <span className="text-xs font-semibold text-amber-800">New Seller</span>
-            )}
-          </Link>
+              )}
+            </Link>
 
-          {shop.badge_title && (
-            <span className="inline-flex items-center gap-1 font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200/60 px-2.5 py-1 rounded-lg">
-              <Award className="h-4 w-4" /> {shop.badge_title}
-            </span>
+            {/* Shop Details: Positioned cleanly next to lower half of logo */}
+            <div className="min-w-0 flex-1 pt-1">
+              <Link to={`/store/${shop.seller_username}`} className="group block">
+                {/* Line 1: Shop Name + Tooltip Icons (Always 1 Single Line) */}
+                <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-nowrap">
+                  <h3 className="font-bold text-gray-900 text-sm sm:text-base group-hover:text-blue-600 transition-colors truncate leading-tight shrink min-w-0">
+                    {shop.shop_name}
+                  </h3>
+                  
+                  {/* Verified Escrow Merchant Tooltip Icon */}
+                  <IconTooltip text="Verified Escrow Merchant">
+                    <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600 fill-blue-50 shrink-0" />
+                  </IconTooltip>
+
+                  {/* Featured Sponsored Merchant Tooltip Icon */}
+                  {isAd && (
+                    <IconTooltip text="Featured Sponsored Merchant">
+                      <Zap className="h-3.5 w-3.5 sm:h-4 sm:w-4 fill-amber-400 text-amber-500 shrink-0 animate-pulse" />
+                    </IconTooltip>
+                  )}
+
+                  {/* Custom Merchant Award Badge Tooltip Icon */}
+                  {shop.badge_title && (
+                    <IconTooltip text={shop.badge_title}>
+                      <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-600 fill-emerald-50 shrink-0" />
+                    </IconTooltip>
+                  )}
+                </div>
+
+                {/* Line 2: Username + Number of Transactions + Rating Stars (Always 1 Single Line) */}
+                <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5 sm:mt-1 flex-nowrap min-w-0 overflow-hidden">
+                  <span className="font-medium text-gray-600 truncate max-w-[85px] sm:max-w-[120px] shrink">@{shop.seller_username}</span>
+                  <span className="text-gray-300 shrink-0">•</span>
+                  <span className="font-semibold text-blue-700 bg-blue-50/80 px-1.5 py-0.5 rounded whitespace-nowrap shrink-0 text-[11px]">
+                    {shop.total_completed_escrows} Escrows
+                  </span>
+                  <span className="text-gray-300 shrink-0">•</span>
+                  <span className="inline-flex items-center gap-1 font-bold text-gray-900 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/60 px-1.5 py-0.5 rounded transition shrink-0 whitespace-nowrap">
+                    <Star className="h-3 w-3 fill-amber-400 text-amber-400 shrink-0" />
+                    {shop.avg_overall > 0 ? (
+                      <span className="text-[11px] font-bold text-amber-900 flex items-center gap-0.5">
+                        {shop.avg_overall.toFixed(1)}
+                        {shop.total_reviews_count > 0 && <span className="text-[10px] text-gray-500 font-normal">({shop.total_reviews_count})</span>}
+                      </span>
+                    ) : (
+                      <span className="text-[10px] font-semibold text-amber-800">New</span>
+                    )}
+                  </span>
+                </div>
+              </Link>
+            </div>
+          </div>
+
+          {/* Line 3: Categories below logo */}
+          <div className="flex items-center gap-1.5 flex-wrap mt-3">
+            {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).map((cat, i) => (
+              <span key={i} className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100/80 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+                {cat}
+              </span>
+            ))}
+          </div>
+
+          {/* Horizontal Dividing Line */}
+          <hr className="border-gray-100 my-3.5" />
+
+          {/* Other Card Details: Description */}
+          {shop.shop_description && (
+            <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 leading-relaxed">
+              {shop.shop_description}
+            </p>
           )}
-
-          <span className="text-gray-400 font-mono text-xs">
-            {shop.total_completed_escrows} Escrows Completed
-          </span>
         </div>
-
-        {/* Shop Description */}
-        <p className="text-sm text-gray-700 line-clamp-2 leading-relaxed">
-          {shop.shop_description}
-        </p>
 
         {/* Featured Products List */}
         {shop.featured_products.length > 0 && (
-          <div className="pt-2 border-t border-gray-100 space-y-1.5">
-            <span className="text-xs font-bold text-gray-400 uppercase tracking-wider block">Available Payment Links</span>
+          <div className="pt-3 border-t border-gray-100 space-y-1.5 mt-3">
+            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Available Payment Links</span>
             <div className="space-y-1.5">
               {shop.featured_products.map(prod => (
                 <Link
                   key={prod.link_id}
                   to={`/l/${prod.link_id}`}
-                  className="flex items-center justify-between p-2.5 rounded-xl bg-gray-50 hover:bg-blue-50/70 border border-gray-100 transition group text-sm"
+                  className="flex items-center justify-between p-2 rounded-xl bg-gray-50 hover:bg-blue-50/70 border border-gray-100 transition group text-xs sm:text-sm"
                 >
-                  <span className="font-medium text-gray-800 group-hover:text-blue-700 truncate max-w-[220px]">
+                  <span className="font-medium text-gray-800 group-hover:text-blue-700 truncate max-w-[200px]">
                     {prod.title}
                   </span>
                   <span className="font-bold text-gray-900 group-hover:text-blue-600 flex items-center gap-0.5">
@@ -218,22 +258,13 @@ export default function ShopsDirectoryView() {
         </div>
         
         <div className="max-w-5xl w-full mx-auto relative z-10 flex flex-col justify-between flex-1">
-          {/* TOP: Escrow Merchant Marketplace Directory label & Advertise button */}
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          {/* TOP: Escrow Merchant Marketplace Directory label */}
+          <div className="flex items-center justify-between gap-4">
             <div>
               <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-200 bg-black/40 px-3.5 py-1.5 rounded-full backdrop-blur-md border border-white/20 shadow-md">
                 <Store className="h-3.5 w-3.5 text-blue-400" /> Escrow Merchant Marketplace Directory
               </span>
             </div>
-
-            {user && (
-              <button
-                onClick={() => setShowPromoteModal(true)}
-                className="py-2.5 px-4 rounded-2xl bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 text-white font-bold text-xs shadow-lg shadow-amber-500/20 backdrop-blur-md transition flex items-center gap-2 self-start sm:self-auto"
-              >
-                <Zap className="h-4 w-4 fill-white" /> Advertise Your Shop Here
-              </button>
-            )}
           </div>
 
           {/* BOTTOM: Search Box & Category Filter Pills */}
@@ -351,7 +382,29 @@ export default function ShopsDirectoryView() {
             </div>
 
             <div className="p-6 space-y-5">
-              {promoteSuccess ? (
+              {!user ? (
+                <div className="text-center space-y-4 py-4">
+                  <Zap className="h-12 w-12 text-amber-500 mx-auto" />
+                  <h4 className="text-lg font-bold text-gray-900">Advertise Your Escrow Store</h4>
+                  <p className="text-xs text-gray-500 max-w-xs mx-auto">
+                    Promote your store at the top of the Marketplace Directory. Log in or create a seller account to start advertising.
+                  </p>
+                  <div className="flex gap-3 justify-center pt-2">
+                    <Link
+                      to="/login"
+                      className="py-2.5 px-5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow"
+                    >
+                      Log In
+                    </Link>
+                    <Link
+                      to="/register"
+                      className="py-2.5 px-5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl text-xs transition"
+                    >
+                      Register Seller
+                    </Link>
+                  </div>
+                </div>
+              ) : promoteSuccess ? (
                 <div className="text-center space-y-4 py-4">
                   <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto" />
                   <h4 className="text-lg font-bold text-gray-900">Shop Promoted!</h4>
@@ -420,6 +473,28 @@ export default function ShopsDirectoryView() {
           </div>
         </div>
       )}
+
+      {/* FLOATING STICKY ACTION BUTTON */}
+      <button
+        onClick={() => setShowPromoteModal(true)}
+        className={`fixed bottom-6 right-6 z-40 py-3 px-5 rounded-full text-white font-bold text-xs sm:text-sm shadow-2xl hover:scale-105 transition-all flex items-center gap-2 border backdrop-blur-md cursor-pointer ${
+          user
+            ? 'bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-600 hover:to-orange-700 shadow-amber-500/40 border-amber-300/40'
+            : 'bg-gradient-to-r from-blue-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 shadow-blue-600/40 border-blue-300/40'
+        }`}
+      >
+        {user ? (
+          <>
+            <Zap className="h-4 w-4 fill-white animate-pulse" />
+            <span>Advertise Your Shop Here</span>
+          </>
+        ) : (
+          <>
+            <Store className="h-4 w-4" />
+            <span>Create Account to Start Selling</span>
+          </>
+        )}
+      </button>
 
     </div>
   );

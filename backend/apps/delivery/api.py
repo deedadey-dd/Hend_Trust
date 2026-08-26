@@ -26,6 +26,7 @@ class DispatchCourierSchema(Schema):
     transaction_id: uuid.UUID
     courier_name: str
     tracking_number: str
+    carrier_code: Optional[str] = 'OTHERS'
 
 
 class DispatchWaybillSchema(Schema):
@@ -58,7 +59,9 @@ def _assert_seller(request, transaction: Transaction):
 
 @delivery_router.post("/dispatch-courier", response=MessageResponse)
 def dispatch_courier(request, data: DispatchCourierSchema):
-    """Path A: Seller dispatches via a formal courier service."""
+    """Path A: Seller dispatches via a formal courier service (DHL, FedEx, UPS, EMS, Others)."""
+    from apps.delivery.tracking import generate_carrier_tracking_url
+
     transaction = get_object_or_404(
         Transaction.objects.select_related('link'),
         id=data.transaction_id
@@ -67,14 +70,23 @@ def dispatch_courier(request, data: DispatchCourierSchema):
 
     transition_to_delivery(transaction)
 
+    carrier_code = (data.carrier_code or 'OTHERS').upper()
+    tracking_url = generate_carrier_tracking_url(
+        carrier_code=carrier_code,
+        tracking_number=data.tracking_number,
+        courier_name=data.courier_name
+    )
+
     DeliveryLog.objects.create(
         transaction=transaction,
         delivery_method=DeliveryMethod.COURIER_API,
         courier_name=data.courier_name,
-        tracking_number=data.tracking_number
+        carrier_code=carrier_code,
+        tracking_number=data.tracking_number,
+        carrier_tracking_url=tracking_url
     )
 
-    return {"message": "Courier dispatched. Transaction state updated to DELIVERY_IN_PROGRESS."}
+    return {"message": f"Courier ({data.courier_name}) dispatched. Tracking URL generated and state updated to DELIVERY_IN_PROGRESS."}
 
 
 @delivery_router.post("/dispatch-waybill", response=MessageResponse)

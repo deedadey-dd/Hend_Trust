@@ -28,7 +28,9 @@ interface SellerTxn {
   delivered_at?: string;
   waybill_photo_url?: string;
   courier_name?: string;
+  carrier_code?: string;
   tracking_number?: string;
+  carrier_tracking_url?: string;
   driver_phone?: string;
   driver_car_number?: string;
   destination_station?: string;
@@ -54,7 +56,8 @@ interface DispatchModalProps {
 
 function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
   const [path, setPath] = useState<DeliveryPath>('COURIER_API');
-  const [courierName, setCourierName] = useState('');
+  const [carrierCode, setCarrierCode] = useState<string>('DHL');
+  const [courierName, setCourierName] = useState('DHL Express');
   const [trackingNumber, setTrackingNumber] = useState('');
   const [driverPhone, setDriverPhone] = useState('');
   const [driverCar, setDriverCar] = useState('');
@@ -64,6 +67,16 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
   const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState('');
   const [copiedAddress, setCopiedAddress] = useState(false);
+
+  const handleCarrierChange = (code: string) => {
+    setCarrierCode(code);
+    if (code === 'DHL') setCourierName('DHL Express');
+    else if (code === 'FEDEX') setCourierName('FedEx');
+    else if (code === 'UPS') setCourierName('UPS');
+    else if (code === 'EMS') setCourierName('EMS Ghana Post');
+    else if (code === 'SPEEDAF') setCourierName('Speedaf Express');
+    else if (code === 'OTHERS') setCourierName('');
+  };
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -91,7 +104,8 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
         waybill_photo_url: waybillPhoto || undefined
       };
       if (path === 'COURIER_API') {
-        payload.courier_name = courierName;
+        payload.carrier_code = carrierCode;
+        payload.courier_name = courierName || carrierCode;
         payload.tracking_number = trackingNumber;
       } else {
         payload.driver_phone = driverPhone;
@@ -204,16 +218,35 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
           {path === 'COURIER_API' && (
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Courier Name *</label>
-                <input
-                  type="text"
-                  required
-                  value={courierName}
-                  onChange={e => setCourierName(e.target.value)}
-                  placeholder="e.g. DHL, FedEx, Zipline"
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
-                />
+                <label className="block text-xs font-medium text-gray-700 mb-1">Select Courier / Shipping Provider *</label>
+                <select
+                  value={carrierCode}
+                  onChange={e => handleCarrierChange(e.target.value)}
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
+                >
+                  <option value="DHL">DHL Express</option>
+                  <option value="FEDEX">FedEx</option>
+                  <option value="UPS">UPS</option>
+                  <option value="EMS">EMS / Ghana Post</option>
+                  <option value="SPEEDAF">Speedaf Express</option>
+                  <option value="OTHERS">Others (Custom Courier / Local Rider)</option>
+                </select>
               </div>
+
+              {carrierCode === 'OTHERS' && (
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Courier Name *</label>
+                  <input
+                    type="text"
+                    required
+                    value={courierName}
+                    onChange={e => setCourierName(e.target.value)}
+                    placeholder="e.g. Speedaf, Yango, Local Dispatch"
+                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+                  />
+                </div>
+              )}
+
               <div>
                 <label className="block text-xs font-medium text-gray-700 mb-1">Tracking Number *</label>
                 <input
@@ -222,7 +255,7 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
                   value={trackingNumber}
                   onChange={e => setTrackingNumber(e.target.value)}
                   placeholder="e.g. 1Z999AA10123456784"
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 font-mono"
                 />
               </div>
             </div>
@@ -1357,7 +1390,21 @@ export default function DashboardView() {
                   {selectedTxn.delivery_method ? (
                     <div className="space-y-1 text-xs text-gray-600">
                       <p>Method: <strong className="text-gray-900">{selectedTxn.delivery_method === 'INFORMAL_BUS' ? '🚌 Station / Bus OTP' : '📦 Courier API'}</strong></p>
-                      {selectedTxn.courier_name && <p>Courier: {selectedTxn.courier_name} (#{selectedTxn.tracking_number})</p>}
+                      {selectedTxn.courier_name && (
+                        <div className="flex items-center justify-between pt-1">
+                          <p>Courier: <span className="font-semibold text-gray-900">{selectedTxn.courier_name}</span> ({selectedTxn.tracking_number})</p>
+                          {selectedTxn.carrier_tracking_url && (
+                            <a
+                              href={selectedTxn.carrier_tracking_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="inline-flex items-center gap-1 text-xs font-semibold text-blue-600 hover:text-blue-800 underline"
+                            >
+                              Track Package ↗
+                            </a>
+                          )}
+                        </div>
+                      )}
                       {selectedTxn.driver_phone && <p>Driver: {selectedTxn.driver_phone} | Car: {selectedTxn.driver_car_number || 'N/A'} | Station: {selectedTxn.destination_station}</p>}
                     </div>
                   ) : (
