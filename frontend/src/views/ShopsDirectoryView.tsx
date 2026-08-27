@@ -121,7 +121,7 @@ export default function ShopsDirectoryView() {
       {/* 1. Cover Banner Strip (Height: 80px mobile / 96px desktop) */}
       <div className="h-20 sm:h-24 w-full relative bg-slate-900 rounded-t-3xl overflow-hidden">
         {shop.banner_url ? (
-          <img src={shop.banner_url} alt={shop.shop_name} className="w-full h-full object-cover opacity-85" />
+          <img src={shop.banner_url} alt={shop.shop_name} className="w-full h-full object-cover opacity-100" />
         ) : (
           <div className={`w-full h-full ${
             isAd ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 opacity-90' : 'bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 opacity-90'

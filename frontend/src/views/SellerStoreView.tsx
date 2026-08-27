@@ -171,8 +171,7 @@ export default function SellerStoreView() {
           {/* Custom Banner Image Background */}
           {store.banner_url ? (
             <div className="absolute inset-0 z-0">
-              <img src={store.banner_url} alt="Store Cover Banner" className="w-full h-full object-cover opacity-85" />
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950/90 via-slate-950/40 to-black/20" />
+              <img src={store.banner_url} alt="Store Cover Banner" className="w-full h-full object-cover opacity-100" />
             </div>
           ) : (
             <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
