@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { 
   Terminal, Key, Webhook, Copy, Check, 
   ArrowRight, Layers, Server
@@ -188,12 +189,12 @@ function verifyHendAxisWebhook(req) {
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-4">
-              <a
-                href="/dashboard/developer"
+              <Link
+                to="/dashboard/developer"
                 className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl text-sm shadow-xl shadow-blue-600/30 transition flex items-center gap-2"
               >
                 <Key className="h-4 w-4" /> Get API Keys in Merchant Portal <ArrowRight className="h-4 w-4" />
-              </a>
+              </Link>
               <a
                 href="#quickstart"
                 className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl text-sm backdrop-blur-md border border-white/20 transition"
@@ -247,13 +248,15 @@ function verifyHendAxisWebhook(req) {
             </div>
 
             {/* Language Switcher */}
-            <div className="flex items-center gap-1.5 bg-gray-100 dark:bg-slate-800 p-1.5 rounded-2xl text-xs font-bold">
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-800/80 p-1.5 rounded-2xl text-xs font-bold border border-slate-200 dark:border-slate-800">
               {(['CURL', 'NODE', 'PYTHON', 'PHP'] as LangTab[]).map(t => (
                 <button
                   key={t}
                   onClick={() => setLang(t)}
-                  className={`px-3 py-1.5 rounded-xl transition ${
-                    lang === t ? 'bg-white dark:bg-slate-900 text-blue-600 dark:text-blue-400 shadow' : 'text-gray-500 dark:text-slate-400 hover:text-gray-900'
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-extrabold transition-all ${
+                    lang === t 
+                      ? 'bg-blue-600 !text-white shadow-md shadow-blue-600/20' 
+                      : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-200/60 dark:hover:bg-slate-700/60'
                   }`}
                 >
                   {t}
@@ -269,10 +272,10 @@ function verifyHendAxisWebhook(req) {
                 lang === 'CURL' ? curlCode : lang === 'NODE' ? nodeCode : lang === 'PYTHON' ? pythonCode : phpCode,
                 'api_code'
               )}
-              className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-sans font-bold flex items-center gap-1.5 border border-slate-700 transition"
+              className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-700 !text-white px-3 py-1.5 rounded-xl text-xs font-sans font-bold flex items-center gap-1.5 border border-slate-700 transition shadow-sm"
             >
-              {copiedCode === 'api_code' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-              {copiedCode === 'api_code' ? 'Copied!' : 'Copy Code'}
+              {copiedCode === 'api_code' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5 text-slate-300" />}
+              <span className="!text-white">{copiedCode === 'api_code' ? 'Copied!' : 'Copy Code'}</span>
             </button>
             <pre className="pr-20 whitespace-pre-wrap">
               {lang === 'CURL' && curlCode}
@@ -296,10 +299,10 @@ function verifyHendAxisWebhook(req) {
           <div className="relative bg-slate-950 rounded-2xl p-4 sm:p-6 overflow-x-auto border border-slate-800 text-slate-100 font-mono text-xs shadow-inner">
             <button
               onClick={() => copyToClipboard(sdkEmbedCode, 'sdk_code')}
-              className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-sans font-bold flex items-center gap-1.5 border border-slate-700 transition"
+              className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-700 !text-white px-3 py-1.5 rounded-xl text-xs font-sans font-bold flex items-center gap-1.5 border border-slate-700 transition shadow-sm"
             >
-              {copiedCode === 'sdk_code' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-              {copiedCode === 'sdk_code' ? 'Copied!' : 'Copy Code'}
+              {copiedCode === 'sdk_code' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5 text-slate-300" />}
+              <span className="!text-white">{copiedCode === 'sdk_code' ? 'Copied!' : 'Copy Code'}</span>
             </button>
             <pre className="pr-20 whitespace-pre-wrap">{sdkEmbedCode}</pre>
           </div>
@@ -318,10 +321,10 @@ function verifyHendAxisWebhook(req) {
           <div className="relative bg-slate-950 rounded-2xl p-4 sm:p-6 overflow-x-auto border border-slate-800 text-slate-100 font-mono text-xs shadow-inner">
             <button
               onClick={() => copyToClipboard(webhookVerifyCode, 'webhook_code')}
-              className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-xl text-xs font-sans font-bold flex items-center gap-1.5 border border-slate-700 transition"
+              className="absolute top-4 right-4 bg-slate-800 hover:bg-slate-700 !text-white px-3 py-1.5 rounded-xl text-xs font-sans font-bold flex items-center gap-1.5 border border-slate-700 transition shadow-sm"
             >
-              {copiedCode === 'webhook_code' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5" />}
-              {copiedCode === 'webhook_code' ? 'Copied!' : 'Copy Code'}
+              {copiedCode === 'webhook_code' ? <Check className="h-3.5 w-3.5 text-emerald-400" /> : <Copy className="h-3.5 w-3.5 text-slate-300" />}
+              <span className="!text-white">{copiedCode === 'webhook_code' ? 'Copied!' : 'Copy Code'}</span>
             </button>
             <pre className="pr-20 whitespace-pre-wrap">{webhookVerifyCode}</pre>
           </div>

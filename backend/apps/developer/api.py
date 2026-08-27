@@ -1,11 +1,11 @@
 from typing import List, Optional
 from ninja import Router, Schema
-from ninja_jwt.authentication import JWTAuth
 from django.shortcuts import get_object_or_404
+from hendaxis_trust.auth import JWTCookieAuth
 from .models import DeveloperAPIKey, WebhookEndpoint, WebhookDeliveryLog
 from .auth import WebhookDispatcher
 
-developer_router = Router()
+developer_router = Router(tags=["Developer Portal"], auth=JWTCookieAuth())
 
 # Schemas
 class CreateAPIKeySchema(Schema):
@@ -46,7 +46,7 @@ class WebhookLogSchema(Schema):
 
 # ─── API Key Management Endpoints ───────────────────────────────────────────
 
-@developer_router.post("/keys", response=APIKeyResponseSchema, auth=JWTAuth())
+@developer_router.post("/keys", response=APIKeyResponseSchema)
 def create_api_key(request, data: CreateAPIKeySchema):
     if data.environment.upper() not in ['LIVE', 'TEST']:
         data.environment = 'TEST'
@@ -70,7 +70,7 @@ def create_api_key(request, data: CreateAPIKeySchema):
     }
 
 
-@developer_router.get("/keys", response=List[APIKeyResponseSchema], auth=JWTAuth())
+@developer_router.get("/keys", response=List[APIKeyResponseSchema])
 def list_api_keys(request):
     keys = DeveloperAPIKey.objects.filter(user=request.user)
     return [
@@ -89,7 +89,7 @@ def list_api_keys(request):
     ]
 
 
-@developer_router.delete("/keys/{key_id}", auth=JWTAuth())
+@developer_router.delete("/keys/{key_id}")
 def revoke_api_key(request, key_id: str):
     key_obj = get_object_or_404(DeveloperAPIKey, id=key_id, user=request.user)
     key_obj.is_active = False
@@ -99,7 +99,7 @@ def revoke_api_key(request, key_id: str):
 
 # ─── Webhook Management Endpoints ───────────────────────────────────────────
 
-@developer_router.post("/webhooks", response=WebhookResponseSchema, auth=JWTAuth())
+@developer_router.post("/webhooks", response=WebhookResponseSchema)
 def create_webhook(request, data: WebhookEndpointSchema):
     url = data.url.strip()
     if not url.startswith(('http://', 'https://')):
@@ -118,7 +118,7 @@ def create_webhook(request, data: WebhookEndpointSchema):
     }
 
 
-@developer_router.get("/webhooks", response=List[WebhookResponseSchema], auth=JWTAuth())
+@developer_router.get("/webhooks", response=List[WebhookResponseSchema])
 def list_webhooks(request):
     endpoints = WebhookEndpoint.objects.filter(user=request.user)
     return [
@@ -134,14 +134,14 @@ def list_webhooks(request):
     ]
 
 
-@developer_router.delete("/webhooks/{webhook_id}", auth=JWTAuth())
+@developer_router.delete("/webhooks/{webhook_id}")
 def delete_webhook(request, webhook_id: str):
     ep = get_object_or_404(WebhookEndpoint, id=webhook_id, user=request.user)
     ep.delete()
     return {"message": "Webhook endpoint deleted successfully."}
 
 
-@developer_router.post("/webhooks/test", auth=JWTAuth())
+@developer_router.post("/webhooks/test")
 def send_test_webhook(request):
     results = WebhookDispatcher.dispatch_event(
         user=request.user,
@@ -155,7 +155,7 @@ def send_test_webhook(request):
     return {"dispatched": len(results), "results": results}
 
 
-@developer_router.get("/webhooks/{webhook_id}/logs", response=List[WebhookLogSchema], auth=JWTAuth())
+@developer_router.get("/webhooks/{webhook_id}/logs", response=List[WebhookLogSchema])
 def get_webhook_logs(request, webhook_id: str):
     ep = get_object_or_404(WebhookEndpoint, id=webhook_id, user=request.user)
     logs = WebhookDeliveryLog.objects.filter(webhook=ep)[:20]

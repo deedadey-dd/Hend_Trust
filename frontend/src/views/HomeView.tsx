@@ -120,17 +120,17 @@ export default function HomeView() {
           <div className="text-center space-y-5 mt-auto pt-6">
             {/* Marketplace Search Box */}
             <form onSubmit={handleSearchSubmit} className="relative max-w-xl mx-auto shadow-2xl">
-              <Search className="h-4 w-4 sm:h-5 sm:w-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10" />
+              <Search className="h-5 w-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search verified shops, sellers, or products (e.g. 'iPhone 15', 'Accra Tech')..."
-                className="w-full pl-10 sm:pl-12 pr-32 py-3 bg-slate-900/40 backdrop-blur-sm text-white placeholder-slate-300 rounded-2xl text-xs sm:text-sm border border-slate-600 focus:ring-4 focus:ring-blue-500/40 outline-none font-medium transition-all shadow-2xl"
+                className="w-full pl-10 sm:pl-12 pr-32 py-3.5 bg-slate-900/40 backdrop-blur-sm text-white placeholder-slate-300 rounded-2xl text-sm sm:text-base border border-slate-600 focus:ring-4 focus:ring-blue-500/40 outline-none font-medium transition-all shadow-2xl"
               />
               <button
                 type="submit"
-                className="absolute right-1.5 top-1.5 bottom-1.5 px-4 sm:px-5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-lg flex items-center gap-1.5"
+                className="absolute right-1.5 top-1.5 bottom-1.5 px-4 sm:px-5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm sm:text-base rounded-xl transition shadow-lg flex items-center gap-1.5"
               >
                 <Store className="h-4 w-4" /> Search Shops
               </button>
@@ -140,23 +140,23 @@ export default function HomeView() {
             <div className="flex flex-row gap-3 justify-center items-center pt-1">
               {isAuthenticated ? (
                 <Link to="/dashboard/create-link"
-                  className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
+                  className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
                   Create Payment Link <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Link>
               ) : (
                 <>
                   <Link to="/register"
-                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
+                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
                     Start Selling Free <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Link>
                   <Link to="/login"
-                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 !text-white font-bold text-xs sm:text-base transition-all backdrop-blur-sm shrink-0">
+                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 !text-white font-bold text-sm sm:text-base transition-all backdrop-blur-sm shrink-0">
                     Log in
                   </Link>
                 </>
               )}
               <Link to="/help"
-                className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-6 py-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 !text-amber-300 font-bold text-xs sm:text-base transition-all backdrop-blur-sm shrink-0">
+                className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-6 py-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 !text-amber-300 font-bold text-sm sm:text-base transition-all backdrop-blur-sm shrink-0">
                 <HelpCircle className="h-4 w-4" /> Platform Guide
               </Link>
             </div>
@@ -170,7 +170,7 @@ export default function HomeView() {
           {STATS.map(s => (
             <div key={s.label} className="p-2">
               <p className="text-2xl sm:text-3xl font-black text-blue-400 mb-1">{s.value}</p>
-              <p className="text-xs sm:text-sm text-slate-400 font-medium">{s.label}</p>
+              <p className="text-sm sm:text-base text-slate-400 font-medium">{s.label}</p>
             </div>
           ))}
         </div>
@@ -194,12 +194,12 @@ export default function HomeView() {
                 <div key={i} className="flex flex-col items-center text-center">
                   <div className="relative z-10 h-20 w-20 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-5 shadow-xl">
                     <Icon className={`h-9 w-9 ${step.color}`} />
-                    <span className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center text-xs font-black text-blue-600 dark:text-blue-400">
+                    <span className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center text-sm font-black text-blue-600 dark:text-blue-400">
                       {i + 1}
                     </span>
                   </div>
-                  <h3 className="font-bold text-slate-900 dark:text-white mb-2 text-sm sm:text-base">{step.title}</h3>
-                  <p className="text-slate-600 dark:text-slate-400 text-xs sm:text-sm leading-relaxed">{step.desc}</p>
+                  <h3 className="font-bold text-slate-900 dark:text-white mb-2 text-base sm:text-lg">{step.title}</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed">{step.desc}</p>
                 </div>
               );
             })}
@@ -223,8 +223,8 @@ export default function HomeView() {
                   <div className="h-12 w-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4 group-hover:bg-blue-600/20 transition-colors">
                     <Icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2 text-sm sm:text-base">{f.title}</h3>
-                  <p className="text-slate-600 dark:text-slate-400 text-xs sm:text-sm leading-relaxed">{f.desc}</p>
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2 text-base sm:text-lg">{f.title}</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-sm sm:text-base leading-relaxed">{f.desc}</p>
                 </div>
               );
             })}

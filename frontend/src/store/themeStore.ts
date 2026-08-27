@@ -28,7 +28,7 @@ const applyThemeToDOM = (effectiveTheme: 'light' | 'dark') => {
 };
 
 export const useThemeStore = create<ThemeState>((set, get) => ({
-  theme: (localStorage.getItem('hendaxis_theme_mode') as ThemeMode) || 'dark',
+  theme: (localStorage.getItem('hendaxis_theme_mode') as ThemeMode) || 'system',
   effectiveTheme: 'dark',
 
   setTheme: (mode: ThemeMode) => {
@@ -39,7 +39,7 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
   },
 
   initTheme: () => {
-    const saved = (localStorage.getItem('hendaxis_theme_mode') as ThemeMode) || 'dark';
+    const saved = (localStorage.getItem('hendaxis_theme_mode') as ThemeMode) || 'system';
     const effective = saved === 'system' ? getSystemTheme() : saved;
     applyThemeToDOM(effective);
     set({ theme: saved, effectiveTheme: effective });

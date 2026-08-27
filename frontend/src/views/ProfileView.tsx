@@ -102,10 +102,84 @@ export default function ProfileView() {
     fetchProfile();
   }, []);
 
+  // MoMo OTP Verification modal state
+  const [showOtpModal, setShowOtpModal] = useState(false);
+  const [momoOtp, setMomoOtp] = useState('');
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [verifyingOtp, setVerifyingOtp] = useState(false);
+  const [otpError, setOtpError] = useState('');
+
+  const requestMomoOtpCode = async (targetNumber: string) => {
+    setSendingOtp(true);
+    setOtpError('');
+    try {
+      await apiClient.post('/profile/request-momo-otp', { momo_number: targetNumber });
+      setShowOtpModal(true);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Failed to send MoMo OTP verification code.');
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (!momoNumber) return;
+    setSendingOtp(true);
+    setOtpError('');
+    try {
+      await apiClient.post('/profile/request-momo-otp', { momo_number: momoNumber });
+      setOtpError('A new verification code has been sent.');
+    } catch (err: any) {
+      setOtpError(err.response?.data?.message || 'Failed to resend verification code.');
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
+  const handleVerifyOtpAndSave = async () => {
+    if (momoOtp.length !== 6) {
+      setOtpError('Please enter the full 6-digit verification code.');
+      return;
+    }
+    setVerifyingOtp(true);
+    setOtpError('');
+    try {
+      await apiClient.patch('/profile/', {
+        first_name: firstName,
+        last_name: lastName,
+        payout_mode: payoutMode,
+        preferred_payout_type: payoutType,
+        momo_number: momoNumber,
+        momo_otp: momoOtp,
+        bank_account_number: payoutType === 'BANK' ? bankAccount : null,
+        bank_name: payoutType === 'BANK' ? bankName : null,
+      });
+      setShowOtpModal(false);
+      setMomoOtp('');
+      setSuccess('Profile & MoMo Payout settings verified and saved!');
+      setTimeout(() => setSuccess(''), 4000);
+      fetchProfile();
+    } catch (err: any) {
+      setOtpError(err.response?.data?.message || 'Verification failed.');
+    } finally {
+      setVerifyingOtp(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
-    setSaving(true);
     setSuccess('');
     setError('');
+
+    // Check if user modified MoMo number
+    const momoChanged = payoutType === 'MOMO' && momoNumber && momoNumber.trim() !== (profile?.momo_number || '');
+
+    if (momoChanged) {
+      // Trigger MoMo OTP request before saving
+      await requestMomoOtpCode(momoNumber.trim());
+      return;
+    }
+
+    setSaving(true);
     try {
       await apiClient.patch('/profile/', {
         first_name: firstName,
@@ -118,6 +192,7 @@ export default function ProfileView() {
       });
       setSuccess('Profile & Payout settings saved!');
       setTimeout(() => setSuccess(''), 4000);
+      fetchProfile();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to save profile.');
     } finally {
@@ -668,16 +743,83 @@ export default function ProfileView() {
 
             <button
               onClick={handleSaveProfile}
-              disabled={saving}
+              disabled={saving || sendingOtp}
               className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2"
             >
-              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save Profile & Payout Settings
+              {saving || sendingOtp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+              {sendingOtp ? 'Sending Verification Code...' : 'Save Profile & Payout Settings'}
             </button>
           </div>
         </div>
 
       </div>
+
+      {/* MoMo OTP Verification Modal */}
+      {showOtpModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white">
+            <button
+              onClick={() => setShowOtpModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-600 dark:text-blue-400 flex items-center justify-center">
+                <Phone className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base">Verify MoMo Payout Number</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Security Check</p>
+              </div>
+            </div>
+
+            <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              We sent a 6-digit SMS verification code to <strong className="text-slate-900 dark:text-white">{momoNumber}</strong>. Please enter the code below to confirm your new payout number.
+            </p>
+
+            {otpError && (
+              <div className="p-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 text-xs font-semibold text-amber-800 dark:text-amber-300">
+                {otpError}
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold mb-1">6-Digit Verification Code</label>
+              <input
+                type="text"
+                maxLength={6}
+                value={momoOtp}
+                onChange={e => setMomoOtp(e.target.value.replace(/\D/g, ''))}
+                placeholder="123456"
+                className="w-full text-center text-xl tracking-widest font-mono font-bold py-3 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"
+              />
+            </div>
+
+            <div className="flex items-center justify-between gap-3 pt-2">
+              <button
+                type="button"
+                onClick={handleResendOtp}
+                disabled={sendingOtp}
+                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline disabled:opacity-50"
+              >
+                {sendingOtp ? 'Sending...' : 'Resend Code'}
+              </button>
+
+              <button
+                type="button"
+                onClick={handleVerifyOtpAndSave}
+                disabled={verifyingOtp || momoOtp.length !== 6}
+                className="px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition-all flex items-center gap-2"
+              >
+                {verifyingOtp ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                Confirm & Save
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

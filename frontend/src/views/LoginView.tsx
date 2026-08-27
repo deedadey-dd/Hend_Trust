@@ -17,9 +17,30 @@ export default function LoginView() {
   const navigate = useNavigate();
   const { login } = useAuthStore();
 
+  const [resending, setResending] = useState(false);
+  const [resendMsg, setResendMsg] = useState('');
+
+  const handleResendActivation = async () => {
+    if (!username) {
+      setError('Please enter your email or username first.');
+      return;
+    }
+    setResending(true);
+    setResendMsg('');
+    try {
+      const res = await apiClient.post('/auth/resend-activation', { email: username });
+      setResendMsg(res.data.message || 'Activation email sent!');
+    } catch (err: any) {
+      setResendMsg(getErrorMessage(err) || 'Failed to resend activation link.');
+    } finally {
+      setResending(false);
+    }
+  };
+
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+    setResendMsg('');
     setLoading(true);
     try {
       const res = await apiClient.post('/auth/login', { username, password });
@@ -72,13 +93,29 @@ export default function LoginView() {
             )}
 
             {error && (
-              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-800 text-sm text-red-600 dark:text-red-400 font-medium">
-                {error}
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-800 text-sm text-red-600 dark:text-red-400 font-medium space-y-2">
+                <p>{error}</p>
+                {error.includes('activate your account') && (
+                  <button
+                    type="button"
+                    onClick={handleResendActivation}
+                    disabled={resending}
+                    className="text-xs font-bold text-blue-600 dark:text-blue-400 underline hover:text-blue-700"
+                  >
+                    {resending ? 'Sending activation link...' : 'Resend Activation Email'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {resendMsg && (
+              <div className="p-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800 text-sm text-blue-600 dark:text-blue-400 font-medium">
+                {resendMsg}
               </div>
             )}
             
             <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Username</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Username or Email</label>
               <div className="relative rounded-lg shadow-sm">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <User className="h-5 w-5 text-gray-400 dark:text-slate-500" />
@@ -106,9 +143,9 @@ export default function LoginView() {
               </div>
 
               <div>
-                <a href="#" className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
+                <Link to="/forgot-password" className="font-medium text-blue-600 dark:text-blue-400 hover:underline">
                   Forgot password?
-                </a>
+                </Link>
               </div>
             </div>
 

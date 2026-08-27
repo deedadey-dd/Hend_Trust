@@ -34,8 +34,8 @@ export default function DashboardLayout() {
       {/* Sidebar */}
       <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 hidden md:flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-800">
-          <img src={logoBlack} alt="HendAxis Trust Logo" className="h-8 w-auto object-contain dark:hidden" />
-          <img src={logoWhite} alt="HendAxis Trust Logo" className="h-8 w-auto object-contain hidden dark:block" />
+          <img src={logoBlack} alt="HendAxis Trust Logo" className="h-11 sm:h-14 w-auto object-contain dark:hidden shrink-0" />
+          <img src={logoWhite} alt="HendAxis Trust Logo" className="h-11 sm:h-14 w-auto object-contain hidden dark:block shrink-0" />
         </div>
         
         <div className="flex-1 py-6 px-4 space-y-1">

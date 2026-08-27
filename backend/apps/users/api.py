@@ -1,22 +1,33 @@
+import random
+from datetime import timedelta
+from typing import Optional, List
 from django.conf import settings
+from django.utils import timezone
+from django.contrib.auth import authenticate
+from django.contrib.auth.tokens import default_token_generator
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
+from django.utils.encoding import force_bytes, force_str
+from django.core.mail import send_mail
+from django.http import HttpResponse
+
 from ninja import Router, Schema
+from ninja.errors import HttpError
 from ninja_jwt.tokens import RefreshToken
 from ninja_jwt.schema import TokenRefreshInputSchema
-from django.contrib.auth import authenticate
-from django.http import HttpResponse
+
 from apps.users.models import User, PayoutMode
-from ninja.errors import HttpError
-from typing import Optional
 from hendaxis_trust.auth import JWTCookieAuth
+from utils.mnotify import MNotifyService
 
 auth_router = Router(tags=["Authentication"])
 profile_router = Router(tags=["Seller Profile"], auth=JWTCookieAuth())
 
 class RegisterSchema(Schema):
     username: str
+    email: str
     password: str
     phone_number: str
-    role: Optional[str] = 'BUYER'
+    role: Optional[str] = 'SELLER'
 
 class LoginSchema(Schema):
     username: str
@@ -30,6 +41,21 @@ class LoginResponseSchema(Schema):
     user_id: str
     username: str
     role: str
+    email: str
+
+class ForgotPasswordSchema(Schema):
+    email: str
+
+class ResetPasswordSchema(Schema):
+    uid: str
+    token: str
+    new_password: str
+
+class ActivateAccountSchema(Schema):
+    uid: str
+    token: str
+
+class ResendActivationSchema(Schema):
     email: str
 
 def set_auth_cookies(response, refresh_token):
@@ -54,26 +80,157 @@ def set_auth_cookies(response, refresh_token):
         domain=settings.NINJA_JWT['AUTH_COOKIE_DOMAIN']
     )
 
+def send_account_activation_email(user, request=None):
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    activation_link = f"{frontend_url}/activate-account?uid={uid}&token={token}"
+    
+    subject = "Activate Your HendAxis Trust Account"
+    message = f"Hello {user.username},\n\nThank you for registering on HendAxis Trust! Please click the link below to activate your account:\n\n{activation_link}\n\nIf you did not register, please ignore this email."
+    
+    html_message = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
+      <h2 style="color: #2563eb; margin-top: 0;">Welcome to HendAxis Trust</h2>
+      <p style="font-size: 15px; color: #334155;">Hello <strong>{user.username}</strong>,</p>
+      <p style="font-size: 15px; color: #334155;">Thank you for creating an account with us. Please click the button below to verify your email address and activate your account:</p>
+      <p style="text-align: center; margin: 32px 0;">
+        <a href="{activation_link}" style="background-color: #2563eb; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; font-size: 15px; border-radius: 10px; display: inline-block;">Activate My Account</a>
+      </p>
+      <p style="color: #64748b; font-size: 13px; margin-top: 24px;">If the button above does not work, copy and paste this link into your web browser:<br/><a href="{activation_link}" style="color: #2563eb;">{activation_link}</a></p>
+    </div>
+    """
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+        html_message=html_message,
+        fail_silently=False
+    )
+
+def send_password_reset_email(user, request=None):
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    token = default_token_generator.make_token(user)
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    reset_link = f"{frontend_url}/reset-password?uid={uid}&token={token}"
+    
+    subject = "Reset Your HendAxis Trust Password"
+    message = f"Hello {user.username},\n\nYou requested to reset your HendAxis Trust password. Click the link below to set a new password:\n\n{reset_link}\n\nIf you did not request a password reset, please ignore this email."
+    
+    html_message = f"""
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 24px; border: 1px solid #e2e8f0; border-radius: 16px; background-color: #ffffff;">
+      <h2 style="color: #2563eb; margin-top: 0;">Password Reset Request</h2>
+      <p style="font-size: 15px; color: #334155;">Hello <strong>{user.username}</strong>,</p>
+      <p style="font-size: 15px; color: #334155;">We received a request to reset your password for your HendAxis Trust account. Click the button below to proceed:</p>
+      <p style="text-align: center; margin: 32px 0;">
+        <a href="{reset_link}" style="background-color: #2563eb; color: #ffffff; padding: 14px 28px; text-decoration: none; font-weight: bold; font-size: 15px; border-radius: 10px; display: inline-block;">Reset Password</a>
+      </p>
+      <p style="color: #64748b; font-size: 13px; margin-top: 24px;">If you did not request this, your account remains secure and no action is required.</p>
+    </div>
+    """
+    send_mail(
+        subject=subject,
+        message=message,
+        from_email=settings.DEFAULT_FROM_EMAIL,
+        recipient_list=[user.email],
+        html_message=html_message,
+        fail_silently=False
+    )
+
 @auth_router.post("/register", response=MessageSchema)
 def register(request, data: RegisterSchema):
-    if User.objects.filter(username=data.username).exists():
+    if User.objects.filter(username__iexact=data.username.strip()).exists():
         raise HttpError(400, "Username already exists")
-    if User.objects.filter(phone_number=data.phone_number).exists():
+    if User.objects.filter(email__iexact=data.email.strip()).exists():
+        raise HttpError(400, "Email address already registered")
+    if User.objects.filter(phone_number=data.phone_number.strip()).exists():
         raise HttpError(400, "Phone number already exists")
         
     user = User.objects.create_user(
-        username=data.username,
+        username=data.username.strip(),
+        email=data.email.strip(),
         password=data.password,
-        phone_number=data.phone_number,
-        role=data.role
+        phone_number=data.phone_number.strip(),
+        role=data.role or 'SELLER',
+        is_email_verified=False
     )
-    return {"message": "User registered successfully"}
+    
+    try:
+        send_account_activation_email(user, request)
+    except Exception as e:
+        print(f"Error sending activation email: {e}")
+        
+    return {"message": "Account created! Please check your email to activate your account before logging in."}
+
+@auth_router.post("/activate-account", response=MessageSchema)
+def activate_account(request, data: ActivateAccountSchema):
+    try:
+        pk = force_str(urlsafe_base64_decode(data.uid))
+        user = User.objects.get(pk=pk)
+    except Exception:
+        raise HttpError(400, "Invalid activation link.")
+        
+    if user.is_email_verified:
+        return {"message": "Your account is already activated. You can sign in now."}
+        
+    if not default_token_generator.check_token(user, data.token):
+        raise HttpError(400, "Activation link is invalid or has expired.")
+        
+    user.is_email_verified = True
+    user.save(update_fields=['is_email_verified'])
+    return {"message": "Account activated successfully! You can now log in."}
+
+@auth_router.post("/resend-activation", response=MessageSchema)
+def resend_activation(request, data: ResendActivationSchema):
+    user = User.objects.filter(email__iexact=data.email.strip()).first()
+    if not user:
+        return {"message": "If an account exists with that email, an activation link has been sent."}
+    if user.is_email_verified:
+        return {"message": "Your account is already activated. Please sign in."}
+        
+    send_account_activation_email(user, request)
+    return {"message": "Activation email resent. Please check your inbox."}
+
+@auth_router.post("/forgot-password", response=MessageSchema)
+def forgot_password(request, data: ForgotPasswordSchema):
+    user = User.objects.filter(email__iexact=data.email.strip()).first()
+    if user:
+        send_password_reset_email(user, request)
+    return {"message": "If an account exists with that email, password reset instructions have been sent."}
+
+@auth_router.post("/reset-password", response=MessageSchema)
+def reset_password(request, data: ResetPasswordSchema):
+    try:
+        pk = force_str(urlsafe_base64_decode(data.uid))
+        user = User.objects.get(pk=pk)
+    except Exception:
+        raise HttpError(400, "Invalid reset link.")
+        
+    if not default_token_generator.check_token(user, data.token):
+        raise HttpError(400, "Password reset link is invalid or has expired.")
+        
+    if len(data.new_password) < 6:
+        raise HttpError(400, "Password must be at least 6 characters long.")
+        
+    user.set_password(data.new_password)
+    user.save()
+    return {"message": "Password reset successfully! You can now log in with your new password."}
 
 @auth_router.post("/login", response=LoginResponseSchema)
 def login(request, data: LoginSchema, response: HttpResponse):
     user = authenticate(username=data.username, password=data.password)
     if not user:
+        # Fallback check by email if user entered email instead of username
+        user_by_email = User.objects.filter(email__iexact=data.username.strip()).first()
+        if user_by_email:
+            user = authenticate(username=user_by_email.username, password=data.password)
+            
+    if not user:
         raise HttpError(401, "Invalid credentials")
+        
+    if not user.is_email_verified:
+        raise HttpError(403, "Please check your email and activate your account before logging in.")
         
     refresh = RefreshToken.for_user(user)
     set_auth_cookies(response, refresh)
@@ -106,7 +263,6 @@ def logout(request, response: HttpResponse):
     return {"message": "Logout successful"}
 
 # --- Profile Schemas ---
-from typing import Optional, List
 
 class ProfileResponse(Schema):
     id: str
@@ -142,6 +298,7 @@ class ProfileUpdateRequest(Schema):
     payout_mode: Optional[str] = None
     preferred_payout_type: Optional[str] = None
     momo_number: Optional[str] = None
+    momo_otp: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_name: Optional[str] = None
 
@@ -159,6 +316,9 @@ class SubmitVerificationRequest(Schema):
 
 class ProfileMessageResponse(Schema):
     message: str
+
+class RequestMomoOTPSchema(Schema):
+    momo_number: str
 
 def _build_profile_response(user) -> dict:
     cats = user.shop_categories if isinstance(user.shop_categories, list) else []
@@ -206,6 +366,28 @@ def _build_profile_response(user) -> dict:
 def get_profile(request):
     return _build_profile_response(request.user)
 
+@profile_router.post("/request-momo-otp", response=ProfileMessageResponse)
+def request_momo_otp(request, data: RequestMomoOTPSchema):
+    user = request.user
+    momo = data.momo_number.strip()
+    if not momo:
+        raise HttpError(400, "Mobile money number is required.")
+        
+    code = str(random.randint(100000, 999999))
+    user.pending_momo_number = momo
+    user.momo_otp_code = code
+    user.momo_otp_created_at = timezone.now()
+    user.save(update_fields=['pending_momo_number', 'momo_otp_code', 'momo_otp_created_at'])
+    
+    sms_sent = MNotifyService.send_sms(
+        momo, 
+        f"Your HendAxis Trust payout verification code is: {code}. Valid for 10 minutes."
+    )
+    if not sms_sent:
+        raise HttpError(500, "Failed to send SMS verification code. Please try again.")
+        
+    return {"message": f"Verification code sent to {momo}."}
+
 @profile_router.patch("/", response=ProfileMessageResponse)
 def update_profile(request, data: ProfileUpdateRequest):
     user = request.user
@@ -219,6 +401,31 @@ def update_profile(request, data: ProfileUpdateRequest):
             raise HttpError(400, "Invalid payout_mode. Must be 'INSTANT' or 'MANUAL'.")
         user.payout_mode = data.payout_mode
     user.save()
+    
+    # Check if momo_number is being updated
+    if data.momo_number is not None:
+        from apps.wallet.api import get_user_wallet
+        wallet = get_user_wallet(user)
+        # If user is changing or setting a new MoMo number
+        if data.momo_number.strip() != (wallet.momo_number or ""):
+            # Require OTP verification!
+            if not data.momo_otp or not data.momo_otp.strip():
+                raise HttpError(400, "OTP verification code is required to update your MoMo payout number.")
+                
+            if not user.momo_otp_code or user.pending_momo_number != data.momo_number.strip():
+                raise HttpError(400, "Please request a verification code for this MoMo number first.")
+                
+            # Check 10-minute expiry
+            if not user.momo_otp_created_at or (timezone.now() - user.momo_otp_created_at) > timedelta(minutes=10):
+                raise HttpError(400, "Verification code has expired. Please request a new code.")
+                
+            if data.momo_otp.strip() != user.momo_otp_code:
+                raise HttpError(400, "Invalid verification code.")
+                
+            # Clear used OTP
+            user.momo_otp_code = ""
+            user.pending_momo_number = ""
+            user.save(update_fields=['momo_otp_code', 'pending_momo_number'])
     
     # Update wallet fields if provided
     wallet_fields = {
@@ -288,4 +495,3 @@ def submit_verification_documents(request, data: SubmitVerificationRequest):
     ])
 
     return {"message": "Verification documents submitted successfully! A manager will review your submission."}
-

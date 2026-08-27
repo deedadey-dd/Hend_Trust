@@ -1,10 +1,16 @@
+import { useState, useEffect } from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { Loader2 } from 'lucide-react';
+import { apiClient } from './api/client';
 import Navbar from './components/Navbar';
 import HomeView from './views/HomeView';
 import CreatePaymentLinkView from './views/CreatePaymentLinkView';
 import PublicCheckoutView from './views/PublicCheckoutView';
 import LoginView from './views/LoginView';
 import RegisterView from './views/RegisterView';
+import ForgotPasswordView from './views/ForgotPasswordView';
+import ResetPasswordView from './views/ResetPasswordView';
+import ActivateAccountView from './views/ActivateAccountView';
 import DashboardView from './views/DashboardView';
 import { LedgerView } from './views/LedgerView';
 import { TrackingView } from './views/TrackingView';
@@ -20,7 +26,43 @@ import DeveloperKeysView from './views/DeveloperKeysView';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user } = useAuthStore();
+  const { isAuthenticated, user, isHydrated, login } = useAuthStore();
+  const [checking, setChecking] = useState(!isAuthenticated);
+
+  useEffect(() => {
+    if (isHydrated && !isAuthenticated) {
+      setChecking(true);
+      apiClient.get('/profile/')
+        .then((res: any) => {
+          const data = res.data;
+          login('', {
+            id: data.id,
+            role: data.role || 'SELLER',
+            email: data.email || '',
+            name: data.username || data.first_name,
+            username: data.username
+          });
+        })
+        .catch(() => {
+          /* Session cookie invalid or expired */
+        })
+        .finally(() => {
+          setChecking(false);
+        });
+    } else if (isAuthenticated) {
+      setChecking(false);
+    }
+  }, [isHydrated, isAuthenticated]);
+
+  if (!isHydrated || checking) {
+    return (
+      <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-3">
+        <Loader2 className="h-8 w-8 animate-spin text-blue-500" />
+        <p className="text-sm font-medium text-slate-400">Verifying session...</p>
+      </div>
+    );
+  }
+
   return (isAuthenticated && user) ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
@@ -35,6 +77,9 @@ function App() {
         <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <HomeView />} />
         <Route path="/login" element={<LoginView />} />
         <Route path="/register" element={<RegisterView />} />
+        <Route path="/forgot-password" element={<ForgotPasswordView />} />
+        <Route path="/reset-password" element={<ResetPasswordView />} />
+        <Route path="/activate-account" element={<ActivateAccountView />} />
         <Route path="/shops" element={<ShopsDirectoryView />} />
         <Route path="/directory" element={<ShopsDirectoryView />} />
         <Route path="/help" element={<HelpView />} />

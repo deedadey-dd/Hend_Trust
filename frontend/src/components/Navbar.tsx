@@ -66,9 +66,9 @@ export default function Navbar() {
           <div className="flex items-center justify-between h-16">
 
             {/* Logo */}
-            <Link to="/" className="flex items-center gap-2.5 group" onClick={() => setMenuOpen(false)}>
-              <img src={logoBlack} alt="HendAxis Trust Logo" className="h-11 sm:h-14 w-auto object-contain block dark:hidden group-hover:scale-102 transition-transform" />
-              <img src={logoWhite} alt="HendAxis Trust Logo" className="h-11 sm:h-14 w-auto object-contain hidden dark:block group-hover:scale-102 transition-transform" />
+            <Link to="/" className="flex items-center gap-2.5 group shrink-0" onClick={() => setMenuOpen(false)}>
+              <img src={logoBlack} alt="HendAxis Trust Logo" className="h-11 sm:h-14 w-auto object-contain block dark:hidden group-hover:scale-102 transition-transform shrink-0" />
+              <img src={logoWhite} alt="HendAxis Trust Logo" className="h-11 sm:h-14 w-auto object-contain hidden dark:block group-hover:scale-102 transition-transform shrink-0" />
             </Link>
 
             {/* Desktop nav */}

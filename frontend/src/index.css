@@ -20,40 +20,40 @@
 
   body {
     @apply transition-colors duration-200 antialiased;
-    font-size: 1rem; /* ~16px balanced default body text */
+    font-size: 1.05rem; /* ~16.8px generous default body text */
     line-height: 1.6;
   }
 
-  /* Balanced font size scale (Goldilocks typography tuning) */
+  /* Stepped Up Mobile & Desktop Font Size Scale */
   .text-\[10px\],
   .text-\[11px\] {
-    font-size: 0.8125rem !important; /* 13px */
-    line-height: 1.25rem !important;
-  }
-
-  .text-xs {
     font-size: 0.875rem !important; /* 14px */
     line-height: 1.35rem !important;
   }
 
-  .text-sm {
+  .text-xs {
     font-size: 0.95rem !important; /* ~15.2px */
     line-height: 1.45rem !important;
   }
 
-  .text-base {
+  .text-sm {
     font-size: 1.05rem !important; /* ~16.8px */
     line-height: 1.55rem !important;
   }
 
-  .text-lg {
+  .text-base {
     font-size: 1.18rem !important; /* ~18.8px */
     line-height: 1.65rem !important;
   }
 
-  .text-xl {
-    font-size: 1.3rem !important; /* ~20.8px */
+  .text-lg {
+    font-size: 1.32rem !important; /* ~21px */
     line-height: 1.75rem !important;
+  }
+
+  .text-xl {
+    font-size: 1.5rem !important; /* ~24px */
+    line-height: 1.9rem !important;
   }
 
   /* Hero Light-Blur Glassmorphic Search Bar */
@@ -76,21 +76,24 @@
     -webkit-backdrop-filter: blur(8px) !important;
   }
 
-  /* Keep pure white and light text on all gradient banners, primary dark buttons, and headers in all modes */
+  /* Keep pure white and light text on all gradient banners, primary dark buttons, dark containers, and headers in all modes */
   [class*="bg-gradient"] h1,
   [class*="bg-gradient"] h2,
   [class*="bg-gradient"] h3,
   [class*="bg-gradient"] h4,
   [class*="bg-gradient"] .text-white,
+  [class*="bg-gradient"] a,
+  [class*="bg-gradient"] button,
   header .text-white,
   button.bg-blue-600,
   button.bg-indigo-600,
   a.bg-blue-600,
   a.bg-indigo-600,
-  a[class*="bg-slate-900"],
-  button[class*="bg-slate-900"],
+  .bg-slate-950 button,
+  .bg-slate-950 button *,
   .hero-search-input,
-  .hero-glass-btn {
+  .hero-glass-btn,
+  .\!text-white {
     color: #ffffff !important;
   }
 

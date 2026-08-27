@@ -53,6 +53,12 @@ class User(AbstractUser):
     verification_rejection_reason = models.TextField(blank=True)
     verified_at = models.DateTimeField(null=True, blank=True)
 
+    # Auth & Security Verification
+    is_email_verified = models.BooleanField(default=False)
+    pending_momo_number = models.CharField(max_length=20, blank=True, default='')
+    momo_otp_code = models.CharField(max_length=6, blank=True, default='')
+    momo_otp_created_at = models.DateTimeField(null=True, blank=True)
+
     def save(self, *args, **kwargs):
         if (self.is_superuser or self.is_staff) and self.role == Role.BUYER:
             self.role = Role.ADMIN
