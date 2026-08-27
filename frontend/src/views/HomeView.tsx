@@ -126,7 +126,7 @@ export default function HomeView() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search verified shops, sellers, or products (e.g. 'iPhone 15', 'Accra Tech')..."
-                className="w-full pl-10 sm:pl-12 pr-32 py-3 bg-slate-900/90 backdrop-blur-md text-white placeholder-slate-400 rounded-2xl text-xs sm:text-sm border border-slate-700 focus:bg-slate-900 focus:ring-4 focus:ring-blue-500/40 outline-none font-medium transition-all"
+                className="w-full pl-10 sm:pl-12 pr-32 py-3.5 hero-search-input rounded-2xl text-xs sm:text-sm border focus:ring-4 focus:ring-blue-500/40 outline-none font-medium transition-all shadow-2xl"
               />
               <button
                 type="submit"
@@ -150,13 +150,13 @@ export default function HomeView() {
                     Start Selling Free <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Link>
                   <Link to="/login"
-                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-slate-900/80 hover:bg-slate-800 border border-slate-700 text-slate-200 font-bold text-xs sm:text-base transition-all backdrop-blur-sm shrink-0">
+                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl hero-glass-btn !text-white font-bold text-xs sm:text-base transition-all shrink-0">
                     Log in
                   </Link>
                 </>
               )}
               <Link to="/help"
-                className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-6 py-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 text-amber-300 font-bold text-xs sm:text-base transition-all backdrop-blur-sm shrink-0">
+                className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-6 py-3.5 rounded-xl hero-glass-btn !text-amber-300 font-bold text-xs sm:text-base transition-all shrink-0">
                 <HelpCircle className="h-4 w-4" /> Platform Guide
               </Link>
             </div>
@@ -180,7 +180,7 @@ export default function HomeView() {
       <section className="max-w-5xl mx-auto px-6 py-20 text-slate-900 dark:text-white">
         <div className="text-center mb-14">
           <h2 className="text-3xl sm:text-4xl font-black mb-4 text-slate-900 dark:text-white">How HendAxis Trust Works</h2>
-          <p className="text-slate-600 dark:text-slate-400 max-w-lg mx-auto text-sm font-medium">Four robust steps guarantee 100% financial and merchandise safety for both parties.</p>
+          <p className="text-slate-600 dark:text-slate-400 max-w-lg mx-auto text-sm sm:text-base font-medium">Four robust steps guarantee 100% financial and merchandise safety for both parties.</p>
         </div>
 
         <div className="relative">
@@ -198,8 +198,8 @@ export default function HomeView() {
                       {i + 1}
                     </span>
                   </div>
-                  <h3 className="font-bold text-slate-900 dark:text-white mb-2 text-sm">{step.title}</h3>
-                  <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{step.desc}</p>
+                  <h3 className="font-bold text-slate-900 dark:text-white mb-2 text-sm sm:text-base">{step.title}</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-xs sm:text-sm leading-relaxed">{step.desc}</p>
                 </div>
               );
             })}
@@ -212,7 +212,7 @@ export default function HomeView() {
         <div className="max-w-5xl mx-auto px-6 py-20">
           <div className="text-center mb-14">
             <h2 className="text-3xl sm:text-4xl font-black mb-4 text-slate-900 dark:text-white">Built for Complete Trust</h2>
-            <p className="text-slate-600 dark:text-slate-400 max-w-lg mx-auto text-sm font-medium">Every feature eliminates merchant scamming, buyer non-payment, and delivery defaults.</p>
+            <p className="text-slate-600 dark:text-slate-400 max-w-lg mx-auto text-sm sm:text-base font-medium">Every feature eliminates merchant scamming, buyer non-payment, and delivery defaults.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -223,8 +223,8 @@ export default function HomeView() {
                   <div className="h-12 w-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4 group-hover:bg-blue-600/20 transition-colors">
                     <Icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2">{f.title}</h3>
-                  <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{f.desc}</p>
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2 text-sm sm:text-base">{f.title}</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-xs sm:text-sm leading-relaxed">{f.desc}</p>
                 </div>
               );
             })}

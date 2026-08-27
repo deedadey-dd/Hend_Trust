@@ -8,8 +8,8 @@ import {
   UserCircle, Store, Sun, Moon, Laptop, HelpCircle, Phone, Code 
 } from 'lucide-react';
 import TrackingModal from './TrackingModal';
-import logo from '../assets/hendaxis_trust_logo.svg';
-import logoSymbol from '../assets/logo_symbol.webp';
+import logoWhite from '../assets/hendaxis_trust_logo_white.svg';
+import logoBlack from '../assets/hendaxis_trust_logo_black.svg';
 
 export default function Navbar() {
   const { isAuthenticated, user, logout } = useAuthStore();
@@ -67,8 +67,8 @@ export default function Navbar() {
 
             {/* Logo */}
             <Link to="/" className="flex items-center gap-2.5 group" onClick={() => setMenuOpen(false)}>
-              <img src={logo} alt="HendAxis Trust Logo" className="h-9 w-auto object-contain hidden sm:block group-hover:scale-102 transition-transform" />
-              <img src={logoSymbol} alt="HendAxis Symbol" className="h-8 w-8 object-contain sm:hidden group-hover:scale-105 transition-transform" />
+              <img src={logoBlack} alt="HendAxis Trust Logo" className="h-11 sm:h-14 w-auto object-contain block dark:hidden group-hover:scale-102 transition-transform" />
+              <img src={logoWhite} alt="HendAxis Trust Logo" className="h-11 sm:h-14 w-auto object-contain hidden dark:block group-hover:scale-102 transition-transform" />
             </Link>
 
             {/* Desktop nav */}

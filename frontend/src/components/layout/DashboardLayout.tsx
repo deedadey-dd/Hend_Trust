@@ -1,5 +1,7 @@
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
+import logoWhite from '../../assets/hendaxis_trust_logo_white.svg';
+import logoBlack from '../../assets/hendaxis_trust_logo_black.svg';
 import { 
   LayoutDashboard, 
   WalletCards, 
@@ -28,11 +30,12 @@ export default function DashboardLayout() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 flex">
       {/* Sidebar */}
-      <aside className="w-64 bg-white border-r border-slate-200 hidden md:flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-slate-200">
-          <span className="text-xl font-bold text-blue-600">HendAxis Trust</span>
+      <aside className="w-64 bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 hidden md:flex flex-col">
+        <div className="h-16 flex items-center px-6 border-b border-slate-200 dark:border-slate-800">
+          <img src={logoBlack} alt="HendAxis Trust Logo" className="h-8 w-auto object-contain dark:hidden" />
+          <img src={logoWhite} alt="HendAxis Trust Logo" className="h-8 w-auto object-contain hidden dark:block" />
         </div>
         
         <div className="flex-1 py-6 px-4 space-y-1">

@@ -4,7 +4,7 @@
 
 @layer base {
   html {
-    font-size: 17px;
+    font-size: 16px;
   }
 
   html.dark {
@@ -20,43 +20,63 @@
 
   body {
     @apply transition-colors duration-200 antialiased;
-    font-size: 1.05rem; /* ~17.8px default body text size for large crisp typography */
-    line-height: 1.65;
+    font-size: 1rem; /* ~16px balanced default body text */
+    line-height: 1.6;
   }
 
-  /* Noticeably scale up text utility classes across the entire platform */
+  /* Balanced font size scale (Goldilocks typography tuning) */
   .text-\[10px\],
   .text-\[11px\] {
-    font-size: 0.875rem !important; /* 15px instead of 10px/11px */
-    line-height: 1.35rem !important;
+    font-size: 0.8125rem !important; /* 13px */
+    line-height: 1.25rem !important;
   }
 
   .text-xs {
-    font-size: 0.95rem !important; /* ~16.2px instead of 12px */
-    line-height: 1.45rem !important;
+    font-size: 0.875rem !important; /* 14px */
+    line-height: 1.35rem !important;
   }
 
   .text-sm {
-    font-size: 1.05rem !important; /* ~17.8px instead of 14px */
-    line-height: 1.55rem !important;
+    font-size: 0.95rem !important; /* ~15.2px */
+    line-height: 1.45rem !important;
   }
 
   .text-base {
-    font-size: 1.15rem !important; /* ~19.5px instead of 16px */
-    line-height: 1.65rem !important;
+    font-size: 1.05rem !important; /* ~16.8px */
+    line-height: 1.55rem !important;
   }
 
   .text-lg {
-    font-size: 1.25rem !important; /* ~21.2px instead of 18px */
-    line-height: 1.75rem !important;
+    font-size: 1.18rem !important; /* ~18.8px */
+    line-height: 1.65rem !important;
   }
 
   .text-xl {
-    font-size: 1.4rem !important; /* ~23.8px */
-    line-height: 1.85rem !important;
+    font-size: 1.3rem !important; /* ~20.8px */
+    line-height: 1.75rem !important;
   }
 
-  /* Keep pure white and light text on all gradient banners, primary buttons, and headers in all modes */
+  /* Hero Light-Blur Glassmorphic Search Bar */
+  .hero-search-input {
+    background-color: rgba(15, 23, 42, 0.35) !important;
+    color: #ffffff !important;
+    border-color: rgba(255, 255, 255, 0.3) !important;
+    backdrop-filter: blur(4px) !important;
+    -webkit-backdrop-filter: blur(4px) !important;
+  }
+  .hero-search-input::placeholder {
+    color: rgba(241, 245, 249, 0.9) !important;
+  }
+
+  /* Hero Glassmorphic Action Buttons (Restored to original rich backdrop blur) */
+  .hero-glass-btn {
+    background-color: rgba(15, 23, 42, 0.6) !important;
+    border-color: rgba(255, 255, 255, 0.25) !important;
+    backdrop-filter: blur(8px) !important;
+    -webkit-backdrop-filter: blur(8px) !important;
+  }
+
+  /* Keep pure white and light text on all gradient banners, primary dark buttons, and headers in all modes */
   [class*="bg-gradient"] h1,
   [class*="bg-gradient"] h2,
   [class*="bg-gradient"] h3,
@@ -66,7 +86,11 @@
   button.bg-blue-600,
   button.bg-indigo-600,
   a.bg-blue-600,
-  a.bg-indigo-600 {
+  a.bg-indigo-600,
+  a[class*="bg-slate-900"],
+  button[class*="bg-slate-900"],
+  .hero-search-input,
+  .hero-glass-btn {
     color: #ffffff !important;
   }
 
@@ -79,11 +103,11 @@
   }
 
   /* When Light Mode is active, adapt dark container background sections gracefully */
-  html.light .bg-slate-950:not([class*="bg-gradient"]) {
+  html.light .bg-slate-950:not([class*="bg-gradient"]):not(section.relative):not(div.relative.min-h-\[320px\]) {
     background-color: #ffffff !important;
     color: #0f172a !important;
   }
-  html.light .bg-slate-900:not([class*="bg-gradient"]) {
+  html.light .bg-slate-900:not([class*="bg-gradient"]):not(a):not(button):not([class*="bg-slate-900\/"]):not(.hero-search-input):not(.hero-glass-btn) {
     background-color: #f8fafc !important;
     color: #0f172a !important;
   }
@@ -104,32 +128,32 @@
   }
 
   /* High-contrast Light Mode Text Legibility Fixes for Headings & Text on white backgrounds */
-  html.light .text-slate-100:not([class*="bg-gradient"] *),
-  html.light .text-slate-200:not([class*="bg-gradient"] *) {
+  html.light .text-slate-100:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input):not(.hero-glass-btn *),
+  html.light .text-slate-200:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input):not(.hero-glass-btn *) {
     color: #0f172a !important; /* crisp dark slate-900 for card headings on white backgrounds */
   }
 
-  html.light .text-slate-400:not([class*="bg-gradient"] *),
-  html.light .text-gray-400:not([class*="bg-gradient"] *) {
+  html.light .text-slate-400:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *),
+  html.light .text-gray-400:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *) {
     color: #475569 !important; /* slate-600 instead of slate-400 */
   }
 
-  html.light .text-slate-500:not([class*="bg-gradient"] *),
-  html.light .text-gray-500:not([class*="bg-gradient"] *) {
+  html.light .text-slate-500:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *),
+  html.light .text-gray-500:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *) {
     color: #334155 !important; /* slate-700 instead of slate-500 */
   }
 
-  html.light .text-slate-600:not([class*="bg-gradient"] *),
-  html.light .text-gray-600:not([class*="bg-gradient"] *) {
+  html.light .text-slate-600:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *),
+  html.light .text-gray-600:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *) {
     color: #1e293b !important; /* slate-800 instead of slate-600 */
   }
 
-  html.light .text-slate-300:not([class*="bg-gradient"] *),
-  html.light .text-gray-300:not([class*="bg-gradient"] *) {
+  html.light .text-slate-300:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *),
+  html.light .text-gray-300:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *) {
     color: #475569 !important; /* slate-600 */
   }
 
-  html.light input::placeholder,
+  html.light input:not(.hero-search-input)::placeholder,
   html.light textarea::placeholder {
     color: #64748b !important;
   }
@@ -234,7 +258,7 @@
   }
 
   /* Inputs, Selects, Textareas & Search Bars */
-  html.dark input[type="text"],
+  html.dark input[type="text"]:not(.hero-search-input),
   html.dark input[type="password"],
   html.dark input[type="email"],
   html.dark input[type="tel"],
@@ -248,7 +272,7 @@
     border-color: #475569 !important;
   }
 
-  html.dark input::placeholder,
+  html.dark input:not(.hero-search-input)::placeholder,
   html.dark textarea::placeholder {
     color: #64748b !important;
   }

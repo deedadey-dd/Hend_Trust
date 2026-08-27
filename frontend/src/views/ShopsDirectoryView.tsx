@@ -280,7 +280,7 @@ export default function ShopsDirectoryView() {
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="Search shop name, seller username, or product..."
-                className="w-full pl-10 pr-28 py-2 bg-white/20 backdrop-blur-xs text-gray-900 dark:text-white placeholder-gray-600 dark:placeholder-slate-400 rounded-2xl text-xs sm:text-sm border border-white/40 shadow-2xl focus:bg-white/95 dark:focus:bg-slate-900 focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all"
+                className="w-full pl-10 pr-28 py-2.5 hero-search-input rounded-2xl text-xs sm:text-sm border shadow-2xl focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all"
               />
               <button
                 type="submit"

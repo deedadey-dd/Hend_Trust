@@ -127,8 +127,8 @@ export const HelpView: React.FC = () => {
                 <div className="w-10 h-10 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 flex items-center justify-center mx-auto">
                   <IconComp className={`h-5 w-5 ${c.color}`} />
                 </div>
-                <h4 className="font-bold text-xs text-slate-900 dark:text-white">{c.title}</h4>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400 font-medium">{c.desc}</p>
+                <h4 className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white">{c.title}</h4>
+                <p className="text-[11px] sm:text-xs text-slate-600 dark:text-slate-400 font-medium">{c.desc}</p>
               </div>
             );
           })}
@@ -147,7 +147,7 @@ export const HelpView: React.FC = () => {
             <button
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition border ${
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-bold transition border ${
                 activeCategory === cat.id
                   ? 'bg-blue-600 border-blue-500 text-white shadow-lg shadow-blue-600/20'
                   : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -163,8 +163,8 @@ export const HelpView: React.FC = () => {
           {filteredFaqs.length === 0 ? (
             <div className="text-center py-12 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 p-6 text-slate-600 dark:text-slate-400 space-y-2">
               <ShieldAlert className="h-8 w-8 text-amber-500 dark:text-amber-400 mx-auto" />
-              <p className="font-bold text-slate-900 dark:text-white text-sm">No topics match your search query.</p>
-              <p className="text-xs">Try searching for alternative terms or browse all topics.</p>
+              <p className="font-bold text-slate-900 dark:text-white text-sm sm:text-base">No topics match your search query.</p>
+              <p className="text-xs sm:text-sm">Try searching for alternative terms or browse all topics.</p>
             </div>
           ) : (
             filteredFaqs.map(faq => {
@@ -176,7 +176,7 @@ export const HelpView: React.FC = () => {
                     className="w-full p-5 text-left flex items-center justify-between gap-4 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition"
                   >
                     <div className="flex items-center gap-3">
-                      <span className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-blue-700 dark:text-blue-400 font-mono text-[11px] font-bold px-2.5 py-1 rounded-full uppercase">
+                      <span className="bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-blue-700 dark:text-blue-400 font-mono text-xs font-bold px-2.5 py-1 rounded-full uppercase">
                         {faq.category}
                       </span>
                       <span className="font-bold text-slate-900 dark:text-slate-100 text-xs sm:text-sm">{faq.question}</span>
@@ -184,7 +184,7 @@ export const HelpView: React.FC = () => {
                     {isOpen ? <ChevronUp className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" /> : <ChevronDown className="h-4 w-4 text-slate-400 shrink-0" />}
                   </button>
                   {isOpen && (
-                    <div className="px-5 pb-5 text-xs text-slate-700 dark:text-slate-300 leading-relaxed border-t border-slate-100 dark:border-slate-800/60 pt-3 font-medium">
+                    <div className="px-5 pb-5 text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed border-t border-slate-100 dark:border-slate-800/60 pt-3 font-normal">
                       {faq.answer}
                     </div>
                   )}
@@ -197,15 +197,15 @@ export const HelpView: React.FC = () => {
         {/* Still Have Questions Banner */}
         <div className="bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-slate-900 border border-blue-500/30 p-6 rounded-2xl flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl text-white">
           <div>
-            <h3 className="text-base font-extrabold text-white flex items-center gap-2">
+            <h3 className="text-lg font-extrabold text-white flex items-center gap-2">
               <PhoneCall className="h-5 w-5 text-emerald-400" />
               Still Need Assistance?
             </h3>
-            <p className="text-xs text-slate-300 mt-1">Our Ghana support team is ready to assist you 24/7 with any transaction queries.</p>
+            <p className="text-sm text-slate-300 mt-1">Our Ghana support team is ready to assist you 24/7 with any transaction queries.</p>
           </div>
           <Link
             to="/contact"
-            className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-xs rounded-xl transition shadow-lg shrink-0 flex items-center gap-1.5"
+            className="px-5 py-3 bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm rounded-xl transition shadow-lg shrink-0 flex items-center gap-1.5"
           >
             Contact Support <ArrowRight className="h-4 w-4" />
           </Link>
