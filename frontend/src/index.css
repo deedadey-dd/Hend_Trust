@@ -3,6 +3,10 @@
 @tailwind utilities;
 
 @layer base {
+  html {
+    font-size: 17px;
+  }
+
   html.dark {
     color-scheme: dark;
     background-color: #020617 !important;
@@ -16,17 +20,62 @@
 
   body {
     @apply transition-colors duration-200 antialiased;
+    font-size: 1.05rem; /* ~17.8px default body text size for large crisp typography */
+    line-height: 1.65;
   }
 
-  /* Keep pure white text on gradient banners and headers in all modes */
-  .bg-gradient-to-r .text-white,
-  .bg-gradient-to-b .text-white,
-  .bg-gradient-to-br .text-white,
-  .bg-gradient-to-tr .text-white,
+  /* Noticeably scale up text utility classes across the entire platform */
+  .text-\[10px\],
+  .text-\[11px\] {
+    font-size: 0.875rem !important; /* 15px instead of 10px/11px */
+    line-height: 1.35rem !important;
+  }
+
+  .text-xs {
+    font-size: 0.95rem !important; /* ~16.2px instead of 12px */
+    line-height: 1.45rem !important;
+  }
+
+  .text-sm {
+    font-size: 1.05rem !important; /* ~17.8px instead of 14px */
+    line-height: 1.55rem !important;
+  }
+
+  .text-base {
+    font-size: 1.15rem !important; /* ~19.5px instead of 16px */
+    line-height: 1.65rem !important;
+  }
+
+  .text-lg {
+    font-size: 1.25rem !important; /* ~21.2px instead of 18px */
+    line-height: 1.75rem !important;
+  }
+
+  .text-xl {
+    font-size: 1.4rem !important; /* ~23.8px */
+    line-height: 1.85rem !important;
+  }
+
+  /* Keep pure white and light text on all gradient banners, primary buttons, and headers in all modes */
+  [class*="bg-gradient"] h1,
+  [class*="bg-gradient"] h2,
+  [class*="bg-gradient"] h3,
+  [class*="bg-gradient"] h4,
+  [class*="bg-gradient"] .text-white,
   header .text-white,
   button.bg-blue-600,
-  button.bg-indigo-600 {
+  button.bg-indigo-600,
+  a.bg-blue-600,
+  a.bg-indigo-600 {
     color: #ffffff !important;
+  }
+
+  [class*="bg-gradient"] .text-blue-200 {
+    color: #bfdbfe !important;
+  }
+
+  [class*="bg-gradient"] .text-slate-300 {
+    color: #cbd5e1 !important;
   }
 
   /* When Light Mode is active, adapt dark container background sections gracefully */
@@ -35,7 +84,7 @@
     color: #0f172a !important;
   }
   html.light .bg-slate-900:not([class*="bg-gradient"]) {
-    background-color: #f1f5f9 !important;
+    background-color: #f8fafc !important;
     color: #0f172a !important;
   }
   html.light .border-slate-800, html.light .border-slate-700 {
@@ -47,11 +96,42 @@
     color: #0f172a !important;
   }
   html.light header nav a {
-    color: #334155 !important;
+    color: #1e293b !important;
   }
   html.light header nav a:hover {
     color: #2563eb !important;
     background-color: #eff6ff !important;
+  }
+
+  /* High-contrast Light Mode Text Legibility Fixes for Headings & Text on white backgrounds */
+  html.light .text-slate-100:not([class*="bg-gradient"] *),
+  html.light .text-slate-200:not([class*="bg-gradient"] *) {
+    color: #0f172a !important; /* crisp dark slate-900 for card headings on white backgrounds */
+  }
+
+  html.light .text-slate-400:not([class*="bg-gradient"] *),
+  html.light .text-gray-400:not([class*="bg-gradient"] *) {
+    color: #475569 !important; /* slate-600 instead of slate-400 */
+  }
+
+  html.light .text-slate-500:not([class*="bg-gradient"] *),
+  html.light .text-gray-500:not([class*="bg-gradient"] *) {
+    color: #334155 !important; /* slate-700 instead of slate-500 */
+  }
+
+  html.light .text-slate-600:not([class*="bg-gradient"] *),
+  html.light .text-gray-600:not([class*="bg-gradient"] *) {
+    color: #1e293b !important; /* slate-800 instead of slate-600 */
+  }
+
+  html.light .text-slate-300:not([class*="bg-gradient"] *),
+  html.light .text-gray-300:not([class*="bg-gradient"] *) {
+    color: #475569 !important; /* slate-600 */
+  }
+
+  html.light input::placeholder,
+  html.light textarea::placeholder {
+    color: #64748b !important;
   }
 
   /* Comprehensive Dark Mode Rules for All Pages, Cards, Tables & Modals */

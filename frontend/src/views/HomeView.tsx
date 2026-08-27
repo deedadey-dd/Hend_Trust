@@ -177,10 +177,10 @@ export default function HomeView() {
       </section>
 
       {/* ── How it works ── */}
-      <section className="max-w-5xl mx-auto px-6 py-20 bg-slate-950 text-white">
+      <section className="max-w-5xl mx-auto px-6 py-20 text-slate-900 dark:text-white">
         <div className="text-center mb-14">
-          <h2 className="text-3xl sm:text-4xl font-black mb-4">How HendAxis Trust Works</h2>
-          <p className="text-slate-400 max-w-lg mx-auto text-sm">Four robust steps guarantee 100% financial and merchandise safety for both parties.</p>
+          <h2 className="text-3xl sm:text-4xl font-black mb-4 text-slate-900 dark:text-white">How HendAxis Trust Works</h2>
+          <p className="text-slate-600 dark:text-slate-400 max-w-lg mx-auto text-sm font-medium">Four robust steps guarantee 100% financial and merchandise safety for both parties.</p>
         </div>
 
         <div className="relative">
@@ -192,14 +192,14 @@ export default function HomeView() {
               const Icon = step.icon;
               return (
                 <div key={i} className="flex flex-col items-center text-center">
-                  <div className={`relative z-10 h-20 w-20 rounded-2xl bg-slate-900 border border-slate-800 flex items-center justify-center mb-5 shadow-xl`}>
+                  <div className="relative z-10 h-20 w-20 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 flex items-center justify-center mb-5 shadow-xl">
                     <Icon className={`h-9 w-9 ${step.color}`} />
-                    <span className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-xs font-black text-blue-400">
+                    <span className="absolute -top-2 -right-2 h-6 w-6 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-slate-300 dark:border-slate-700 flex items-center justify-center text-xs font-black text-blue-600 dark:text-blue-400">
                       {i + 1}
                     </span>
                   </div>
-                  <h3 className="font-bold text-white mb-2 text-sm">{step.title}</h3>
-                  <p className="text-slate-400 text-xs leading-relaxed">{step.desc}</p>
+                  <h3 className="font-bold text-slate-900 dark:text-white mb-2 text-sm">{step.title}</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{step.desc}</p>
                 </div>
               );
             })}
@@ -208,23 +208,23 @@ export default function HomeView() {
       </section>
 
       {/* ── Features ── */}
-      <section className="bg-slate-900 border-y border-slate-800 text-white">
+      <section className="bg-slate-50/80 dark:bg-slate-900 border-y border-slate-200 dark:border-slate-800 text-slate-900 dark:text-white">
         <div className="max-w-5xl mx-auto px-6 py-20">
           <div className="text-center mb-14">
-            <h2 className="text-3xl sm:text-4xl font-black mb-4">Built for Complete Trust</h2>
-            <p className="text-slate-400 max-w-lg mx-auto text-sm">Every feature eliminates merchant scamming, buyer non-payment, and delivery defaults.</p>
+            <h2 className="text-3xl sm:text-4xl font-black mb-4 text-slate-900 dark:text-white">Built for Complete Trust</h2>
+            <p className="text-slate-600 dark:text-slate-400 max-w-lg mx-auto text-sm font-medium">Every feature eliminates merchant scamming, buyer non-payment, and delivery defaults.</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {FEATURES.map((f, i) => {
               const Icon = f.icon;
               return (
-                <div key={i} className="bg-slate-950 rounded-2xl p-6 border border-slate-800 hover:border-blue-500/50 hover:shadow-xl transition-all group">
+                <div key={i} className="bg-white dark:bg-slate-950 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 hover:border-blue-500/50 hover:shadow-xl transition-all group">
                   <div className="h-12 w-12 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4 group-hover:bg-blue-600/20 transition-colors">
-                    <Icon className="h-6 w-6 text-blue-400" />
+                    <Icon className="h-6 w-6 text-blue-600 dark:text-blue-400" />
                   </div>
-                  <h3 className="font-bold text-slate-100 mb-2">{f.title}</h3>
-                  <p className="text-slate-400 text-xs leading-relaxed">{f.desc}</p>
+                  <h3 className="font-bold text-slate-900 dark:text-slate-100 mb-2">{f.title}</h3>
+                  <p className="text-slate-600 dark:text-slate-400 text-xs leading-relaxed">{f.desc}</p>
                 </div>
               );
             })}
@@ -235,8 +235,8 @@ export default function HomeView() {
       {/* ── CTA ── */}
       <section className="bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-950 text-white border-t border-slate-800">
         <div className="max-w-3xl mx-auto px-6 py-20 text-center">
-          <h2 className="text-3xl sm:text-4xl font-black mb-4">Ready to sell & buy with 100% confidence?</h2>
-          <p className="text-blue-200 mb-8 text-base">Join Ghana's verified vendors. Create your first payment link in under 30 seconds.</p>
+          <h2 className="text-3xl sm:text-4xl font-black mb-4 !text-white">Ready to sell & buy with 100% confidence?</h2>
+          <p className="!text-blue-200 mb-8 text-base font-medium">Join Ghana's verified vendors. Create your first payment link in under 30 seconds.</p>
           <div className="flex flex-wrap gap-4 justify-center">
             {isAuthenticated ? (
               <Link to="/dashboard/create-link"

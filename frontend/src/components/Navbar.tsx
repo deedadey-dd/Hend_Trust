@@ -14,11 +14,16 @@ import logoSymbol from '../assets/logo_symbol.webp';
 export default function Navbar() {
   const { isAuthenticated, user, logout } = useAuthStore();
   const { theme, setTheme } = useThemeStore();
-  const [showThemeMenu, setShowThemeMenu] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
+
+  const cycleTheme = () => {
+    if (theme === 'light') setTheme('dark');
+    else if (theme === 'dark') setTheme('system');
+    else setTheme('light');
+  };
 
   useEffect(() => {
     if (isAuthenticated) {
@@ -102,38 +107,15 @@ export default function Navbar() {
                     </Link>
                   )}
 
-                  {/* Theme Switcher Button (Icon Only) */}
-                  <div className="relative mx-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowThemeMenu(open => !open)}
-                      className="p-2 rounded-xl border border-slate-700 bg-slate-900/90 text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition shadow-sm"
-                      title={`Theme: ${theme}`}
-                    >
-                      {theme === 'light' ? <Sun className="h-4.5 w-4.5 text-amber-400" /> : theme === 'dark' ? <Moon className="h-4.5 w-4.5 text-blue-400" /> : <Laptop className="h-4.5 w-4.5 text-slate-400" />}
-                    </button>
-                    {showThemeMenu && (
-                      <div className="absolute right-0 mt-2 w-36 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1 z-50 text-xs font-semibold">
-                        {[
-                          { id: 'light', label: 'Light Mode', icon: Sun, color: 'text-amber-400' },
-                          { id: 'dark', label: 'Dark Mode', icon: Moon, color: 'text-blue-400' },
-                          { id: 'system', label: 'System Default', icon: Laptop, color: 'text-slate-400' }
-                        ].map(t => {
-                          const IconComp = t.icon;
-                          return (
-                            <button
-                              key={t.id}
-                              onClick={() => { setTheme(t.id as any); setShowThemeMenu(false); }}
-                              className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-800 transition ${theme === t.id ? 'text-blue-400 font-bold bg-slate-800/60' : 'text-slate-300'}`}
-                            >
-                              <IconComp className={`h-4 w-4 ${t.color}`} />
-                              {t.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  {/* Theme Switcher Button (Icon Only - Direct Cycle) */}
+                  <button
+                    type="button"
+                    onClick={cycleTheme}
+                    className="p-2 mx-1 rounded-xl border border-slate-700 bg-slate-900/90 text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition shadow-sm cursor-pointer"
+                    title={`Theme: ${theme.toUpperCase()} (Click to toggle)`}
+                  >
+                    {theme === 'light' ? <Sun className="h-4.5 w-4.5 text-amber-400" /> : theme === 'dark' ? <Moon className="h-4.5 w-4.5 text-blue-400" /> : <Laptop className="h-4.5 w-4.5 text-slate-400" />}
+                  </button>
 
                   <button
                     onClick={handleLogout}
@@ -156,38 +138,15 @@ export default function Navbar() {
                   {navLink('/help', 'Help', <HelpCircle className="h-4 w-4 text-blue-400" />)}
                   {navLink('/contact', 'Contact Us', <Phone className="h-4 w-4 text-emerald-400" />)}
 
-                  {/* Theme Switcher Button (Icon Only) */}
-                  <div className="relative mx-1">
-                    <button
-                      type="button"
-                      onClick={() => setShowThemeMenu(open => !open)}
-                      className="p-2 rounded-xl border border-slate-700 bg-slate-900/90 text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition shadow-sm"
-                      title={`Theme: ${theme}`}
-                    >
-                      {theme === 'light' ? <Sun className="h-4.5 w-4.5 text-amber-400" /> : theme === 'dark' ? <Moon className="h-4.5 w-4.5 text-blue-400" /> : <Laptop className="h-4.5 w-4.5 text-slate-400" />}
-                    </button>
-                    {showThemeMenu && (
-                      <div className="absolute right-0 mt-2 w-36 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1 z-50 text-xs font-semibold">
-                        {[
-                          { id: 'light', label: 'Light Mode', icon: Sun, color: 'text-amber-400' },
-                          { id: 'dark', label: 'Dark Mode', icon: Moon, color: 'text-blue-400' },
-                          { id: 'system', label: 'System Default', icon: Laptop, color: 'text-slate-400' }
-                        ].map(t => {
-                          const IconComp = t.icon;
-                          return (
-                            <button
-                              key={t.id}
-                              onClick={() => { setTheme(t.id as any); setShowThemeMenu(false); }}
-                              className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-800 transition ${theme === t.id ? 'text-blue-400 font-bold bg-slate-800/60' : 'text-slate-300'}`}
-                            >
-                              <IconComp className={`h-4 w-4 ${t.color}`} />
-                              {t.label}
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  {/* Theme Switcher Button (Icon Only - Direct Cycle) */}
+                  <button
+                    type="button"
+                    onClick={cycleTheme}
+                    className="p-2 mx-1 rounded-xl border border-slate-700 bg-slate-900/90 text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition shadow-sm cursor-pointer"
+                    title={`Theme: ${theme.toUpperCase()} (Click to toggle)`}
+                  >
+                    {theme === 'light' ? <Sun className="h-4.5 w-4.5 text-amber-400" /> : theme === 'dark' ? <Moon className="h-4.5 w-4.5 text-blue-400" /> : <Laptop className="h-4.5 w-4.5 text-slate-400" />}
+                  </button>
 
                   <div className="w-px h-5 bg-slate-800 mx-1" />
                   {navLink('/login', 'Log In', <LogIn className="h-4 w-4" />)}
