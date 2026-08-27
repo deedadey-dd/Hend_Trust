@@ -104,7 +104,7 @@ export default function HomeView() {
         </div>
         <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-8 flex flex-col justify-between flex-1">
           {/* Top: Trust Badge */}
-          <div className="text-center">
+          {/* <div className="text-center">
             <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-400/30 rounded-full px-4 py-1.5 text-xs sm:text-sm font-bold text-blue-300 backdrop-blur-md shadow-lg">
               <ShieldCheck className="h-4 w-4 text-emerald-400" />
               Ghana's Premier Buyer–Seller Escrow & Verified Store Platform
@@ -115,7 +115,7 @@ export default function HomeView() {
             <p className="text-sm sm:text-base text-slate-300 max-w-xl mx-auto mt-3 font-medium">
               Protect your payments and merchandise with double-entry escrow, live courier tracking, and verified seller storefronts.
             </p>
-          </div>
+          </div> */}
 
           {/* Bottom: Marketplace Search Box & Action Buttons */}
           <div className="text-center space-y-5 mt-auto pt-6">

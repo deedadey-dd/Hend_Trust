@@ -262,13 +262,13 @@ export default function ShopsDirectoryView() {
         
         <div className="max-w-5xl w-full mx-auto relative z-10 flex flex-col justify-between flex-1">
           {/* TOP: Escrow Merchant Marketplace Directory label */}
-          <div className="flex items-center justify-between gap-4">
+          {/* <div className="flex items-center justify-between gap-4">
             <div>
               <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-200 bg-black/40 px-3.5 py-1.5 rounded-full backdrop-blur-md border border-white/20 shadow-md">
                 <Store className="h-3.5 w-3.5 text-blue-400" /> Escrow Merchant Marketplace Directory
               </span>
             </div>
-          </div>
+          </div> */}
 
           {/* BOTTOM: Search Box & Category Filter Pills */}
           <div className="space-y-4 mt-auto pt-8">
