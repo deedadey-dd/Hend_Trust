@@ -126,7 +126,7 @@ export default function HomeView() {
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search verified shops, sellers, or products (e.g. 'iPhone 15', 'Accra Tech')..."
-                className="w-full pl-10 sm:pl-12 pr-32 py-3.5 hero-search-input rounded-2xl text-xs sm:text-sm border focus:ring-4 focus:ring-blue-500/40 outline-none font-medium transition-all shadow-2xl"
+                className="w-full pl-10 sm:pl-12 pr-32 py-3 bg-slate-900/40 backdrop-blur-sm text-white placeholder-slate-300 rounded-2xl text-xs sm:text-sm border border-slate-600 focus:ring-4 focus:ring-blue-500/40 outline-none font-medium transition-all shadow-2xl"
               />
               <button
                 type="submit"
@@ -150,13 +150,13 @@ export default function HomeView() {
                     Start Selling Free <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Link>
                   <Link to="/login"
-                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl hero-glass-btn !text-white font-bold text-xs sm:text-base transition-all shrink-0">
+                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 !text-white font-bold text-xs sm:text-base transition-all backdrop-blur-sm shrink-0">
                     Log in
                   </Link>
                 </>
               )}
               <Link to="/help"
-                className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-6 py-3.5 rounded-xl hero-glass-btn !text-amber-300 font-bold text-xs sm:text-base transition-all shrink-0">
+                className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-6 py-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 !text-amber-300 font-bold text-xs sm:text-base transition-all backdrop-blur-sm shrink-0">
                 <HelpCircle className="h-4 w-4" /> Platform Guide
               </Link>
             </div>
