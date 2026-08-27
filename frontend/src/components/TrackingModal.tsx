@@ -5,6 +5,7 @@ import { apiClient, getErrorMessage } from '../api/client';
 import { STATUS_CONFIG } from '../constants/statusConfig';
 import RateSellerModal from './RateSellerModal';
 import { compressImageToWebP } from '../utils/imageUtils';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 type TabMode = 'SINGLE' | 'HISTORY';
 type HistoryStep = 'INPUT' | 'OTP';
@@ -14,6 +15,7 @@ interface TrackingModalProps {
 }
 
 export default function TrackingModal({ onClose }: TrackingModalProps) {
+  useEscapeKey(onClose);
   const [tab, setTab] = useState<TabMode>('SINGLE');
   
   // Single Tracking State

@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 interface SellerTxn {
   id: string;
@@ -55,6 +56,7 @@ interface DispatchModalProps {
 }
 
 function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
+  useEscapeKey(onClose);
   const [path, setPath] = useState<DeliveryPath>('COURIER_API');
   const [carrierCode, setCarrierCode] = useState<string>('DHL');
   const [courierName, setCourierName] = useState('DHL Express');
@@ -137,14 +139,14 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
 
         <form onSubmit={handleSubmit} className="p-6 space-y-5">
           {/* Buyer Delivery Reference Card */}
-          <div className="bg-blue-50/80 border border-blue-200 rounded-xl p-3.5 space-y-1.5 text-xs text-blue-950 shadow-sm">
+          <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-xl p-3.5 space-y-1.5 text-xs text-blue-950 dark:text-blue-100 shadow-sm">
             <div className="flex items-center justify-between">
-              <span className="font-bold text-blue-900 text-xs flex items-center gap-1.5">
-                <MapPin className="h-4 w-4 text-blue-600" />
+              <span className="font-bold text-blue-900 dark:text-blue-300 text-xs flex items-center gap-1.5">
+                <MapPin className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 Buyer Delivery Details
               </span>
               {copiedAddress ? (
-                <span className="text-[10px] text-emerald-700 font-bold bg-emerald-100 px-2 py-0.5 rounded">Copied!</span>
+                <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-bold bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded">Copied!</span>
               ) : (
                 <button
                   type="button"
@@ -153,25 +155,25 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
                     setCopiedAddress(true);
                     setTimeout(() => setCopiedAddress(false), 2000);
                   }}
-                  className="text-[10px] font-semibold text-blue-700 hover:text-blue-900 bg-white hover:bg-blue-100/60 border border-blue-200 px-2 py-0.5 rounded transition flex items-center gap-1"
+                  className="text-[10px] font-semibold text-blue-700 dark:text-blue-300 hover:text-blue-900 dark:hover:text-white bg-white dark:bg-slate-800 hover:bg-blue-100/60 dark:hover:bg-slate-700 border border-blue-200 dark:border-blue-700/80 px-2 py-0.5 rounded transition flex items-center gap-1"
                 >
                   <Copy className="h-3 w-3" /> Copy Details
                 </button>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-blue-200/60 font-medium">
+            <div className="grid grid-cols-2 gap-2 pt-1 border-t border-blue-200/60 dark:border-blue-800/50 font-medium">
               <div>
-                <span className="text-gray-500 block text-[10px] uppercase font-bold">Buyer Name</span>
-                <span className="text-gray-900 font-semibold">{txn.buyer_name || 'N/A'}</span>
+                <span className="text-gray-500 dark:text-slate-400 block text-[10px] uppercase font-bold">Buyer Name</span>
+                <span className="text-gray-900 dark:text-slate-100 font-semibold">{txn.buyer_name || 'N/A'}</span>
               </div>
               <div>
-                <span className="text-gray-500 block text-[10px] uppercase font-bold">Buyer Phone</span>
-                <span className="text-gray-900 font-mono font-semibold">{txn.buyer_phone || 'N/A'}</span>
+                <span className="text-gray-500 dark:text-slate-400 block text-[10px] uppercase font-bold">Buyer Phone</span>
+                <span className="text-gray-900 dark:text-slate-100 font-mono font-semibold">{txn.buyer_phone || 'N/A'}</span>
               </div>
             </div>
             <div className="pt-1">
-              <span className="text-gray-500 block text-[10px] uppercase font-bold">Delivery Address / Destination</span>
-              <span className="text-gray-900 font-semibold block bg-white p-2 rounded border border-blue-100 mt-0.5">
+              <span className="text-gray-500 dark:text-slate-400 block text-[10px] uppercase font-bold">Delivery Address / Destination</span>
+              <span className="text-gray-900 dark:text-slate-100 font-semibold block bg-white dark:bg-slate-800 p-2 rounded border border-blue-100 dark:border-slate-700 mt-0.5">
                 {txn.shipping_address || 'No specific address specified by buyer'}
               </span>
             </div>
@@ -179,37 +181,37 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
 
           {/* Path Selector */}
           <div>
-            <label className="block text-sm font-semibold text-gray-700 mb-2">Delivery Method</label>
+            <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-2">Delivery Method</label>
             <div className="grid grid-cols-2 gap-3">
               <button
                 type="button"
                 onClick={() => setPath('COURIER_API')}
                 className={`p-3 rounded-xl border-2 text-left transition ${
                   path === 'COURIER_API'
-                    ? 'border-blue-500 bg-blue-50'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/50'
+                    : 'border-gray-200 dark:border-slate-800 hover:border-gray-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
                 }`}
               >
-                <Truck className={`h-5 w-5 mb-1 ${path === 'COURIER_API' ? 'text-blue-600' : 'text-gray-400'}`} />
-                <p className={`text-sm font-semibold ${path === 'COURIER_API' ? 'text-blue-700' : 'text-gray-700'}`}>
+                <Truck className={`h-5 w-5 mb-1 ${path === 'COURIER_API' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-400 dark:text-slate-500'}`} />
+                <p className={`text-sm font-semibold ${path === 'COURIER_API' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-slate-300'}`}>
                   Formal Courier
                 </p>
-                <p className="text-xs text-gray-500">FedEx, DHL, API courier</p>
+                <p className="text-xs text-gray-500 dark:text-slate-400">FedEx, DHL, API courier</p>
               </button>
               <button
                 type="button"
                 onClick={() => setPath('INFORMAL_BUS')}
                 className={`p-3 rounded-xl border-2 text-left transition ${
                   path === 'INFORMAL_BUS'
-                    ? 'border-amber-500 bg-amber-50'
-                    : 'border-gray-200 hover:border-gray-300'
+                    ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/50'
+                    : 'border-gray-200 dark:border-slate-800 hover:border-gray-300 dark:hover:border-slate-700 bg-white dark:bg-slate-900'
                 }`}
               >
-                <Package className={`h-5 w-5 mb-1 ${path === 'INFORMAL_BUS' ? 'text-amber-600' : 'text-gray-400'}`} />
-                <p className={`text-sm font-semibold ${path === 'INFORMAL_BUS' ? 'text-amber-700' : 'text-gray-700'}`}>
+                <Package className={`h-5 w-5 mb-1 ${path === 'INFORMAL_BUS' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-slate-500'}`} />
+                <p className={`text-sm font-semibold ${path === 'INFORMAL_BUS' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-700 dark:text-slate-300'}`}>
                   Informal Bus
                 </p>
-                <p className="text-xs text-gray-500">Tro-tro, VIP, station</p>
+                <p className="text-xs text-gray-500 dark:text-slate-400">Tro-tro, VIP, station</p>
               </button>
             </div>
           </div>
@@ -218,44 +220,44 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
           {path === 'COURIER_API' && (
             <div className="space-y-3">
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Select Courier / Shipping Provider *</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Select Courier / Shipping Provider *</label>
                 <select
                   value={carrierCode}
                   onChange={e => handleCarrierChange(e.target.value)}
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 bg-white"
+                  className="block w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
                 >
-                  <option value="DHL">DHL Express</option>
-                  <option value="FEDEX">FedEx</option>
-                  <option value="UPS">UPS</option>
-                  <option value="EMS">EMS / Ghana Post</option>
-                  <option value="SPEEDAF">Speedaf Express</option>
-                  <option value="OTHERS">Others (Custom Courier / Local Rider)</option>
+                  <option value="DHL" className="bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100">DHL Express</option>
+                  <option value="FEDEX" className="bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100">FedEx</option>
+                  <option value="UPS" className="bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100">UPS</option>
+                  <option value="EMS" className="bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100">EMS / Ghana Post</option>
+                  <option value="SPEEDAF" className="bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100">Speedaf Express</option>
+                  <option value="OTHERS" className="bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100">Others (Custom Courier / Local Rider)</option>
                 </select>
               </div>
 
               {carrierCode === 'OTHERS' && (
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Courier Name *</label>
+                  <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Courier Name *</label>
                   <input
                     type="text"
                     required
                     value={courierName}
                     onChange={e => setCourierName(e.target.value)}
                     placeholder="e.g. Speedaf, Yango, Local Dispatch"
-                    className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+                    className="block w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
                   />
                 </div>
               )}
 
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Tracking Number *</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Tracking Number *</label>
                 <input
                   type="text"
                   required
                   value={trackingNumber}
                   onChange={e => setTrackingNumber(e.target.value)}
                   placeholder="e.g. 1Z999AA10123456784"
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 font-mono"
+                  className="block w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 font-mono bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
                 />
               </div>
             </div>
@@ -264,39 +266,39 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
           {/* Path B Fields */}
           {path === 'INFORMAL_BUS' && (
             <div className="space-y-3">
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs text-amber-800">
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
                 <strong>What happens next:</strong> The buyer will receive an SMS with the driver info and a Secret OTP. They must present their ID + OTP at pickup. You then verify their OTP here to confirm delivery.
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Driver Phone Number *</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Driver Phone Number *</label>
                 <input
                   type="tel"
                   required
                   value={driverPhone}
                   onChange={e => setDriverPhone(e.target.value)}
                   placeholder="e.g. 0244123456"
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Car / Vehicle Number <span className="text-gray-400">(optional)</span></label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Car / Vehicle Number <span className="text-gray-400 dark:text-slate-500">(optional)</span></label>
                 <input
                   type="text"
                   value={driverCar}
                   onChange={e => setDriverCar(e.target.value)}
                   placeholder="e.g. GR 1234-22"
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
                 />
               </div>
               <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Destination Station *</label>
+                <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Destination Station *</label>
                 <input
                   type="text"
                   required
                   value={station}
                   onChange={e => setStation(e.target.value)}
                   placeholder="e.g. Accra Central Station, Kumasi Adum"
-                  className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 border border-gray-300 dark:border-slate-700 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100"
                 />
               </div>
             </div>
@@ -305,15 +307,15 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
           {/* Package / Waybill Photo Upload */}
           <div>
             <div className="flex justify-between items-center mb-1">
-              <label className="block text-xs font-semibold text-gray-700">Attach Package / Waybill Photo</label>
-              {isCompressing && <span className="text-[11px] font-mono text-blue-600 font-medium">Compressing WebP...</span>}
+              <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Attach Package / Waybill Photo</label>
+              {isCompressing && <span className="text-[11px] font-mono text-blue-600 dark:text-blue-400 font-medium">Compressing WebP...</span>}
             </div>
             <input
               type="file"
               accept="image/*"
               disabled={isCompressing}
               onChange={handlePhotoUpload}
-              className="w-full bg-gray-50 border border-gray-200 text-gray-700 text-xs rounded-xl p-2 cursor-pointer disabled:opacity-50"
+              className="w-full bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 text-xs rounded-xl p-2 cursor-pointer disabled:opacity-50"
             />
             {waybillPhoto && (
               <div className="mt-2 relative inline-block">
@@ -365,6 +367,7 @@ interface VerifyOtpModalProps {
 }
 
 function VerifyOtpModal({ txn, onClose, onSuccess }: VerifyOtpModalProps) {
+  useEscapeKey(onClose);
   const [otpCode, setOtpCode] = useState('');
   const [buyerIdPhotoUrl, setBuyerIdPhotoUrl] = useState('');
   const [loading, setLoading] = useState(false);
@@ -854,6 +857,22 @@ export default function DashboardView() {
 
   // Force courier delivered modal (Path A)
   const [forceCourierTxn, setForceCourierTxn] = useState<SellerTxn | null>(null);
+
+  // Seller dispute modal
+  const [sellerDisputeTxn, setSellerDisputeTxn] = useState<SellerTxn | null>(null);
+
+  // Rate Seller modal
+  const [rateSellerTxn, setRateSellerTxn] = useState<SellerTxn | null>(null);
+
+  // Escape key listener for all seller dashboard modals
+  useEscapeKey(() => {
+    setSelectedTxn(null);
+    setDispatchTxn(null);
+    setVerifyOtpTxn(null);
+    setForceCourierTxn(null);
+    setSellerDisputeTxn(null);
+    setRateSellerTxn(null);
+  }, Boolean(selectedTxn || dispatchTxn || verifyOtpTxn || forceCourierTxn || sellerDisputeTxn || rateSellerTxn));
 
   // Seller dispute response modal
   const [disputeTxn, setDisputeTxn] = useState<SellerTxn | null>(null);

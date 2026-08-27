@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Star, X, Loader2, CheckCircle2, MessageSquare } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 interface RateSellerModalProps {
   transactionId: string;
@@ -23,6 +24,7 @@ export default function RateSellerModal({
   onClose,
   onSuccess
 }: RateSellerModalProps) {
+  useEscapeKey(onClose);
   const [speed, setSpeed] = useState(5);
   const [communication, setCommunication] = useState(5);
   const [overall, setOverall] = useState(5);

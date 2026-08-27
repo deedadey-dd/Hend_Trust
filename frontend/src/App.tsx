@@ -13,6 +13,8 @@ import ProfileView from './views/ProfileView';
 import SellerStoreView from './views/SellerStoreView';
 import ShopsDirectoryView from './views/ShopsDirectoryView';
 import { AdminDashboardView } from './views/AdminDashboardView';
+import { HelpView } from './views/HelpView';
+import { ContactView } from './views/ContactView';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -33,6 +35,8 @@ function App() {
         <Route path="/register" element={<RegisterView />} />
         <Route path="/shops" element={<ShopsDirectoryView />} />
         <Route path="/directory" element={<ShopsDirectoryView />} />
+        <Route path="/help" element={<HelpView />} />
+        <Route path="/contact" element={<ContactView />} />
 
         {/* Public Checkout (no navbar shown) */}
         <Route path="/l/:linkId" element={<PublicCheckoutView />} />

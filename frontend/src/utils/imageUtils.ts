@@ -1,6 +1,8 @@
+import logoSvg from '../assets/hendaxis_trust_logo.svg';
+
 /**
- * Compress an image file using HTMLCanvasElement and convert it to WebP format.
- * Reduces raw 3MB-10MB camera photos to ~50KB-150KB WebP base64 data URLs.
+ * Compress an image file using HTMLCanvasElement, apply a subtle HendAxis Trust logo
+ * hologram watermark overlay in the center, and convert it to WebP format.
  * 
  * @param file The image file selected by the user
  * @param maxDimension Maximum width or height of the compressed image in pixels (default: 1200)
@@ -49,16 +51,45 @@ export const compressImageToWebP = (
           return resolve(event.target?.result as string);
         }
 
-        // Draw image on canvas
+        // Draw original uploaded image on canvas
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Attempt WebP export, falling back to JPEG if WebP unsupported
-        let dataUrl = canvas.toDataURL('image/webp', quality);
-        if (!dataUrl.startsWith('data:image/webp')) {
-          dataUrl = canvas.toDataURL('image/jpeg', quality);
-        }
+        // Load HendAxis Trust Logo for Hologram Watermark
+        const watermark = new Image();
+        watermark.src = logoSvg;
 
-        resolve(dataUrl);
+        const finishCompression = () => {
+          let dataUrl = canvas.toDataURL('image/webp', quality);
+          if (!dataUrl.startsWith('data:image/webp')) {
+            dataUrl = canvas.toDataURL('image/jpeg', quality);
+          }
+          resolve(dataUrl);
+        };
+
+        watermark.onload = () => {
+          try {
+            // Hologram sizing: ~45% of smallest dimension
+            const watermarkSize = Math.min(width, height) * 0.45;
+            const wmAspect = watermark.height > 0 ? watermark.width / watermark.height : 3.5;
+            const wmW = watermarkSize * (wmAspect > 1 ? 1 : wmAspect);
+            const wmH = wmW / wmAspect;
+            const wmX = (width - wmW) / 2;
+            const wmY = (height - wmH) / 2;
+
+            // Apply hologram transparency (22% opacity)
+            ctx.save();
+            ctx.globalAlpha = 0.22;
+            ctx.drawImage(watermark, wmX, wmY, wmW, wmH);
+            ctx.restore();
+          } catch {
+            /* ignore watermark errors if canvas tainted */
+          }
+          finishCompression();
+        };
+
+        watermark.onerror = () => {
+          finishCompression();
+        };
       };
     };
   });

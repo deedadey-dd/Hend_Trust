@@ -50,6 +50,8 @@ class AppsNMobileAdapter:
         }
         payload_str = json.dumps(payload)
 
+        from django.conf import settings
+
         # Mock fallback if credentials are not set or are placeholder values
         if not client_id or client_id.startswith('your_') or client_id.startswith('placeholder'):
             print(f"[MOCK APPSNMOBILE PAYIN] Initialized payment reference {reference} for GHS {amount_ghs:.2f}")
@@ -76,12 +78,13 @@ class AppsNMobileAdapter:
             raise Exception(data.get("resp_desc") or "AppsNMobile initialization failed")
         except Exception as ex:
             print(f"AppsNMobile Payin Error: {ex}")
-            # Safe sandbox fallback
-            return {
-                "authorization_url": f"https://checkout.anmgw.com/pay/{reference}",
-                "reference": reference,
-                "status": "success"
-            }
+            if settings.DEBUG or not client_id or client_id.startswith('your_'):
+                return {
+                    "authorization_url": f"https://checkout.anmgw.com/pay/{reference}",
+                    "reference": reference,
+                    "status": "success"
+                }
+            raise ex
 
     @classmethod
     def disburse_payout(cls, phone_number: str, network: str, amount_ghs: float, reference: str) -> Dict[str, Any]:
@@ -89,6 +92,7 @@ class AppsNMobileAdapter:
         Disburses MoMo payout via AppsNMobile Orchard Bulk Disbursement API.
         network: 'MTN', 'VODAFONE' (Telecel), 'AIRTELTIGO'
         """
+        from django.conf import settings
         base_url = os.getenv('APPSNMOBILE_BASE_URL', 'https://api.anmgw.com/v1')
         client_id = os.getenv('APPSNMOBILE_CLIENT_ID', '')
 
@@ -116,4 +120,6 @@ class AppsNMobileAdapter:
             return {"status": "SUCCESS" if resp.status_code == 200 else "FAILED", "raw": data}
         except Exception as ex:
             print(f"AppsNMobile Payout Error: {ex}")
-            return {"status": "SUCCESS", "reference": reference, "message": f"Mock sandbox payout (Connection exception: {ex})"}
+            if settings.DEBUG or not client_id or client_id.startswith('your_'):
+                return {"status": "SUCCESS", "reference": reference, "message": f"Mock sandbox payout (Connection exception: {ex})"}
+            return {"status": "FAILED", "error": str(ex)}

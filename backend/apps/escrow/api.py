@@ -1494,3 +1494,77 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     return current
 
 
+class AdvanceStatusSchema(Schema):
+    target_status: str
+
+
+@escrow_router.post("/admin/transactions/{transaction_id}/advance-status", response=MessageResponse)
+def advance_transaction_status(request, transaction_id: uuid.UUID, data: AdvanceStatusSchema):
+    """
+    Dev & Admin endpoint to forcibly transition a transaction to any state during testing.
+    """
+    from apps.core.permissions import is_admin_user
+    is_admin_user(request)
+
+    transaction = get_object_or_404(Transaction.objects.select_related('link', 'link__seller'), id=transaction_id)
+    target = data.target_status.upper()
+
+    if target not in [s.value for s in TransactionStatus]:
+        raise HttpError(400, f"Invalid target status '{target}'.")
+
+    old_status = transaction.status
+
+    if target == TransactionStatus.PAYMENT_RECEIVED:
+        transaction.status = TransactionStatus.PAYMENT_RECEIVED
+        transaction.save(update_fields=['status', 'updated_at'])
+        from apps.ledger.services import record_buyer_deposit
+        try:
+            record_buyer_deposit(reference_id=str(transaction.id), gross_amount=transaction.total_amount_ghs, gateway_fee=transaction.total_amount_ghs * Decimal('0.0195'))
+        except Exception:
+            pass
+
+    elif target == TransactionStatus.DELIVERY_IN_PROGRESS:
+        from apps.delivery.services import transition_to_delivery
+        from apps.delivery.models import DeliveryLog, DeliveryMethod, CarrierChoice
+        from apps.delivery.tracking import generate_carrier_tracking_url
+
+        if transaction.status == TransactionStatus.AWAITING_PAYMENT:
+            transaction.status = TransactionStatus.PAYMENT_RECEIVED
+            transaction.save(update_fields=['status', 'updated_at'])
+
+        transition_to_delivery(transaction)
+        if not transaction.delivery_logs.exists():
+            DeliveryLog.objects.create(
+                transaction=transaction,
+                delivery_method=DeliveryMethod.COURIER_API,
+                courier_name="DHL Express (Dev Test)",
+                carrier_code=CarrierChoice.DHL,
+                tracking_number="DEV123456789",
+                carrier_tracking_url=generate_carrier_tracking_url('DHL', 'DEV123456789')
+            )
+
+    elif target == TransactionStatus.INSPECTION_PERIOD:
+        from apps.delivery.services import transition_to_inspection
+        if transaction.status == TransactionStatus.AWAITING_PAYMENT:
+            transaction.status = TransactionStatus.PAYMENT_RECEIVED
+            transaction.save(update_fields=['status', 'updated_at'])
+        if transaction.status == TransactionStatus.PAYMENT_RECEIVED:
+            from apps.delivery.services import transition_to_delivery
+            transition_to_delivery(transaction)
+        transition_to_inspection(transaction)
+
+    elif target == TransactionStatus.COMPLETED:
+        if transaction.status != TransactionStatus.INSPECTION_PERIOD:
+            transaction.status = TransactionStatus.INSPECTION_PERIOD
+            transaction.save(update_fields=['status', 'updated_at'])
+        transaction.status = TransactionStatus.COMPLETED
+        transaction.save(update_fields=['status', 'updated_at'])
+        execute_payout_for_transaction(transaction)
+
+    else:
+        transaction.status = target
+        transaction.save(update_fields=['status', 'updated_at'])
+
+    return {"message": f"Transaction state successfully advanced from {old_status} to {target}."}
+
+

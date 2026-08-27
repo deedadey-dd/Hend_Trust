@@ -1,14 +1,20 @@
 import { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useAuthStore } from '../store/authStore';
+import { useThemeStore } from '../store/themeStore';
 import { apiClient } from '../api/client';
-import { Shield, LayoutDashboard, Link2, LogIn, UserPlus, LogOut, Menu, X, Wallet, MapPin, UserCircle, Store } from 'lucide-react';
+import { 
+  Shield, LayoutDashboard, Link2, LogIn, UserPlus, LogOut, Menu, X, Wallet, MapPin, 
+  UserCircle, Store, Sun, Moon, Laptop, HelpCircle, Phone 
+} from 'lucide-react';
 import TrackingModal from './TrackingModal';
 import logo from '../assets/hendaxis_trust_logo.svg';
 import logoSymbol from '../assets/logo_symbol.webp';
 
 export default function Navbar() {
   const { isAuthenticated, user, logout } = useAuthStore();
+  const { theme, setTheme } = useThemeStore();
+  const [showThemeMenu, setShowThemeMenu] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
   const [menuOpen, setMenuOpen] = useState(false);
@@ -38,10 +44,10 @@ export default function Navbar() {
     <Link
       to={to}
       onClick={() => setMenuOpen(false)}
-      className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors
+      className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors
         ${location.pathname === to
           ? 'bg-blue-600 text-white'
-          : 'text-gray-600 hover:text-blue-600 hover:bg-blue-50'}`}
+          : 'text-slate-300 hover:text-white hover:bg-slate-800'}`}
     >
       {icon}
       {label}
@@ -50,7 +56,7 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-md border-b border-gray-200 shadow-sm">
+      <header className="sticky top-0 z-40 bg-slate-950/95 backdrop-blur-md border-b border-slate-800 shadow-md text-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
 
@@ -74,32 +80,63 @@ export default function Navbar() {
                   
                   <button
                     onClick={() => setShowTrackModal(true)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
                   >
                     <MapPin className="h-4 w-4" />
                     Track Order
                   </button>
 
+                  {navLink('/help', 'Help', <HelpCircle className="h-4 w-4 text-blue-400" />)}
                   {navLink('/profile', 'Profile', <UserCircle className="h-4 w-4" />)}
                   
-                  <div className="w-px h-5 bg-gray-200 mx-2" />
+                  <div className="w-px h-5 bg-slate-800 mx-1.5" />
                   
                   {balance !== null && (
                     <Link
                       to="/ledger"
-                      className="flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-full bg-blue-50 text-blue-700 font-bold text-sm hover:bg-blue-100 transition-colors border border-blue-200"
+                      className="flex items-center gap-1.5 px-3 py-1.5 mr-2 rounded-full bg-blue-500/10 text-blue-400 font-bold text-xs hover:bg-blue-500/20 transition-colors border border-blue-500/20"
                     >
                       <Wallet className="h-4 w-4" />
                       GHS {Number(balance).toFixed(2)}
                     </Link>
                   )}
 
-                  <span className="text-sm text-gray-500 mr-2">
-                    {user?.name || user?.email?.split('@')[0]}
-                  </span>
+                  {/* Theme Switcher Button (Icon Only) */}
+                  <div className="relative mx-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowThemeMenu(open => !open)}
+                      className="p-2 rounded-xl border border-slate-700 bg-slate-900/90 text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition shadow-sm"
+                      title={`Theme: ${theme}`}
+                    >
+                      {theme === 'light' ? <Sun className="h-4.5 w-4.5 text-amber-400" /> : theme === 'dark' ? <Moon className="h-4.5 w-4.5 text-blue-400" /> : <Laptop className="h-4.5 w-4.5 text-slate-400" />}
+                    </button>
+                    {showThemeMenu && (
+                      <div className="absolute right-0 mt-2 w-36 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1 z-50 text-xs font-semibold">
+                        {[
+                          { id: 'light', label: 'Light Mode', icon: Sun, color: 'text-amber-400' },
+                          { id: 'dark', label: 'Dark Mode', icon: Moon, color: 'text-blue-400' },
+                          { id: 'system', label: 'System Default', icon: Laptop, color: 'text-slate-400' }
+                        ].map(t => {
+                          const IconComp = t.icon;
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => { setTheme(t.id as any); setShowThemeMenu(false); }}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-800 transition ${theme === t.id ? 'text-blue-400 font-bold bg-slate-800/60' : 'text-slate-300'}`}
+                            >
+                              <IconComp className={`h-4 w-4 ${t.color}`} />
+                              {t.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
                   <button
                     onClick={handleLogout}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
                   >
                     <LogOut className="h-4 w-4" />
                     Logout
@@ -110,16 +147,52 @@ export default function Navbar() {
                   {navLink('/shops', 'Shops', <Store className="h-4 w-4" />)}
                   <button
                     onClick={() => setShowTrackModal(true)}
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                    className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:text-white hover:bg-slate-800 transition-colors"
                   >
                     <MapPin className="h-4 w-4" />
                     Track Order
                   </button>
-                  <div className="w-px h-5 bg-gray-200 mx-1" />
+                  {navLink('/help', 'Help', <HelpCircle className="h-4 w-4 text-blue-400" />)}
+                  {navLink('/contact', 'Contact Us', <Phone className="h-4 w-4 text-emerald-400" />)}
+
+                  {/* Theme Switcher Button (Icon Only) */}
+                  <div className="relative mx-1">
+                    <button
+                      type="button"
+                      onClick={() => setShowThemeMenu(open => !open)}
+                      className="p-2 rounded-xl border border-slate-700 bg-slate-900/90 text-slate-200 hover:bg-slate-800 hover:border-slate-600 transition shadow-sm"
+                      title={`Theme: ${theme}`}
+                    >
+                      {theme === 'light' ? <Sun className="h-4.5 w-4.5 text-amber-400" /> : theme === 'dark' ? <Moon className="h-4.5 w-4.5 text-blue-400" /> : <Laptop className="h-4.5 w-4.5 text-slate-400" />}
+                    </button>
+                    {showThemeMenu && (
+                      <div className="absolute right-0 mt-2 w-36 rounded-xl bg-slate-900 border border-slate-700 shadow-2xl py-1 z-50 text-xs font-semibold">
+                        {[
+                          { id: 'light', label: 'Light Mode', icon: Sun, color: 'text-amber-400' },
+                          { id: 'dark', label: 'Dark Mode', icon: Moon, color: 'text-blue-400' },
+                          { id: 'system', label: 'System Default', icon: Laptop, color: 'text-slate-400' }
+                        ].map(t => {
+                          const IconComp = t.icon;
+                          return (
+                            <button
+                              key={t.id}
+                              onClick={() => { setTheme(t.id as any); setShowThemeMenu(false); }}
+                              className={`w-full flex items-center gap-2 px-3 py-2 text-left hover:bg-slate-800 transition ${theme === t.id ? 'text-blue-400 font-bold bg-slate-800/60' : 'text-slate-300'}`}
+                            >
+                              <IconComp className={`h-4 w-4 ${t.color}`} />
+                              {t.label}
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="w-px h-5 bg-slate-800 mx-1" />
                   {navLink('/login', 'Log In', <LogIn className="h-4 w-4" />)}
                   <Link
                     to="/register"
-                    className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors shadow-sm ml-1"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-lg ml-1"
                   >
                     <UserPlus className="h-4 w-4" />
                     Get Started Free
@@ -140,39 +213,67 @@ export default function Navbar() {
 
         {/* Mobile drawer */}
         {menuOpen && (
-          <div className="md:hidden border-t border-gray-100 bg-white px-4 py-4 space-y-1 shadow-lg">
+          <div className="md:hidden border-t border-slate-800 bg-slate-950 px-4 py-4 space-y-2 shadow-2xl text-white">
+            {/* Mobile Theme Switcher Bar */}
+            <div className="flex items-center justify-between p-2 rounded-xl bg-slate-900 border border-slate-800 mb-2">
+              <span className="text-xs font-bold text-slate-400">Theme Mode:</span>
+              <div className="flex gap-1">
+                {[
+                  { id: 'light', label: 'Light', icon: Sun, color: 'text-amber-400' },
+                  { id: 'dark', label: 'Dark', icon: Moon, color: 'text-blue-400' },
+                  { id: 'system', label: 'System', icon: Laptop, color: 'text-slate-400' }
+                ].map(t => {
+                  const IconComp = t.icon;
+                  return (
+                    <button
+                      key={t.id}
+                      onClick={() => setTheme(t.id as any)}
+                      className={`p-1.5 rounded-lg border text-xs flex items-center gap-1 font-semibold transition ${
+                        theme === t.id
+                          ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
+                          : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
+                      }`}
+                    >
+                      <IconComp className="h-3.5 w-3.5" />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+
             {isAuthenticated ? (
               <>
                 {(user?.role === 'ADMIN' || user?.role === 'SUPPORT_AGENT') &&
                   navLink('/admin/dashboard', 'Manager Portal', <Shield className="h-4 w-4 text-amber-500" />)
                 }
-                {navLink('/shops', 'Shops Marketplace', <Store className="h-4 w-4 text-blue-600" />)}
+                {navLink('/shops', 'Shops Marketplace', <Store className="h-4 w-4 text-blue-400" />)}
                 {navLink('/create-link', 'Create Link', <Link2 className="h-4 w-4" />)}
                 {navLink('/links', 'My Links', <Link2 className="h-4 w-4" />)}
                 {navLink('/dashboard', 'Dashboard', <LayoutDashboard className="h-4 w-4" />)}
                 <button
                   onClick={() => { setShowTrackModal(true); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                 >
                   <MapPin className="h-4 w-4" />
                   Track Order
                 </button>
-                {navLink('/profile', 'Profile', <UserCircle className="h-4 w-4" />)}
+                {navLink('/help', 'Platform Guide & Help', <HelpCircle className="h-4 w-4 text-blue-400" />)}
+                {navLink('/profile', 'Profile Settings', <UserCircle className="h-4 w-4" />)}
                 {balance !== null && (
                   <Link
                     to="/ledger"
-                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold text-blue-700 bg-blue-50 mt-1"
+                    className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-bold text-blue-400 bg-blue-500/10 border border-blue-500/20 mt-1"
                     onClick={() => setMenuOpen(false)}
                   >
                     <Wallet className="h-4 w-4" />
                     Balance: GHS {Number(balance).toFixed(2)}
                   </Link>
                 )}
-                <div className="pt-2 border-t border-gray-100 mt-2">
-                  <p className="text-xs text-gray-400 mb-2 px-3">{user?.email}</p>
+                <div className="pt-2 border-t border-slate-800 mt-2">
+                  <p className="text-xs text-slate-400 mb-2 px-3">{user?.email}</p>
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-red-600 hover:bg-red-50 transition-colors"
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-rose-400 hover:bg-rose-500/10 transition-colors"
                   >
                     <LogOut className="h-4 w-4" />
                     Logout
@@ -181,20 +282,22 @@ export default function Navbar() {
               </>
             ) : (
               <>
-                {navLink('/shops', 'Shops Marketplace', <Store className="h-4 w-4 text-blue-600" />)}
+                {navLink('/shops', 'Shops Marketplace', <Store className="h-4 w-4 text-blue-400" />)}
                 <button
                   onClick={() => { setShowTrackModal(true); setMenuOpen(false); }}
-                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-gray-600 hover:bg-blue-50 hover:text-blue-600 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium text-slate-300 hover:bg-slate-800 hover:text-white transition-colors"
                 >
                   <MapPin className="h-4 w-4" />
                   Track Order
                 </button>
-                <div className="pt-2 border-t border-gray-100 mt-2">
+                {navLink('/help', 'Platform Guide & Help', <HelpCircle className="h-4 w-4 text-blue-400" />)}
+                {navLink('/contact', 'Contact Support', <Phone className="h-4 w-4 text-emerald-400" />)}
+                <div className="pt-2 border-t border-slate-800 mt-2">
                   {navLink('/login', 'Log In', <LogIn className="h-4 w-4" />)}
                   <Link
                     to="/register"
                     onClick={() => setMenuOpen(false)}
-                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-700 transition-colors w-full mt-1"
+                    className="flex items-center gap-2 px-4 py-2.5 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors w-full mt-1 justify-center shadow-lg"
                   >
                     <UserPlus className="h-4 w-4" />
                     Get Started Free

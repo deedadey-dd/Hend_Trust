@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, Package, ShieldAlert, Users, PhoneCall, Send, Search, Filter, 
-  TrendingUp, DollarSign, Lock, Eye, X, 
+  TrendingUp, DollarSign, Lock, Eye, X, Zap,
   RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck
 } from 'lucide-react';
 import { 
@@ -17,7 +17,7 @@ import {
 import { compressImageToWebP } from '../utils/imageUtils';
 import { apiClient } from '../api/client';
 
-type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST';
+type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'SETTINGS';
 
 interface SellerVerificationRecord {
   id: string;
@@ -136,6 +136,18 @@ export const AdminDashboardView: React.FC = () => {
     }
   };
 
+  const handleAdvanceStatus = async (targetStatus: string) => {
+    if (!selectedTxnId) return;
+    try {
+      await apiClient.post(`/escrow/admin/transactions/${selectedTxnId}/advance-status`, { target_status: targetStatus });
+      refetchMetrics();
+      refetchTxns();
+      refetchDetail();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to advance status');
+    }
+  };
+
   const handleApproveVerification = async (userId: string) => {
     setIsActioningVerif(true);
     try {
@@ -241,7 +253,7 @@ export const AdminDashboardView: React.FC = () => {
   const [txnSearch, setTxnSearch] = useState<string>('');
   const [selectedTxnId, setSelectedTxnId] = useState<string | null>(null);
   const { data: txnsData, isLoading: txnsLoading, refetch: refetchTxns } = useAdminTransactionsQuery(txnStatus, txnSearch);
-  const { data: txnDetail, isLoading: detailLoading } = useAdminTransactionDetailQuery(selectedTxnId);
+  const { data: txnDetail, isLoading: detailLoading, refetch: refetchDetail } = useAdminTransactionDetailQuery(selectedTxnId);
 
   // Disputes Query & Mutation
   const { data: disputes, isLoading: disputesLoading, refetch: refetchDisputes } = useAdminDisputesQuery();
@@ -1783,6 +1795,42 @@ export const AdminDashboardView: React.FC = () => {
                         ))}
                       </div>
                     )}
+                  </div>
+
+                  {/* Dev Sandbox Status Advance Tools */}
+                  <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="font-extrabold text-amber-400 text-xs uppercase flex items-center gap-1.5">
+                        <Zap className="h-4 w-4" />
+                        Dev & Testing Mode: Override / Advance Status
+                      </span>
+                      <span className="text-[10px] text-amber-300 font-mono">Current: {txnDetail?.status}</span>
+                    </div>
+                    <p className="text-[11px] text-slate-400">
+                      Instantly simulate state transitions without waiting for webhooks or manual buyer actions during dev testing:
+                    </p>
+                    <div className="flex flex-wrap gap-2 pt-1">
+                      {[
+                        { id: 'PAYMENT_RECEIVED', label: '1. Payment Received' },
+                        { id: 'DELIVERY_IN_PROGRESS', label: '2. Dispatched' },
+                        { id: 'INSPECTION_PERIOD', label: '3. Delivered (Inspection)' },
+                        { id: 'COMPLETED', label: '4. Completed & Paid Out' }
+                      ].map(st => (
+                        <button
+                          key={st.id}
+                          type="button"
+                          disabled={txnDetail?.status === st.id}
+                          onClick={() => handleAdvanceStatus(st.id)}
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                            txnDetail?.status === st.id
+                              ? 'bg-amber-500 text-slate-950 border-amber-400 opacity-60 cursor-default'
+                              : 'bg-slate-900 hover:bg-slate-800 text-amber-200 border-amber-500/40'
+                          }`}
+                        >
+                          {st.label}
+                        </button>
+                      ))}
+                    </div>
                   </div>
                 </>
               )}

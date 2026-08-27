@@ -85,6 +85,33 @@ The beat service triggers periodic tasks, such as checking for expired inspectio
 
 ---
 
+## 4. Dev Testing & State Override Tools
+
+During local testing and demoing, you can simulate state transitions without waiting for real payment webhooks, real couriers, or inspection timers:
+
+### A. Interactive UI State Switcher (Admin Dashboard)
+1. Log in as an Admin and navigate to the Manager Portal (`/admin`).
+2. Click on any transaction row to open the **Transaction Deep Inspection** modal.
+3. Use the **`⚡ Dev & Testing Mode: Override / Advance Status`** panel to advance the transaction to `1. Payment Received`, `2. Dispatched`, `3. Delivered (Inspection)`, or `4. Completed & Paid Out`.
+
+### B. cURL / Postman Endpoint (`POST /api/escrow/admin/transactions/{id}/advance-status`)
+```bash
+curl -X POST "http://localhost:8000/api/escrow/admin/transactions/<TRANSACTION_UUID>/advance-status" \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <ADMIN_JWT_TOKEN>" \
+  -d '{"target_status": "INSPECTION_PERIOD"}'
+```
+
+### C. Webhook Simulator Endpoint (`POST /api/delivery/webhooks/courier-status`)
+To simulate an incoming webhook from DHL, FedEx, Speedaf, or 17Track:
+```bash
+curl -X POST "http://localhost:8000/api/delivery/webhooks/courier-status" \
+  -H "Content-Type: application/json" \
+  -d '{"tracking_number": "DEV123456789", "status": "DELIVERED"}'
+```
+
+---
+
 ## Summary of Running Terminals
 
 To have the full platform running perfectly outside of Docker, you should have **4 active terminal windows**:

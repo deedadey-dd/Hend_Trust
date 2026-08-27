@@ -1,9 +1,11 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
-import { Search, Store, Star, Zap, Shield, ShieldCheck, ChevronRight, Loader2, Award, ArrowUpRight, X, CheckCircle2 } from 'lucide-react';
+import { Search, Store, Star, Zap, Shield, ShieldCheck, Loader2, Award, ArrowUpRight, X, CheckCircle2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.jpg';
+
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 interface ShopProduct {
   link_id: string;
@@ -56,6 +58,7 @@ export default function ShopsDirectoryView() {
 
   // Promote Shop Modal State
   const [showPromoteModal, setShowPromoteModal] = useState(false);
+  useEscapeKey(() => setShowPromoteModal(false), showPromoteModal);
   const [promoteDuration, setPromoteDuration] = useState<7 | 30>(7);
   const [isPromoting, setIsPromoting] = useState(false);
   const [promoteError, setPromoteError] = useState('');
@@ -109,10 +112,10 @@ export default function ShopsDirectoryView() {
   const renderShopCard = (shop: ShopCard, isAd: boolean = false) => (
     <div
       key={shop.seller_id}
-      className={`bg-white rounded-3xl border transition-all duration-300 hover:shadow-xl flex flex-col justify-between ${
+      className={`bg-white dark:bg-slate-900 rounded-3xl border transition-all duration-300 hover:shadow-xl flex flex-col justify-between ${
         isAd 
-          ? 'border-amber-400/80 shadow-md ring-1 ring-amber-400/30' 
-          : 'border-gray-200/80 shadow-sm hover:border-blue-300'
+          ? 'border-amber-400/80 dark:border-amber-500/70 shadow-md ring-1 ring-amber-400/30' 
+          : 'border-gray-200/80 dark:border-slate-800 shadow-sm hover:border-blue-300 dark:hover:border-blue-500/50'
       }`}
     >
       {/* 1. Cover Banner Strip (Height: 80px mobile / 96px desktop) */}
@@ -137,10 +140,10 @@ export default function ShopsDirectoryView() {
                 <img
                   src={shop.profile_picture_url}
                   alt={shop.shop_name}
-                  className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl object-cover border-4 border-white shadow-md bg-white group-hover:scale-105 transition-transform"
+                  className="h-14 w-14 sm:h-16 sm:w-16 rounded-2xl object-cover border-4 border-white dark:border-slate-900 shadow-md bg-white dark:bg-slate-800 group-hover:scale-105 transition-transform"
                 />
               ) : (
-                <div className={`h-14 w-14 sm:h-16 sm:w-16 rounded-2xl flex items-center justify-center font-black text-lg sm:text-xl text-white shadow-md border-4 border-white group-hover:scale-105 transition-transform ${
+                <div className={`h-14 w-14 sm:h-16 sm:w-16 rounded-2xl flex items-center justify-center font-black text-lg sm:text-xl text-white shadow-md border-4 border-white dark:border-slate-900 group-hover:scale-105 transition-transform ${
                   isAd ? 'bg-gradient-to-br from-amber-500 to-orange-600' : 'bg-gradient-to-br from-blue-600 to-indigo-700'
                 }`}>
                   {(shop.shop_name || shop.seller_username).charAt(0).toUpperCase()}
@@ -153,13 +156,13 @@ export default function ShopsDirectoryView() {
               <Link to={`/store/${shop.seller_username}`} className="group block">
                 {/* Line 1: Shop Name + Tooltip Icons (Always 1 Single Line) */}
                 <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-nowrap">
-                  <h3 className="font-bold text-gray-900 text-sm sm:text-base group-hover:text-blue-600 transition-colors truncate leading-tight shrink min-w-0">
+                  <h3 className="font-bold text-gray-900 dark:text-slate-100 text-sm sm:text-base group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate leading-tight shrink min-w-0">
                     {shop.shop_name}
                   </h3>
                   
                   {/* Verified Escrow Merchant Tooltip Icon */}
                   <IconTooltip text="Verified Escrow Merchant">
-                    <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600 fill-blue-50 shrink-0" />
+                    <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600 dark:text-blue-400 fill-blue-50 dark:fill-blue-900/40 shrink-0" />
                   </IconTooltip>
 
                   {/* Featured Sponsored Merchant Tooltip Icon */}
@@ -172,28 +175,28 @@ export default function ShopsDirectoryView() {
                   {/* Custom Merchant Award Badge Tooltip Icon */}
                   {shop.badge_title && (
                     <IconTooltip text={shop.badge_title}>
-                      <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-600 fill-emerald-50 shrink-0" />
+                      <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-600 dark:text-emerald-400 fill-emerald-50 dark:fill-emerald-900/40 shrink-0" />
                     </IconTooltip>
                   )}
                 </div>
 
                 {/* Line 2: Username + Number of Transactions + Rating Stars (Always 1 Single Line) */}
-                <div className="flex items-center gap-1.5 text-xs text-gray-500 mt-0.5 sm:mt-1 flex-nowrap min-w-0 overflow-hidden">
-                  <span className="font-medium text-gray-600 truncate max-w-[85px] sm:max-w-[120px] shrink">@{shop.seller_username}</span>
-                  <span className="text-gray-300 shrink-0">•</span>
-                  <span className="font-semibold text-blue-700 bg-blue-50/80 px-1.5 py-0.5 rounded whitespace-nowrap shrink-0 text-[11px]">
+                <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400 mt-0.5 sm:mt-1 flex-nowrap min-w-0 overflow-hidden">
+                  <span className="font-medium text-gray-600 dark:text-slate-400 truncate max-w-[85px] sm:max-w-[120px] shrink">@{shop.seller_username}</span>
+                  <span className="text-gray-300 dark:text-slate-700 shrink-0">•</span>
+                  <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50/80 dark:bg-blue-950/60 px-1.5 py-0.5 rounded whitespace-nowrap shrink-0 text-[11px]">
                     {shop.total_completed_escrows} Escrows
                   </span>
-                  <span className="text-gray-300 shrink-0">•</span>
-                  <span className="inline-flex items-center gap-1 font-bold text-gray-900 bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-200/60 px-1.5 py-0.5 rounded transition shrink-0 whitespace-nowrap">
+                  <span className="text-gray-300 dark:text-slate-700 shrink-0">•</span>
+                  <span className="inline-flex items-center gap-1 font-bold text-gray-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 border border-amber-200/60 dark:border-amber-800/40 px-1.5 py-0.5 rounded transition shrink-0 whitespace-nowrap">
                     <Star className="h-3 w-3 fill-amber-400 text-amber-400 shrink-0" />
                     {shop.avg_overall > 0 ? (
-                      <span className="text-[11px] font-bold text-amber-900 flex items-center gap-0.5">
+                      <span className="text-[11px] font-bold text-amber-900 dark:text-amber-300 flex items-center gap-0.5">
                         {shop.avg_overall.toFixed(1)}
-                        {shop.total_reviews_count > 0 && <span className="text-[10px] text-gray-500 font-normal">({shop.total_reviews_count})</span>}
+                        {shop.total_reviews_count > 0 && <span className="text-[10px] text-gray-500 dark:text-slate-400 font-normal">({shop.total_reviews_count})</span>}
                       </span>
                     ) : (
-                      <span className="text-[10px] font-semibold text-amber-800">New</span>
+                      <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-400">New</span>
                     )}
                   </span>
                 </div>
@@ -204,18 +207,18 @@ export default function ShopsDirectoryView() {
           {/* Line 3: Categories below logo */}
           <div className="flex items-center gap-1.5 flex-wrap mt-3">
             {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).map((cat, i) => (
-              <span key={i} className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-100/80 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+              <span key={i} className="text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border border-blue-100/80 dark:border-blue-800/40 px-2.5 py-0.5 rounded-full whitespace-nowrap">
                 {cat}
               </span>
             ))}
           </div>
 
           {/* Horizontal Dividing Line */}
-          <hr className="border-gray-100 my-3.5" />
+          <hr className="border-gray-100 dark:border-slate-800 my-3.5" />
 
           {/* Other Card Details: Description */}
           {shop.shop_description && (
-            <p className="text-xs sm:text-sm text-gray-600 line-clamp-2 leading-relaxed">
+            <p className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
               {shop.shop_description}
             </p>
           )}
@@ -223,21 +226,21 @@ export default function ShopsDirectoryView() {
 
         {/* Featured Products List */}
         {shop.featured_products.length > 0 && (
-          <div className="pt-3 border-t border-gray-100 space-y-1.5 mt-3">
-            <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider block">Available Payment Links</span>
+          <div className="pt-3 border-t border-gray-100 dark:border-slate-800 space-y-1.5 mt-3">
+            <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider block">Available Payment Links</span>
             <div className="space-y-1.5">
               {shop.featured_products.map(prod => (
                 <Link
                   key={prod.link_id}
                   to={`/l/${prod.link_id}`}
-                  className="flex items-center justify-between p-2 rounded-xl bg-gray-50 hover:bg-blue-50/70 border border-gray-100 transition group text-xs sm:text-sm"
+                  className="flex items-center justify-between p-2 rounded-xl bg-gray-50 dark:bg-slate-800/60 hover:bg-blue-50/70 dark:hover:bg-blue-950/40 border border-gray-100 dark:border-slate-700/60 transition group text-xs sm:text-sm"
                 >
-                  <span className="font-medium text-gray-800 group-hover:text-blue-700 truncate max-w-[200px]">
+                  <span className="font-medium text-gray-800 dark:text-slate-200 group-hover:text-blue-700 dark:group-hover:text-blue-400 truncate max-w-[200px]">
                     {prod.title}
                   </span>
-                  <span className="font-bold text-gray-900 group-hover:text-blue-600 flex items-center gap-0.5">
+                  <span className="font-bold text-gray-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 flex items-center gap-0.5">
                     GHS {prod.price_ghs.toFixed(2)}
-                    <ArrowUpRight className="h-3.5 w-3.5 text-gray-400 group-hover:text-blue-600" />
+                    <ArrowUpRight className="h-3.5 w-3.5 text-gray-400 dark:text-slate-500 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
                   </span>
                 </Link>
               ))}
@@ -249,7 +252,7 @@ export default function ShopsDirectoryView() {
   );
 
   return (
-    <div className="min-h-screen bg-gray-50/60 pb-16">
+    <div className="min-h-screen bg-gray-50/60 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 transition-colors">
       
       {/* Hero Banner Section */}
       <div className="bg-slate-950 text-white min-h-[320px] sm:min-h-[380px] px-4 sm:px-6 lg:px-8 py-6 relative overflow-hidden flex flex-col justify-between">
@@ -277,7 +280,7 @@ export default function ShopsDirectoryView() {
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="Search shop name, seller username, or product..."
-                className="w-full pl-10 pr-28 py-2 bg-white/20 backdrop-blur-xs text-gray-900 placeholder-gray-600 rounded-2xl text-xs sm:text-sm border border-white/40 shadow-2xl focus:bg-white/95 focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all"
+                className="w-full pl-10 pr-28 py-2 bg-white/20 backdrop-blur-xs text-gray-900 dark:text-white placeholder-gray-600 dark:placeholder-slate-400 rounded-2xl text-xs sm:text-sm border border-white/40 shadow-2xl focus:bg-white/95 dark:focus:bg-slate-900 focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all"
               />
               <button
                 type="submit"
@@ -312,25 +315,25 @@ export default function ShopsDirectoryView() {
         
         {loading ? (
           <div className="py-20 text-center space-y-3">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600" />
-            <p className="text-xs text-gray-500 font-medium">Searching marketplace directory...</p>
+            <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600 dark:text-blue-400" />
+            <p className="text-xs text-gray-500 dark:text-slate-400 font-medium">Searching marketplace directory...</p>
           </div>
         ) : (
           <>
             {/* ROW 1: FEATURED SPONSORED ADVERTISED SHOPS */}
             {featuredShops.length > 0 && (
-              <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 border border-amber-300/80 rounded-3xl p-6 space-y-4 shadow-sm">
+              <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 dark:from-amber-950/30 dark:via-orange-950/20 dark:to-amber-950/30 border border-amber-300/80 dark:border-amber-700/60 rounded-3xl p-6 space-y-4 shadow-sm">
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     <div className="p-2 bg-amber-500 text-white rounded-xl shadow-sm">
                       <Zap className="h-5 w-5 fill-white" />
                     </div>
                     <div>
-                      <h2 className="text-base font-bold text-gray-900">Featured Shops</h2>
-                      <p className="text-xs text-gray-500">Promoted escrow merchants with verified products</p>
+                      <h2 className="text-base font-bold text-gray-900 dark:text-slate-100">Featured Shops</h2>
+                      <p className="text-xs text-gray-500 dark:text-slate-400">Promoted escrow merchants with verified products</p>
                     </div>
                   </div>
-                  <span className="text-xs font-bold text-amber-700 bg-amber-100 px-3 py-1 rounded-full border border-amber-200">
+                  <span className="text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/50 px-3 py-1 rounded-full border border-amber-200 dark:border-amber-800">
                     {featuredShops.length} Sponsored Store(s)
                   </span>
                 </div>
@@ -344,16 +347,16 @@ export default function ShopsDirectoryView() {
             {/* ROW 2: ALL STANDARD SHOPS */}
             <div className="space-y-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-xl font-bold text-gray-900 flex items-center gap-2">
-                  <Store className="h-5 w-5 text-blue-600" /> All Escrow Merchants ({standardShops.length})
+                <h2 className="text-xl font-bold text-gray-900 dark:text-slate-100 flex items-center gap-2">
+                  <Store className="h-5 w-5 text-blue-600 dark:text-blue-400" /> All Escrow Merchants ({standardShops.length})
                 </h2>
               </div>
 
               {standardShops.length === 0 && featuredShops.length === 0 ? (
-                <div className="bg-white rounded-3xl p-12 text-center border border-gray-200 space-y-3">
-                  <Shield className="h-12 w-12 mx-auto text-gray-300" />
-                  <h3 className="text-base font-bold text-gray-800">No matching shops found</h3>
-                  <p className="text-xs text-gray-400">Try adjusting your search keywords or category filter.</p>
+                <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-gray-200 dark:border-slate-800 space-y-3">
+                  <Shield className="h-12 w-12 mx-auto text-gray-300 dark:text-slate-700" />
+                  <h3 className="text-base font-bold text-gray-800 dark:text-slate-200">No matching shops found</h3>
+                  <p className="text-xs text-gray-400 dark:text-slate-500">Try adjusting your search keywords or category filter.</p>
                 </div>
               ) : (
                 <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -368,10 +371,10 @@ export default function ShopsDirectoryView() {
 
       {/* SHOP PROMOTION MODAL */}
       {showPromoteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-3xl shadow-2xl max-w-md w-full overflow-hidden relative space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden relative space-y-4">
             
-            <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-amber-500 to-orange-600 text-white">
+            <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-amber-500 to-orange-600 text-white">
               <div className="flex items-center gap-2">
                 <Zap className="h-5 w-5 fill-white" />
                 <h3 className="text-base font-bold">Advertise Your Store</h3>
@@ -385,8 +388,8 @@ export default function ShopsDirectoryView() {
               {!user ? (
                 <div className="text-center space-y-4 py-4">
                   <Zap className="h-12 w-12 text-amber-500 mx-auto" />
-                  <h4 className="text-lg font-bold text-gray-900">Advertise Your Escrow Store</h4>
-                  <p className="text-xs text-gray-500 max-w-xs mx-auto">
+                  <h4 className="text-lg font-bold text-gray-900 dark:text-slate-100">Advertise Your Escrow Store</h4>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 max-w-xs mx-auto">
                     Promote your store at the top of the Marketplace Directory. Log in or create a seller account to start advertising.
                   </p>
                   <div className="flex gap-3 justify-center pt-2">
@@ -398,7 +401,7 @@ export default function ShopsDirectoryView() {
                     </Link>
                     <Link
                       to="/register"
-                      className="py-2.5 px-5 bg-gray-100 hover:bg-gray-200 text-gray-800 font-bold rounded-xl text-xs transition"
+                      className="py-2.5 px-5 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-800 dark:text-slate-200 font-bold rounded-xl text-xs transition"
                     >
                       Register Seller
                     </Link>
@@ -407,8 +410,8 @@ export default function ShopsDirectoryView() {
               ) : promoteSuccess ? (
                 <div className="text-center space-y-4 py-4">
                   <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto" />
-                  <h4 className="text-lg font-bold text-gray-900">Shop Promoted!</h4>
-                  <p className="text-xs text-gray-500">{promoteSuccess}</p>
+                  <h4 className="text-lg font-bold text-gray-900 dark:text-slate-100">Shop Promoted!</h4>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">{promoteSuccess}</p>
                   <button
                     onClick={() => { setShowPromoteModal(false); setPromoteSuccess(''); }}
                     className="w-full py-2.5 bg-blue-600 text-white font-bold rounded-xl text-sm hover:bg-blue-700 transition"
@@ -419,29 +422,29 @@ export default function ShopsDirectoryView() {
               ) : (
                 <form onSubmit={handlePromoteSubmit} className="space-y-5">
                   {promoteError && (
-                    <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-medium border border-red-100 text-center">
+                    <div className="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-xl text-xs font-medium border border-red-100 dark:border-red-800 text-center">
                       {promoteError}
                     </div>
                   )}
 
-                  <p className="text-xs text-gray-600">
+                  <p className="text-xs text-gray-600 dark:text-slate-400">
                     Feature your store at the top row of the Marketplace Directory. Ad fees are credited directly to platform revenue.
                   </p>
 
                   <div className="space-y-3">
-                    <label className="block text-xs font-semibold text-gray-700">Select Advertising Duration</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Select Advertising Duration</label>
                     <div className="grid grid-cols-2 gap-3">
                       <button
                         type="button"
                         onClick={() => setPromoteDuration(7)}
                         className={`p-4 rounded-2xl border text-center transition ${
                           promoteDuration === 7
-                            ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-500/20 text-amber-900 font-bold'
-                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 ring-2 ring-amber-500/20 text-amber-900 dark:text-amber-300 font-bold'
+                            : 'border-gray-200 dark:border-slate-800 text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'
                         }`}
                       >
                         <span className="block text-sm">7 Days Ad</span>
-                        <span className="block text-lg font-black text-amber-600 mt-1">GHS 50.00</span>
+                        <span className="block text-lg font-black text-amber-600 dark:text-amber-400 mt-1">GHS 50.00</span>
                       </button>
 
                       <button
@@ -449,12 +452,12 @@ export default function ShopsDirectoryView() {
                         onClick={() => setPromoteDuration(30)}
                         className={`p-4 rounded-2xl border text-center transition ${
                           promoteDuration === 30
-                            ? 'border-amber-500 bg-amber-50 ring-2 ring-amber-500/20 text-amber-900 font-bold'
-                            : 'border-gray-200 text-gray-600 hover:bg-gray-50'
+                            ? 'border-amber-500 bg-amber-50 dark:bg-amber-950/40 ring-2 ring-amber-500/20 text-amber-900 dark:text-amber-300 font-bold'
+                            : 'border-gray-200 dark:border-slate-800 text-gray-600 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800'
                         }`}
                       >
                         <span className="block text-sm">30 Days Ad</span>
-                        <span className="block text-lg font-black text-amber-600 mt-1">GHS 150.00</span>
+                        <span className="block text-lg font-black text-amber-600 dark:text-amber-400 mt-1">GHS 150.00</span>
                       </button>
                     </div>
                   </div>
