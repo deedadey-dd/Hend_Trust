@@ -99,8 +99,7 @@ export default function HomeView() {
       {/* ── Hero ── */}
       <section className="relative overflow-hidden bg-slate-950 text-white min-h-[560px] sm:min-h-[640px] flex flex-col justify-between border-b border-slate-800">
         <div className="absolute inset-0 z-0">
-          <img src={heroBanner} alt="Hero Banner" className="w-full h-full object-cover opacity-85" />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-transparent" />
+          <img src={heroBanner} alt="Hero Banner" className="w-full h-full object-cover opacity-100" />
         </div>
         <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-8 flex flex-col justify-between flex-1">
           {/* Top: Trust Badge */}

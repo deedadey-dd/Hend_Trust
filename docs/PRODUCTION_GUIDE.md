@@ -192,7 +192,7 @@ npm run build
 ### B. Configure Nginx (`/etc/nginx/sites-available/hendaxis`)
 ```nginx
 server {
-    server_name yourdomain.com www.yourdomain.com api.yourdomain.com;
+    server_name trust.hendaxis.com pay.hendaxis.com api.hendaxis.com;
 
     # Frontend Assets
     location / {
@@ -203,12 +203,12 @@ server {
 
     # Backend Django Static Files
     location /static/ {
-        alias /var/www/hendaxis/backend/staticfiles/;
+        alias /var/www/hendaxis/backend/static/;
     }
 
     # API Proxy to Gunicorn
     location /api/ {
-        proxy_pass http://127.0.0.1:8000;
+        proxy_pass http://127.0.0.1:8000/api/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -228,7 +228,7 @@ systemctl restart nginx
 
 ### C. Issue Free SSL HTTPS Certificate (Certbot)
 ```bash
-certbot --nginx -d yourdomain.com -d www.yourdomain.com -d api.yourdomain.com
+certbot --nginx -d trust.hendaxis.com -d pay.hendaxis.com -d api.hendaxis.com
 ```
 
 ---
