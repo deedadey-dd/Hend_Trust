@@ -55,6 +55,7 @@ Thumbs.db
 # Logs and databases
 *.log
 *.sqlite3
+celerybeat-schedule*
 
 # Uploads and Static files
 /media/*
