@@ -5,7 +5,7 @@ import { useThemeStore } from '../store/themeStore';
 import { apiClient } from '../api/client';
 import { 
   Shield, LayoutDashboard, Link2, LogIn, UserPlus, LogOut, Menu, X, Wallet, MapPin, 
-  UserCircle, Store, Sun, Moon, Laptop, HelpCircle, Phone 
+  UserCircle, Store, Sun, Moon, Laptop, HelpCircle, Phone, Code 
 } from 'lucide-react';
 import TrackingModal from './TrackingModal';
 import logo from '../assets/hendaxis_trust_logo.svg';
@@ -87,6 +87,7 @@ export default function Navbar() {
                   </button>
 
                   {navLink('/help', 'Help', <HelpCircle className="h-4 w-4 text-blue-400" />)}
+                  {navLink('/developers', 'APIs', <Code className="h-4 w-4 text-emerald-400" />)}
                   {navLink('/profile', 'Profile', <UserCircle className="h-4 w-4" />)}
                   
                   <div className="w-px h-5 bg-slate-800 mx-1.5" />

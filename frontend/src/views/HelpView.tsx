@@ -2,12 +2,12 @@ import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
   ShieldCheck, Search, ChevronDown, ChevronUp, Lock, Truck, 
-  Clock, ShieldAlert, PhoneCall, HelpCircle, ArrowRight
+  Clock, ShieldAlert, PhoneCall, HelpCircle, ArrowRight, Code
 } from 'lucide-react';
 
 interface FAQItem {
   id: string;
-  category: 'BUYERS' | 'SELLERS' | 'LOGISTICS' | 'DISPUTES';
+  category: 'BUYERS' | 'SELLERS' | 'LOGISTICS' | 'DISPUTES' | 'DEVELOPERS';
   question: string;
   answer: string;
 }
@@ -26,10 +26,22 @@ const FAQS: FAQItem[] = [
     answer: 'Once your buyer confirms receipt or the inspection timer expires, your funds release instantly into your HendAxis Trust Wallet balance. Depending on your account payout mode, funds can be automatically transferred to your MoMo or Bank account instantly.'
   },
   {
+    id: 'faq-[#',
+    category: 'DEVELOPERS',
+    question: 'How do I integrate HendAxis Escrow into my website or e-commerce store?',
+    answer: 'You can integrate HendAxis Escrow using our REST APIs (`/api/v1/v1/escrow/create`) or our Drop-in JavaScript SDK (`sdk.js`). Visit our Developer Documentation portal at /developers for copy-and-paste code examples in cURL, Node.js, Python, and PHP/WooCommerce.'
+  },
+  {
     id: 'faq-3',
     category: 'SELLERS',
     question: 'What is the 4-Day Seller Dispatch Rule?',
     answer: 'Once a buyer completes payment into escrow, you have exactly 4 days (96 hours) to dispatch the package. If you fail to dispatch within 4 days, the order is automatically cancelled, the buyer is refunded 100%, and your seller account is charged a non-dispatch penalty.'
+  },
+  {
+    id: 'faq-[#2',
+    category: 'DEVELOPERS',
+    question: 'Where do I find my API Keys and Webhook Signing Secrets?',
+    answer: 'Log in to your Seller Dashboard and navigate to the Developer Settings tab (`/dashboard/developer`). You can generate Live (`pk_live_...`) and Test (`pk_test_...`) API Key pairs, configure your server Webhook URL, and test event dispatches.'
   },
   {
     id: 'faq-4',
@@ -101,12 +113,13 @@ export const HelpView: React.FC = () => {
       <div className="max-w-4xl mx-auto px-4 sm:px-6 pt-10 space-y-10">
 
         {/* Quick Nav Cards */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
           {[
-            { title: 'Zero Escrow Hold', icon: Lock, color: 'text-blue-400', desc: '100% fraud protection' },
+            { title: 'Escrow Protection', icon: Lock, color: 'text-blue-400', desc: '100% fraud protection' },
             { title: 'Verified Sellers', icon: ShieldCheck, color: 'text-emerald-400', desc: 'Ghana Card ID check' },
             { title: 'Dual Shipping', icon: Truck, color: 'text-purple-400', desc: 'Couriers & Bus OTP' },
-            { title: '24h Arbitration', icon: Clock, color: 'text-amber-400', desc: 'Fast dispute rulings' }
+            { title: '24h Arbitration', icon: Clock, color: 'text-amber-400', desc: 'Fast dispute rulings' },
+            { title: 'Developer APIs', icon: Code, color: 'text-teal-400', desc: 'REST API & JS SDK' }
           ].map((c, idx) => {
             const IconComp = c.icon;
             return (
@@ -128,7 +141,8 @@ export const HelpView: React.FC = () => {
             { id: 'BUYERS', label: 'For Buyers' },
             { id: 'SELLERS', label: 'For Sellers' },
             { id: 'LOGISTICS', label: 'Logistics & Shipping' },
-            { id: 'DISPUTES', label: 'Disputes & Refunds' }
+            { id: 'DISPUTES', label: 'Disputes & Refunds' },
+            { id: 'DEVELOPERS', label: 'Developer APIs' }
           ].map(cat => (
             <button
               key={cat.id}

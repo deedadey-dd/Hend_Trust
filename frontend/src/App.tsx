@@ -15,6 +15,8 @@ import ShopsDirectoryView from './views/ShopsDirectoryView';
 import { AdminDashboardView } from './views/AdminDashboardView';
 import { HelpView } from './views/HelpView';
 import { ContactView } from './views/ContactView';
+import DeveloperView from './views/DeveloperView';
+import DeveloperKeysView from './views/DeveloperKeysView';
 import { useAuthStore } from './store/authStore';
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
@@ -37,6 +39,8 @@ function App() {
         <Route path="/directory" element={<ShopsDirectoryView />} />
         <Route path="/help" element={<HelpView />} />
         <Route path="/contact" element={<ContactView />} />
+        <Route path="/developers" element={<DeveloperView />} />
+        <Route path="/docs/api" element={<DeveloperView />} />
 
         {/* Public Checkout (no navbar shown) */}
         <Route path="/l/:linkId" element={<PublicCheckoutView />} />
@@ -50,6 +54,9 @@ function App() {
         } />
         <Route path="/dashboard" element={
           <ProtectedRoute><DashboardView /></ProtectedRoute>
+        } />
+        <Route path="/dashboard/developer" element={
+          <ProtectedRoute><DeveloperKeysView /></ProtectedRoute>
         } />
         <Route path="/create-link" element={
           <ProtectedRoute><CreatePaymentLinkView /></ProtectedRoute>

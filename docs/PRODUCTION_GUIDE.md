@@ -14,11 +14,12 @@ Self-hosting on a Hetzner Virtual Private Server (VPS) is the most cost-effectiv
 
 | Server Plan | Specs (vCPU / RAM / Disk) | Approx. Cost | Ideal For |
 | :--- | :--- | :--- | :--- |
-| **Hetzner CAX11** (ARM64) | **2 vCPU**, **4 GB RAM**, **40 GB NVMe** | **~€3.79 / mo** | **Starter Production** (Handles up to 10k daily users) |
-| **Hetzner CAX21** (ARM64) | **4 vCPU**, **8 GB RAM**, **80 GB NVMe** | **~€7.19 / mo** | **Recommended Scaling** (High concurrency & heavy Celery loads) |
-| **Hetzner CX22** (x86 Intel) | **2 vCPU**, **4 GB RAM**, **40 GB SSD** | **~€4.50 / mo** | x86 Architecture alternative |
+| **Hetzner CAX11** (ARM64) | **2 vCPU**, **4 GB RAM**, **40 GB NVMe** | **~€3.79 / mo** | Starter Production (When in stock) |
+| **Hetzner CAX21** (ARM64) | **4 vCPU**, **8 GB RAM**, **80 GB NVMe** | **~€7.19 / mo** | High-performance ARM scaling |
+| **Hetzner CX22** (x86 Intel) | **2 vCPU**, **4 GB RAM**, **40 GB SSD** | **~€4.50 / mo** | Starter x86 Alternative |
+| **Hetzner CX33** (x86 Shared) | **4 vCPU**, **8 GB RAM**, **80 GB NVMe** | **~€10.90 / mo** | **Recommended Immediate Production Option** (100% In Stock) |
 
-> **Recommendation**: Choose **CAX11** or **CAX21** running **Ubuntu 24.04 LTS**. Hetzner Ampere ARM servers offer exceptional performance per euro.
+> **Recommendation**: If ARM servers (CAX11/CAX21) are out of stock, **Hetzner CX33 (4 vCPU / 8 GB RAM / 80 GB NVMe)** is the **best immediate choice**. It provides identical 4-vCPU & 8GB RAM headroom for PostgreSQL, Redis, Celery, and Gunicorn on Ubuntu 24.04 LTS.
 
 ---
 
@@ -31,7 +32,7 @@ ssh root@YOUR_HETZNER_SERVER_IP
 
 # Update system packages
 apt update && apt upgrade -y
-apt install -y curl git ufw fail2ban nginx certbot python3-certbot-nginx postgresql postgresql-contrib redis-server python3-pip python3-venv build-essential libpq-dev
+apt install -y curl git ufw fail2ban nginx certbot python3-certbot-nginx postgresql postgresql-contrib redis-server python3-pip python3-venv build-essential libpq-dev nodejs npm
 ```
 
 ### B. Configure Firewall (UFW)
