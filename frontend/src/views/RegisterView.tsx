@@ -16,16 +16,39 @@ export default function RegisterView() {
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
+
+    // Client-side validation
+    if (!/^[\w]{3,30}$/.test(username.trim())) {
+      setError('Username must be 3–30 characters: letters, numbers, and underscores only.');
+      return;
+    }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      setError('Please enter a valid email address.');
+      return;
+    }
+    if (!/^[\d+\s()-]{7,20}$/.test(phone.trim())) {
+      setError('Please enter a valid phone number (7–20 digits).');
+      return;
+    }
+    if (password.length < 8) {
+      setError('Password must be at least 8 characters long.');
+      return;
+    }
+    if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
+      setError('Password must contain at least one letter and one number.');
+      return;
+    }
+
     setLoading(true);
     try {
       await apiClient.post('/auth/register', {
-        username,
-        email,
+        username: username.trim(),
+        email: email.trim(),
         password,
-        phone_number: phone,
+        phone_number: phone.trim(),
         role: 'SELLER'
       });
-      setRegisteredEmail(email);
+      setRegisteredEmail(email.trim());
     } catch (err: any) {
       setError(getErrorMessage(err) || 'Registration failed. Please check your inputs.');
     } finally {

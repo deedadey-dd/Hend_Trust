@@ -1,13 +1,16 @@
-import random
+import secrets
 from datetime import timedelta
 from typing import Optional, List
 from django.conf import settings
 from django.utils import timezone
 from django.contrib.auth import authenticate
 from django.contrib.auth.tokens import default_token_generator
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import ValidationError as DjangoValidationError
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from django.utils.encoding import force_bytes, force_str
 from django.core.mail import send_mail
+from django.core.validators import validate_email as django_validate_email
 from django.http import HttpResponse
 
 from ninja import Router, Schema
@@ -17,6 +20,7 @@ from ninja_jwt.schema import TokenRefreshInputSchema
 
 from apps.users.models import User, PayoutMode
 from hendaxis_trust.auth import JWTCookieAuth
+from apps.core.ratelimit import rate_limit, lockout_on_failure
 from utils.mnotify import MNotifyService
 
 auth_router = Router(tags=["Authentication"])
@@ -139,14 +143,33 @@ def send_password_reset_email(user, request=None):
     )
 
 @auth_router.post("/register", response=MessageSchema)
+@rate_limit('auth_register', max_calls=10, window_seconds=3600)
 def register(request, data: RegisterSchema):
+    # Validate email format
+    try:
+        django_validate_email(data.email.strip())
+    except DjangoValidationError:
+        raise HttpError(400, "Please provide a valid email address.")
+
+    # Validate username: alphanumeric + underscore only
+    import re
+    if not re.match(r'^[\w]{3,30}$', data.username.strip()):
+        raise HttpError(400, "Username must be 3–30 characters: letters, numbers, and underscores only.")
+
     if User.objects.filter(username__iexact=data.username.strip()).exists():
         raise HttpError(400, "Username already exists")
     if User.objects.filter(email__iexact=data.email.strip()).exists():
         raise HttpError(400, "Email address already registered")
     if User.objects.filter(phone_number=data.phone_number.strip()).exists():
         raise HttpError(400, "Phone number already exists")
-        
+
+    # Validate password strength using Django's full validators
+    temp_user = User(username=data.username.strip())
+    try:
+        validate_password(data.password, user=temp_user)
+    except DjangoValidationError as e:
+        raise HttpError(400, " ".join(e.messages))
+
     user = User.objects.create_user(
         username=data.username.strip(),
         email=data.email.strip(),
@@ -155,12 +178,13 @@ def register(request, data: RegisterSchema):
         role=data.role or 'SELLER',
         is_email_verified=False
     )
-    
+
     try:
         send_account_activation_email(user, request)
     except Exception as e:
-        print(f"Error sending activation email: {e}")
-        
+        import logging
+        logging.getLogger(__name__).error(f"Error sending activation email to user {user.id}: {e}")
+
     return {"message": "Account created! Please check your email to activate your account before logging in."}
 
 @auth_router.post("/activate-account", response=MessageSchema)
@@ -182,21 +206,31 @@ def activate_account(request, data: ActivateAccountSchema):
     return {"message": "Account activated successfully! You can now log in."}
 
 @auth_router.post("/resend-activation", response=MessageSchema)
+@rate_limit('auth_resend_activation', max_calls=3, window_seconds=600)
 def resend_activation(request, data: ResendActivationSchema):
     user = User.objects.filter(email__iexact=data.email.strip()).first()
     if not user:
         return {"message": "If an account exists with that email, an activation link has been sent."}
     if user.is_email_verified:
         return {"message": "Your account is already activated. Please sign in."}
-        
-    send_account_activation_email(user, request)
+
+    try:
+        send_account_activation_email(user, request)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Activation email error for user {user.id}: {e}")
     return {"message": "Activation email resent. Please check your inbox."}
 
 @auth_router.post("/forgot-password", response=MessageSchema)
+@rate_limit('auth_forgot_password', max_calls=5, window_seconds=600)
 def forgot_password(request, data: ForgotPasswordSchema):
     user = User.objects.filter(email__iexact=data.email.strip()).first()
     if user:
-        send_password_reset_email(user, request)
+        try:
+            send_password_reset_email(user, request)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Password reset email error for user {user.id}: {e}")
     return {"message": "If an account exists with that email, password reset instructions have been sent."}
 
 @auth_router.post("/reset-password", response=MessageSchema)
@@ -206,32 +240,43 @@ def reset_password(request, data: ResetPasswordSchema):
         user = User.objects.get(pk=pk)
     except Exception:
         raise HttpError(400, "Invalid reset link.")
-        
+
     if not default_token_generator.check_token(user, data.token):
         raise HttpError(400, "Password reset link is invalid or has expired.")
-        
-    if len(data.new_password) < 6:
-        raise HttpError(400, "Password must be at least 6 characters long.")
-        
+
+    # Use Django's full password validators instead of a bare length check
+    try:
+        validate_password(data.new_password, user=user)
+    except DjangoValidationError as e:
+        raise HttpError(400, " ".join(e.messages))
+
     user.set_password(data.new_password)
     user.save()
     return {"message": "Password reset successfully! You can now log in with your new password."}
 
 @auth_router.post("/login", response=LoginResponseSchema)
+@rate_limit('auth_login', max_calls=20, window_seconds=300)
 def login(request, data: LoginSchema, response: HttpResponse):
+    # Per-username lockout (5 failures → 15-min lockout)
+    lockout_factory = lockout_on_failure('login', max_attempts=5, lockout_seconds=900)
+    check_lockout, record_failure, clear_failures = lockout_factory(data.username.strip().lower())
+    check_lockout()
+
     user = authenticate(username=data.username, password=data.password)
     if not user:
         # Fallback check by email if user entered email instead of username
         user_by_email = User.objects.filter(email__iexact=data.username.strip()).first()
         if user_by_email:
             user = authenticate(username=user_by_email.username, password=data.password)
-            
+
     if not user:
+        record_failure()
         raise HttpError(401, "Invalid credentials")
-        
+
     if not user.is_email_verified:
         raise HttpError(403, "Please check your email and activate your account before logging in.")
-        
+
+    clear_failures()  # Reset lockout counter on successful auth
     refresh = RefreshToken.for_user(user)
     set_auth_cookies(response, refresh)
     
@@ -367,13 +412,15 @@ def get_profile(request):
     return _build_profile_response(request.user)
 
 @profile_router.post("/request-momo-otp", response=ProfileMessageResponse)
+@rate_limit('momo_otp_request', max_calls=5, window_seconds=600)
 def request_momo_otp(request, data: RequestMomoOTPSchema):
     user = request.user
     momo = data.momo_number.strip()
     if not momo:
         raise HttpError(400, "Mobile money number is required.")
-        
-    code = str(random.randint(100000, 999999))
+
+    # Use cryptographically secure OTP
+    code = str(secrets.randbelow(900000) + 100000)
     user.pending_momo_number = momo
     user.momo_otp_code = code
     user.momo_otp_created_at = timezone.now()

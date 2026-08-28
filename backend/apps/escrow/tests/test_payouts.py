@@ -48,6 +48,10 @@ def transaction(payment_link, db):
 @pytest.fixture
 def escrow_client(seller_user):
     from ninja_jwt.tokens import AccessToken
+    # resolve-dispute requires admin — elevate seller_user to staff for this test suite
+    seller_user.is_staff = True
+    seller_user.role = 'ADMIN'
+    seller_user.save(update_fields=['is_staff', 'role'])
     token = str(AccessToken.for_user(seller_user))
     return TestClient(escrow_router, headers={"Authorization": f"Bearer {token}"})
 

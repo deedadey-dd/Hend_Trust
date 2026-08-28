@@ -1,9 +1,12 @@
+import secrets
+import string
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from django.shortcuts import get_object_or_404
 from apps.links.models import PaymentLink, FeeHandling
 from apps.escrow.models import Transaction, TransactionStatus
 from apps.checkout.services import generate_and_send_otp, generate_and_send_email_otp, verify_otp, PaystackAdapter
+from apps.core.ratelimit import rate_limit
 from typing import Optional
 from decimal import Decimal
 import uuid
@@ -77,14 +80,16 @@ class TrackByPhoneSchema(Schema):
     otp_code: str
 
 @checkout_router.post("/send-otp", response=MessageResponse)
+@rate_limit('checkout_send_otp', max_calls=5, window_seconds=300)
 def send_otp(request, data: SendOtpSchema):
     generate_and_send_otp(data.phone_number)
-    return {"message": "OTP sent successfully (check terminal output)"}
+    return {"message": "OTP sent to your phone number. Valid for 5 minutes."}
 
 @checkout_router.post("/send-email-otp", response=MessageResponse)
+@rate_limit('checkout_send_email_otp', max_calls=5, window_seconds=300)
 def send_email_otp(request, data: SendEmailOtpSchema):
     generate_and_send_email_otp(data.email)
-    return {"message": "OTP sent successfully via email"}
+    return {"message": "OTP sent to your email address. Valid for 5 minutes."}
 
 def _build_txn_status_dict(t):
     log = None
@@ -226,6 +231,7 @@ class VerifiedLookupSchema(Schema):
     otp_code: str
 
 @checkout_router.post("/lookup/request-otp", response=MessageResponse)
+@rate_limit('lookup_request_otp', max_calls=5, window_seconds=300)
 def request_lookup_otp(request, data: PhoneLookupSchema):
     """Send OTP to verify phone ownership before showing transaction history."""
     generate_and_send_otp(data.phone_number)
@@ -256,6 +262,7 @@ def get_my_transactions(request, data: VerifiedLookupSchema):
     } for t in txns]
 
 @checkout_router.post("/verify-and-initialize", response=InitializeResponse)
+@rate_limit('checkout_initialize', max_calls=10, window_seconds=300)
 def verify_and_initialize(request, data: VerifyInitializeSchema):
     if not verify_otp(data.phone_number, data.otp_code):
         raise HttpError(400, "Invalid or expired OTP")
@@ -276,9 +283,12 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
     else: # ABSORB_FEE
         total_amount = gross_product_total
 
-    # Generate unique paystack reference (8 chars alphanumeric)
-    import random, string
-    paystack_ref = ''.join(random.choices(string.ascii_uppercase + string.digits, k=8))
+    # Generate cryptographically secure unique Paystack reference with collision check
+    _charset = string.ascii_uppercase + string.digits
+    for _ in range(10):
+        paystack_ref = ''.join(secrets.choice(_charset) for _ in range(16))
+        if not Transaction.objects.filter(paystack_reference=paystack_ref).exists():
+            break
 
     # Create transaction
     txn = Transaction.objects.create(

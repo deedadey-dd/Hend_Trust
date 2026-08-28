@@ -7,6 +7,7 @@ export const apiClient = axios.create({
     'Content-Type': 'application/json',
   },
   withCredentials: true,
+  timeout: 15000, // 15-second timeout — prevents indefinite hangs
 });
 
 export function getErrorMessage(err: any): string {

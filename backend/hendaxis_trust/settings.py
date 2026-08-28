@@ -30,7 +30,8 @@ if sentry_dsn:
 
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-replace-me-with-a-secure-key-in-production')
 DEBUG = env('DEBUG')
-ALLOWED_HOSTS = env('ALLOWED_HOSTS', default='*').split(',')
+_default_hosts = 'localhost,127.0.0.1' if not env('ALLOWED_HOSTS', default='') else env('ALLOWED_HOSTS', default='localhost,127.0.0.1')
+ALLOWED_HOSTS = env('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
 
 PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = env('PAYSTACK_PUBLIC_KEY', default='')
@@ -153,6 +154,30 @@ MEDIA_ROOT = BASE_DIR / 'media'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 AUTH_USER_MODEL = 'users.User'
+
+# Cache Configuration
+# Django's cache is used by rate limiting and OTP storage.
+# In dev/test, use LocMemCache (single-process, fast).
+# In production, override CACHE_URL in .env to use Redis.
+_cache_url = env('CACHE_URL', default='')
+if _cache_url:
+    import django_redis  # noqa: F401  # ensure django-redis is installed in prod
+    CACHES = {
+        'default': {
+            'BACKEND': 'django_redis.cache.RedisCache',
+            'LOCATION': _cache_url,
+            'OPTIONS': {
+                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
+            }
+        }
+    }
+else:
+    CACHES = {
+        'default': {
+            'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
+            'LOCATION': 'hendaxis-trust-cache',
+        }
+    }
 
 # Ninja JWT Settings
 NINJA_JWT = {
@@ -282,19 +307,21 @@ LOGGING = {
     },
 }
 
-# Security Settings (Production)
+# Security Settings — applied globally
+# These headers are safe and important in all environments.
+SECURE_CONTENT_TYPE_NOSNIFF = True  # Prevent MIME-type sniffing
+X_FRAME_OPTIONS = 'DENY'            # Clickjacking protection
+SECURE_BROWSER_XSS_FILTER = True    # Legacy XSS filter header
+SECURE_REFERRER_POLICY = 'strict-origin-when-cross-origin'
+
+# Production-only HTTPS / HSTS settings
 if not DEBUG:
-    # HTTPS/SSL settings
     SECURE_SSL_REDIRECT = True
     SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
     SESSION_COOKIE_SECURE = True
     CSRF_COOKIE_SECURE = True
-    
+
     # HSTS settings
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
-    
-    # Other security headers
-    SECURE_CONTENT_TYPE_NOSNIFF = True
-    X_FRAME_OPTIONS = 'DENY'

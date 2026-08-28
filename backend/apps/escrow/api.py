@@ -1,15 +1,16 @@
 from typing import List, Optional
+import secrets
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from django.shortcuts import get_object_or_404
 from hendaxis_trust.auth import JWTCookieAuth
 from apps.escrow.models import Transaction, TransactionStatus
 from apps.escrow.payouts import execute_payout_for_transaction
+from apps.core.ratelimit import rate_limit
 import uuid
 from django.db.models import Q
 from datetime import datetime
 from ninja.pagination import paginate, LimitOffsetPagination
-import random
 
 escrow_router = Router(tags=["Escrow Transactions"], auth=JWTCookieAuth())
 
@@ -429,10 +430,26 @@ def seller_cancel(request, transaction_id: uuid.UUID):
         
     return {"message": "Transaction cancelled. Buyer refunded and platform fee charged to your account."}
 
-@escrow_router.post("/{transaction_id}/dispute", response=MessageResponse)
+@escrow_router.post("/{transaction_id}/dispute", response=MessageResponse, auth=JWTCookieAuth())
 def open_dispute(request, transaction_id: uuid.UUID):
     transaction = get_object_or_404(Transaction, id=transaction_id)
-    
+
+    # Only the buyer's seller or an admin may use this endpoint.
+    # Buyers use the unauthenticated raise-dispute endpoint instead.
+    from apps.core.permissions import is_admin_user
+    is_seller_owner = (
+        hasattr(transaction, 'link') and
+        transaction.link is not None and
+        transaction.link.seller == request.user
+    )
+    is_admin = (
+        request.user.is_staff or
+        request.user.is_superuser or
+        getattr(request.user, 'role', '') in ('ADMIN', 'SUPPORT_AGENT')
+    )
+    if not (is_seller_owner or is_admin):
+        raise HttpError(403, "You are not authorized to dispute this transaction.")
+
     if transaction.status not in [TransactionStatus.INSPECTION_PERIOD, TransactionStatus.DELIVERY_IN_PROGRESS]:
         raise HttpError(400, f"Cannot dispute transaction in {transaction.status} state.")
         
@@ -450,22 +467,24 @@ def open_dispute(request, transaction_id: uuid.UUID):
             
         if (transaction.inspection_starts_at + duration) <= timezone.now():
             raise HttpError(400, "The inspection period has expired. You can no longer dispute this transaction.")
-        
+
     transaction.status = TransactionStatus.DISPUTED
     transaction.save(update_fields=['status', 'updated_at'])
-    
+
     return {"message": "Transaction has been disputed. Auto-payouts are paused."}
 
 class ConfirmReceiptSchema(Schema):
     confirmation_code: str
 
 @escrow_router.post("/{transaction_id}/send-confirmation-code", response=MessageResponse, auth=None)
+@rate_limit('send_confirmation_code', max_calls=5, window_seconds=300)
 def send_confirmation_code(request, transaction_id: uuid.UUID):
     transaction = get_object_or_404(Transaction, id=transaction_id)
     if transaction.status not in [TransactionStatus.INSPECTION_PERIOD, TransactionStatus.DELIVERY_IN_PROGRESS]:
         raise HttpError(400, "Cannot send confirmation code for this transaction state.")
-    
-    code = str(random.randint(100000, 999999))
+
+    # Use cryptographically secure random for confirmation code
+    code = str(secrets.randbelow(900000) + 100000)
     transaction.delivery_confirmation_code = code
     transaction.save(update_fields=['delivery_confirmation_code'])
     
@@ -638,6 +657,9 @@ def compress_dispute_images_total_1mb(transaction):
 
 @escrow_router.post("/{transaction_id}/resolve-dispute", response=MessageResponse)
 def resolve_dispute(request, transaction_id: uuid.UUID, data: ResolveDisputeSchema):
+    from apps.core.permissions import is_admin_user
+    is_admin_user(request)  # Only admins/managers may resolve disputes
+
     transaction = get_object_or_404(Transaction, id=transaction_id)
     
     if transaction.status != TransactionStatus.DISPUTED:

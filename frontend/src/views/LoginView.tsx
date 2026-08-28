@@ -69,7 +69,7 @@ export default function LoginView() {
           <ShieldCheck className="h-8 w-8 text-white" />
         </div>
         <h2 className="text-center text-3xl font-extrabold text-gray-900 dark:text-slate-100 tracking-tight">
-          Welcome back
+          Welcome
         </h2>
         <p className="mt-2 text-center text-sm text-gray-600 dark:text-slate-400">
           Or{' '}

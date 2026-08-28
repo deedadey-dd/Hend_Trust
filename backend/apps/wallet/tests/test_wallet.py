@@ -72,7 +72,8 @@ def test_fee_handling_absorb(checkout_client, seller_user, mock_paystack, db):
         fee_handling=FeeHandling.ABSORB_FEE
     )
     
-    cache.set("otp_12345", "000000", timeout=300)
+    # Use the new otp_val: key format from the hardened checkout services
+    cache.set("otp_val:12345", "000000", timeout=300)
     
     payload = {
         "link_id": str(link.id),
@@ -101,7 +102,8 @@ def test_fee_handling_pass_to_buyer(checkout_client, seller_user, mock_paystack,
         fee_handling=FeeHandling.PASS_TO_BUYER
     )
     
-    cache.set("otp_67890", "000000", timeout=300)
+    # Use the new otp_val: key format from the hardened checkout services
+    cache.set("otp_val:67890", "000000", timeout=300)
     
     payload = {
         "link_id": str(link.id),

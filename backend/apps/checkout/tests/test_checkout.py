@@ -68,7 +68,7 @@ def test_verify_and_initialize_pass_fee(mock_paystack, mock_verify, client, paym
     assert txn.platform_fee_ghs == Decimal('11.50')
     assert txn.total_amount_ghs == Decimal('111.50')
     assert txn.buyer_name == "Jane Doe"
-    assert len(txn.paystack_reference) == 8
+    assert len(txn.paystack_reference) >= 16  # Updated: reference is now 16-char secure random
 
 @pytest.mark.django_db
 @patch('apps.checkout.api.verify_otp')
