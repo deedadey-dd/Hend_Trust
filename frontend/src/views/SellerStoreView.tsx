@@ -3,6 +3,7 @@ import { useParams, Link } from 'react-router-dom';
 import { Shield, Star, Award, CheckCircle2, MessageSquare, Loader2, Calendar, PackageCheck, Send, Zap, ChevronRight } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import SEOHead from '../components/SEOHead';
 
 interface ReviewItem {
   id: string;
@@ -125,8 +126,30 @@ export default function SellerStoreView() {
     s => s.seller_username.toLowerCase() !== store.seller_username.toLowerCase()
   );
 
+  const storeTitle = `${store.shop_name || `@${store.seller_username}'s Store`} — Verified Seller on HendAxis Trust`;
+  const storeDesc = `Buy safely from ${store.shop_name || store.seller_username} in Ghana using HendAxis Trust escrow protection. ${store.total_completed_escrows} completed escrows, ${store.avg_overall.toFixed(1)}/5 rating.`;
+  const storeJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'Store',
+    'name': store.shop_name || `@${store.seller_username}'s Store`,
+    'url': `https://trust.hendaxis.com/store/${store.seller_username}`,
+    'image': store.profile_picture_url || 'https://trust.hendaxis.com/assets/hero_banner.jpg',
+    'aggregateRating': store.total_reviews_count > 0 ? {
+      '@type': 'AggregateRating',
+      'ratingValue': store.avg_overall.toFixed(1),
+      'reviewCount': store.total_reviews_count
+    } : undefined
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-12">
+      <SEOHead
+        title={storeTitle}
+        description={storeDesc}
+        canonicalUrl={`https://trust.hendaxis.com/store/${store.seller_username}`}
+        ogImage={store.profile_picture_url || 'https://trust.hendaxis.com/assets/hero_banner.jpg'}
+        jsonLd={storeJsonLd}
+      />
       {/* Sticky Top Shop Header Bar */}
       <div className="sticky top-16 z-30 bg-white/90 backdrop-blur-md border-b border-gray-200/80 px-4 sm:px-6 lg:px-8 py-3 shadow-xs">
         <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">

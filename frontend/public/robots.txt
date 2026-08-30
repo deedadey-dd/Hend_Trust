@@ -1,0 +1,28 @@
+# HendAxis Trust — Robots.txt Rules for Search Engine Crawlers
+
+User-agent: *
+Allow: /
+Allow: /shops
+Allow: /directory
+Allow: /store/
+Allow: /seller/
+Allow: /l/
+Allow: /developers
+Allow: /docs/api
+Allow: /help
+Allow: /contact
+Allow: /login
+Allow: /register
+
+# Block private seller & admin portals
+Disallow: /dashboard
+Disallow: /dashboard/
+Disallow: /admin
+Disallow: /admin/
+Disallow: /profile
+Disallow: /ledger
+Disallow: /create-link
+Disallow: /links
+
+# Sitemap index location
+Sitemap: https://trust.hendaxis.com/sitemap.xml

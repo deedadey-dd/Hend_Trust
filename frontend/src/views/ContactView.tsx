@@ -4,6 +4,7 @@ import {
   ShieldCheck, MessageSquare
 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import SEOHead from '../components/SEOHead';
 
 export const ContactView: React.FC = () => {
   const [formData, setFormData] = useState({
@@ -39,8 +40,22 @@ export const ContactView: React.FC = () => {
     }
   };
 
+  const contactJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ContactPage',
+    'name': 'Contact Support — HendAxis Trust Ghana',
+    'description': 'Contact HendAxis Trust customer support team in Accra, Ghana for assistance with escrow payments and verification.',
+    'url': 'https://trust.hendaxis.com/contact'
+  };
+
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
+      <SEOHead
+        title="Contact Customer Support — HendAxis Trust Ghana"
+        description="Get in touch with HendAxis Trust Ghana support team for assistance with escrow transactions, seller identity verification, and Mobile Money payouts."
+        canonicalUrl="https://trust.hendaxis.com/contact"
+        jsonLd={contactJsonLd}
+      />
       {/* Header Banner */}
       <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-b border-slate-800 py-12 px-4 sm:px-6">
         <div className="max-w-4xl mx-auto text-center space-y-3">

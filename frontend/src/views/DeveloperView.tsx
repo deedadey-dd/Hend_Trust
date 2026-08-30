@@ -5,6 +5,8 @@ import {
   ArrowRight, Layers, Server
 } from 'lucide-react';
 
+import SEOHead from '../components/SEOHead';
+
 type LangTab = 'CURL' | 'NODE' | 'PYTHON' | 'PHP';
 
 export default function DeveloperView() {
@@ -170,8 +172,22 @@ function verifyHendAxisWebhook(req) {
   );
 }`;
 
+  const developerJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'TechArticle',
+    'headline': 'HendAxis Trust Developer APIs & Drop-in SDK Documentation',
+    'description': 'Accept escrow payments, trigger checkout modals, manage courier webhooks, and verify signatures with HendAxis API.',
+    'url': 'https://trust.hendaxis.com/developers'
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors py-10 px-4 sm:px-6 lg:px-8 font-sans">
+      <SEOHead
+        title="Developer APIs & Drop-in SDK Documentation — HendAxis Trust"
+        description="Integrate buyer-seller escrow payments, webhooks, and instant Mobile Money payouts into any website or app using HendAxis REST APIs and JS SDK."
+        canonicalUrl="https://trust.hendaxis.com/developers"
+        jsonLd={developerJsonLd}
+      />
       <div className="max-w-6xl mx-auto space-y-10">
 
         {/* Hero Header */}

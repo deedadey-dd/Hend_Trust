@@ -4,6 +4,7 @@ import { Search, Store, Star, Zap, Shield, ShieldCheck, Loader2, Award, ArrowUpR
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.jpg';
+import SEOHead from '../components/SEOHead';
 
 import { useEscapeKey } from '../utils/useEscapeKey';
 
@@ -251,8 +252,22 @@ export default function ShopsDirectoryView() {
     </div>
   );
 
+  const directoryJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'ItemList',
+    'name': 'Verified Escrow Shops Directory — HendAxis Trust',
+    'description': 'Browse verified storefronts, online shops, and escrow payment links in Ghana.',
+    'url': 'https://trust.hendaxis.com/shops'
+  };
+
   return (
     <div className="min-h-screen bg-gray-50/60 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 transition-colors">
+      <SEOHead
+        title="Verified Shops Marketplace Directory — HendAxis Trust"
+        description="Browse verified online stores, social media sellers, and active escrow payment links in Ghana. Buy with complete buyer protection."
+        canonicalUrl="https://trust.hendaxis.com/shops"
+        jsonLd={directoryJsonLd}
+      />
       
       {/* Hero Banner Section */}
       <div className="bg-slate-950 text-white min-h-[320px] sm:min-h-[380px] px-4 sm:px-6 lg:px-8 py-6 relative overflow-hidden flex flex-col justify-between">

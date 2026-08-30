@@ -5,6 +5,8 @@ import {
   Clock, ShieldAlert, PhoneCall, HelpCircle, ArrowRight, Code
 } from 'lucide-react';
 
+import SEOHead from '../components/SEOHead';
+
 interface FAQItem {
   id: string;
   category: 'BUYERS' | 'SELLERS' | 'LOGISTICS' | 'DISPUTES' | 'DEVELOPERS';
@@ -81,8 +83,27 @@ export const HelpView: React.FC = () => {
     return matchesCategory && matchesSearch;
   });
 
+  const faqJsonLd = {
+    '@context': 'https://schema.org',
+    '@type': 'FAQPage',
+    'mainEntity': FAQS.map(f => ({
+      '@type': 'Question',
+      'name': f.question,
+      'acceptedAnswer': {
+        '@type': 'Answer',
+        'text': f.answer
+      }
+    }))
+  };
+
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16 transition-colors">
+      <SEOHead
+        title="Platform Guide & FAQ Knowledge Base — HendAxis Trust"
+        description="Frequently asked questions about buyer protection, escrow payments, Mobile Money payouts, seller verification, and dispute resolution."
+        canonicalUrl="https://trust.hendaxis.com/help"
+        jsonLd={faqJsonLd}
+      />
       {/* Header Banner */}
       <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-b border-slate-800 py-12 px-4 sm:px-6">
         <div className="max-w-4xl mx-auto text-center space-y-4">

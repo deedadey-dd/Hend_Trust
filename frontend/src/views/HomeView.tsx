@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.jpg';
+import SEOHead from '../components/SEOHead';
 
 const STEPS = [
   {
@@ -58,7 +59,7 @@ const FEATURES = [
   {
     icon: Star,
     title: 'Escrow-Gated Reviews',
-    desc: 'Authentic 3-axis Trustpilot-style ratings (Speed, Communication, Satisfaction) submitted strictly after completed escrows.',
+    desc: 'Authentic 3-axis ratings (Speed, Communication, Satisfaction) submitted strictly after completed escrows.',
   },
   {
     icon: Zap,
@@ -93,8 +94,37 @@ export default function HomeView() {
     }
   };
 
+  const homeJsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'FinancialService',
+      'name': 'HendAxis Trust',
+      'url': 'https://trust.hendaxis.com',
+      'logo': 'https://trust.hendaxis.com/favicon.svg',
+      'description': "Ghana's premier buyer-seller escrow payment platform. Pay securely via Mobile Money or Card.",
+      'areaServed': 'GH'
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      'url': 'https://trust.hendaxis.com',
+      'name': 'HendAxis Trust',
+      'potentialAction': {
+        '@type': 'SearchAction',
+        'target': 'https://trust.hendaxis.com/shops?query={search_term_string}',
+        'query-input': 'required name=search_term_string'
+      }
+    }
+  ];
+
   return (
     <div className="font-sans text-slate-900 bg-slate-950">
+      <SEOHead
+        title="HendAxis Trust — Ghana's Buyer-Seller Escrow Payment Platform"
+        description="Pay securely, sell with confidence. HendAxis Trust protects online transactions across Ghana with double-entry escrow, MoMo & card integration, formal courier webhooks, and verified seller badges."
+        canonicalUrl="https://trust.hendaxis.com/"
+        jsonLd={homeJsonLd}
+      />
 
       {/* ── Hero ── */}
       <section className="relative overflow-hidden bg-slate-950 text-white min-h-[560px] sm:min-h-[640px] flex flex-col justify-between border-b border-slate-800">

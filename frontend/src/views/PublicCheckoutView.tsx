@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
 import { compressImageToWebP } from '../utils/imageUtils';
+import SEOHead from '../components/SEOHead';
 
 interface LinkData {
   id: string;
@@ -592,8 +593,32 @@ export default function PublicCheckoutView() {
   const platformFee = (grossTotal * 0.015) + 10;
   const totalToPay = link.fee_handling === 'PASS_TO_BUYER' ? grossTotal + platformFee : grossTotal;
 
+  const productTitle = link ? `${link.title} — Buy with Escrow Protection on HendAxis Trust` : 'Secure Payment Link — HendAxis Trust';
+  const productDesc = link ? `Buy ${link.title} for GHS ${link.price_ghs} safely with HendAxis Trust escrow protection.` : 'Secure escrow checkout powered by HendAxis Trust.';
+  const productJsonLd = link ? {
+    '@context': 'https://schema.org',
+    '@type': 'Product',
+    'name': link.title,
+    'description': link.description || link.title,
+    'image': link.image_url || 'https://trust.hendaxis.com/assets/hero_banner.jpg',
+    'offers': {
+      '@type': 'Offer',
+      'price': link.price_ghs,
+      'priceCurrency': 'GHS',
+      'availability': 'https://schema.org/InStock',
+      'url': `https://pay.hendaxis.com/l/${link.id}`
+    }
+  } : undefined;
+
   return (
     <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8 font-sans">
+      <SEOHead
+        title={productTitle}
+        description={productDesc}
+        canonicalUrl={link ? `https://pay.hendaxis.com/l/${link.id}` : undefined}
+        ogImage={link?.image_url || 'https://trust.hendaxis.com/assets/hero_banner.jpg'}
+        jsonLd={productJsonLd}
+      />
       <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
 
         {/* Header */}
