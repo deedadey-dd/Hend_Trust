@@ -13,7 +13,7 @@ export default function SEOHead({
   title,
   description,
   canonicalUrl,
-  ogImage = 'https://trust.hendaxis.com/assets/hero_banner.jpg',
+  ogImage = 'https://trust.hendaxis.com/og_preview_banner.jpg',
   type = 'website',
   jsonLd
 }: SEOHeadProps) {

@@ -58,22 +58,27 @@
 
   /* Hero Light-Blur Glassmorphic Search Bar */
   .hero-search-input {
-    background-color: rgba(15, 23, 42, 0.35) !important;
+    background-color: rgba(15, 23, 42, 0.45) !important;
     color: #ffffff !important;
-    border-color: rgba(255, 255, 255, 0.3) !important;
-    backdrop-filter: blur(4px) !important;
-    -webkit-backdrop-filter: blur(4px) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
   }
   .hero-search-input::placeholder {
-    color: rgba(241, 245, 249, 0.9) !important;
+    color: rgba(226, 232, 240, 0.85) !important;
   }
 
-  /* Hero Glassmorphic Action Buttons (Restored to original rich backdrop blur) */
+  /* Hero Glassmorphic Action Buttons */
   .hero-glass-btn {
-    background-color: rgba(15, 23, 42, 0.6) !important;
-    border-color: rgba(255, 255, 255, 0.25) !important;
-    backdrop-filter: blur(8px) !important;
-    -webkit-backdrop-filter: blur(8px) !important;
+    background-color: rgba(15, 23, 42, 0.55) !important;
+    border: 1px solid rgba(255, 255, 255, 0.25) !important;
+    color: #ffffff !important;
+    backdrop-filter: blur(12px) !important;
+    -webkit-backdrop-filter: blur(12px) !important;
+  }
+  .hero-glass-btn:hover {
+    background-color: rgba(30, 41, 59, 0.75) !important;
+    border-color: rgba(255, 255, 255, 0.4) !important;
   }
 
   /* Keep pure white and light text on all gradient banners, primary dark buttons, dark containers, and headers in all modes */
@@ -82,19 +87,28 @@
   [class*="bg-gradient"] h3,
   [class*="bg-gradient"] h4,
   [class*="bg-gradient"] .text-white,
-  [class*="bg-gradient"] a,
-  [class*="bg-gradient"] button,
+  [class*="bg-gradient"] a:not(.bg-white):not([class*="bg-white"]),
+  [class*="bg-gradient"] button:not(.bg-white):not([class*="bg-white"]),
   header .text-white,
   button.bg-blue-600,
   button.bg-indigo-600,
   a.bg-blue-600,
   a.bg-indigo-600,
-  .bg-slate-950 button,
-  .bg-slate-950 button *,
+  .bg-slate-950 button:not(.bg-white),
   .hero-search-input,
   .hero-glass-btn,
   .\!text-white {
     color: #ffffff !important;
+  }
+
+  /* Explicit dark text preservation for white CTA buttons across Light and Dark themes */
+  .bg-white,
+  a.bg-white,
+  button.bg-white,
+  .\!text-blue-950,
+  .\!text-blue-900,
+  .\!text-slate-900 {
+    color: #0f172a !important;
   }
 
   [class*="bg-gradient"] .text-blue-200 {

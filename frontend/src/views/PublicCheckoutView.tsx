@@ -600,7 +600,7 @@ export default function PublicCheckoutView() {
     '@type': 'Product',
     'name': link.title,
     'description': link.description || link.title,
-    'image': link.image_url || 'https://trust.hendaxis.com/assets/hero_banner.jpg',
+    'image': link.image_url || 'https://trust.hendaxis.com/og_preview_banner.jpg',
     'offers': {
       '@type': 'Offer',
       'price': link.price_ghs,
@@ -616,7 +616,7 @@ export default function PublicCheckoutView() {
         title={productTitle}
         description={productDesc}
         canonicalUrl={link ? `https://pay.hendaxis.com/l/${link.id}` : undefined}
-        ogImage={link?.image_url || 'https://trust.hendaxis.com/assets/hero_banner.jpg'}
+        ogImage={link?.image_url || 'https://trust.hendaxis.com/og_preview_banner.jpg'}
         jsonLd={productJsonLd}
       />
       <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">

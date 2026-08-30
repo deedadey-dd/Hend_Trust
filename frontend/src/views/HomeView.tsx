@@ -131,36 +131,22 @@ export default function HomeView() {
         <div className="absolute inset-0 z-0">
           <img src={heroBanner} alt="Hero Banner" className="w-full h-full object-cover opacity-100" />
         </div>
-        <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-8 flex flex-col justify-between flex-1">
-          {/* Top: Trust Badge */}
-          {/* <div className="text-center">
-            <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-400/30 rounded-full px-4 py-1.5 text-xs sm:text-sm font-bold text-blue-300 backdrop-blur-md shadow-lg">
-              <ShieldCheck className="h-4 w-4 text-emerald-400" />
-              Ghana's Premier Buyer–Seller Escrow & Verified Store Platform
-            </div>
-            <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white mt-4 max-w-3xl mx-auto leading-tight">
-              Pay Securely. Sell with Confidence. <span className="text-blue-400">Zero Fraud.</span>
-            </h1>
-            <p className="text-sm sm:text-base text-slate-300 max-w-xl mx-auto mt-3 font-medium">
-              Protect your payments and merchandise with double-entry escrow, live courier tracking, and verified seller storefronts.
-            </p>
-          </div> */}
-
+        <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-2 flex flex-col justify-between flex-1">
           {/* Bottom: Marketplace Search Box & Action Buttons */}
-          <div className="text-center space-y-5 mt-auto pt-6">
+          <div className="text-center space-y-1 mt-auto pt-6">
             {/* Marketplace Search Box */}
             <form onSubmit={handleSearchSubmit} className="relative max-w-xl mx-auto shadow-2xl">
-              <Search className="h-5 w-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10" />
+              <Search className="h-5 w-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" />
               <input
                 type="text"
                 value={searchQuery}
                 onChange={e => setSearchQuery(e.target.value)}
                 placeholder="Search verified shops, sellers, or products (e.g. 'iPhone 15', 'Accra Tech')..."
-                className="w-full pl-10 sm:pl-12 pr-32 py-3.5 bg-slate-900/40 backdrop-blur-sm text-white placeholder-slate-300 rounded-2xl text-sm sm:text-base border border-slate-600 focus:ring-4 focus:ring-blue-500/40 outline-none font-medium transition-all shadow-2xl"
+                className="w-full pl-10 sm:pl-12 pr-32 py-3.5 hero-search-input rounded-2xl text-sm sm:text-base outline-none font-medium transition-all shadow-2xl"
               />
               <button
                 type="submit"
-                className="absolute right-1.5 top-1.5 bottom-1.5 px-4 sm:px-5 bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm sm:text-base rounded-xl transition shadow-lg flex items-center gap-1.5"
+                className="absolute right-1.5 top-1.5 bottom-1.5 px-2 sm:px-2 bg-blue-600/90 hover:bg-blue-500 text-white font-bold text-sm sm:text-base rounded-xl transition shadow-lg flex items-center gap-1.5"
               >
                 <Store className="h-4 w-4" /> Search Shops
               </button>
@@ -170,24 +156,24 @@ export default function HomeView() {
             <div className="flex flex-row gap-3 justify-center items-center pt-1">
               {isAuthenticated ? (
                 <Link to="/dashboard/create-link"
-                  className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
+                  className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
                   Create Payment Link <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Link>
               ) : (
                 <>
                   <Link to="/register"
-                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
+                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
                     Start Selling Free <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Link>
                   <Link to="/login"
-                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 !text-white font-bold text-sm sm:text-base transition-all backdrop-blur-sm shrink-0">
+                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl hero-glass-btn font-bold text-sm sm:text-base transition-all shrink-0">
                     Log in
                   </Link>
                 </>
               )}
               <Link to="/help"
-                className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-6 py-3.5 rounded-xl bg-slate-900/60 hover:bg-slate-800 border border-slate-700 !text-amber-300 font-bold text-sm sm:text-base transition-all backdrop-blur-sm shrink-0">
-                <HelpCircle className="h-4 w-4" /> Platform Guide
+                className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-6 py-3.5 rounded-xl hero-glass-btn !text-amber-300 font-bold text-sm sm:text-base transition-all shrink-0">
+                <HelpCircle className="h-4 w-4 text-amber-300" /> Platform Guide
               </Link>
             </div>
           </div>
@@ -270,17 +256,17 @@ export default function HomeView() {
           <div className="flex flex-wrap gap-4 justify-center">
             {isAuthenticated ? (
               <Link to="/dashboard/create-link"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-white text-blue-900 font-extrabold text-base hover:bg-blue-50 transition-all shadow-xl">
-                Create a Payment Link <ArrowRight className="h-5 w-5" />
+                className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-white !text-blue-950 font-extrabold text-base hover:bg-blue-50 transition-all shadow-xl">
+                Create a Payment Link <ArrowRight className="h-5 w-5 !text-blue-950" />
               </Link>
             ) : (
               <Link to="/register"
-                className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-white text-blue-900 font-extrabold text-base hover:bg-blue-50 transition-all shadow-xl">
-                Get Started — It's Free <ArrowRight className="h-5 w-5" />
+                className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-white !text-blue-950 font-extrabold text-base hover:bg-blue-50 transition-all shadow-xl">
+                Get Started — It's Free <ArrowRight className="h-5 w-5 !text-blue-950" />
               </Link>
             )}
             <Link to="/shops"
-              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-200 font-extrabold text-base transition-all shadow-xl">
+              className="inline-flex items-center gap-2 px-8 py-4 rounded-xl bg-slate-900 hover:bg-slate-800 border border-slate-700 !text-slate-100 font-extrabold text-base transition-all shadow-xl">
               <Store className="h-5 w-5 text-blue-400" /> Browse Verified Shops
             </Link>
           </div>

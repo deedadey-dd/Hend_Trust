@@ -133,7 +133,7 @@ export default function SellerStoreView() {
     '@type': 'Store',
     'name': store.shop_name || `@${store.seller_username}'s Store`,
     'url': `https://trust.hendaxis.com/store/${store.seller_username}`,
-    'image': store.profile_picture_url || 'https://trust.hendaxis.com/assets/hero_banner.jpg',
+    'image': store.profile_picture_url || 'https://trust.hendaxis.com/og_preview_banner.jpg',
     'aggregateRating': store.total_reviews_count > 0 ? {
       '@type': 'AggregateRating',
       'ratingValue': store.avg_overall.toFixed(1),
@@ -147,7 +147,7 @@ export default function SellerStoreView() {
         title={storeTitle}
         description={storeDesc}
         canonicalUrl={`https://trust.hendaxis.com/store/${store.seller_username}`}
-        ogImage={store.profile_picture_url || 'https://trust.hendaxis.com/assets/hero_banner.jpg'}
+        ogImage={store.profile_picture_url || 'https://trust.hendaxis.com/og_preview_banner.jpg'}
         jsonLd={storeJsonLd}
       />
       {/* Sticky Top Shop Header Bar */}

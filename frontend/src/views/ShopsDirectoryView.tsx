@@ -270,7 +270,7 @@ export default function ShopsDirectoryView() {
       />
       
       {/* Hero Banner Section */}
-      <div className="bg-slate-950 text-white min-h-[320px] sm:min-h-[380px] px-4 sm:px-6 lg:px-8 py-6 relative overflow-hidden flex flex-col justify-between">
+      <div className="bg-slate-950 text-white min-h-[320px] sm:min-h-[380px] px-4 sm:px-6 lg:px-8 pt-6 pb-1 relative overflow-hidden flex flex-col justify-between">
         <div className="absolute inset-0 z-0">
           <img src={heroBanner} alt="Marketplace Banner" className="w-full h-full object-cover opacity-100" />
         </div>
@@ -286,7 +286,7 @@ export default function ShopsDirectoryView() {
           </div> */}
 
           {/* BOTTOM: Search Box & Category Filter Pills */}
-          <div className="space-y-4 mt-auto pt-8">
+          <div className="space-y-2 mt-auto pt-8">
             {/* Search Box */}
             <form onSubmit={(e) => { e.preventDefault(); fetchShops(); }} className="relative max-w-sm">
               <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 z-10" />
@@ -311,7 +311,7 @@ export default function ShopsDirectoryView() {
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition backdrop-blur-md ${
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition backdrop-blur-sm ${
                     selectedCategory === cat
                       ? 'bg-blue-600 text-white shadow-md'
                       : 'bg-black/30 hover:bg-black/50 text-white border border-white/10'
