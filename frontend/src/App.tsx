@@ -94,6 +94,9 @@ function App() {
         <Route path="/seller/:username" element={<SellerStoreView />} />
 
         {/* Protected Seller & Manager Dashboards */}
+        <Route path="/admin-portal/dashboard" element={
+          <ProtectedRoute><AdminDashboardView /></ProtectedRoute>
+        } />
         <Route path="/admin/dashboard" element={
           <ProtectedRoute><AdminDashboardView /></ProtectedRoute>
         } />

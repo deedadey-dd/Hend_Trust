@@ -141,7 +141,7 @@ export default function Navbar() {
                         <div className="py-1 px-1 space-y-0.5">
                           {(user?.role === 'ADMIN' || user?.role === 'SUPPORT_AGENT') && (
                             <Link
-                              to="/admin/dashboard"
+                              to="/admin-portal/dashboard"
                               onClick={() => setUserMenuOpen(false)}
                               className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-amber-600 dark:text-amber-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                             >
@@ -317,7 +317,7 @@ export default function Navbar() {
                   </button>
                   {navLink('/help', 'Platform Help & Guides', <HelpCircle className="h-4 w-4 text-blue-400" />)}
                   {(user?.role === 'ADMIN' || user?.role === 'SUPPORT_AGENT') &&
-                    navLink('/admin/dashboard', 'Manager Portal', <Shield className="h-4 w-4 text-amber-500" />)
+                    navLink('/admin-portal/dashboard', 'Manager Portal', <Shield className="h-4 w-4 text-amber-500" />)
                   }
                 </div>
 

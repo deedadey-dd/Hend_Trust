@@ -215,8 +215,8 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Django Admin Proxy to Gunicorn
-    location /admin/ {
+    # Django Native Admin Proxy to Gunicorn
+    location /django-admin/ {
         proxy_pass http://127.0.0.1:8000/admin/;
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
