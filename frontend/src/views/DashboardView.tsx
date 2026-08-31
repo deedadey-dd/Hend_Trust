@@ -947,34 +947,34 @@ export default function DashboardView() {
       </div>
 
       {/* Filters Card */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 mb-8 p-4 print:hidden">
-        <form onSubmit={applyFilters} className="grid grid-cols-1 md:grid-cols-5 gap-4 items-end">
-          <div className="col-span-1 md:col-span-2">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Search</label>
+      <div className="bg-white dark:bg-slate-950 rounded-xl shadow-sm border border-gray-200 dark:border-slate-800 mb-8 p-4 print:hidden transition-colors">
+        <form onSubmit={applyFilters} className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-6 gap-3.5 items-end">
+          <div className="col-span-1 sm:col-span-2 lg:col-span-2">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Search</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Search className="h-4 w-4 text-gray-400" />
+                <Search className="h-4 w-4 text-gray-400 dark:text-slate-500" />
               </div>
               <input 
                 type="text" 
                 value={search} 
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Txn ID, phone, email, product..." 
-                className="block w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+                className="block w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-xs sm:text-sm text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
           </div>
           
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Status</label>
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Status</label>
             <div className="relative">
               <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                <Filter className="h-4 w-4 text-gray-400" />
+                <Filter className="h-4 w-4 text-gray-400 dark:text-slate-500" />
               </div>
               <select 
                 value={status} 
                 onChange={e => setStatus(e.target.value)}
-                className="block w-full pl-9 pr-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500 appearance-none"
+                className="block w-full pl-9 pr-3 py-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-xs sm:text-sm text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer"
               >
                 <option value="">All Statuses</option>
                 <option value="AWAITING_PAYMENT">Awaiting Payment</option>
@@ -987,31 +987,32 @@ export default function DashboardView() {
             </div>
           </div>
 
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Start Date</label>
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Start Date</label>
             <input 
               type="date" 
               value={startDate} 
               onChange={e => setStartDate(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full px-3 py-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-xs sm:text-sm text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
             />
           </div>
 
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="block text-xs font-medium text-gray-700 mb-1">End Date</label>
-              <input 
-                type="date" 
-                value={endDate} 
-                onChange={e => setEndDate(e.target.value)}
-                className="block w-full px-3 py-2 border border-gray-300 rounded-lg text-sm focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
+          <div className="col-span-1">
+            <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">End Date</label>
+            <input 
+              type="date" 
+              value={endDate} 
+              onChange={e => setEndDate(e.target.value)}
+              className="block w-full px-3 py-2 bg-white dark:bg-slate-900 border border-gray-300 dark:border-slate-700 rounded-lg text-xs sm:text-sm text-gray-900 dark:text-slate-100 focus:ring-2 focus:ring-blue-500 outline-none"
+            />
+          </div>
+
+          <div className="col-span-1">
             <button 
               type="submit" 
-              className="mt-5 px-4 py-2 bg-gray-900 text-white rounded-lg text-sm font-medium hover:bg-gray-800 transition"
+              className="w-full py-2 px-4 bg-gray-900 hover:bg-slate-800 dark:bg-blue-600 dark:hover:bg-blue-500 text-white rounded-lg text-xs sm:text-sm font-bold transition shadow-sm h-[38px] flex items-center justify-center gap-1.5 cursor-pointer"
             >
-              Apply
+              <Filter className="h-3.5 w-3.5" /> Apply
             </button>
           </div>
         </form>

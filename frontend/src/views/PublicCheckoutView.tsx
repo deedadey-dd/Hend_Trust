@@ -538,8 +538,9 @@ export default function PublicCheckoutView() {
           const res = await axios.get(`/api/v1/links/${linkId}`);
           setLink(res.data);
         }
-      } catch {
-        setError(txRef ? 'Transaction not found.' : 'Payment link is invalid or inactive.');
+      } catch (err: any) {
+        const backendMessage = err.response?.data?.message || err.response?.data?.detail;
+        setError(txRef ? 'Transaction not found.' : (backendMessage || 'Payment link is invalid or inactive. Contact Seller'));
       } finally {
         setLoading(false);
       }
@@ -573,13 +574,35 @@ export default function PublicCheckoutView() {
 
   // ── Render states ──
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
       <Loader2 className="animate-spin text-blue-600 h-8 w-8" />
     </div>
   );
 
   if (error) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-red-500 font-medium">{error}</div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950 p-4 font-sans">
+      <SEOHead title="Link Unavailable — HendAxis Trust" description="This payment link is invalid or inactive." />
+      <div className="max-w-md w-full bg-white dark:bg-slate-900 rounded-3xl shadow-xl border border-gray-100 dark:border-slate-800 p-8 text-center space-y-5">
+        <div className="w-16 h-16 bg-amber-50 dark:bg-amber-950/50 rounded-2xl flex items-center justify-center mx-auto border border-amber-200 dark:border-amber-800">
+          <AlertTriangle className="h-8 w-8 text-amber-600 dark:text-amber-400" />
+        </div>
+        <div>
+          <h2 className="text-xl font-bold text-gray-900 dark:text-white">Link Unavailable</h2>
+          <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">This checkout link is not accepting transactions at this time.</p>
+        </div>
+        <p className="text-sm font-semibold text-gray-800 dark:text-slate-200 leading-relaxed bg-gray-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-gray-200 dark:border-slate-800">
+          {error}
+        </p>
+        <div className="pt-2">
+          <a
+            href="/"
+            className="inline-flex items-center justify-center gap-2 px-6 py-3 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-sm transition-all shadow-md shadow-blue-500/20"
+          >
+            Return to HendAxis Home
+          </a>
+        </div>
+      </div>
+    </div>
   );
 
   // Post-payment: show transaction status

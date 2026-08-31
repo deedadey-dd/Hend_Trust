@@ -20,6 +20,7 @@ class PaymentLink(models.Model):
     intended_buyer_phone = models.CharField(max_length=20, null=True, blank=True)
     image_url = models.TextField(blank=True, default='')
     is_active = models.BooleanField(default=True)
+    is_archived = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
     def __str__(self):

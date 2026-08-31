@@ -64,7 +64,7 @@ export default function Navbar() {
       onClick={() => { setMenuOpen(false); setUserMenuOpen(false); }}
       className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors
         ${location.pathname === to
-          ? 'bg-blue-600 text-white shadow-sm'
+          ? 'bg-blue-600 text-white nav-blue-btn shadow-sm'
           : 'text-slate-300 hover:text-white hover:bg-slate-800/80'}`}
     >
       {icon}
@@ -114,25 +114,25 @@ export default function Navbar() {
                       onClick={() => setUserMenuOpen(o => !o)}
                       className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border text-sm font-semibold transition-all ${
                         userMenuOpen
-                          ? 'bg-slate-800 border-blue-500 text-white shadow'
-                          : 'bg-slate-900/90 border-slate-700 text-slate-200 hover:bg-slate-800 hover:border-slate-600'
+                          ? 'bg-slate-200 dark:bg-slate-800 border-blue-500 text-slate-900 dark:text-white shadow-sm'
+                          : 'bg-slate-100 dark:bg-slate-900/90 border-slate-300 dark:border-slate-700 text-slate-800 dark:text-slate-200 hover:bg-slate-200 dark:hover:bg-slate-800'
                       }`}
                     >
-                      <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs shadow-sm">
+                      <div className="w-7 h-7 rounded-lg bg-blue-600 !text-white flex items-center justify-center font-bold text-xs shadow-sm shrink-0">
                         {(user?.name || user?.username || 'S')[0].toUpperCase()}
                       </div>
                       <span className="max-w-[110px] truncate">{user?.name || user?.username || 'Account'}</span>
-                      <ChevronDown className={`h-4 w-4 text-slate-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
+                      <ChevronDown className={`h-4 w-4 text-slate-500 dark:text-slate-400 transition-transform ${userMenuOpen ? 'rotate-180' : ''}`} />
                     </button>
 
-                    {/* Dropdown Menu */}
+                    {/* Dropdown Menu Card */}
                     {userMenuOpen && (
-                      <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-slate-900 border border-slate-800 shadow-2xl py-2 z-50 text-slate-200 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
+                      <div className="absolute right-0 mt-2 w-64 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl py-2 z-50 text-slate-800 dark:text-slate-200 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
                         {/* Account Header */}
-                        <div className="px-4 py-3 border-b border-slate-800">
-                          <p className="text-xs font-bold text-white truncate">{user?.name || user?.username}</p>
-                          <p className="text-[11px] text-slate-400 truncate">{user?.email}</p>
-                          <div className="mt-1.5 inline-block px-2 py-0.5 rounded-md bg-blue-500/10 border border-blue-500/20 text-[10px] font-bold text-blue-400 uppercase tracking-wider">
+                        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+                          <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{user?.name || user?.username}</p>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
+                          <div className="mt-1.5 inline-block px-2 py-0.5 rounded-md bg-blue-50 dark:bg-blue-500/10 border border-blue-200 dark:border-blue-500/20 text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">
                             {user?.role || 'SELLER'}
                           </div>
                         </div>
@@ -143,9 +143,9 @@ export default function Navbar() {
                             <Link
                               to="/admin/dashboard"
                               onClick={() => setUserMenuOpen(false)}
-                              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-amber-300 hover:bg-slate-800 transition-colors"
+                              className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium text-amber-600 dark:text-amber-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
                             >
-                              <Shield className="h-4 w-4 text-amber-400" />
+                              <Shield className="h-4 w-4 text-amber-500 dark:text-amber-400" />
                               Manager Portal
                             </Link>
                           )}
@@ -153,60 +153,60 @@ export default function Navbar() {
                           <Link
                             to="/profile"
                             onClick={() => setUserMenuOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-800 text-slate-200 hover:text-white transition-colors"
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white transition-colors"
                           >
-                            <Settings className="h-4 w-4 text-slate-400" />
+                            <Settings className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                             Profile & Payout Settings
                           </Link>
 
                           <Link
                             to="/developers"
                             onClick={() => setUserMenuOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-800 text-emerald-400 hover:text-emerald-300 transition-colors"
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 text-emerald-600 dark:text-emerald-400 hover:text-emerald-700 dark:hover:text-emerald-300 transition-colors"
                           >
-                            <Code className="h-4 w-4 text-emerald-400" />
+                            <Code className="h-4 w-4 text-emerald-500 dark:text-emerald-400" />
                             Developer APIs & SDK
                           </Link>
 
                           <button
                             onClick={() => { setShowTrackModal(true); setUserMenuOpen(false); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-800 text-slate-200 hover:text-white transition-colors text-left"
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white transition-colors text-left"
                           >
-                            <MapPin className="h-4 w-4 text-slate-400" />
+                            <MapPin className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                             Track Order
                           </button>
 
                           <Link
                             to="/help"
                             onClick={() => setUserMenuOpen(false)}
-                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-800 text-blue-400 hover:text-blue-300 transition-colors"
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 transition-colors"
                           >
-                            <HelpCircle className="h-4 w-4 text-blue-400" />
+                            <HelpCircle className="h-4 w-4 text-blue-500 dark:text-blue-400" />
                             Platform Help & Guides
                           </Link>
                         </div>
 
                         {/* Theme & Logout Section */}
-                        <div className="pt-2 mt-1 border-t border-slate-800 px-1 space-y-1">
+                        <div className="pt-2 mt-1 border-t border-slate-100 dark:border-slate-800 px-1 space-y-1">
                           <button
                             type="button"
                             onClick={cycleTheme}
-                            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-800 text-slate-300 transition-colors"
+                            className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-300 transition-colors"
                           >
                             <span className="flex items-center gap-2">
-                              {theme === 'light' ? <Sun className="h-4 w-4 text-amber-400" /> : theme === 'dark' ? <Moon className="h-4 w-4 text-blue-400" /> : <Laptop className="h-4 w-4 text-slate-400" />}
+                              {theme === 'light' ? <Sun className="h-4 w-4 text-amber-500" /> : theme === 'dark' ? <Moon className="h-4 w-4 text-blue-400" /> : <Laptop className="h-4 w-4 text-slate-500" />}
                               Theme Mode
                             </span>
-                            <span className="text-[10px] font-bold uppercase text-slate-400 bg-slate-800 px-2 py-0.5 rounded-md">
+                            <span className="text-[10px] font-bold uppercase text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md">
                               {theme}
                             </span>
                           </button>
 
                           <button
                             onClick={handleLogout}
-                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-500/10 transition-colors"
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors"
                           >
-                            <LogOut className="h-4 w-4" />
+                            <LogOut className="h-4 w-4 text-rose-500" />
                             Logout
                           </button>
                         </div>
@@ -245,9 +245,9 @@ export default function Navbar() {
                   {navLink('/login', 'Log In', <LogIn className="h-4 w-4" />)}
                   <Link
                     to="/register"
-                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white bg-blue-600 hover:bg-blue-500 transition-colors shadow-lg ml-1"
+                    className="flex items-center gap-1.5 px-4 py-2 rounded-lg text-sm font-semibold text-white nav-blue-btn bg-blue-600 hover:bg-blue-500 transition-colors shadow-lg ml-1"
                   >
-                    <UserPlus className="h-4 w-4" />
+                    <UserPlus className="h-4 w-4 text-white" />
                     Get Started Free
                   </Link>
                 </>
@@ -284,7 +284,7 @@ export default function Navbar() {
                       onClick={() => setTheme(t.id as any)}
                       className={`p-2 rounded-lg border text-xs flex items-center gap-1 font-semibold transition ${
                         theme === t.id
-                          ? 'bg-blue-600 border-blue-500 text-white shadow-sm'
+                          ? 'bg-blue-600 border-blue-500 !text-white shadow-sm'
                           : 'bg-slate-950 border-slate-800 text-slate-400 hover:text-slate-200'
                       }`}
                     >

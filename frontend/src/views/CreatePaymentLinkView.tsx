@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
+import { QRCodeDisplay } from '../components/QRCodeDisplay';
 
 export default function CreatePaymentLinkView() {
   const [title, setTitle] = useState('');
@@ -228,32 +229,35 @@ export default function CreatePaymentLinkView() {
               
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Price (GHS) *</label>
-                  <div className="mt-1 relative rounded-md shadow-sm">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Price (GHS) *</label>
+                  <div className="relative rounded-md shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-gray-500 font-bold text-xs">GHS</span>
+                      <span className="text-gray-500 dark:text-slate-400 font-bold text-xs">GHS</span>
                     </div>
-                    <input type="number" step="0.01" min="0" required value={price} onChange={e => setPrice(e.target.value)} className="pl-12 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border font-mono" />
+                    <input type="number" step="0.01" min="0" required value={price} onChange={e => setPrice(e.target.value)} className="pl-12 block w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border font-mono" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Shipping (GHS)</label>
-                  <div className="mt-1 relative rounded-md shadow-sm">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Shipping (GHS)</label>
+                  <div className="relative rounded-md shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <Truck className="h-4 w-4 text-gray-400" />
+                      <Truck className="h-4 w-4 text-gray-400 dark:text-slate-500" />
                     </div>
-                    <input type="number" step="0.01" min="0" value={shipping} onChange={e => setShipping(e.target.value)} className="pl-10 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border font-mono" />
+                    <input type="number" step="0.01" min="0" value={shipping} onChange={e => setShipping(e.target.value)} className="pl-10 block w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border font-mono" />
                   </div>
                 </div>
 
                 <div>
-                  <label className="block text-sm font-medium text-gray-700">Escrow Fee (GHS)</label>
-                  <div className="mt-1 relative rounded-md shadow-sm">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Escrow Fee</label>
+                    <span className="text-[10px] font-mono font-semibold text-gray-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700">1.5% + GHS 10</span>
+                  </div>
+                  <div className="relative rounded-md shadow-sm">
                     <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                      <span className="text-gray-400 font-mono text-xs">1.5%+10</span>
+                      <span className="text-gray-500 dark:text-slate-400 font-bold text-xs">GHS</span>
                     </div>
-                    <input type="text" readOnly value={`GHS ${platformFee.toFixed(2)}`} className="pl-16 block w-full rounded-lg border-gray-200 bg-gray-100 text-gray-600 sm:text-sm p-3 border font-mono font-bold cursor-not-allowed" />
+                    <input type="text" readOnly value={platformFee.toFixed(2)} className="pl-12 block w-full rounded-lg border-gray-200 dark:border-slate-800 bg-gray-100 dark:bg-slate-800/80 text-gray-700 dark:text-slate-300 sm:text-sm p-3 border font-mono font-bold cursor-not-allowed" />
                   </div>
                 </div>
               </div>
@@ -347,27 +351,32 @@ export default function CreatePaymentLinkView() {
                 Your secure escrow link has been generated. Share it with your buyer to get paid.
               </p>
 
-              <div className="flex items-center gap-2 bg-gray-50 rounded-lg border border-gray-200 p-3 mb-6">
+              <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-3 mb-4">
                 <LinkIcon className="h-4 w-4 text-gray-400 flex-shrink-0" />
                 <input 
                   type="text" 
                   readOnly 
                   value={createdUrl} 
-                  className="bg-transparent border-none focus:ring-0 text-sm text-gray-600 flex-1 min-w-0"
+                  className="bg-transparent border-none focus:ring-0 text-xs sm:text-sm text-gray-700 dark:text-slate-200 flex-1 min-w-0 font-mono"
                 />
+              </div>
+
+              {/* QR Code Card */}
+              <div className="mb-5">
+                <QRCodeDisplay url={createdUrl} title={title} priceGhs={buyerPays} size={150} />
               </div>
 
               <div className="grid grid-cols-2 gap-3">
                 <button
                   onClick={() => handleCopy(createdUrl)}
-                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border-2 border-gray-200 text-gray-700 font-semibold hover:bg-gray-50 hover:border-gray-300 transition-all"
+                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border-2 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition-all text-xs sm:text-sm"
                 >
                   {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
                   {copied ? 'Copied!' : 'Copy Link'}
                 </button>
                 <button
                   onClick={() => handleShare(createdUrl)}
-                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20"
+                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 text-xs sm:text-sm"
                 >
                   <Share2 className="h-4 w-4" />
                   Share Link
