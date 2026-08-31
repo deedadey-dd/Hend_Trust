@@ -13,9 +13,13 @@ env = environ.Env(
     DEBUG=(bool, False)
 )
 
-# Take environment variables from .env file
-# Root of the monorepo is BASE_DIR.parent
-environ.Env.read_env(os.path.join(BASE_DIR.parent, '.env'))
+# Take environment variables from .env file (check backend/.env and parent/.env)
+env_backend = os.path.join(BASE_DIR, '.env')
+env_parent = os.path.join(BASE_DIR.parent, '.env')
+if os.path.exists(env_backend):
+    environ.Env.read_env(env_backend)
+if os.path.exists(env_parent):
+    environ.Env.read_env(env_parent)
 
 # Sentry Error Tracking
 sentry_dsn = env('SENTRY_DSN', default='')
