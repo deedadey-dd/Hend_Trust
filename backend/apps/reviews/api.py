@@ -384,8 +384,8 @@ def promote_shop_ad(request, data: PromoteShopSchema):
         }
 
     # Option 2: Pay directly via Paystack Checkout if insufficient wallet balance
-    reference = f"AD_{data.duration_days}D_{uuid6.uuid7().hex[:8]}"
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+    frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
     callback_url = f"{frontend_url}/shops?ad_success=true"
 
     try:

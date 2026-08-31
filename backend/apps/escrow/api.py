@@ -731,7 +731,8 @@ def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSc
     # Notify Seller
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
     from django.conf import settings
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+    frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
     dash_link = f"{frontend_url}/dashboard?search={transaction.paystack_reference}"
     
     # SMS (no link to avoid multi-page SMS)

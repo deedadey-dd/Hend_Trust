@@ -32,7 +32,8 @@ def _build_default_html_email(subject: str, message: str, html_message: str = No
         return html_message
         
     import re
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+    frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
     
     # Extract any URL in the message body
     urls = re.findall(r'https?://[^\s<>"]+', message)
@@ -127,12 +128,15 @@ def notify_buyer_payment_received_task(transaction_id):
     Sends an SMS and Email to the buyer after successful payment with their tracking details.
     """
     from apps.escrow.models import Transaction
+    default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+    frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+
     try:
         txn = Transaction.objects.get(id=transaction_id)
         
         msg = (
             f"Payment successful for {txn.link.title}! "
-            f"Track your order at http://localhost:5173/track using Transaction ID: {txn.paystack_reference} and your phone number."
+            f"Track your order at {frontend_url}/track using Transaction ID: {txn.paystack_reference} and your phone number."
         )
         
         html_msg = f"""
@@ -151,12 +155,12 @@ def notify_buyer_payment_received_task(transaction_id):
                 <p>You can track your order status and confirm delivery using your phone number and tracking reference.</p>
                 
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="http://localhost:5173/track?ref={txn.paystack_reference}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Track Your Order</a>
+                    <a href="{frontend_url}/track?ref={txn.paystack_reference}" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Track Your Order</a>
                 </div>
                 
                 <p style="font-size: 12px; color: #666; margin-top: 30px; text-align: center;">
                     Thank you for using HendAxis Trust Escrow.<br>
-                    <a href="http://localhost:5173" style="color: #3b82f6;">Visit our website</a>
+                    <a href="{frontend_url}" style="color: #3b82f6;">Visit our website</a>
                 </p>
             </div>
         </body>
@@ -169,44 +173,43 @@ def notify_buyer_payment_received_task(transaction_id):
         print(msg)
         print("="*50 + "\n")
         
+        if txn.buyer_email:
+            dispatch_email_task.delay(
+                txn.buyer_email,
+                f"Payment Confirmed - Order #{txn.paystack_reference}",
+                msg,
+                html_message=html_msg
+            )
+            
         dispatch_sms_task.delay(txn.buyer_phone, msg)
         
-        if txn.buyer_email:
-            subject = f"Payment Confirmed - {txn.link.title}"
-            dispatch_email_task.delay(txn.buyer_email, subject, msg, html_message=html_msg)
-            
     except Transaction.DoesNotExist:
-        logger.error(f"Transaction {transaction_id} not found for payment notification.")
+        pass
 
 @shared_task
-def notify_seller_payment_received_task(transaction_id):
-    """
-    Sends an Email to the seller after successful payment with order details.
-    """
+def send_seller_payment_notification_task(transaction_id: int):
     from apps.escrow.models import Transaction
+    default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+    frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+
     try:
         txn = Transaction.objects.get(id=transaction_id)
-        seller = txn.link.seller
+        seller = txn.link.user
         seller_email = getattr(seller, 'email', None)
         
-        msg = (
-            f"Great news! You have a new order ({txn.paystack_reference}) for '{txn.link.title}'. "
-            f"Please log in to your dashboard to process and dispatch this order."
-        )
+        msg = f"New order received for {txn.link.title}! Amount: GHS {txn.total_amount_ghs}. Log in to dispatch: {frontend_url}/dashboard"
         
         html_msg = f"""
         <html>
         <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee;">
-                <h2 style="color: #3b82f6; margin-top: 0;">New Order Received! 📦</h2>
-                <p>Hello,</p>
-                <p>You have received a new payment for <strong>{txn.link.title}</strong>. The funds are safely secured in escrow.</p>
+                <h2 style="color: #10b981; margin-top: 0;">New Order Received! 💰</h2>
+                <p>Hello <strong>{seller.username}</strong>,</p>
+                <p>You have received a new payment of <strong>GHS {txn.total_amount_ghs}</strong> for <strong>{txn.link.title}</strong>.</p>
                 
-                <div style="background-color: white; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #3b82f6;">
-                    <h3 style="margin-top: 0; color: #444;">Order Details</h3>
-                    <p style="margin: 0 0 5px 0;"><strong>Reference:</strong> <span style="font-family: monospace;">{txn.paystack_reference}</span></p>
-                    <p style="margin: 0 0 15px 0;"><strong>Amount:</strong> GHS {txn.total_amount_ghs}</p>
-                    
+                <div style="background-color: white; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #10b981;">
+                    <p style="margin: 0 0 5px 0;"><strong>Transaction ID:</strong> {txn.paystack_reference}</p>
+                    <p style="margin: 0 0 5px 0;"><strong>Escrow Amount:</strong> GHS {txn.total_amount_ghs}</p>
                     <h3 style="margin: 0 0 10px 0; color: #444; border-top: 1px solid #eee; padding-top: 15px;">Buyer Information</h3>
                     <p style="margin: 0 0 5px 0;"><strong>Name:</strong> {txn.buyer_name}</p>
                     <p style="margin: 0 0 5px 0;"><strong>Phone:</strong> {txn.buyer_phone}</p>
@@ -217,7 +220,7 @@ def notify_seller_payment_received_task(transaction_id):
                 <p>Please log in to your dashboard to process and dispatch this order. Once dispatched, the buyer will be notified.</p>
                 
                 <div style="text-align: center; margin: 30px 0;">
-                    <a href="http://localhost:5173/dashboard" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
+                    <a href="{frontend_url}/dashboard" style="background-color: #3b82f6; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; display: inline-block;">Go to Dashboard</a>
                 </div>
             </div>
         </body>

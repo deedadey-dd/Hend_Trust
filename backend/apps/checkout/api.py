@@ -304,7 +304,10 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
     )
 
     try:
-        origin = request.headers.get('origin', 'http://localhost:5173')
+        from django.conf import settings
+        default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://pay.hendaxis.com'
+        fallback_origin = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+        origin = request.headers.get('origin') or fallback_origin
         cb_url = f"{origin}/l/{link.id}?reference={paystack_ref}"
         
         from apps.escrow.api import get_platform_settings
