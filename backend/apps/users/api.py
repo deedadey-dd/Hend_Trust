@@ -27,7 +27,7 @@ auth_router = Router(tags=["Authentication"])
 profile_router = Router(tags=["Seller Profile"], auth=JWTCookieAuth())
 
 def _send_user_phone_otp(user):
-    import random
+    import random, logging
     code = f"{random.randint(100000, 999999):06d}"
     user.phone_otp_code = code
     user.phone_otp_created_at = timezone.now()
@@ -36,9 +36,11 @@ def _send_user_phone_otp(user):
     sms_message = f"Your HendAxis Trust seller verification code is: {code}. Valid for 10 minutes."
     try:
         dispatch_sms_task.delay(user.phone_number, sms_message)
-    except Exception as e:
-        # Fallback to direct execution if Celery worker is offline
-        dispatch_sms_task(user.phone_number, sms_message)
+    except Exception:
+        try:
+            dispatch_sms_task(user.phone_number, sms_message)
+        except Exception as sms_err:
+            logging.getLogger(__name__).error(f"Failed to send SMS OTP: {sms_err}")
     return code
 
 class RegisterSchema(Schema):
@@ -396,7 +398,7 @@ def login(request, data: LoginSchema, response: HttpResponse):
     if not user.is_email_verified:
         raise HttpError(403, "Please check your email and activate your account before logging in.")
 
-    if not user.is_phone_verified:
+    if not user.is_phone_verified and getattr(user, 'role', 'SELLER') == 'SELLER' and not (getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False)):
         uid = urlsafe_base64_encode(force_bytes(user.pk))
         if not user.phone_otp_code or not user.phone_otp_created_at or (timezone.now() - user.phone_otp_created_at) > timedelta(minutes=10):
             _send_user_phone_otp(user)
