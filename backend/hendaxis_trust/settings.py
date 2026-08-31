@@ -13,12 +13,12 @@ env = environ.Env(
     DEBUG=(bool, False)
 )
 
-# Take environment variables from .env file (check backend/.env and parent/.env)
+# Take environment variables from .env file (prefer backend/.env then parent/.env)
 env_backend = os.path.join(BASE_DIR, '.env')
 env_parent = os.path.join(BASE_DIR.parent, '.env')
 if os.path.exists(env_backend):
     environ.Env.read_env(env_backend)
-if os.path.exists(env_parent):
+elif os.path.exists(env_parent):
     environ.Env.read_env(env_parent)
 
 # Sentry Error Tracking
@@ -234,8 +234,18 @@ if DEBUG:
     
     CSRF_TRUSTED_ORIGINS = [f'http://{ip}:5173' for ip in local_ips] + [f'https://{ip}:5173' for ip in local_ips]
 else:
-    CORS_ALLOWED_ORIGINS = [o.strip() for o in env('CORS_ALLOWED_ORIGINS', default='*').split(',') if o.strip()]
-    CSRF_TRUSTED_ORIGINS = [o.strip() for o in env('CSRF_TRUSTED_ORIGINS', default='*').split(',') if o.strip()]
+    raw_cors = env('CORS_ALLOWED_ORIGINS', default='')
+    if raw_cors and raw_cors != '*':
+        CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors.split(',') if o.strip()]
+    else:
+        CORS_ALLOWED_ORIGINS = ['https://trust.hendaxis.com', 'https://pay.hendaxis.com', 'https://api.hendaxis.com', 'http://localhost:5173']
+        
+    raw_csrf = env('CSRF_TRUSTED_ORIGINS', default='')
+    if raw_csrf and raw_csrf != '*':
+        CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf.split(',') if o.strip()]
+    else:
+        CSRF_TRUSTED_ORIGINS = ['https://*.hendaxis.com', 'https://trust.hendaxis.com', 'https://pay.hendaxis.com', 'https://api.hendaxis.com', 'http://localhost:5173', 'http://127.0.0.1:8000']
+
 CORS_ALLOW_CREDENTIALS = True
 
 # Email Configuration
@@ -243,9 +253,11 @@ if DEBUG:
     EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.console.EmailBackend')
 else:
     EMAIL_BACKEND = env('EMAIL_BACKEND', default='django.core.mail.backends.smtp.EmailBackend')
-EMAIL_HOST = env('EMAIL_HOST', default='smtp.gmail.com')
-EMAIL_PORT = env('EMAIL_PORT', cast=int, default=587)
-EMAIL_USE_TLS = env('EMAIL_USE_TLS', cast=bool, default=True)
+EMAIL_HOST = env('EMAIL_HOST', default='mail.your-server.de')
+email_port_str = str(env('EMAIL_PORT', default='587')).strip()
+EMAIL_PORT = int(email_port_str) if email_port_str.isdigit() else 587
+email_tls_str = str(env('EMAIL_USE_TLS', default='True')).strip().lower()
+EMAIL_USE_TLS = email_tls_str in ('true', '1', 'yes')
 EMAIL_HOST_USER = env('EMAIL_HOST_USER', default='')
 EMAIL_HOST_PASSWORD = env('EMAIL_HOST_PASSWORD', default='')
 DEFAULT_FROM_EMAIL = env('DEFAULT_FROM_EMAIL', default='noreply@hendaxistrust.com')
