@@ -30,8 +30,8 @@ if sentry_dsn:
 
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-replace-me-with-a-secure-key-in-production')
 DEBUG = env('DEBUG')
-_default_hosts = 'localhost,127.0.0.1' if not env('ALLOWED_HOSTS', default='') else env('ALLOWED_HOSTS', default='localhost,127.0.0.1')
-ALLOWED_HOSTS = env('ALLOWED_HOSTS', default='localhost,127.0.0.1').split(',')
+raw_hosts = env('ALLOWED_HOSTS', default='api.hendaxis.com,trust.hendaxis.com,pay.hendaxis.com,.hendaxis.com,localhost,127.0.0.1')
+ALLOWED_HOSTS = [h.strip() for h in raw_hosts.split(',') if h.strip()]
 
 PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = env('PAYSTACK_PUBLIC_KEY', default='')
@@ -231,8 +231,10 @@ if DEBUG:
     
     CSRF_TRUSTED_ORIGINS = [f'http://{ip}:5173' for ip in local_ips] + [f'https://{ip}:5173' for ip in local_ips]
 else:
-    CORS_ALLOWED_ORIGINS = env('CORS_ALLOWED_ORIGINS', default='http://localhost:5173').split(',')
-    CSRF_TRUSTED_ORIGINS = env('CSRF_TRUSTED_ORIGINS', default='https://hendaxis.com').split(',')
+    raw_cors = env('CORS_ALLOWED_ORIGINS', default='https://trust.hendaxis.com,https://pay.hendaxis.com,https://api.hendaxis.com')
+    CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors.split(',') if o.strip()]
+    raw_csrf = env('CSRF_TRUSTED_ORIGINS', default='https://trust.hendaxis.com,https://pay.hendaxis.com,https://api.hendaxis.com,https://*.hendaxis.com')
+    CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf.split(',') if o.strip()]
 CORS_ALLOW_CREDENTIALS = True
 
 # Email Configuration
