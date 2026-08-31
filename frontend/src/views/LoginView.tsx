@@ -12,6 +12,7 @@ export default function LoginView() {
   const isExpired = searchParams.get('expired') === 'true';
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  const [remember, setRemember] = useState(true);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
@@ -43,7 +44,7 @@ export default function LoginView() {
     setResendMsg('');
     setLoading(true);
     try {
-      const res = await apiClient.post('/auth/login', { username, password });
+      const res = await apiClient.post('/auth/login', { username, password, remember });
       const { user_id, username: uname, role, email } = res.data;
       login('', { id: user_id, role, email, name: uname });
       if (role === 'ADMIN') {
@@ -52,7 +53,15 @@ export default function LoginView() {
         navigate('/dashboard');
       }
     } catch (err: any) {
-      setError(getErrorMessage(err) || 'Invalid credentials. Please try again.');
+      const msg = getErrorMessage(err);
+      if (msg.includes('PHONE_VERIFICATION_REQUIRED')) {
+        const parts = msg.split(':');
+        const uid = parts[1] || '';
+        const phone = parts[2] || '';
+        navigate(`/activate-account?step=phone&uid=${uid}&phone=${encodeURIComponent(phone)}`);
+        return;
+      }
+      setError(msg || 'Invalid credentials. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -136,8 +145,15 @@ export default function LoginView() {
 
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center">
-                <input id="remember-me" name="remember-me" type="checkbox" className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-slate-700 rounded bg-white dark:bg-slate-800" />
-                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900 dark:text-slate-300">
+                <input
+                  id="remember-me"
+                  name="remember-me"
+                  type="checkbox"
+                  checked={remember}
+                  onChange={e => setRemember(e.target.checked)}
+                  className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 dark:border-slate-700 rounded bg-white dark:bg-slate-800 cursor-pointer"
+                />
+                <label htmlFor="remember-me" className="ml-2 block text-sm text-gray-900 dark:text-slate-300 cursor-pointer select-none">
                   Remember me
                 </label>
               </div>

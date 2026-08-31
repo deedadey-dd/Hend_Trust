@@ -55,6 +55,9 @@ class User(AbstractUser):
 
     # Auth & Security Verification
     is_email_verified = models.BooleanField(default=False)
+    is_phone_verified = models.BooleanField(default=False)
+    phone_otp_code = models.CharField(max_length=6, blank=True, default='')
+    phone_otp_created_at = models.DateTimeField(null=True, blank=True)
     pending_momo_number = models.CharField(max_length=20, blank=True, default='')
     momo_otp_code = models.CharField(max_length=6, blank=True, default='')
     momo_otp_created_at = models.DateTimeField(null=True, blank=True)

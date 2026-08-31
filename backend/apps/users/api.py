@@ -21,10 +21,25 @@ from ninja_jwt.schema import TokenRefreshInputSchema
 from apps.users.models import User, PayoutMode
 from hendaxis_trust.auth import JWTCookieAuth
 from apps.core.ratelimit import rate_limit, lockout_on_failure
-from utils.mnotify import MNotifyService
+from apps.core.tasks import dispatch_sms_task
 
 auth_router = Router(tags=["Authentication"])
 profile_router = Router(tags=["Seller Profile"], auth=JWTCookieAuth())
+
+def _send_user_phone_otp(user):
+    import random
+    code = f"{random.randint(100000, 999999):06d}"
+    user.phone_otp_code = code
+    user.phone_otp_created_at = timezone.now()
+    user.save(update_fields=['phone_otp_code', 'phone_otp_created_at'])
+
+    sms_message = f"Your HendAxis Trust seller verification code is: {code}. Valid for 10 minutes."
+    try:
+        dispatch_sms_task.delay(user.phone_number, sms_message)
+    except Exception as e:
+        # Fallback to direct execution if Celery worker is offline
+        dispatch_sms_task(user.phone_number, sms_message)
+    return code
 
 class RegisterSchema(Schema):
     username: str
@@ -36,9 +51,19 @@ class RegisterSchema(Schema):
 class LoginSchema(Schema):
     username: str
     password: str
+    remember: Optional[bool] = False
 
 class MessageSchema(Schema):
     message: str
+
+class SendPhoneOtpSchema(Schema):
+    uid: Optional[str] = None
+    email_or_username: Optional[str] = None
+
+class VerifyPhoneOtpSchema(Schema):
+    uid: Optional[str] = None
+    email_or_username: Optional[str] = None
+    otp_code: str
 
 class LoginResponseSchema(Schema):
     message: str
@@ -62,13 +87,22 @@ class ActivateAccountSchema(Schema):
 class ResendActivationSchema(Schema):
     email: str
 
-def set_auth_cookies(response, refresh_token):
+def set_auth_cookies(response, refresh_token, remember=False):
+    if remember:
+        access_lifetime = timedelta(days=7)
+        refresh_lifetime = timedelta(days=30)
+    else:
+        access_lifetime = settings.NINJA_JWT.get('ACCESS_TOKEN_LIFETIME', timedelta(hours=2))
+        refresh_lifetime = settings.NINJA_JWT.get('REFRESH_TOKEN_LIFETIME', timedelta(days=7))
+
+    refresh_token.set_exp(lifetime=refresh_lifetime)
     access_token = refresh_token.access_token
+    access_token.set_exp(lifetime=access_lifetime)
     
     response.set_cookie(
         key=settings.NINJA_JWT['AUTH_COOKIE'],
         value=str(access_token),
-        expires=settings.NINJA_JWT['ACCESS_TOKEN_LIFETIME'],
+        max_age=int(access_lifetime.total_seconds()),
         secure=settings.NINJA_JWT['AUTH_COOKIE_SECURE'],
         httponly=settings.NINJA_JWT['AUTH_COOKIE_HTTP_ONLY'],
         samesite=settings.NINJA_JWT['AUTH_COOKIE_SAMESITE'],
@@ -77,7 +111,7 @@ def set_auth_cookies(response, refresh_token):
     response.set_cookie(
         key=settings.NINJA_JWT['AUTH_COOKIE_REFRESH'],
         value=str(refresh_token),
-        expires=settings.NINJA_JWT['REFRESH_TOKEN_LIFETIME'],
+        max_age=int(refresh_lifetime.total_seconds()),
         secure=settings.NINJA_JWT['AUTH_COOKIE_SECURE'],
         httponly=settings.NINJA_JWT['AUTH_COOKIE_HTTP_ONLY'],
         samesite=settings.NINJA_JWT['AUTH_COOKIE_SAMESITE'],
@@ -187,7 +221,7 @@ def register(request, data: RegisterSchema):
 
     return {"message": "Account created! Please check your email to activate your account before logging in."}
 
-@auth_router.post("/activate-account", response=MessageSchema)
+@auth_router.post("/activate-account", response=dict)
 def activate_account(request, data: ActivateAccountSchema):
     try:
         pk = force_str(urlsafe_base64_decode(data.uid))
@@ -195,15 +229,101 @@ def activate_account(request, data: ActivateAccountSchema):
     except Exception:
         raise HttpError(400, "Invalid activation link.")
         
-    if user.is_email_verified:
-        return {"message": "Your account is already activated. You can sign in now."}
-        
-    if not default_token_generator.check_token(user, data.token):
+    if not default_token_generator.check_token(user, data.token) and not user.is_email_verified:
         raise HttpError(400, "Activation link is invalid or has expired.")
         
     user.is_email_verified = True
     user.save(update_fields=['is_email_verified'])
-    return {"message": "Account activated successfully! You can now log in."}
+
+    if not user.is_phone_verified:
+        _send_user_phone_otp(user)
+        return {
+            "message": "Email verified successfully! We've sent a 6-digit SMS OTP code to your phone number.",
+            "requires_phone_verification": True,
+            "uid": data.uid,
+            "phone_number": user.phone_number,
+            "is_phone_verified": False
+        }
+        
+    return {
+        "message": "Account activated successfully! You can now log in.",
+        "requires_phone_verification": False,
+        "uid": data.uid,
+        "is_phone_verified": True
+    }
+
+@auth_router.post("/send-phone-otp", response=dict)
+@rate_limit('auth_send_phone_otp', max_calls=5, window_seconds=600)
+def send_phone_otp(request, data: SendPhoneOtpSchema):
+    from django.db.models import Q
+    user = None
+    if getattr(request, 'user', None) and request.user.is_authenticated:
+        user = request.user
+    elif data.uid:
+        try:
+            pk = force_str(urlsafe_base64_decode(data.uid))
+            user = User.objects.get(pk=pk)
+        except Exception:
+            raise HttpError(400, "Invalid user identification.")
+    elif data.email_or_username:
+        user = User.objects.filter(
+            Q(email__iexact=data.email_or_username.strip()) | Q(username__iexact=data.email_or_username.strip())
+        ).first()
+
+    if not user:
+        raise HttpError(400, "User account not found.")
+
+    if user.is_phone_verified:
+        return {"message": "Phone number is already verified.", "is_phone_verified": True}
+
+    _send_user_phone_otp(user)
+    masked_phone = f"{user.phone_number[:4]}****{user.phone_number[-2:]}" if len(user.phone_number) >= 6 else user.phone_number
+    return {
+        "message": f"Verification code sent to {masked_phone}.",
+        "phone_number": user.phone_number,
+        "is_phone_verified": False
+    }
+
+@auth_router.post("/verify-phone-otp", response=dict)
+def verify_phone_otp(request, data: VerifyPhoneOtpSchema):
+    from django.db.models import Q
+    user = None
+    if getattr(request, 'user', None) and request.user.is_authenticated:
+        user = request.user
+    elif data.uid:
+        try:
+            pk = force_str(urlsafe_base64_decode(data.uid))
+            user = User.objects.get(pk=pk)
+        except Exception:
+            raise HttpError(400, "Invalid user identification.")
+    elif data.email_or_username:
+        user = User.objects.filter(
+            Q(email__iexact=data.email_or_username.strip()) | Q(username__iexact=data.email_or_username.strip())
+        ).first()
+
+    if not user:
+        raise HttpError(400, "User account not found.")
+
+    if user.is_phone_verified:
+        return {"message": "Phone number is already verified.", "is_phone_verified": True}
+
+    if not user.phone_otp_code or not data.otp_code.strip():
+        raise HttpError(400, "Please enter the 6-digit verification code sent to your phone.")
+
+    if not user.phone_otp_created_at or (timezone.now() - user.phone_otp_created_at) > timedelta(minutes=10):
+        raise HttpError(400, "Verification code has expired. Please request a new code.")
+
+    if data.otp_code.strip() != user.phone_otp_code:
+        raise HttpError(400, "Invalid verification code. Please check and try again.")
+
+    user.is_phone_verified = True
+    user.phone_otp_code = ""
+    user.save(update_fields=['is_phone_verified', 'phone_otp_code'])
+
+    return {
+        "message": "Phone number verified successfully! Your account is now fully active.",
+        "is_phone_verified": True
+    }
 
 @auth_router.post("/resend-activation", response=MessageSchema)
 @rate_limit('auth_resend_activation', max_calls=3, window_seconds=600)
@@ -276,9 +396,15 @@ def login(request, data: LoginSchema, response: HttpResponse):
     if not user.is_email_verified:
         raise HttpError(403, "Please check your email and activate your account before logging in.")
 
+    if not user.is_phone_verified:
+        uid = urlsafe_base64_encode(force_bytes(user.pk))
+        if not user.phone_otp_code or not user.phone_otp_created_at or (timezone.now() - user.phone_otp_created_at) > timedelta(minutes=10):
+            _send_user_phone_otp(user)
+        raise HttpError(403, f"PHONE_VERIFICATION_REQUIRED:{uid}:{user.phone_number}")
+
     clear_failures()  # Reset lockout counter on successful auth
     refresh = RefreshToken.for_user(user)
-    set_auth_cookies(response, refresh)
+    set_auth_cookies(response, refresh, remember=bool(getattr(data, 'remember', False)))
     
     return {
         "message": "Login successful",
