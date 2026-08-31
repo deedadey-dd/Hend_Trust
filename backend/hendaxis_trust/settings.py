@@ -35,6 +35,7 @@ if sentry_dsn:
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-replace-me-with-a-secure-key-in-production')
 DEBUG = env.bool('DEBUG', default=False)
 ALLOWED_HOSTS = [h.strip() for h in env('ALLOWED_HOSTS', default='*').split(',') if h.strip()]
+FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173' if DEBUG else 'https://trust.hendaxis.com').rstrip('/')
 
 PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = env('PAYSTACK_PUBLIC_KEY', default='')

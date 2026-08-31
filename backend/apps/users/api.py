@@ -120,10 +120,24 @@ def set_auth_cookies(response, refresh_token, remember=False):
         domain=settings.NINJA_JWT['AUTH_COOKIE_DOMAIN']
     )
 
+def _get_request_frontend_url(request=None):
+    if request:
+        origin = request.META.get('HTTP_ORIGIN')
+        if origin:
+            return origin.rstrip('/')
+        referer = request.META.get('HTTP_REFERER')
+        if referer:
+            from urllib.parse import urlparse
+            p = urlparse(referer)
+            if p.scheme and p.netloc:
+                return f"{p.scheme}://{p.netloc}".rstrip('/')
+    default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+    return getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+
 def send_account_activation_email(user, request=None):
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    frontend_url = _get_request_frontend_url(request)
     activation_link = f"{frontend_url}/activate-account?uid={uid}&token={token}"
     
     subject = "Activate Your HendAxis Trust Account"
@@ -152,7 +166,7 @@ def send_account_activation_email(user, request=None):
 def send_password_reset_email(user, request=None):
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    frontend_url = _get_request_frontend_url(request)
     reset_link = f"{frontend_url}/reset-password?uid={uid}&token={token}"
     
     subject = "Reset Your HendAxis Trust Password"
