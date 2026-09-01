@@ -1158,6 +1158,7 @@ def broadcast_message_admin(request, data: BroadcastMessageSchema):
     is_admin_user(request)
     from apps.notifications.models import BroadcastCampaign, BroadcastCampaignStatus
     from apps.core.tasks import process_broadcast_campaign_task
+    import threading
 
     campaign = BroadcastCampaign.objects.create(
         subject=data.subject or "Notification from HendAxis Trust",
@@ -1169,13 +1170,24 @@ def broadcast_message_admin(request, data: BroadcastMessageSchema):
         status=BroadcastCampaignStatus.PENDING
     )
 
+    queued_via_celery = False
     try:
         task_res = process_broadcast_campaign_task.delay(str(campaign.id))
         tid = getattr(task_res, 'id', '')
-        campaign.celery_task_id = str(tid) if tid else ''
-        campaign.save(update_fields=['celery_task_id'])
-    except Exception:
-        process_broadcast_campaign_task(str(campaign.id))
+        if tid:
+            campaign.celery_task_id = str(tid)
+            campaign.save(update_fields=['celery_task_id'])
+            queued_via_celery = True
+    except Exception as e:
+        logger.warning(f"Celery dispatch unavailable for campaign {campaign.id}: {e}. Falling back to async background thread.")
+
+    if not queued_via_celery:
+        thread = threading.Thread(
+            target=process_broadcast_campaign_task.run,
+            args=(str(campaign.id),),
+            daemon=True
+        )
+        thread.start()
 
     return {
         "message": f"Broadcast campaign '{campaign.subject}' created and queued for delivery.",

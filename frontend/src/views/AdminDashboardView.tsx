@@ -17,7 +17,7 @@ import {
   useCancelBroadcastCampaignMutation
 } from '../hooks/api/useAdminPortal';
 import { compressImageToWebP } from '../utils/imageUtils';
-import { apiClient } from '../api/client';
+import { apiClient, getErrorMessage } from '../api/client';
 
 type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'SETTINGS';
 
@@ -382,7 +382,7 @@ export const AdminDashboardView: React.FC = () => {
       setBroadcastResult(res.message);
       setMessage('');
     } catch (err: any) {
-      setBroadcastResult(err.response?.data?.detail || 'Failed to send broadcast.');
+      setBroadcastResult(getErrorMessage(err));
     }
   };
 

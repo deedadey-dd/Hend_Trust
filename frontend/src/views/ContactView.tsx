@@ -96,8 +96,8 @@ export const ContactView: React.FC = () => {
                 </div>
                 <div>
                   <span className="font-bold text-slate-400 block text-[10px] uppercase">Phone & WhatsApp</span>
-                  <p className="text-slate-200 font-mono font-bold">+233 (0) 50 000 1122</p>
-                  <p className="text-[10px] text-slate-500">Mon – Sat: 8:00 AM – 8:00 PM GMT</p>
+                  <p className="text-slate-200 font-mono font-bold">+233 (0) 53 812 7939</p>
+                  <p className="text-[10px] text-slate-500">Mon – Sat: 9:00 – 18:00 GMT</p>
                 </div>
               </div>
 
@@ -106,8 +106,8 @@ export const ContactView: React.FC = () => {
                   <MapPin className="h-4 w-4 text-purple-400" />
                 </div>
                 <div>
-                  <span className="font-bold text-slate-400 block text-[10px] uppercase">Accra Head Office</span>
-                  <p className="text-slate-300">Airport Residential Area, Accra, Ghana</p>
+                  <span className="font-bold text-slate-400 block text-[10px] uppercase">Head Office - Ghana</span>
+                  <p className="text-slate-300">Accra, Ghana</p>
                 </div>
               </div>
             </div>
@@ -194,7 +194,7 @@ export const ContactView: React.FC = () => {
                   >
                     <option value="GENERAL">General Enquiry</option>
                     <option value="VERIFICATION">Seller Verification & Badges</option>
-                    <option value="DISPUTE">Escrow Dispute Assistance</option>
+                    <option value="DISPUTE">Dispute Assistance</option>
                     <option value="PAYOUT">Wallet & Payout Query</option>
                     <option value="LOGISTICS">Shipping & Courier Tracing</option>
                   </select>
