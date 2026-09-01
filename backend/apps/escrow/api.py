@@ -1215,12 +1215,19 @@ def broadcast_message_admin(request, data: BroadcastMessageSchema):
     
     if data.channels in ['SMS', 'BOTH']:
         for phone in phone_numbers:
-            dispatch_sms_task.delay(phone, data.message)
+            try:
+                dispatch_sms_task.delay(phone, data.message)
+            except Exception:
+                dispatch_sms_task(phone, data.message)
             sms_count += 1
             
     if data.channels in ['EMAIL', 'BOTH']:
         for email in email_addresses:
-            dispatch_email_task.delay(email, data.subject or "Notification from HendAxis Trust", data.message)
+            sub = data.subject or "Notification from HendAxis Trust"
+            try:
+                dispatch_email_task.delay(email, sub, data.message)
+            except Exception:
+                dispatch_email_task(email, sub, data.message)
             email_count += 1
             
     return {

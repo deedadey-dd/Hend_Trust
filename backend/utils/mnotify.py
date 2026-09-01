@@ -24,8 +24,13 @@ class MNotifyService:
 
         url = f"{cls.BASE_URL}?key={api_key}"
         
+        # Format Ghanaian phone numbers for MNotify (0241234567 -> 233241234567)
+        clean_phone = phone.strip().replace(' ', '').replace('+', '')
+        if clean_phone.startswith('0') and len(clean_phone) == 10:
+            clean_phone = '233' + clean_phone[1:]
+
         payload = {
-            'recipient': [phone],
+            'recipient': [clean_phone],
             'sender': sender_id,
             'message': message,
             'is_schedule': False,
