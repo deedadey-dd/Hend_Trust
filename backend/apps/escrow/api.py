@@ -1156,84 +1156,81 @@ def get_buyers_admin(request, search: Optional[str] = None):
 @admin_router.post("/broadcast-message")
 def broadcast_message_admin(request, data: BroadcastMessageSchema):
     is_admin_user(request)
-    from apps.users.models import User
-    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
-    
-    phone_numbers = set()
-    email_addresses = set()
-    
-    target = data.target_group
-    
-    if target == 'ALL_USERS':
-        for u in User.objects.all():
-            if u.phone_number: phone_numbers.add(u.phone_number)
-            if u.email: email_addresses.add(u.email)
-        for t in Transaction.objects.values('buyer_phone', 'buyer_email'):
-            if t['buyer_phone']: phone_numbers.add(t['buyer_phone'])
-            if t['buyer_email']: email_addresses.add(t['buyer_email'])
-            
-    elif target == 'ALL_SELLERS':
-        for u in User.objects.filter(Q(role='SELLER') | Q(payment_links__isnull=False)).distinct():
-            if u.phone_number: phone_numbers.add(u.phone_number)
-            if u.email: email_addresses.add(u.email)
-            
-    elif target == 'ALL_BUYERS':
-        for t in Transaction.objects.values('buyer_phone', 'buyer_email'):
-            if t['buyer_phone']: phone_numbers.add(t['buyer_phone'])
-            if t['buyer_email']: email_addresses.add(t['buyer_email'])
-            
-    elif target == 'USERS_WITH_ACTIVE_ESCROW':
-        active_txns = Transaction.objects.filter(
-            status__in=[TransactionStatus.PAYMENT_RECEIVED, TransactionStatus.DELIVERY_IN_PROGRESS, TransactionStatus.INSPECTION_PERIOD]
-        ).select_related('link', 'link__seller')
-        for t in active_txns:
-            if t.buyer_phone: phone_numbers.add(t.buyer_phone)
-            if t.buyer_email: email_addresses.add(t.buyer_email)
-            s = t.link.seller
-            if getattr(s, 'phone_number', None): phone_numbers.add(s.phone_number)
-            if getattr(s, 'email', None): email_addresses.add(s.email)
-            
-    elif target == 'USERS_WITH_DISPUTES':
-        disp_txns = Transaction.objects.filter(status=TransactionStatus.DISPUTED).select_related('link', 'link__seller')
-        for t in disp_txns:
-            if t.buyer_phone: phone_numbers.add(t.buyer_phone)
-            if t.buyer_email: email_addresses.add(t.buyer_email)
-            s = t.link.seller
-            if getattr(s, 'phone_number', None): phone_numbers.add(s.phone_number)
-            if getattr(s, 'email', None): email_addresses.add(s.email)
-            
-    elif target == 'CUSTOM' and data.custom_recipients:
-        raw_list = [r.strip() for r in data.custom_recipients.replace(',', '\n').split('\n') if r.strip()]
-        for item in raw_list:
-            if '@' in item:
-                email_addresses.add(item)
-            else:
-                phone_numbers.add(item)
-                
-    sms_count = 0
-    email_count = 0
-    
-    if data.channels in ['SMS', 'BOTH']:
-        for phone in phone_numbers:
-            try:
-                dispatch_sms_task.delay(phone, data.message)
-            except Exception:
-                dispatch_sms_task(phone, data.message)
-            sms_count += 1
-            
-    if data.channels in ['EMAIL', 'BOTH']:
-        for email in email_addresses:
-            sub = data.subject or "Notification from HendAxis Trust"
-            try:
-                dispatch_email_task.delay(email, sub, data.message)
-            except Exception:
-                dispatch_email_task(email, sub, data.message)
-            email_count += 1
-            
+    from apps.notifications.models import BroadcastCampaign, BroadcastCampaignStatus
+    from apps.core.tasks import process_broadcast_campaign_task
+
+    campaign = BroadcastCampaign.objects.create(
+        subject=data.subject or "Notification from HendAxis Trust",
+        message=data.message,
+        target_group=data.target_group,
+        channels=data.channels,
+        custom_recipients=data.custom_recipients or '',
+        created_by=request.user,
+        status=BroadcastCampaignStatus.PENDING
+    )
+
+    try:
+        task_res = process_broadcast_campaign_task.delay(str(campaign.id))
+        tid = getattr(task_res, 'id', '')
+        campaign.celery_task_id = str(tid) if tid else ''
+        campaign.save(update_fields=['celery_task_id'])
+    except Exception:
+        process_broadcast_campaign_task(str(campaign.id))
+
     return {
-        "message": f"Broadcast dispatched to {sms_count} SMS and {email_count} Email recipients.",
-        "sms_count": sms_count,
-        "email_count": email_count
+        "message": f"Broadcast campaign '{campaign.subject}' created and queued for delivery.",
+        "campaign_id": str(campaign.id),
+        "status": campaign.status
+    }
+
+@admin_router.get("/broadcast-campaigns")
+def list_broadcast_campaigns(request):
+    is_admin_user(request)
+    from apps.notifications.models import BroadcastCampaign
+    campaigns = BroadcastCampaign.objects.all()[:20]
+    res = []
+    for c in campaigns:
+        res.append({
+            "id": str(c.id),
+            "subject": c.subject,
+            "message": c.message,
+            "target_group": c.target_group,
+            "channels": c.channels,
+            "status": c.status,
+            "total_recipients": c.total_recipients,
+            "sent_sms_count": c.sent_sms_count,
+            "sent_email_count": c.sent_email_count,
+            "failed_count": c.failed_count,
+            "created_at": c.created_at.isoformat(),
+            "completed_at": c.completed_at.isoformat() if c.completed_at else None,
+            "created_by": c.created_by.username if c.created_by else "Admin"
+        })
+    return res
+
+@admin_router.post("/broadcast-campaigns/{campaign_id}/cancel")
+def cancel_broadcast_campaign(request, campaign_id: uuid.UUID):
+    is_admin_user(request)
+    from apps.notifications.models import BroadcastCampaign, BroadcastCampaignStatus
+    from hendaxis_trust.celery import app as celery_app
+    from django.conf import settings
+
+    campaign = get_object_or_404(BroadcastCampaign, id=campaign_id)
+    if campaign.status in [BroadcastCampaignStatus.COMPLETED, BroadcastCampaignStatus.CANCELLED]:
+        raise HttpError(400, f"Cannot cancel campaign in {campaign.status} status.")
+
+    campaign.status = BroadcastCampaignStatus.CANCELLED
+    campaign.save(update_fields=['status'])
+
+    if campaign.celery_task_id and not getattr(settings, 'CELERY_TASK_ALWAYS_EAGER', False):
+        try:
+            celery_app.control.revoke(campaign.celery_task_id, terminate=True)
+        except Exception as e:
+            logger.warning(f"Could not revoke Celery task {campaign.celery_task_id}: {e}")
+
+    return {
+        "message": f"Broadcast campaign '{campaign.subject}' was successfully cancelled.",
+        "campaign_id": str(campaign.id),
+        "status": campaign.status
     }
 
 

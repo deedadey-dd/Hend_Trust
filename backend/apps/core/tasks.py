@@ -122,6 +122,131 @@ def notify_user_task(user_id, title: str, message: str, notif_type: str = Notifi
     except User.DoesNotExist:
         logger.error(f"User {user_id} not found for notification.")
 
+@shared_task(bind=True)
+def process_broadcast_campaign_task(self, campaign_id: str):
+    """
+    Processes a broadcast campaign in batches with real-time status updates and cancellation checks.
+    """
+    from apps.notifications.models import BroadcastCampaign, BroadcastCampaignStatus
+    from apps.escrow.models import Transaction, TransactionStatus
+    from django.db.models import Q
+    from django.utils import timezone
+
+    try:
+        campaign = BroadcastCampaign.objects.get(id=campaign_id)
+    except BroadcastCampaign.DoesNotExist:
+        logger.error(f"BroadcastCampaign {campaign_id} not found.")
+        return
+
+    if campaign.status == BroadcastCampaignStatus.CANCELLED:
+        logger.info(f"BroadcastCampaign {campaign_id} was cancelled before starting.")
+        return
+
+    campaign.status = BroadcastCampaignStatus.PROCESSING
+    campaign.celery_task_id = getattr(self.request, 'id', None)
+    campaign.save(update_fields=['status', 'celery_task_id'])
+
+    phone_numbers = set()
+    email_addresses = set()
+    target = campaign.target_group
+
+    if target == 'ALL_USERS':
+        for u in User.objects.all():
+            if u.phone_number: phone_numbers.add(u.phone_number)
+            if u.email: email_addresses.add(u.email)
+        for t in Transaction.objects.values('buyer_phone', 'buyer_email'):
+            if t['buyer_phone']: phone_numbers.add(t['buyer_phone'])
+            if t['buyer_email']: email_addresses.add(t['buyer_email'])
+
+    elif target == 'ALL_SELLERS':
+        for u in User.objects.filter(Q(role='SELLER') | Q(payment_links__isnull=False)).distinct():
+            if u.phone_number: phone_numbers.add(u.phone_number)
+            if u.email: email_addresses.add(u.email)
+
+    elif target == 'ALL_BUYERS':
+        for t in Transaction.objects.values('buyer_phone', 'buyer_email'):
+            if t['buyer_phone']: phone_numbers.add(t['buyer_phone'])
+            if t['buyer_email']: email_addresses.add(t['buyer_email'])
+
+    elif target == 'USERS_WITH_ACTIVE_ESCROW':
+        active_txns = Transaction.objects.filter(
+            status__in=[TransactionStatus.PAYMENT_RECEIVED, TransactionStatus.DELIVERY_IN_PROGRESS, TransactionStatus.INSPECTION_PERIOD]
+        ).select_related('link', 'link__seller')
+        for t in active_txns:
+            if t.buyer_phone: phone_numbers.add(t.buyer_phone)
+            if t.buyer_email: email_addresses.add(t.buyer_email)
+            s = t.link.seller
+            if getattr(s, 'phone_number', None): phone_numbers.add(s.phone_number)
+            if getattr(s, 'email', None): email_addresses.add(s.email)
+
+    elif target == 'USERS_WITH_DISPUTES':
+        disp_txns = Transaction.objects.filter(status=TransactionStatus.DISPUTED).select_related('link', 'link__seller')
+        for t in disp_txns:
+            if t.buyer_phone: phone_numbers.add(t.buyer_phone)
+            if t.buyer_email: email_addresses.add(t.buyer_email)
+            s = t.link.seller
+            if getattr(s, 'phone_number', None): phone_numbers.add(s.phone_number)
+            if getattr(s, 'email', None): email_addresses.add(s.email)
+
+    elif target == 'CUSTOM' and campaign.custom_recipients:
+        raw_list = [r.strip() for r in campaign.custom_recipients.replace(',', '\n').split('\n') if r.strip()]
+        for item in raw_list:
+            if '@' in item:
+                email_addresses.add(item)
+            else:
+                phone_numbers.add(item)
+
+    total_targets = len(phone_numbers) if campaign.channels in ['SMS', 'BOTH'] else 0
+    total_targets += len(email_addresses) if campaign.channels in ['EMAIL', 'BOTH'] else 0
+
+    campaign.total_recipients = total_targets
+    campaign.save(update_fields=['total_recipients'])
+
+    sms_sent = 0
+    email_sent = 0
+    failed = 0
+
+    if campaign.channels in ['SMS', 'BOTH']:
+        for phone in phone_numbers:
+            campaign.refresh_from_db()
+            if campaign.status == BroadcastCampaignStatus.CANCELLED:
+                logger.info(f"BroadcastCampaign {campaign_id} cancelled during SMS dispatch.")
+                return
+
+            res = dispatch_sms_task(phone, campaign.message)
+            if res:
+                sms_sent += 1
+            else:
+                failed += 1
+
+            campaign.sent_sms_count = sms_sent
+            campaign.failed_count = failed
+            campaign.save(update_fields=['sent_sms_count', 'failed_count'])
+
+    if campaign.channels in ['EMAIL', 'BOTH']:
+        sub = campaign.subject or "Notification from HendAxis Trust"
+        for email in email_addresses:
+            campaign.refresh_from_db()
+            if campaign.status == BroadcastCampaignStatus.CANCELLED:
+                logger.info(f"BroadcastCampaign {campaign_id} cancelled during Email dispatch.")
+                return
+
+            res = dispatch_email_task(email, sub, campaign.message)
+            if res:
+                email_sent += 1
+            else:
+                failed += 1
+
+            campaign.sent_email_count = email_sent
+            campaign.failed_count = failed
+            campaign.save(update_fields=['sent_email_count', 'failed_count'])
+
+    campaign.refresh_from_db()
+    if campaign.status != BroadcastCampaignStatus.CANCELLED:
+        campaign.status = BroadcastCampaignStatus.COMPLETED
+        campaign.completed_at = timezone.now()
+        campaign.save(update_fields=['status', 'completed_at'])
+
 @shared_task
 def notify_buyer_payment_received_task(transaction_id):
     """

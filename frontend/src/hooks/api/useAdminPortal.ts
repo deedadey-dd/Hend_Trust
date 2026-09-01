@@ -157,6 +157,7 @@ export const useResolveDisputeMutation = () => {
 };
 
 export const useBroadcastMessageMutation = () => {
+  const queryClient = useQueryClient();
   return useMutation({
     mutationFn: async (broadcastData: {
       target_group: string;
@@ -167,6 +168,49 @@ export const useBroadcastMessageMutation = () => {
     }) => {
       const { data } = await apiClient.post('/admin/broadcast-message', broadcastData);
       return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-broadcast-campaigns'] });
+    },
+  });
+};
+
+export interface BroadcastCampaignItem {
+  id: string;
+  subject: string;
+  message: string;
+  target_group: string;
+  channels: string;
+  status: 'PENDING' | 'PROCESSING' | 'COMPLETED' | 'CANCELLED' | 'FAILED';
+  total_recipients: number;
+  sent_sms_count: number;
+  sent_email_count: number;
+  failed_count: number;
+  created_at: string;
+  completed_at?: string;
+  created_by: string;
+}
+
+export const useAdminBroadcastCampaignsQuery = () => {
+  return useQuery<BroadcastCampaignItem[]>({
+    queryKey: ['admin-broadcast-campaigns'],
+    queryFn: async () => {
+      const { data } = await apiClient.get('/admin/broadcast-campaigns');
+      return data;
+    },
+    refetchInterval: 3000,
+  });
+};
+
+export const useCancelBroadcastCampaignMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (campaignId: string) => {
+      const { data } = await apiClient.post(`/admin/broadcast-campaigns/${campaignId}/cancel`);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-broadcast-campaigns'] });
     },
   });
 };

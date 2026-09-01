@@ -33,3 +33,33 @@ class WebhookEventLog(models.Model):
 
     def __str__(self):
         return f"{self.provider} - {self.event_type} [{self.response_status_code}]"
+
+class BroadcastCampaignStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending'
+    PROCESSING = 'PROCESSING', 'Processing'
+    COMPLETED = 'COMPLETED', 'Completed'
+    CANCELLED = 'CANCELLED', 'Cancelled'
+    FAILED = 'FAILED', 'Failed'
+
+class BroadcastCampaign(models.Model):
+    id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
+    subject = models.CharField(max_length=255)
+    message = models.TextField()
+    target_group = models.CharField(max_length=50)
+    channels = models.CharField(max_length=20)
+    custom_recipients = models.TextField(blank=True, default='')
+    status = models.CharField(max_length=20, choices=BroadcastCampaignStatus.choices, default=BroadcastCampaignStatus.PENDING)
+    total_recipients = models.IntegerField(default=0)
+    sent_sms_count = models.IntegerField(default=0)
+    sent_email_count = models.IntegerField(default=0)
+    failed_count = models.IntegerField(default=0)
+    celery_task_id = models.CharField(max_length=255, null=True, blank=True)
+    created_by = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.SET_NULL, null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    completed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Campaign {self.subject} [{self.status}]"

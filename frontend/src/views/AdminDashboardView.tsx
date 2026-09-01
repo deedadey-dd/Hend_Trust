@@ -12,7 +12,9 @@ import {
   useAdminSellersQuery, 
   useAdminBuyersQuery, 
   useResolveDisputeMutation, 
-  useBroadcastMessageMutation 
+  useBroadcastMessageMutation,
+  useAdminBroadcastCampaignsQuery,
+  useCancelBroadcastCampaignMutation
 } from '../hooks/api/useAdminPortal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { apiClient } from '../api/client';
@@ -308,6 +310,22 @@ export const AdminDashboardView: React.FC = () => {
   const [customRecipients, setCustomRecipients] = useState<string>('');
   const broadcastMutation = useBroadcastMessageMutation();
   const [broadcastResult, setBroadcastResult] = useState<string>('');
+
+  const { data: campaignsList, isLoading: campaignsLoading, refetch: refetchBroadcastCampaigns } = useAdminBroadcastCampaignsQuery();
+  const cancelCampaignMutation = useCancelBroadcastCampaignMutation();
+
+  const handleCancelCampaign = async (campaignId: string) => {
+    if (!window.confirm("Are you sure you want to stop and cancel this broadcast campaign? Unsent messages will be aborted.")) {
+      return;
+    }
+    try {
+      const res = await cancelCampaignMutation.mutateAsync(campaignId);
+      alert(res.message);
+      refetchBroadcastCampaigns();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.detail || "Failed to cancel campaign.");
+    }
+  };
 
   const activeDisputeTxn = disputes?.find((d: any) => d.id === resolvingTxnId);
   const totalPaidByBuyer = activeDisputeTxn?.total_amount_ghs || 0;
@@ -1487,6 +1505,101 @@ export const AdminDashboardView: React.FC = () => {
                   {broadcastMutation.isPending ? 'Dispatching Broadcast…' : 'Send Broadcast Notification'}
                 </button>
               </form>
+            </div>
+
+            {/* Live Broadcast Campaigns & Cancellation History Card */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h4 className="text-base font-bold text-white flex items-center gap-2">
+                    <Layers className="h-5 w-5 text-amber-400" />
+                    Campaign Delivery Status & Cancel Control
+                  </h4>
+                  <p className="text-xs text-slate-400">
+                    Real-time status tracking of broadcasts. Click <strong>Stop & Cancel</strong> to immediately halt queued dispatches.
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => refetchBroadcastCampaigns()}
+                  className="p-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition flex items-center gap-1.5 border border-slate-700 cursor-pointer"
+                >
+                  <RefreshCw className="h-3.5 w-3.5 text-blue-400" />
+                  Refresh History
+                </button>
+              </div>
+
+              {campaignsLoading ? (
+                <div className="text-center py-8 text-slate-500 text-xs font-mono">Loading campaign activity logs…</div>
+              ) : campaignsList?.length === 0 ? (
+                <div className="text-center py-8 text-slate-500 text-xs font-mono">No broadcast campaigns found in history.</div>
+              ) : (
+                <div className="space-y-3">
+                  {campaignsList?.map(c => {
+                    const isProcessing = c.status === 'PROCESSING' || c.status === 'PENDING';
+                    const sentTotal = (c.sent_sms_count || 0) + (c.sent_email_count || 0);
+                    const totalRecip = c.total_recipients || 1;
+                    const progressPct = Math.min(100, Math.round((sentTotal / totalRecip) * 100));
+
+                    return (
+                      <div key={c.id} className="bg-slate-950 border border-slate-800 rounded-xl p-4 space-y-3">
+                        <div className="flex items-start justify-between gap-4">
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`text-[10px] font-extrabold px-2.5 py-0.5 rounded-full border uppercase tracking-wider ${
+                                c.status === 'COMPLETED'
+                                  ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30'
+                                  : c.status === 'PROCESSING'
+                                  ? 'bg-blue-500/20 text-blue-300 border-blue-500/30 animate-pulse'
+                                  : c.status === 'CANCELLED'
+                                  ? 'bg-rose-500/20 text-rose-300 border-rose-500/30'
+                                  : 'bg-amber-500/20 text-amber-300 border-amber-500/30'
+                              }`}>
+                                {c.status}
+                              </span>
+                              <span className="text-xs text-slate-400 font-mono">{c.channels} • {c.target_group}</span>
+                            </div>
+                            <h5 className="text-sm font-bold text-white mt-1">{c.subject}</h5>
+                            <p className="text-xs text-slate-400 line-clamp-1 mt-0.5">{c.message}</p>
+                          </div>
+
+                          {isProcessing && (
+                            <button
+                              type="button"
+                              onClick={() => handleCancelCampaign(c.id)}
+                              disabled={cancelCampaignMutation.isPending}
+                              className="bg-rose-600/20 hover:bg-rose-600/30 text-rose-300 border border-rose-500/40 px-3 py-1.5 rounded-lg text-xs font-extrabold transition flex items-center gap-1.5 shadow-sm cursor-pointer whitespace-nowrap"
+                            >
+                              <X className="h-4 w-4 text-rose-400" />
+                              Stop & Cancel Broadcast
+                            </button>
+                          )}
+                        </div>
+
+                        {/* Progress Bar & Counters */}
+                        <div className="space-y-1 font-mono text-xs">
+                          <div className="flex justify-between text-slate-400 text-[11px]">
+                            <span>Delivered: {sentTotal} / {c.total_recipients} recipients</span>
+                            <span>{progressPct}%</span>
+                          </div>
+                          <div className="w-full bg-slate-900 rounded-full h-2 overflow-hidden border border-slate-800">
+                            <div
+                              className={`h-full transition-all duration-500 ${
+                                c.status === 'CANCELLED' ? 'bg-rose-500' : c.status === 'COMPLETED' ? 'bg-emerald-500' : 'bg-blue-500'
+                              }`}
+                              style={{ width: `${progressPct}%` }}
+                            />
+                          </div>
+                          <div className="flex justify-between text-[10px] text-slate-500 pt-0.5">
+                            <span>SMS Sent: {c.sent_sms_count} | Email Sent: {c.sent_email_count}</span>
+                            <span>Created: {new Date(c.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         )}
