@@ -383,13 +383,25 @@ export const AdminDashboardView: React.FC = () => {
             <h1 className="text-2xl md:text-3xl font-extrabold text-white mt-1">HendAxis Trust Management Center</h1>
             <p className="text-slate-400 text-xs md:text-sm mt-0.5">Real-time surveillance, transaction escrow controls, dispute arbitration, and targeted broadcast engine.</p>
           </div>
-          <button 
-            onClick={() => { refetchMetrics(); refetchTxns(); refetchDisputes(); }}
-            className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl border border-slate-700 text-sm font-semibold transition shadow-sm"
-          >
-            <RefreshCw className="h-4 w-4 text-blue-400" />
-            Refresh Data
-          </button>
+          <div className="flex items-center gap-2">
+            <button 
+              onClick={() => { refetchMetrics(); refetchTxns(); refetchDisputes(); }}
+              className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl border border-slate-700 text-sm font-semibold transition shadow-sm cursor-pointer"
+            >
+              <RefreshCw className="h-4 w-4 text-blue-400" />
+              Refresh Data
+            </button>
+            <a
+              href="/django-admin/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="flex items-center justify-center gap-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 px-4 py-2.5 rounded-xl border border-amber-500/30 text-sm font-semibold transition shadow-sm cursor-pointer"
+              title="Open native Django backend database administration panel"
+            >
+              <ShieldCheck className="h-4 w-4 text-amber-400" />
+              Django Database Admin ↗
+            </a>
+          </div>
         </div>
 
         {/* Tab Navigation */}

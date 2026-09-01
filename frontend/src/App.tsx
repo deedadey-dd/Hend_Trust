@@ -67,14 +67,19 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 }
 
 function App() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
+  const isAdminOrAgent = user?.role === 'ADMIN' || user?.role === 'SUPPORT_AGENT' || user?.role === 'MANAGER';
   
   return (
     <Router>
       <Navbar />
       <Routes>
         {/* Public */}
-        <Route path="/" element={isAuthenticated ? <Navigate to="/dashboard" replace /> : <HomeView />} />
+        <Route path="/" element={
+          isAuthenticated 
+            ? (isAdminOrAgent ? <Navigate to="/admin-portal/dashboard" replace /> : <Navigate to="/dashboard" replace />) 
+            : <HomeView />
+        } />
         <Route path="/login" element={<LoginView />} />
         <Route path="/register" element={<RegisterView />} />
         <Route path="/forgot-password" element={<ForgotPasswordView />} />
