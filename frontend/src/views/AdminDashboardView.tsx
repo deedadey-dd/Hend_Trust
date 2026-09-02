@@ -75,6 +75,13 @@ interface PlatformSettings {
   active_payment_gateway: string;
   enabled_delivery_methods: string[];
   enabled_carriers: string[];
+  shipping_timeout_days?: number;
+  auto_delivery_hours?: number;
+  inspection_tier1_threshold?: number;
+  inspection_tier1_hours?: number;
+  inspection_tier2_threshold?: number;
+  inspection_tier2_hours?: number;
+  inspection_tier3_hours?: number;
 }
 
 export const AdminDashboardView: React.FC = () => {
@@ -84,7 +91,14 @@ export const AdminDashboardView: React.FC = () => {
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
     active_payment_gateway: 'PAYSTACK',
     enabled_delivery_methods: ['COURIER_API', 'INFORMAL_BUS'],
-    enabled_carriers: ['DHL', 'FEDEX', 'UPS', 'EMS', 'SPEEDAF', 'OTHERS']
+    enabled_carriers: ['DHL', 'FEDEX', 'UPS', 'EMS', 'SPEEDAF', 'OTHERS'],
+    shipping_timeout_days: 4,
+    auto_delivery_hours: 48,
+    inspection_tier1_threshold: 2000,
+    inspection_tier1_hours: 24,
+    inspection_tier2_threshold: 10000,
+    inspection_tier2_hours: 48,
+    inspection_tier3_hours: 72,
   });
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [settingsSaveMsg, setSettingsSaveMsg] = useState('');
@@ -1778,6 +1792,149 @@ export const AdminDashboardView: React.FC = () => {
                     </div>
                   );
                 })}
+              </div>
+            </div>
+
+            {/* Section 4: Shipping & Inspection Timelines Control */}
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+              <div className="border-b border-slate-800 pb-3 flex items-center justify-between">
+                <div>
+                  <h4 className="text-base font-bold text-white flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-amber-400" />
+                    Order Shipping & Inspection Timelines
+                  </h4>
+                  <p className="text-xs text-slate-400">Configure auto-cancellation limits, auto-delivery thresholds, and tier-based inspection windows.</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* 1. Shipping Timeout Days */}
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-200 block">
+                    Shipping / Dispatch Expiry (Days)
+                  </label>
+                  <p className="text-[11px] text-slate-400">
+                    If seller fails to ship order within this time limit, order auto-cancels with 100% buyer refund.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={platformSettings.shipping_timeout_days ?? 4}
+                      onChange={(e) => handleUpdateSettings({ shipping_timeout_days: parseInt(e.target.value) || 4 })}
+                      className="bg-slate-900 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-400">Days</span>
+                  </div>
+                </div>
+
+                {/* 2. Informal Bus Auto-Delivery Hours */}
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-200 block">
+                    Auto-Delivery Confirmation Window (Hours)
+                  </label>
+                  <p className="text-[11px] text-slate-400">
+                    If buyer does not confirm receipt after station dispatch, system auto-marks item as Delivered after this window.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="168"
+                      value={platformSettings.auto_delivery_hours ?? 48}
+                      onChange={(e) => handleUpdateSettings({ auto_delivery_hours: parseInt(e.target.value) || 48 })}
+                      className="bg-slate-900 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-400">Hours</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Inspection Period Tiers */}
+              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
+                <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Tiered Inspection Windows (Based on Order Amount)</h5>
+                
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Tier 1 */}
+                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                    <span className="text-[10px] font-bold text-blue-400 uppercase font-mono block">Tier 1: Standard Orders</span>
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span>Order Value &lt;</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-slate-500">GHS</span>
+                        <input
+                          type="number"
+                          value={platformSettings.inspection_tier1_threshold ?? 2000}
+                          onChange={(e) => handleUpdateSettings({ inspection_tier1_threshold: parseFloat(e.target.value) || 2000 })}
+                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-20 font-mono text-right"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                      <span>Inspection Duration:</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={platformSettings.inspection_tier1_hours ?? 24}
+                          onChange={(e) => handleUpdateSettings({ inspection_tier1_hours: parseInt(e.target.value) || 24 })}
+                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-16 font-mono text-right font-bold text-emerald-400"
+                        />
+                        <span className="text-[10px]">hrs</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tier 2 */}
+                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                    <span className="text-[10px] font-bold text-purple-400 uppercase font-mono block">Tier 2: Mid-Value Orders</span>
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span>Order Value &lt;</span>
+                      <div className="flex items-center gap-1">
+                        <span className="text-[10px] text-slate-500">GHS</span>
+                        <input
+                          type="number"
+                          value={platformSettings.inspection_tier2_threshold ?? 10000}
+                          onChange={(e) => handleUpdateSettings({ inspection_tier2_threshold: parseFloat(e.target.value) || 10000 })}
+                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-20 font-mono text-right"
+                        />
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                      <span>Inspection Duration:</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={platformSettings.inspection_tier2_hours ?? 48}
+                          onChange={(e) => handleUpdateSettings({ inspection_tier2_hours: parseInt(e.target.value) || 48 })}
+                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-16 font-mono text-right font-bold text-emerald-400"
+                        />
+                        <span className="text-[10px]">hrs</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Tier 3 */}
+                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-2">
+                    <span className="text-[10px] font-bold text-amber-400 uppercase font-mono block">Tier 3: High-Value Orders</span>
+                    <div className="flex items-center justify-between text-xs text-slate-400">
+                      <span>Order Value &ge;</span>
+                      <span className="font-mono text-slate-300 font-bold">GHS {(platformSettings.inspection_tier2_threshold ?? 10000).toLocaleString()}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                      <span>Inspection Duration:</span>
+                      <div className="flex items-center gap-1">
+                        <input
+                          type="number"
+                          value={platformSettings.inspection_tier3_hours ?? 72}
+                          onChange={(e) => handleUpdateSettings({ inspection_tier3_hours: parseInt(e.target.value) || 72 })}
+                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-16 font-mono text-right font-bold text-emerald-400"
+                        />
+                        <span className="text-[10px]">hrs</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
           </div>

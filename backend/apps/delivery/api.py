@@ -156,9 +156,11 @@ def verify_otp(request, data: VerifyOtpSchema):
 
     # Notify buyer that inspection has started
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from apps.escrow.api import get_inspection_hours_for_amount
+    hours = get_inspection_hours_for_amount(transaction.total_amount_ghs)
     msg = (
         f"Your HendAxis Trust order ({transaction.paystack_reference}) has been delivered! "
-        f"Your {48 if transaction.total_amount_ghs >= 2000 else 24}-hour inspection period has started. "
+        f"Your {hours}-hour inspection period has started. "
         f"Inspect your item and raise a dispute if needed before the timer expires."
     )
     dispatch_sms_task.delay(transaction.buyer_phone, msg)

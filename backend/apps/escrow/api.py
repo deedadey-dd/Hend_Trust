@@ -123,6 +123,95 @@ def get_seller_transactions(request, search: str = None, status: str = None, sta
     return items
 
 
+class SellerSummaryMetricsSchema(Schema):
+    pending_transactions_count: int
+    pending_gross_amount_ghs: float
+    pending_net_due_seller_ghs: float
+    awaiting_dispatch_count: int
+    awaiting_dispatch_net_ghs: float
+    in_delivery_count: int
+    in_delivery_net_ghs: float
+    in_inspection_count: int
+    in_inspection_net_ghs: float
+    in_dispute_count: int
+    in_dispute_net_ghs: float
+    completed_transactions_count: int
+    completed_total_earned_ghs: float
+
+
+@escrow_router.get("/seller/summary-metrics", response=SellerSummaryMetricsSchema)
+def get_seller_summary_metrics(request):
+    """
+    Returns summary metrics for the logged-in seller, including pending transactions 
+    (all statuses except COMPLETED/CANCELLED/REFUNDED) and total amounts due to the seller.
+    """
+    seller_txns = Transaction.objects.filter(link__seller=request.user)
+
+    pending_txns = seller_txns.exclude(
+        status__in=[TransactionStatus.COMPLETED, TransactionStatus.CANCELLED, TransactionStatus.REFUNDED]
+    )
+
+    pending_count = pending_txns.count()
+    
+    pending_gross = 0.0
+    pending_net = 0.0
+
+    awaiting_dispatch_count = 0
+    awaiting_dispatch_net = 0.0
+
+    in_delivery_count = 0
+    in_delivery_net = 0.0
+
+    in_inspection_count = 0
+    in_inspection_net = 0.0
+
+    in_dispute_count = 0
+    in_dispute_net = 0.0
+
+    for t in pending_txns:
+        gross = float(t.total_amount_ghs)
+        fee = float(t.platform_fee_ghs or 0.0)
+        net = gross - fee
+
+        pending_gross += gross
+        pending_net += net
+
+        if t.status == TransactionStatus.PAYMENT_RECEIVED:
+            awaiting_dispatch_count += 1
+            awaiting_dispatch_net += net
+        elif t.status == TransactionStatus.DELIVERY_IN_PROGRESS:
+            in_delivery_count += 1
+            in_delivery_net += net
+        elif t.status == TransactionStatus.INSPECTION_PERIOD:
+            in_inspection_count += 1
+            in_inspection_net += net
+        elif t.status == TransactionStatus.DISPUTED:
+            in_dispute_count += 1
+            in_dispute_net += net
+
+    completed_txns = seller_txns.filter(status=TransactionStatus.COMPLETED)
+    completed_count = completed_txns.count()
+    completed_earned = 0.0
+    for t in completed_txns:
+        completed_earned += (float(t.total_amount_ghs) - float(t.platform_fee_ghs or 0.0))
+
+    return {
+        "pending_transactions_count": pending_count,
+        "pending_gross_amount_ghs": round(pending_gross, 2),
+        "pending_net_due_seller_ghs": round(pending_net, 2),
+        "awaiting_dispatch_count": awaiting_dispatch_count,
+        "awaiting_dispatch_net_ghs": round(awaiting_dispatch_net, 2),
+        "in_delivery_count": in_delivery_count,
+        "in_delivery_net_ghs": round(in_delivery_net, 2),
+        "in_inspection_count": in_inspection_count,
+        "in_inspection_net_ghs": round(in_inspection_net, 2),
+        "in_dispute_count": in_dispute_count,
+        "in_dispute_net_ghs": round(in_dispute_net, 2),
+        "completed_transactions_count": completed_count,
+        "completed_total_earned_ghs": round(completed_earned, 2),
+    }
+
+
 class SellerDispatchSchema(Schema):
     delivery_method: str  # 'COURIER_API' or 'INFORMAL_BUS'
     # Path A fields
@@ -253,7 +342,7 @@ def seller_verify_delivery_otp(request, transaction_id: uuid.UUID, data: SellerV
     transition_to_inspection(transaction)
 
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
-    hours = 72 if transaction.total_amount_ghs >= 10000 else 48 if transaction.total_amount_ghs >= 2000 else 24
+    hours = get_inspection_hours_for_amount(transaction.total_amount_ghs)
     msg = (
         f"Your HendAxis Trust order ({transaction.paystack_reference}) has been delivered! "
         f"Your {hours}-hour inspection period has started. "
@@ -385,7 +474,7 @@ def seller_force_courier_delivered(request, transaction_id: uuid.UUID, data: For
 
 def _notify_buyer_inspection_started(transaction: Transaction):
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
-    hours = 72 if transaction.total_amount_ghs >= 10000 else 48 if transaction.total_amount_ghs >= 2000 else 24
+    hours = get_inspection_hours_for_amount(transaction.total_amount_ghs)
     msg = (
         f"Your HendAxis Trust order ({transaction.paystack_reference}) has been marked as Delivered. "
         f"Your {hours}-hour inspection period has started. "
@@ -1470,7 +1559,14 @@ from apps.escrow.models import PlatformSetting
 DEFAULT_SYSTEM_SETTINGS = {
     "active_payment_gateway": "PAYSTACK",
     "enabled_delivery_methods": ["COURIER_API", "INFORMAL_BUS"],
-    "enabled_carriers": ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"]
+    "enabled_carriers": ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"],
+    "shipping_timeout_days": 4,
+    "auto_delivery_hours": 48,
+    "inspection_tier1_threshold": 2000.0,
+    "inspection_tier1_hours": 24,
+    "inspection_tier2_threshold": 10000.0,
+    "inspection_tier2_hours": 48,
+    "inspection_tier3_hours": 72,
 }
 
 
@@ -1479,37 +1575,65 @@ def get_platform_settings():
         setting = PlatformSetting.objects.filter(key="system_config").first()
         if not setting or not setting.value:
             return DEFAULT_SYSTEM_SETTINGS.copy()
-        val = setting.value
-        return {
-            "active_payment_gateway": val.get("active_payment_gateway", "PAYSTACK"),
-            "enabled_delivery_methods": val.get("enabled_delivery_methods", ["COURIER_API", "INFORMAL_BUS"]),
-            "enabled_carriers": val.get("enabled_carriers", ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"])
-        }
+        res = DEFAULT_SYSTEM_SETTINGS.copy()
+        res.update(setting.value)
+        return res
     except Exception:
         return DEFAULT_SYSTEM_SETTINGS.copy()
+
+
+def get_inspection_hours_for_amount(amount) -> int:
+    cfg = get_platform_settings()
+    t1_thresh = float(cfg.get("inspection_tier1_threshold", 2000.0))
+    t1_hrs = int(cfg.get("inspection_tier1_hours", 24))
+    t2_thresh = float(cfg.get("inspection_tier2_threshold", 10000.0))
+    t2_hrs = int(cfg.get("inspection_tier2_hours", 48))
+    t3_hrs = int(cfg.get("inspection_tier3_hours", 72))
+
+    amt_val = float(amount or 0)
+    if amt_val < t1_thresh:
+        return t1_hrs
+    elif amt_val < t2_thresh:
+        return t2_hrs
+    else:
+        return t3_hrs
 
 
 class PlatformSettingsSchema(Schema):
     active_payment_gateway: str
     enabled_delivery_methods: List[str]
     enabled_carriers: List[str]
+    shipping_timeout_days: int = 4
+    auto_delivery_hours: int = 48
+    inspection_tier1_threshold: float = 2000.0
+    inspection_tier1_hours: int = 24
+    inspection_tier2_threshold: float = 10000.0
+    inspection_tier2_hours: int = 48
+    inspection_tier3_hours: int = 72
 
 
 class UpdatePlatformSettingsSchema(Schema):
     active_payment_gateway: Optional[str] = None
     enabled_delivery_methods: Optional[List[str]] = None
     enabled_carriers: Optional[List[str]] = None
+    shipping_timeout_days: Optional[int] = None
+    auto_delivery_hours: Optional[int] = None
+    inspection_tier1_threshold: Optional[float] = None
+    inspection_tier1_hours: Optional[int] = None
+    inspection_tier2_threshold: Optional[float] = None
+    inspection_tier2_hours: Optional[int] = None
+    inspection_tier3_hours: Optional[int] = None
 
 
 @escrow_router.get("/admin/settings", response=PlatformSettingsSchema)
 def get_admin_settings(request):
-    """Retrieve current platform settings (Active Payment Gateway, Enabled Channels & Carriers)."""
+    """Retrieve current platform settings (Active Payment Gateway, Enabled Channels, Carriers & Shipping/Inspection Timelines)."""
     return get_platform_settings()
 
 
 @escrow_router.post("/admin/settings", response=PlatformSettingsSchema)
 def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
-    """Superuser endpoint to update active payment gateway and toggle delivery channels/carriers."""
+    """Superuser endpoint to update active payment gateway, delivery channels/carriers, shipping timeouts & inspection tiers."""
     from apps.core.permissions import is_admin_user
     user = is_admin_user(request)
 
@@ -1525,6 +1649,27 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
 
     if data.enabled_carriers is not None:
         current["enabled_carriers"] = [c.upper() for c in data.enabled_carriers]
+
+    if data.shipping_timeout_days is not None:
+        current["shipping_timeout_days"] = max(1, data.shipping_timeout_days)
+
+    if data.auto_delivery_hours is not None:
+        current["auto_delivery_hours"] = max(1, data.auto_delivery_hours)
+
+    if data.inspection_tier1_threshold is not None:
+        current["inspection_tier1_threshold"] = float(data.inspection_tier1_threshold)
+
+    if data.inspection_tier1_hours is not None:
+        current["inspection_tier1_hours"] = max(1, data.inspection_tier1_hours)
+
+    if data.inspection_tier2_threshold is not None:
+        current["inspection_tier2_threshold"] = float(data.inspection_tier2_threshold)
+
+    if data.inspection_tier2_hours is not None:
+        current["inspection_tier2_hours"] = max(1, data.inspection_tier2_hours)
+
+    if data.inspection_tier3_hours is not None:
+        current["inspection_tier3_hours"] = max(1, data.inspection_tier3_hours)
 
     setting, _ = PlatformSetting.objects.get_or_create(key="system_config")
     setting.value = current

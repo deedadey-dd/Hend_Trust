@@ -829,12 +829,31 @@ function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps
 
 // ─── Main Dashboard View ─────────────────────────────────────────────────────
 
+interface SellerMetrics {
+  pending_transactions_count: number;
+  pending_gross_amount_ghs: number;
+  pending_net_due_seller_ghs: number;
+  awaiting_dispatch_count: number;
+  awaiting_dispatch_net_ghs: number;
+  in_delivery_count: number;
+  in_delivery_net_ghs: number;
+  in_inspection_count: number;
+  in_inspection_net_ghs: number;
+  in_dispute_count: number;
+  in_dispute_net_ghs: number;
+  completed_transactions_count: number;
+  completed_total_earned_ghs: number;
+}
+
 export default function DashboardView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const [txns, setTxns] = useState<SellerTxn[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   
+  // Summary Metrics State
+  const [metrics, setMetrics] = useState<SellerMetrics | null>(null);
+
   // Filters
   const [search, setSearch] = useState(searchParams.get('search') || '');
   const [status, setStatus] = useState(searchParams.get('status') || '');
@@ -898,8 +917,18 @@ export default function DashboardView() {
     }
   };
 
+  const fetchMetrics = async () => {
+    try {
+      const res = await apiClient.get('/escrow/seller/summary-metrics');
+      setMetrics(res.data);
+    } catch (err) {
+      console.error('Failed to fetch seller summary metrics', err);
+    }
+  };
+
   useEffect(() => {
     fetchTransactions();
+    fetchMetrics();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
 
@@ -919,6 +948,7 @@ export default function DashboardView() {
     try {
       await apiClient.post(`/escrow/seller/transactions/${id}/cancel`);
       fetchTransactions();
+      fetchMetrics();
     } catch (err) {
       console.error(err);
       alert('Failed to cancel transaction.');
@@ -937,12 +967,134 @@ export default function DashboardView() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="sm:flex sm:items-center sm:justify-between mb-8 print:hidden">
+      <div className="sm:flex sm:items-center sm:justify-between mb-6 print:hidden">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Transactions Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500">
-            Manage your escrow sales, print parcel tags, and track deliveries.
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Transactions Dashboard</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+            Manage your escrow sales, track active order payouts, print parcel tags, and manage deliveries.
           </p>
+        </div>
+      </div>
+
+      {/* ─── PENDING TRANSACTIONS & AMOUNTS DUE SUMMARY ─────────────────────────── */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 print:hidden">
+        {/* Card 1: Total Pending Orders & Net Amount Due */}
+        <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white rounded-2xl p-5 border border-blue-800/40 shadow-xl relative overflow-hidden flex flex-col justify-between">
+          <div className="absolute -right-4 -bottom-4 opacity-10 pointer-events-none">
+            <Package className="h-32 w-32 text-blue-400" />
+          </div>
+          <div>
+            <span className="text-[11px] uppercase tracking-wider font-bold text-blue-300 block">
+              Pending Escrow Payouts
+            </span>
+            <div className="mt-2 flex items-baseline gap-2">
+              <span className="text-2xl font-black font-mono text-emerald-400">
+                GHS {(metrics?.pending_net_due_seller_ghs ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+              </span>
+            </div>
+            <p className="text-xs text-slate-300 mt-1">
+              Net amount due across active pending orders
+            </p>
+          </div>
+          <div className="mt-5 pt-3 border-t border-blue-800/40 flex items-center justify-between">
+            <span className="text-xs font-semibold text-blue-200">Active Pending Orders</span>
+            <span className="text-xs font-bold font-mono bg-blue-500/20 text-blue-300 px-2.5 py-0.5 rounded-full border border-blue-400/30">
+              {metrics?.pending_transactions_count ?? 0} Orders
+            </span>
+          </div>
+        </div>
+
+        {/* Card 2: Awaiting Dispatch */}
+        <div 
+          onClick={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set('status', 'PAYMENT_RECEIVED');
+            params.set('offset', '0');
+            setStatus('PAYMENT_RECEIVED');
+            setSearchParams(params);
+          }}
+          className={`bg-white dark:bg-slate-950 rounded-2xl p-5 border cursor-pointer transition hover:border-amber-500/50 hover:shadow-md flex flex-col justify-between ${
+            status === 'PAYMENT_RECEIVED' ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-gray-200 dark:border-slate-800'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Awaiting Dispatch</span>
+              <Package className="h-4 w-4 text-amber-500" />
+            </div>
+            <div className="mt-2 text-xl font-bold font-mono text-gray-900 dark:text-white">
+              GHS {(metrics?.awaiting_dispatch_net_ghs ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Paid by buyer, needs dispatch</p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-900 flex items-center justify-between text-xs">
+            <span className="text-gray-600 dark:text-slate-400 font-medium">To Package & Ship</span>
+            <span className="font-bold font-mono text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50">
+              {metrics?.awaiting_dispatch_count ?? 0} Orders
+            </span>
+          </div>
+        </div>
+
+        {/* Card 3: In Transit & Inspection */}
+        <div 
+          onClick={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set('status', 'DELIVERY_IN_PROGRESS');
+            params.set('offset', '0');
+            setStatus('DELIVERY_IN_PROGRESS');
+            setSearchParams(params);
+          }}
+          className={`bg-white dark:bg-slate-950 rounded-2xl p-5 border cursor-pointer transition hover:border-blue-500/50 hover:shadow-md flex flex-col justify-between ${
+            status === 'DELIVERY_IN_PROGRESS' || status === 'INSPECTION_PERIOD' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-slate-800'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">In Transit & Inspection</span>
+              <Truck className="h-4 w-4 text-blue-500" />
+            </div>
+            <div className="mt-2 text-xl font-bold font-mono text-gray-900 dark:text-white">
+              GHS {((metrics?.in_delivery_net_ghs ?? 0) + (metrics?.in_inspection_net_ghs ?? 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">En route or buyer inspecting</p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-900 flex items-center justify-between text-xs">
+            <span className="text-gray-600 dark:text-slate-400 font-medium">In Transit / Inspecting</span>
+            <span className="font-bold font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-900/50">
+              {(metrics?.in_delivery_count ?? 0) + (metrics?.in_inspection_count ?? 0)} Orders
+            </span>
+          </div>
+        </div>
+
+        {/* Card 4: Settled & Completed Earnings */}
+        <div 
+          onClick={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set('status', 'COMPLETED');
+            params.set('offset', '0');
+            setStatus('COMPLETED');
+            setSearchParams(params);
+          }}
+          className={`bg-white dark:bg-slate-950 rounded-2xl p-5 border cursor-pointer transition hover:border-emerald-500/50 hover:shadow-md flex flex-col justify-between ${
+            status === 'COMPLETED' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-200 dark:border-slate-800'
+          }`}
+        >
+          <div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Completed Earnings</span>
+              <CheckCircle className="h-4 w-4 text-emerald-500" />
+            </div>
+            <div className="mt-2 text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+              GHS {(metrics?.completed_total_earned_ghs ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </div>
+            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Released & settled to wallet</p>
+          </div>
+          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-900 flex items-center justify-between text-xs">
+            <span className="text-gray-600 dark:text-slate-400 font-medium">Total Settled</span>
+            <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900/50">
+              {metrics?.completed_transactions_count ?? 0} Completed
+            </span>
+          </div>
         </div>
       </div>
 

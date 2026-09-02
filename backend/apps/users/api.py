@@ -34,6 +34,13 @@ def _send_user_phone_otp(user):
     user.save(update_fields=['phone_otp_code', 'phone_otp_created_at'])
 
     sms_message = f"Your HendAxis Trust seller verification code is: {code}. Valid for 10 minutes."
+    
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*60, flush=True)
+        print(f"🔑 DEV SELLER PHONE VERIFICATION OTP: {code}", flush=True)
+        print(f"To User: {user.username} ({user.phone_number})", flush=True)
+        print("="*60 + "\n", flush=True)
+
     try:
         dispatch_sms_task.delay(user.phone_number, sms_message)
     except Exception:
@@ -568,6 +575,12 @@ def request_momo_otp(request, data: RequestMomoOTPSchema):
     user.momo_otp_created_at = timezone.now()
     user.save(update_fields=['pending_momo_number', 'momo_otp_code', 'momo_otp_created_at'])
     
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*60, flush=True)
+        print(f"🔑 DEV MOMO PAYOUT VERIFICATION OTP: {code}", flush=True)
+        print(f"To User: {user.username} ({momo})", flush=True)
+        print("="*60 + "\n", flush=True)
+
     sms_sent = MNotifyService.send_sms(
         momo, 
         f"Your HendAxis Trust payout verification code is: {code}. Valid for 10 minutes."

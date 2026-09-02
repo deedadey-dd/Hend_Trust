@@ -15,11 +15,12 @@ def dispatch_sms_task(phone: str, message: str):
     Asynchronously sends an SMS via MNotify.
     """
     if getattr(settings, 'DEBUG', False):
-        print("\n" + "="*50)
-        print("DEV MOCKED SMS NOTIFICATION")
-        print(f"To: {phone}")
-        print(f"Message: {message}")
-        print("="*50 + "\n")
+        print("\n" + "="*60, flush=True)
+        print("📱 DEV MOCKED SMS NOTIFICATION", flush=True)
+        print(f"To: {phone}", flush=True)
+        print(f"Message: {message}", flush=True)
+        print("="*60 + "\n", flush=True)
+        logger.info(f"DEV MOCKED SMS -> To: {phone} | Msg: {message}")
         return True
         
     success = MNotifyService.send_sms(phone, message)

@@ -17,8 +17,13 @@ class MNotifyService:
         api_key = env('SMS_GATEWAY_API_KEY', default='test_key')
         sender_id = env('SMS_SENDER_ID', default='mNotify')
         
-        # During local dev if no key is set, we still simulate success
-        if api_key == 'test_key':
+        # During local dev if no key is set or DEBUG is True, we simulate success and print to console
+        if getattr(settings, 'DEBUG', False) or api_key == 'test_key':
+            print("\n" + "="*60, flush=True)
+            print("📱 SIMULATED MNOTIFY SMS (DEV MODE)", flush=True)
+            print(f"To: {phone}", flush=True)
+            print(f"Message: {message}", flush=True)
+            print("="*60 + "\n", flush=True)
             logger.info(f"[SIMULATED MNOTIFY] To: {phone} | Msg: {message}")
             return True
 

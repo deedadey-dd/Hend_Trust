@@ -127,3 +127,18 @@ def test_seller_cancel_refunds_buyer_and_notifies(seller_user, transaction_await
         # Seller should be penalized for platform fee (11.50)
         seller_wallet = LedgerAccount.objects.get(name=f"SELLER_INTERNAL_WALLET_{seller_user.id}")
         assert seller_wallet.balance == Decimal('-11.50')
+
+
+@pytest.mark.django_db
+def test_get_seller_summary_metrics(seller_user, transaction_awaiting_shipping):
+    request = MockRequest(seller_user)
+    from apps.escrow.api import get_seller_summary_metrics
+    
+    metrics = get_seller_summary_metrics(request)
+    assert metrics['pending_transactions_count'] == 1
+    # total 111.50 - platform fee 11.50 = net 100.00 due to seller
+    assert metrics['pending_net_due_seller_ghs'] == 100.0
+    assert metrics['awaiting_dispatch_count'] == 1
+    assert metrics['awaiting_dispatch_net_ghs'] == 100.0
+    assert metrics['in_delivery_count'] == 0
+    assert metrics['completed_transactions_count'] == 0

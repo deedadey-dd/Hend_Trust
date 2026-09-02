@@ -8,12 +8,9 @@ from apps.escrow.payouts import execute_payout_for_transaction
 def check_expired_inspections():
     """
     Periodic task to automatically complete transactions where the 
-    inspection period has expired without a dispute.
-    Tiers:
-    - < 2000 GHS: 24 hours
-    - 2000 - 9999.99 GHS: 48 hours
-    - >= 10000 GHS: 72 hours
+    inspection period has expired without a dispute (using dynamic settings tiers).
     """
+    from apps.escrow.api import get_inspection_hours_for_amount
     now = timezone.now()
     
     transactions = Transaction.objects.filter(
@@ -23,14 +20,8 @@ def check_expired_inspections():
     
     completed_count = 0
     for transaction in transactions:
-        amount = transaction.total_amount_ghs
-        
-        if amount < 2000:
-            duration = timedelta(hours=24)
-        elif amount < 10000:
-            duration = timedelta(hours=48)
-        else:
-            duration = timedelta(hours=72)
+        hours = get_inspection_hours_for_amount(transaction.total_amount_ghs)
+        duration = timedelta(hours=hours)
             
         if (transaction.inspection_starts_at + duration) <= now:
             # 1. Update status to completed
@@ -97,11 +88,15 @@ def check_delivery_reminders():
 @shared_task
 def process_auto_deliveries():
     """
-    If 48 hours have passed since dispatch and the buyer hasn't acted,
+    If auto-delivery hours have passed since dispatch and the buyer hasn't acted,
     automatically mark it as delivered and start the inspection period
     (Option B / Informal Bus only).
     """
+    from apps.escrow.api import get_platform_settings, get_inspection_hours_for_amount
     now = timezone.now()
+    cfg = get_platform_settings()
+    auto_del_hrs = cfg.get("auto_delivery_hours", 48)
+
     transactions = Transaction.objects.filter(
         status=TransactionStatus.DELIVERY_IN_PROGRESS,
         dispatched_at__isnull=False,
@@ -115,12 +110,12 @@ def process_auto_deliveries():
     for tx in transactions:
         hours_since_dispatch = (now - tx.dispatched_at).total_seconds() / 3600.0
         
-        if hours_since_dispatch >= 48:
+        if hours_since_dispatch >= auto_del_hrs:
             transition_to_inspection(tx)
             
-            hours = 72 if tx.total_amount_ghs >= 10000 else 48 if tx.total_amount_ghs >= 2000 else 24
+            hours = get_inspection_hours_for_amount(tx.total_amount_ghs)
             msg = (
-                f"Your order {tx.paystack_reference} has been marked as Delivered due to 48h of inactivity. "
+                f"Your order {tx.paystack_reference} has been marked as Delivered due to {auto_del_hrs}h of inactivity. "
                 f"Your {hours}-hour inspection period has started. Raise a dispute now if needed."
             )
             dispatch_sms_task.delay(tx.buyer_phone, msg)
@@ -135,15 +130,18 @@ def process_auto_deliveries():
 def check_expired_dispatches():
     """
     Periodic task: Auto-cancels and refunds orders in PAYMENT_RECEIVED status 
-    if the seller fails to dispatch within 4 days (96 hours).
+    if the seller fails to dispatch within the configured shipping timeout limit.
     Refunds 100% to buyer and charges non-dispatch penalty to seller.
     """
+    from apps.escrow.api import get_platform_settings
     now = timezone.now()
-    four_days_ago = now - timedelta(days=4)
+    cfg = get_platform_settings()
+    timeout_days = cfg.get("shipping_timeout_days", 4)
+    dispatch_cutoff = now - timedelta(days=timeout_days)
     
     transactions = Transaction.objects.filter(
         status=TransactionStatus.PAYMENT_RECEIVED,
-        created_at__lte=four_days_ago
+        created_at__lte=dispatch_cutoff
     )
     
     expired_count = 0
@@ -164,7 +162,7 @@ def check_expired_dispatches():
         # Notify buyer
         b_msg = (
             f"Order Cancelled & 100% Refunded: Order {tx.paystack_reference} ({tx.link.title}) was not dispatched by the seller "
-            f"within the required 4-day limit. A full refund of GHS {tx.total_amount_ghs:.2f} has been processed back to your payment method."
+            f"within the required {timeout_days}-day limit. A full refund of GHS {tx.total_amount_ghs:.2f} has been processed back to your payment method."
         )
         dispatch_sms_task.delay(tx.buyer_phone, b_msg)
         if tx.buyer_email:
@@ -173,7 +171,7 @@ def check_expired_dispatches():
         # Notify seller
         seller = tx.link.seller
         s_msg = (
-            f"Order Auto-Cancelled (Default Penalty): Order {tx.paystack_reference} ({tx.link.title}) was not dispatched within 4 days. "
+            f"Order Auto-Cancelled (Default Penalty): Order {tx.paystack_reference} ({tx.link.title}) was not dispatched within {timeout_days} days. "
             f"The buyer has been refunded 100%. A non-dispatch penalty (Platform fee + Paystack fees) has been charged to your account."
         )
         s_phone = getattr(seller, 'phone_number', None)
@@ -183,4 +181,4 @@ def check_expired_dispatches():
         
         expired_count += 1
         
-    return f"Auto-refunded {expired_count} undispatched transactions older than 4 days."
+    return f"Auto-refunded {expired_count} undispatched transactions older than {timeout_days} days."
