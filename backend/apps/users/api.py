@@ -435,6 +435,8 @@ def login(request, data: LoginSchema, response: HttpResponse):
         "username": user.username,
         "role": user.role if hasattr(user, 'role') else 'SELLER',
         "email": user.email or "",
+        "is_superuser": bool(getattr(user, 'is_superuser', False)),
+        "is_staff": bool(getattr(user, 'is_staff', False)),
     }
 
 @auth_router.post("/refresh", response=MessageSchema)
@@ -466,6 +468,9 @@ class ProfileResponse(Schema):
     last_name: str
     phone_number: str
     payout_mode: str
+    role: Optional[str] = 'SELLER'
+    is_superuser: Optional[bool] = False
+    is_staff: Optional[bool] = False
     preferred_payout_type: Optional[str] = None
     momo_number: Optional[str] = None
     bank_account_number: Optional[str] = None
@@ -527,6 +532,9 @@ def _build_profile_response(user) -> dict:
         "last_name": user.last_name or "",
         "phone_number": user.phone_number or "",
         "payout_mode": user.payout_mode,
+        "role": getattr(user, 'role', 'SELLER'),
+        "is_superuser": bool(getattr(user, 'is_superuser', False)),
+        "is_staff": bool(getattr(user, 'is_staff', False)),
         "preferred_payout_type": None,
         "momo_number": None,
         "bank_account_number": None,

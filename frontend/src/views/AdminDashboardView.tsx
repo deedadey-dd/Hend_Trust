@@ -18,6 +18,7 @@ import {
 } from '../hooks/api/useAdminPortal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { apiClient, getErrorMessage } from '../api/client';
+import { useAuthStore } from '../store/authStore';
 
 type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'SETTINGS';
 
@@ -85,7 +86,16 @@ interface PlatformSettings {
 }
 
 export const AdminDashboardView: React.FC = () => {
-  const [activeTab, setActiveTab] = useState<AdminTab>('OVERVIEW');
+  const { user } = useAuthStore();
+  const isSuperUser = Boolean(user?.is_superuser);
+
+  const [activeTab, setActiveTab] = useState<AdminTab>(() => isSuperUser ? 'OVERVIEW' : 'TRANSACTIONS');
+
+  useEffect(() => {
+    if (!isSuperUser && (activeTab === 'OVERVIEW' || activeTab === 'FUNDS' || activeTab === 'SETTINGS')) {
+      setActiveTab('TRANSACTIONS');
+    }
+  }, [isSuperUser, activeTab]);
 
   // Platform Settings State
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
@@ -401,73 +411,75 @@ export const AdminDashboardView: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 font-sans pb-16">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16 transition-colors">
       {/* Header Banner */}
-      <div className="bg-slate-900 border-b border-slate-800 px-6 py-6 shadow-xl">
+      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-6 shadow-sm transition-colors">
         <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
             <div className="flex items-center gap-2">
-              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
+              <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-500/20 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
                 Platform Operations
               </span>
-              <span className="text-slate-500 text-sm">Manager Portal v1.0</span>
+              <span className="text-slate-500 dark:text-slate-400 text-sm">Manager Portal v1.0</span>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-white mt-1">HendAxis Trust Management Center</h1>
-            <p className="text-slate-400 text-xs md:text-sm mt-0.5">Real-time surveillance, transaction escrow controls, dispute arbitration, and targeted broadcast engine.</p>
+            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white mt-1">HendAxis Trust Management Center</h1>
+            <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm mt-0.5">Real-time surveillance, transaction escrow controls, dispute arbitration, and targeted broadcast engine.</p>
           </div>
           <div className="flex items-center gap-2">
             <button 
               onClick={() => { refetchMetrics(); refetchTxns(); refetchDisputes(); }}
-              className="flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-700 text-slate-200 px-4 py-2.5 rounded-xl border border-slate-700 text-sm font-semibold transition shadow-sm cursor-pointer"
+              className="flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-semibold transition shadow-sm cursor-pointer"
             >
-              <RefreshCw className="h-4 w-4 text-blue-400" />
+              <RefreshCw className="h-4 w-4 text-blue-600 dark:text-blue-400" />
               Refresh Data
             </button>
-            <a
-              href="/django-admin/"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex items-center justify-center gap-2 bg-amber-600/20 hover:bg-amber-600/30 text-amber-300 px-4 py-2.5 rounded-xl border border-amber-500/30 text-sm font-semibold transition shadow-sm cursor-pointer"
-              title="Open native Django backend database administration panel"
-            >
-              <ShieldCheck className="h-4 w-4 text-amber-400" />
-              Django Database Admin ↗
-            </a>
+            {isSuperUser && (
+              <a
+                href="/django-admin/"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex items-center justify-center gap-2 bg-amber-50 dark:bg-amber-600/20 hover:bg-amber-100 dark:hover:bg-amber-600/30 text-amber-800 dark:text-amber-300 px-4 py-2.5 rounded-xl border border-amber-300 dark:border-amber-500/30 text-sm font-semibold transition shadow-sm cursor-pointer"
+                title="Open native Django backend database administration panel"
+              >
+                <ShieldCheck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                Django Database Admin ↗
+              </a>
+            )}
           </div>
         </div>
 
         {/* Tab Navigation */}
-        <div className="max-w-7xl mx-auto mt-6 flex overflow-x-auto gap-2 border-b border-slate-800 scrollbar-none pb-px">
+        <div className="max-w-7xl mx-auto mt-6 flex overflow-x-auto gap-2 border-b border-slate-200 dark:border-slate-800 scrollbar-none pb-px">
           {[
-            { id: 'OVERVIEW', label: 'Overview & Health', icon: BarChart3 },
+            { id: 'OVERVIEW', label: 'Overview & Health', icon: BarChart3, superuserOnly: true },
             { id: 'TRANSACTIONS', label: 'All Transactions', icon: Package, badge: txnsData?.total_count },
             { id: 'DISPUTES', label: 'Disputes Center', icon: ShieldAlert, badge: metrics?.active_disputes, alert: (metrics?.active_disputes || 0) > 0 },
             { id: 'VERIFICATIONS', label: 'Seller Verifications', icon: FileCheck, badge: verifications.filter(v => v.verification_status === 'PENDING').length, alert: verifications.filter(v => v.verification_status === 'PENDING').length > 0 },
-            { id: 'FUNDS', label: 'Platform Funds & Ledger', icon: DollarSign, badge: fundsSummary ? `GHS ${fundsSummary.system_bank_asset_ghs.toLocaleString()}` : undefined },
+            { id: 'FUNDS', label: 'Platform Funds & Ledger', icon: DollarSign, badge: fundsSummary ? `GHS ${fundsSummary.system_bank_asset_ghs.toLocaleString()}` : undefined, superuserOnly: true },
             { id: 'SELLERS', label: 'Sellers Directory', icon: Users },
             { id: 'BUYERS', label: 'Buyer Phone Registry', icon: PhoneCall },
             { id: 'BROADCAST', label: 'Broadcast Messaging Studio', icon: Send },
-            { id: 'SETTINGS', label: '⚙️ Gateway & Logistics Settings', icon: Layers },
-          ].map(tab => {
+            { id: 'SETTINGS', label: '⚙️ Gateway & Logistics Settings', icon: Layers, superuserOnly: true },
+          ].filter(tab => !tab.superuserOnly || isSuperUser).map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
             return (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id as AdminTab)}
-                className={`flex items-center gap-2.5 px-4 py-3 text-sm font-bold border-b-2 transition whitespace-nowrap ${
+                className={`flex items-center gap-2.5 px-4 py-3 text-sm font-bold border-b-2 transition whitespace-nowrap rounded-t-lg ${
                   isActive 
-                    ? 'border-blue-500 text-blue-400 bg-blue-500/5 rounded-t-lg' 
-                    : 'border-transparent text-slate-400 hover:text-slate-200 hover:border-slate-700'
+                    ? 'border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-slate-800/90 shadow-sm' 
+                    : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700'
                 }`}
               >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-blue-400' : 'text-slate-400'}`} />
+                <Icon className={`h-4 w-4 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`} />
                 {tab.label}
                 {tab.badge !== undefined && (
                   <span className={`text-xs px-2 py-0.5 rounded-full ${
                     tab.alert 
-                      ? 'bg-rose-500/20 text-rose-300 font-extrabold border border-rose-500/40' 
-                      : 'bg-slate-800 text-slate-300 border border-slate-700'
+                      ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 font-extrabold border border-rose-300 dark:border-rose-500/40' 
+                      : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
                   }`}>
                     {tab.badge}
                   </span>
@@ -899,7 +911,22 @@ export const AdminDashboardView: React.FC = () => {
                             {v.verification_status}
                           </span>
                         </div>
-                        <p className="text-xs text-slate-400">Phone: {v.phone_number} • Email: {v.email || 'N/A'}</p>
+                        <div className="text-xs text-slate-400 flex items-center gap-1.5 flex-wrap">
+                          <span>Phone:</span>
+                          {v.phone_number ? (
+                            <a 
+                              href={`tel:${v.phone_number}`}
+                              className="text-blue-600 dark:text-blue-400 hover:underline font-mono font-bold flex items-center gap-1"
+                              title={`Click to dial ${v.phone_number}`}
+                            >
+                              <PhoneCall className="h-3 w-3 text-blue-500" />
+                              {v.phone_number}
+                            </a>
+                          ) : (
+                            <span>N/A</span>
+                          )}
+                          <span>• Email: {v.email || 'N/A'}</span>
+                        </div>
                       </div>
 
                       <div className="flex gap-2">
@@ -1314,7 +1341,18 @@ export const AdminDashboardView: React.FC = () => {
                           <td className="px-5 py-4 font-bold text-white">@{s.username}</td>
                           <td className="px-5 py-4">
                             <p className="text-xs text-slate-200">{s.email || 'No Email'}</p>
-                            <p className="text-xs text-slate-400 font-mono">{s.phone_number || 'No Phone'}</p>
+                            {s.phone_number ? (
+                              <a 
+                                href={`tel:${s.phone_number}`}
+                                className="text-xs text-blue-600 dark:text-blue-400 hover:underline font-mono font-bold flex items-center gap-1 mt-0.5"
+                                title={`Click to dial ${s.phone_number}`}
+                              >
+                                <PhoneCall className="h-3 w-3 text-blue-500" />
+                                {s.phone_number}
+                              </a>
+                            ) : (
+                              <p className="text-xs text-slate-400 font-mono">No Phone</p>
+                            )}
                           </td>
                           <td className="px-5 py-4">
                             <span className="px-2.5 py-1 bg-slate-800 text-slate-300 font-mono text-xs rounded-md border border-slate-700">
@@ -1371,7 +1409,20 @@ export const AdminDashboardView: React.FC = () => {
                     ) : (
                       buyers?.map(b => (
                         <tr key={b.buyer_phone} className="hover:bg-slate-800/40 transition">
-                          <td className="px-5 py-4 font-mono font-bold text-blue-400">{b.buyer_phone}</td>
+                          <td className="px-5 py-4 font-mono font-bold">
+                            {b.buyer_phone ? (
+                              <a 
+                                href={`tel:${b.buyer_phone}`}
+                                className="text-blue-600 dark:text-blue-400 hover:underline font-mono font-bold flex items-center gap-1.5"
+                                title={`Click to dial ${b.buyer_phone}`}
+                              >
+                                <PhoneCall className="h-3.5 w-3.5 text-blue-500" />
+                                {b.buyer_phone}
+                              </a>
+                            ) : (
+                              <span className="text-slate-400 font-mono text-xs">No Phone</span>
+                            )}
+                          </td>
                           <td className="px-5 py-4">
                             <p className="font-semibold text-white">{b.buyer_name}</p>
                             <p className="text-xs text-slate-400">{b.buyer_email || 'No email'}</p>

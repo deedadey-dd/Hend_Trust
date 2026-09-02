@@ -81,7 +81,7 @@
     border-color: rgba(255, 255, 255, 0.4) !important;
   }
 
-  /* Keep pure white and light text on all gradient banners, primary dark buttons, dark containers, and headers in all modes */
+  /* Keep pure white text on gradient banners, primary blue/indigo CTA buttons, hero search, and explicit white text in all modes */
   [class*="bg-gradient"] h1,
   [class*="bg-gradient"] h2,
   [class*="bg-gradient"] h3,
@@ -94,7 +94,6 @@
   button.bg-indigo-600,
   a.bg-blue-600,
   a.bg-indigo-600,
-  .bg-slate-950 button:not(.bg-white),
   .hero-search-input,
   .hero-glass-btn,
   .\!text-white {
@@ -152,30 +151,30 @@
     color: #ffffff !important;
   }
 
-  /* High-contrast Light Mode Text Legibility Fixes for Headings & Text on white backgrounds */
-  html.light .text-slate-100:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input):not(.hero-glass-btn *),
-  html.light .text-slate-200:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input):not(.hero-glass-btn *) {
-    color: #0f172a !important; /* crisp dark slate-900 for card headings on white backgrounds */
+  /* High-contrast Light Mode Text Legibility Fixes for headings and body text */
+  html.light .text-slate-100:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input):not(.hero-glass-btn *),
+  html.light .text-slate-200:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input):not(.hero-glass-btn *) {
+    color: #0f172a !important;
   }
 
-  html.light .text-slate-400:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *),
-  html.light .text-gray-400:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *) {
-    color: #475569 !important; /* slate-600 instead of slate-400 */
+  html.light .text-slate-400:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *),
+  html.light .text-gray-400:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *) {
+    color: #475569 !important;
   }
 
-  html.light .text-slate-500:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *),
-  html.light .text-gray-500:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *) {
-    color: #334155 !important; /* slate-700 instead of slate-500 */
+  html.light .text-slate-500:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *),
+  html.light .text-gray-500:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *) {
+    color: #334155 !important;
   }
 
-  html.light .text-slate-600:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *),
-  html.light .text-gray-600:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *) {
-    color: #1e293b !important; /* slate-800 instead of slate-600 */
+  html.light .text-slate-600:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *),
+  html.light .text-gray-600:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *) {
+    color: #1e293b !important;
   }
 
-  html.light .text-slate-300:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *),
-  html.light .text-gray-300:not([class*="bg-gradient"] *):not(a *):not(button *):not(.hero-search-input *):not(.hero-glass-btn *) {
-    color: #475569 !important; /* slate-600 */
+  html.light .text-slate-300:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *),
+  html.light .text-gray-300:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *) {
+    color: #475569 !important;
   }
 
   html.light input:not(.hero-search-input)::placeholder,
