@@ -74,9 +74,18 @@ MIDDLEWARE = [
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
+    'apps.core.middleware.AdminSecurityMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+# Admin Portal & Staff Security Configuration
+DJANGO_ADMIN_URL = env('DJANGO_ADMIN_URL', default='admin/').strip('/') + '/'
+ADMIN_ALLOWED_IPS = env('ADMIN_ALLOWED_IPS', default='*')
+ENFORCE_CLOUDFLARE_HEADER = env.bool('ENFORCE_CLOUDFLARE_HEADER', default=False)
+ADMIN_SECURITY_TOKEN = env('ADMIN_SECURITY_TOKEN', default='')
+ENFORCE_STAFF_2FA = env.bool('ENFORCE_STAFF_2FA', default=False)
+TOTP_ISSUER_NAME = 'HendAxis Trust'
 
 ROOT_URLCONF = 'hendaxis_trust.urls'
 
@@ -215,8 +224,20 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.escrow.tasks.process_auto_deliveries',
         'schedule': 900.0, # 15 minutes
     },
+    'check-dispatch-expiry-reminders-every-15-mins': {
+        'task': 'apps.escrow.tasks.check_dispatch_expiry_reminders',
+        'schedule': 900.0, # 15 minutes
+    },
+    'check-inspection-expiry-reminders-every-15-mins': {
+        'task': 'apps.escrow.tasks.check_inspection_expiry_reminders',
+        'schedule': 900.0, # 15 minutes
+    },
     'check-expired-dispatches-every-15-mins': {
         'task': 'apps.escrow.tasks.check_expired_dispatches',
+        'schedule': 900.0, # 15 minutes
+    },
+    'process-auto-return-refunds-every-15-mins': {
+        'task': 'apps.escrow.tasks.process_auto_return_refunds',
         'schedule': 900.0, # 15 minutes
     },
 }

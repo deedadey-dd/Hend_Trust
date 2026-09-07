@@ -12,6 +12,7 @@ class TransactionStatus(models.TextChoices):
     INSPECTION_PERIOD = 'INSPECTION_PERIOD', 'Inspection Period'
     COMPLETED = 'COMPLETED', 'Completed'
     DISPUTED = 'DISPUTED', 'Disputed'
+    RETURN_IN_PROGRESS = 'RETURN_IN_PROGRESS', 'Return In Progress'
     CANCELLED = 'CANCELLED', 'Cancelled'
     REFUNDED = 'REFUNDED', 'Refunded'
 
@@ -31,14 +32,28 @@ class Transaction(models.Model):
     dispatched_at = models.DateTimeField(null=True, blank=True)
     delivered_at = models.DateTimeField(null=True, blank=True)
     inspection_starts_at = models.DateTimeField(null=True, blank=True)
+    return_dispatched_at = models.DateTimeField(null=True, blank=True)
 
     # 6-digit confirmation code shared by seller → buyer to confirm delivery
     delivery_confirmation_code = models.CharField(max_length=6, blank=True)
+
+    # Return tracking logistics fields
+    return_delivery_method = models.CharField(max_length=30, blank=True)
+    return_courier_name = models.CharField(max_length=100, blank=True)
+    return_tracking_number = models.CharField(max_length=100, blank=True)
+    return_carrier_tracking_url = models.TextField(blank=True)
+    return_driver_phone = models.CharField(max_length=20, blank=True)
+    return_driver_car_number = models.CharField(max_length=50, blank=True)
+    return_destination_station = models.CharField(max_length=255, blank=True)
+    return_confirmation_code = models.CharField(max_length=6, blank=True)  # Reverse Pickup OTP
+    return_waybill_photo_url = models.TextField(blank=True)
     
     # Reminder tracking
+    reminder_6h_dispatch_sent = models.BooleanField(default=False)
     reminder_30h_sent = models.BooleanField(default=False)
     reminder_36h_sent = models.BooleanField(default=False)
     reminder_42h_sent = models.BooleanField(default=False)
+    reminder_6h_inspection_sent = models.BooleanField(default=False)
     # Dispute Evidence & Resolution Photos (Max 5 photos per party)
     buyer_dispute_reason = models.TextField(blank=True)
     buyer_dispute_photos = models.JSONField(default=list, blank=True)

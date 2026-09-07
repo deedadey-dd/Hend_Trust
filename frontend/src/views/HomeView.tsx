@@ -118,7 +118,7 @@ export default function HomeView() {
   ];
 
   return (
-    <div className="font-sans text-slate-900 bg-slate-950">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
       <SEOHead
         title="HendAxis Trust — Ghana's Buyer-Seller Escrow Payment Platform"
         description="Pay securely, sell with confidence. HendAxis Trust protects online transactions across Ghana with double-entry escrow, MoMo & card integration, formal courier webhooks, and verified seller badges."
@@ -181,12 +181,12 @@ export default function HomeView() {
       </section>
 
       {/* ── Stats ── */}
-      <section className="bg-slate-900 border-b border-slate-800">
+      <section className="bg-slate-100 dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 transition-colors">
         <div className="max-w-5xl mx-auto px-6 py-10 grid grid-cols-2 sm:grid-cols-4 gap-6 text-center">
           {STATS.map(s => (
             <div key={s.label} className="p-2">
-              <p className="text-2xl sm:text-3xl font-black text-blue-400 mb-1">{s.value}</p>
-              <p className="text-sm sm:text-base text-slate-400 font-medium">{s.label}</p>
+              <p className="text-2xl sm:text-3xl font-black text-blue-600 dark:text-blue-400 mb-1">{s.value}</p>
+              <p className="text-sm sm:text-base text-slate-600 dark:text-slate-400 font-medium">{s.label}</p>
             </div>
           ))}
         </div>
@@ -274,17 +274,17 @@ export default function HomeView() {
       </section>
 
       {/* ── Footer ── */}
-      <footer className="bg-slate-950 text-slate-400 text-xs border-t border-slate-800">
+      <footer className="bg-white dark:bg-slate-950 text-slate-600 dark:text-slate-400 text-xs border-t border-slate-200 dark:border-slate-800 transition-colors">
         <div className="max-w-5xl mx-auto px-6 py-10 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-white text-sm">HendAxis Trust</span>
+            <span className="font-bold text-slate-900 dark:text-white text-sm">HendAxis Trust</span>
           </div>
           <p>© {new Date().getFullYear()} HendAxis Trust. All rights reserved.</p>
           <div className="flex gap-6 font-semibold">
-            <Link to="/shops" className="hover:text-white transition-colors">Marketplace Directory</Link>
-            <Link to="/help" className="hover:text-white transition-colors">Platform Guide</Link>
-            <Link to="/login" className="hover:text-white transition-colors">Log in</Link>
-            <Link to="/register" className="hover:text-white transition-colors">Register</Link>
+            <Link to="/shops" className="hover:text-blue-600 dark:hover:text-white transition-colors">Marketplace Directory</Link>
+            <Link to="/help" className="hover:text-blue-600 dark:hover:text-white transition-colors">Platform Guide</Link>
+            <Link to="/login" className="hover:text-blue-600 dark:hover:text-white transition-colors">Log in</Link>
+            <Link to="/register" className="hover:text-blue-600 dark:hover:text-white transition-colors">Register</Link>
           </div>
         </div>
       </footer>

@@ -235,23 +235,23 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden relative">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gray-50/80">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/80 dark:bg-slate-900/80">
           <div className="flex items-center gap-2.5">
-            <div className="p-2 bg-blue-100 text-blue-600 rounded-xl">
+            <div className="p-2 bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-xl">
               <Package className="h-5 w-5" />
             </div>
             <div>
-              <h3 className="text-lg font-bold text-gray-900">Track Package Status</h3>
-              <p className="text-xs text-gray-500">Live escrow tracking & order management</p>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">Track Package Status</h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Live escrow tracking & order management</p>
             </div>
           </div>
           <button 
             onClick={onClose}
-            className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 hover:bg-gray-100 transition-colors"
+            className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
           >
             <X className="h-5 w-5" />
           </button>
@@ -263,23 +263,23 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
             <div className="max-w-md mx-auto space-y-6">
               
               {/* 2 Tabs */}
-              <div className="grid grid-cols-2 gap-1.5 p-1.5 bg-gray-100 rounded-xl text-xs font-bold text-center">
+              <div className="grid grid-cols-2 gap-1.5 p-1.5 bg-gray-100 dark:bg-slate-800 rounded-xl text-xs font-bold text-center">
                 <button
                   onClick={() => { setTab('SINGLE'); setError(''); }}
-                  className={`py-2.5 px-3 rounded-lg transition-all ${tab === 'SINGLE' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`py-2.5 px-3 rounded-lg transition-all ${tab === 'SINGLE' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'}`}
                 >
                   🔍 Track by Order ID
                 </button>
                 <button
                   onClick={() => { setTab('HISTORY'); setHistoryStep('INPUT'); setError(''); }}
-                  className={`py-2.5 px-3 rounded-lg transition-all ${tab === 'HISTORY' ? 'bg-white shadow text-blue-600' : 'text-gray-500 hover:text-gray-700'}`}
+                  className={`py-2.5 px-3 rounded-lg transition-all ${tab === 'HISTORY' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'}`}
                 >
                   📜 Full Order History
                 </button>
               </div>
 
               {error && (
-                <div className="bg-red-50 text-red-600 p-3 rounded-xl text-xs font-medium border border-red-100 text-center">
+                <div className="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-xl text-xs font-medium border border-red-100 dark:border-red-900/50 text-center">
                   {error}
                 </div>
               )}
@@ -288,31 +288,31 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
               {tab === 'SINGLE' && (
                 <form onSubmit={handleSingleSubmit} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Transaction ID / Reference *</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Transaction ID / Reference *</label>
                     <div className="relative">
-                      <FileText className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
+                      <FileText className="h-4 w-4 absolute left-3 top-3 text-gray-400 dark:text-slate-500" />
                       <input
                         type="text"
                         required
                         value={txnId}
                         onChange={e => setTxnId(e.target.value)}
                         placeholder="e.g. XY98Z123"
-                        className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full pl-9 pr-3 py-2.5 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl text-sm font-mono uppercase focus:ring-2 focus:ring-blue-500 outline-none"
                       />
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Phone Number *</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Phone Number *</label>
                     <div className="relative">
-                      <Phone className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
+                      <Phone className="h-4 w-4 absolute left-3 top-3 text-gray-400 dark:text-slate-500" />
                       <input
                         type="tel"
                         required
                         value={phone}
                         onChange={e => setPhone(e.target.value)}
                         placeholder="e.g. 0244123456"
-                        className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full pl-9 pr-3 py-2.5 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                       />
                     </div>
                   </div>
@@ -331,19 +331,19 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
               {tab === 'HISTORY' && historyStep === 'INPUT' && (
                 <form onSubmit={handleSendHistoryOtp} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Phone Number or Email Address *</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Phone Number or Email Address *</label>
                     <div className="relative">
-                      <Mail className="h-4 w-4 absolute left-3 top-3 text-gray-400" />
+                      <Mail className="h-4 w-4 absolute left-3 top-3 text-gray-400 dark:text-slate-500" />
                       <input
                         type="text"
                         required
                         value={identifier}
                         onChange={e => setIdentifier(e.target.value)}
                         placeholder="Enter phone (0244...) or email"
-                        className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full pl-9 pr-3 py-2.5 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                       />
                     </div>
-                    <span className="text-[11px] text-gray-400 mt-1 block">We'll send a 6-digit OTP code via SMS or Email to verify your identity.</span>
+                    <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">We'll send a 6-digit OTP code via SMS or Email to verify your identity.</span>
                   </div>
 
                   <button
@@ -359,9 +359,9 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
               {tab === 'HISTORY' && historyStep === 'OTP' && (
                 <form onSubmit={handleVerifyHistoryOtp} className="space-y-4">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Enter 6-Digit OTP Code *</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Enter 6-Digit OTP Code *</label>
                     <div className="relative">
-                      <KeyRound className="h-4 w-4 absolute left-3 top-3.5 text-gray-400" />
+                      <KeyRound className="h-4 w-4 absolute left-3 top-3.5 text-gray-400 dark:text-slate-500" />
                       <input
                         type="text"
                         required
@@ -369,10 +369,10 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                         value={otp}
                         onChange={e => setOtp(e.target.value)}
                         placeholder="000000"
-                        className="w-full pl-9 pr-3 py-2.5 border border-gray-300 rounded-xl text-center font-mono text-xl tracking-widest focus:ring-2 focus:ring-blue-500 outline-none"
+                        className="w-full pl-9 pr-3 py-2.5 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl text-center font-mono text-xl tracking-widest focus:ring-2 focus:ring-blue-500 outline-none"
                       />
                     </div>
-                    <span className="text-[11px] text-gray-400 mt-1 block">Code sent to: {identifier}</span>
+                    <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">Code sent to: {identifier}</span>
                   </div>
 
                   <button
@@ -386,7 +386,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                   <button
                     type="button"
                     onClick={() => setHistoryStep('INPUT')}
-                    className="w-full text-xs text-gray-500 hover:text-gray-700 text-center block pt-1"
+                    className="w-full text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 text-center block pt-1"
                   >
                     ← Change Phone/Email
                   </button>
@@ -399,11 +399,11 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
             <div className="space-y-4 animate-in fade-in duration-200">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h4 className="text-base font-bold text-gray-900">Found {txns.length} Order(s)</h4>
+                  <h4 className="text-base font-bold text-gray-900 dark:text-slate-100">Found {txns.length} Order(s)</h4>
                 </div>
                 <button
                   onClick={resetSearch}
-                  className="text-xs font-bold text-blue-600 hover:underline self-start sm:self-auto"
+                  className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline self-start sm:self-auto"
                 >
                   ← Track Another Order
                 </button>
@@ -411,15 +411,15 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
               {/* Search & Pagination Bar */}
               {txns.length > 0 && (
-                <div className="bg-gray-50 p-3 rounded-xl border border-gray-200 flex flex-col sm:flex-row items-center gap-3 justify-between">
+                <div className="bg-gray-50 dark:bg-slate-800/60 p-3 rounded-xl border border-gray-200 dark:border-slate-700 flex flex-col sm:flex-row items-center gap-3 justify-between">
                   <div className="relative w-full sm:w-72">
-                    <Search className="h-3.5 w-3.5 absolute left-3 top-2.5 text-gray-400" />
+                    <Search className="h-3.5 w-3.5 absolute left-3 top-2.5 text-gray-400 dark:text-slate-500" />
                     <input
                       type="text"
                       value={searchQuery}
                       onChange={e => { setSearchQuery(e.target.value); setCurrentPage(1); }}
                       placeholder="Search title, ref, seller..."
-                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 rounded-lg focus:ring-blue-500 outline-none"
+                      className="w-full pl-8 pr-3 py-1.5 text-xs border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 rounded-lg focus:ring-blue-500 outline-none"
                     />
                   </div>
 
@@ -429,7 +429,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                     (t.shop_name && t.shop_name.toLowerCase().includes(searchQuery.toLowerCase())) ||
                     (t.seller_username && t.seller_username.toLowerCase().includes(searchQuery.toLowerCase()))
                   ).length / itemsPerPage) > 1 && (
-                    <div className="flex items-center gap-2 text-xs text-gray-600">
+                    <div className="flex items-center gap-2 text-xs text-gray-600 dark:text-slate-300">
                       <span>Page {currentPage} of {Math.ceil(txns.filter(t => 
                         t.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
                         t.paystack_reference.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -439,7 +439,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                       <button
                         disabled={currentPage === 1}
                         onClick={() => setCurrentPage(p => Math.max(1, p - 1))}
-                        className="px-2 py-0.5 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-40"
+                        className="px-2 py-0.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 text-gray-900 dark:text-slate-100"
                       >
                         Prev
                       </button>
@@ -451,7 +451,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                           (t.seller_username && t.seller_username.toLowerCase().includes(searchQuery.toLowerCase()))
                         ).length / itemsPerPage)}
                         onClick={() => setCurrentPage(p => p + 1)}
-                        className="px-2 py-0.5 bg-white border border-gray-200 rounded hover:bg-gray-100 disabled:opacity-40"
+                        className="px-2 py-0.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-700 rounded hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 text-gray-900 dark:text-slate-100"
                       >
                         Next
                       </button>
@@ -476,71 +476,71 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                     const Icon = cfg.icon;
                     const sellerDisplayName = txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller');
                     return (
-                      <div key={txn.id} className="p-4 bg-white rounded-xl border border-gray-200 shadow-sm space-y-3">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 pb-3">
+                      <div key={txn.id} className="p-4 bg-white dark:bg-slate-950 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm space-y-3">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
                           <div>
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
-                              <span className="font-mono text-xs font-bold text-gray-700 bg-gray-100 px-2 py-0.5 rounded">
+                              <span className="font-mono text-xs font-bold text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded">
                                 {txn.paystack_reference}
                               </span>
-                              <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
                                 <Icon className="mr-1 h-3 w-3" />
                                 {cfg.label}
                               </span>
-                              <span className="text-[11px] font-semibold text-blue-700 bg-blue-50 border border-blue-100 px-2 py-0.5 rounded-full">
+                              <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 px-2 py-0.5 rounded-full">
                                 Sold by: {sellerDisplayName}
                               </span>
                             </div>
-                            <h4 className="text-sm font-bold text-gray-900">{txn.title}</h4>
+                            <h4 className="text-sm font-bold text-gray-900 dark:text-slate-100">{txn.title}</h4>
                           </div>
 
                           <div className="sm:text-right">
-                            <span className="text-xs text-gray-400 block">Total Amount</span>
-                            <span className="text-base font-black text-gray-900">GHS {Number(txn.total_amount_ghs).toFixed(2)}</span>
+                            <span className="text-xs text-gray-400 dark:text-slate-500 block">Total Amount</span>
+                            <span className="text-base font-black text-gray-900 dark:text-slate-100">GHS {Number(txn.total_amount_ghs).toFixed(2)}</span>
                           </div>
                         </div>
 
                         {txn.waybill_photo_url && (
-                          <div className="mt-2 bg-gray-50 border border-gray-200 rounded-xl p-2.5 flex items-center gap-3">
+                          <div className="mt-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl p-2.5 flex items-center gap-3">
                             <img
                               src={txn.waybill_photo_url}
                               alt="Dispatch proof"
-                              className="w-14 h-14 object-cover rounded-lg border border-gray-200"
+                              className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700"
                             />
                             <div>
-                              <span className="text-xs font-bold text-gray-800 block">Dispatch / Package Proof</span>
-                              <span className="text-[11px] text-gray-500 block">Uploaded by seller at dispatch</span>
+                              <span className="text-xs font-bold text-gray-800 dark:text-slate-200 block">Dispatch / Package Proof</span>
+                              <span className="text-[11px] text-gray-500 dark:text-slate-400 block">Uploaded by seller at dispatch</span>
                             </div>
                           </div>
                         )}
 
                         {/* Refund & Dispute Settlement Audit Card */}
                         {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED') && (
-                          <div className="bg-red-50/80 border border-red-200 rounded-xl p-3.5 space-y-2 text-xs">
-                            <div className="flex justify-between items-center border-b border-red-200/80 pb-2">
-                              <span className="font-bold text-red-700 flex items-center gap-1.5">
+                          <div className="bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl p-3.5 space-y-2 text-xs">
+                            <div className="flex justify-between items-center border-b border-red-200/80 dark:border-red-900/50 pb-2">
+                              <span className="font-bold text-red-700 dark:text-red-400 flex items-center gap-1.5">
                                 <AlertTriangle className="h-4 w-4" />
                                 {txn.status === 'REFUNDED' ? 'Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : 'Dispute Under Review'}
                               </span>
                               {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED') && (
-                                <span className="font-mono font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded text-xs">
+                                <span className="font-mono font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/50 px-2 py-0.5 rounded text-xs">
                                   Refund: GHS {Number(txn.buyer_refund_amount_ghs || txn.total_amount_ghs).toFixed(2)}
                                 </span>
                               )}
                             </div>
 
-                            <p className="text-red-900 font-medium text-[11px]">
+                            <p className="text-red-900 dark:text-red-200 font-medium text-[11px]">
                               ⏱ Refund Policy: Payouts are returned directly to your original payment method (Paystack MoMo/Card) within 24 hours.
                             </p>
 
                             {txn.manager_dispute_notes && (
-                              <div className="bg-white p-2.5 rounded-lg border border-red-200 space-y-1">
-                                <span className="font-mono text-red-600 font-bold uppercase text-[10px] block">Manager Resolution Notes:</span>
-                                <p className="text-gray-800">{txn.manager_dispute_notes}</p>
+                              <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-red-200 dark:border-red-900/50 space-y-1">
+                                <span className="font-mono text-red-600 dark:text-red-400 font-bold uppercase text-[10px] block">Manager Resolution Notes:</span>
+                                <p className="text-gray-800 dark:text-slate-200">{txn.manager_dispute_notes}</p>
                                 {txn.manager_dispute_photos && txn.manager_dispute_photos.length > 0 && (
                                   <div className="flex flex-wrap gap-1 pt-1">
                                     {txn.manager_dispute_photos.map((url: string, idx: number) => (
-                                      <img key={idx} src={url} alt="Manager ruling" className="w-10 h-10 object-cover rounded border" />
+                                      <img key={idx} src={url} alt="Manager ruling" className="w-10 h-10 object-cover rounded border border-gray-200 dark:border-slate-700" />
                                     ))}
                                   </div>
                                 )}
@@ -548,9 +548,9 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                             )}
 
                             {txn.buyer_dispute_reason && (
-                              <div className="bg-white p-2.5 rounded-lg border border-red-200 space-y-1">
-                                <span className="font-mono text-gray-500 font-bold uppercase text-[10px] block">Your Dispute Claim:</span>
-                                <p className="text-gray-800">{txn.buyer_dispute_reason}</p>
+                              <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-red-200 dark:border-red-900/50 space-y-1">
+                                <span className="font-mono text-gray-500 dark:text-slate-400 font-bold uppercase text-[10px] block">Your Dispute Claim:</span>
+                                <p className="text-gray-800 dark:text-slate-200">{txn.buyer_dispute_reason}</p>
                               </div>
                             )}
                           </div>
@@ -558,12 +558,12 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
                         {/* Action buttons */}
                         <div className="flex items-center justify-between gap-2 pt-1">
-                          <span className="text-xs text-gray-400">Date: {new Date(txn.created_at).toLocaleDateString()}</span>
+                          <span className="text-xs text-gray-400 dark:text-slate-500">Date: {new Date(txn.created_at).toLocaleDateString()}</span>
                           <div className="flex gap-2 flex-wrap">
                             {txn.status !== 'AWAITING_PAYMENT' && txn.status !== 'CANCELLED' && txn.status !== 'DISPUTED' && (
                               <button
                                 onClick={() => setRateTxn(txn)}
-                                className="py-1.5 px-3 rounded-lg bg-amber-50 text-amber-700 border border-amber-200 text-xs font-bold hover:bg-amber-100 transition"
+                                className="py-1.5 px-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition"
                               >
                                 ⭐ Rate Seller
                               </button>
@@ -579,7 +579,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                             {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'DELIVERY_IN_PROGRESS') && (
                               <button
                                 onClick={() => { setDisputeTxnId(txn.id); setDisputeReason(''); setBuyerPhotos([]); }}
-                                className="py-1.5 px-3 rounded-lg bg-red-50 text-red-600 border border-red-200 text-xs font-bold hover:bg-red-100 transition"
+                                className="py-1.5 px-3 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/50 transition"
                               >
                                 Raise Dispute
                               </button>
@@ -598,13 +598,13 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
       {/* Confirm Receipt Sub-Modal */}
       {confirmTxnId && !isSendingCode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full shadow-2xl relative space-y-4">
-            <button onClick={() => setConfirmTxnId(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative space-y-4 text-gray-900 dark:text-slate-100">
+            <button onClick={() => setConfirmTxnId(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
               <X className="h-5 w-5" />
             </button>
-            <h4 className="text-base font-bold text-gray-900 text-center">Enter Delivery Confirmation Code</h4>
-            {confirmError && <p className="text-xs text-red-600 bg-red-50 p-2 rounded text-center">{confirmError}</p>}
+            <h4 className="text-base font-bold text-gray-900 dark:text-slate-100 text-center">Enter Delivery Confirmation Code</h4>
+            {confirmError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded text-center">{confirmError}</p>}
             <form onSubmit={handleConfirmReceipt} className="space-y-3">
               <input
                 type="text"
@@ -613,7 +613,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                 value={confirmCode}
                 onChange={e => setConfirmCode(e.target.value)}
                 placeholder="000000"
-                className="w-full text-center font-mono text-xl tracking-widest border border-gray-300 rounded-xl p-2.5 focus:ring-2 focus:ring-green-500 outline-none"
+                className="w-full text-center font-mono text-xl tracking-widest border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl p-2.5 focus:ring-2 focus:ring-green-500 outline-none"
               />
               <button
                 type="submit"
@@ -629,30 +629,30 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
       {/* Raise Dispute Sub-Modal */}
       {disputeTxnId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
-            <button onClick={() => setDisputeTxnId(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4 text-gray-900 dark:text-slate-100">
+            <button onClick={() => setDisputeTxnId(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
               <X className="h-5 w-5" />
             </button>
-            <h4 className="text-base font-bold text-gray-900">Raise Transaction Dispute</h4>
-            {disputeError && <p className="text-xs text-red-600 bg-red-50 p-2 rounded">{disputeError}</p>}
+            <h4 className="text-base font-bold text-gray-900 dark:text-slate-100">Raise Transaction Dispute</h4>
+            {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded">{disputeError}</p>}
             <form onSubmit={handleRaiseDisputeSubmit} className="space-y-3">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Reason for Dispute *</label>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Reason for Dispute *</label>
                 <textarea
                   required
                   rows={3}
                   value={disputeReason}
                   onChange={e => setDisputeReason(e.target.value)}
                   placeholder="Describe the issue with your item..."
-                  className="w-full border border-gray-300 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-red-500 outline-none"
+                  className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-red-500 outline-none"
                 />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-semibold text-gray-700">Evidence Photos (Max 5)</label>
-                  <span className="text-[11px] font-mono text-gray-500">
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Evidence Photos (Max 5)</label>
+                  <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
                     {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length}/5 photos`}
                   </span>
                 </div>
@@ -662,10 +662,10 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                   multiple
                   onChange={handleBuyerPhotoUpload}
                   disabled={buyerPhotos.length >= 5 || isCompressingBuyerPhotos}
-                  className="w-full text-xs text-gray-600 bg-gray-50 border border-gray-200 rounded-xl p-2 cursor-pointer disabled:opacity-50"
+                  className="w-full text-xs text-gray-600 dark:text-slate-300 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl p-2 cursor-pointer disabled:opacity-50"
                 />
                 {isCompressingBuyerPhotos && (
-                  <div className="flex items-center gap-2 mt-2 text-xs text-red-600 font-medium">
+                  <div className="flex items-center gap-2 mt-2 text-xs text-red-600 dark:text-red-400 font-medium">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to WebP...
                   </div>
                 )}
@@ -673,7 +673,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                   <div className="flex gap-2 mt-2 flex-wrap">
                     {buyerPhotos.map((img, idx) => (
                       <div key={idx} className="relative group">
-                        <img src={img} alt={`Evidence ${idx + 1}`} className="w-12 h-12 object-cover rounded-lg border border-gray-200" />
+                        <img src={img} alt={`Evidence ${idx + 1}`} className="w-12 h-12 object-cover rounded-lg border border-gray-200 dark:border-slate-700" />
                         <button
                           type="button"
                           onClick={() => setBuyerPhotos(prev => prev.filter((_, i) => i !== idx))}

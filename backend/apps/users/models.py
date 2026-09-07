@@ -62,6 +62,11 @@ class User(AbstractUser):
     momo_otp_code = models.CharField(max_length=6, blank=True, default='')
     momo_otp_created_at = models.DateTimeField(null=True, blank=True)
 
+    # Two-Factor Authentication (2FA TOTP)
+    totp_secret = models.CharField(max_length=64, blank=True, default='', help_text="Encrypted or Base32 TOTP secret for authenticator apps.")
+    is_2fa_enabled = models.BooleanField(default=False, help_text="Whether 2FA Authenticator app is enabled for this account.")
+    totp_last_verified_at = models.DateTimeField(null=True, blank=True)
+
     def save(self, *args, **kwargs):
         if (self.is_superuser or self.is_staff) and self.role == Role.BUYER:
             self.role = Role.ADMIN

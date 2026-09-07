@@ -45,8 +45,8 @@ export default function LoginView() {
     setLoading(true);
     try {
       const res = await apiClient.post('/auth/login', { username, password, remember });
-      const { user_id, username: uname, role, email } = res.data;
-      login('', { id: user_id, role, email, name: uname });
+      const { user_id, username: uname, role, email, is_superuser, is_staff } = res.data;
+      login('', { id: user_id, role, email, name: uname, username: uname, is_superuser: Boolean(is_superuser), is_staff: Boolean(is_staff) });
       if (role === 'ADMIN' || role === 'SUPPORT_AGENT') {
         navigate('/admin-portal/dashboard');
       } else {

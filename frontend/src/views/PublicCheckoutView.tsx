@@ -362,25 +362,25 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
       {/* Confirm Receipt Modal */}
       {showConfirmModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden p-6 relative">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden p-6 relative border border-gray-100 dark:border-slate-800">
             <button 
               onClick={() => setShowConfirmModal(false)}
-              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
+              className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 transition"
             >
               <X className="h-5 w-5" />
             </button>
             <div className="text-center mb-6">
-              <div className="mx-auto h-12 w-12 bg-green-100 rounded-full flex items-center justify-center mb-3">
-                <CheckCircle className="h-6 w-6 text-green-600" />
+              <div className="mx-auto h-12 w-12 bg-green-100 dark:bg-emerald-950/60 rounded-full flex items-center justify-center mb-3">
+                <CheckCircle className="h-6 w-6 text-green-600 dark:text-emerald-400" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Confirm Delivery</h3>
-              <p className="text-sm text-gray-500 mt-2">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Delivery</h3>
+              <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">
                 We've sent a 6-digit code to your phone (and email if provided). Enter it below to release payment to the seller.
               </p>
             </div>
 
             {confirmError && (
-              <div className="mb-4 bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium border border-red-100 text-center">
+              <div className="mb-4 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm font-medium border border-red-100 dark:border-red-900/50 text-center">
                 {confirmError}
               </div>
             )}
@@ -388,14 +388,14 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
             <form onSubmit={handleConfirmReceipt} className="space-y-4">
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <KeyRound className="h-5 w-5 text-gray-400" />
+                  <KeyRound className="h-5 w-5 text-gray-400 dark:text-slate-500" />
                 </div>
                 <input
                   type="text"
                   required
                   value={confirmCode}
                   onChange={(e) => setConfirmCode(e.target.value)}
-                  className="appearance-none rounded-xl relative block w-full pl-10 px-3 py-3 border border-gray-300 placeholder-gray-500 text-gray-900 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 sm:text-sm tracking-widest font-mono text-center transition-all"
+                  className="appearance-none rounded-xl relative block w-full pl-10 px-3 py-3 border border-gray-300 dark:border-slate-700 placeholder-gray-500 dark:placeholder-slate-500 text-gray-900 dark:text-white bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-green-500 focus:border-green-500 sm:text-sm tracking-widest font-mono text-center transition-all"
                   placeholder="• • • • • •"
                   maxLength={6}
                 />
@@ -404,7 +404,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
               <button
                 type="submit"
                 disabled={isConfirming || !confirmCode}
-                className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all shadow-lg shadow-green-500/30 disabled:opacity-70"
+                className="w-full flex justify-center py-3 px-4 border border-transparent text-sm font-bold rounded-xl text-white bg-green-600 hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500 transition-all shadow-lg shadow-green-500/30 disabled:opacity-70 cursor-pointer"
               >
                 {isConfirming ? <Loader2 className="h-5 w-5 animate-spin" /> : "Confirm Receipt"}
               </button>
@@ -413,7 +413,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                 type="button"
                 onClick={handleOpenConfirmModal}
                 disabled={isSendingCode}
-                className="w-full text-sm font-medium text-green-600 hover:text-green-800 transition-colors mt-2"
+                className="w-full text-sm font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors mt-2"
               >
                 {isSendingCode ? 'Sending...' : 'Didn\'t receive it? Resend Code'}
               </button>
@@ -425,29 +425,29 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
       {/* Raise Dispute Sub-Modal */}
       {showDisputeModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
-            <button onClick={() => setShowDisputeModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
+            <button onClick={() => setShowDisputeModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
               <X className="h-5 w-5" />
             </button>
-            <h4 className="text-base font-bold text-gray-900">Raise Transaction Dispute</h4>
-            {disputeError && <p className="text-xs text-red-600 bg-red-50 p-2.5 rounded-xl border border-red-100">{disputeError}</p>}
+            <h4 className="text-base font-bold text-gray-900 dark:text-white">Raise Transaction Dispute</h4>
+            {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-100 dark:border-red-900/50">{disputeError}</p>}
             <form onSubmit={handleRaiseDisputeSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Reason for Dispute *</label>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Reason for Dispute *</label>
                 <textarea
                   required
                   rows={3}
                   value={disputeReason}
                   onChange={e => setDisputeReason(e.target.value)}
                   placeholder="Describe the issue with your item..."
-                  className="w-full border border-gray-300 rounded-xl p-3 text-xs focus:ring-2 focus:ring-red-500 outline-none"
+                  className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-xl p-3 text-xs focus:ring-2 focus:ring-red-500 outline-none"
                 />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-semibold text-gray-700">Evidence Photos (Max 5)</label>
-                  <span className="text-[11px] font-mono text-gray-500">
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Evidence Photos (Max 5)</label>
+                  <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
                     {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length}/5 photos`}
                   </span>
                 </div>
@@ -457,10 +457,10 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                   multiple
                   onChange={handleBuyerPhotoUpload}
                   disabled={buyerPhotos.length >= 5 || isCompressingBuyerPhotos}
-                  className="block w-full text-xs text-gray-500 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-gray-100 file:text-gray-700 hover:file:bg-gray-200 cursor-pointer disabled:opacity-50"
+                  className="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-gray-100 dark:file:bg-slate-800 file:text-gray-700 dark:file:text-slate-200 hover:file:bg-gray-200 dark:hover:file:bg-slate-700 cursor-pointer disabled:opacity-50"
                 />
                 {isCompressingBuyerPhotos && (
-                  <div className="flex items-center gap-2 mt-2 text-xs text-red-600 font-medium">
+                  <div className="flex items-center gap-2 mt-2 text-xs text-red-600 dark:text-red-400 font-medium">
                     <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to WebP...
                   </div>
                 )}
@@ -468,7 +468,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                   <div className="flex gap-2 mt-2 flex-wrap">
                     {buyerPhotos.map((photo, i) => (
                       <div key={i} className="relative group">
-                        <img src={photo} alt={`Evidence ${i}`} className="h-12 w-12 object-cover rounded-lg border border-gray-200" />
+                        <img src={photo} alt={`Evidence ${i}`} className="h-12 w-12 object-cover rounded-lg border border-gray-200 dark:border-slate-700" />
                         <button
                           type="button"
                           onClick={() => setBuyerPhotos(prev => prev.filter((_, idx) => idx !== i))}
@@ -485,7 +485,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
               <button
                 type="submit"
                 disabled={isSubmittingDispute || isCompressingBuyerPhotos}
-                className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-red-500/20 disabled:opacity-70 flex justify-center items-center"
+                className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-red-500/20 disabled:opacity-70 flex justify-center items-center cursor-pointer"
               >
                 {isSubmittingDispute ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Dispute & Evidence"}
               </button>
@@ -634,7 +634,7 @@ export default function PublicCheckoutView() {
   } : undefined;
 
   return (
-    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8 font-sans">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 font-sans transition-colors">
       <SEOHead
         title={productTitle}
         description={productDesc}
@@ -642,7 +642,7 @@ export default function PublicCheckoutView() {
         ogImage={link?.image_url || 'https://trust.hendaxis.com/og_preview_banner.jpg'}
         jsonLd={productJsonLd}
       />
-      <div className="max-w-2xl mx-auto bg-white rounded-3xl shadow-xl overflow-hidden border border-gray-100">
+      <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-slate-800">
 
         {/* Header */}
         <div className="bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-900 p-6 sm:p-8 text-white relative overflow-hidden">
@@ -733,47 +733,47 @@ export default function PublicCheckoutView() {
         <div className="p-6">
           <form onSubmit={handleSendOtp} className="space-y-5">
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Full Name</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Full Name</label>
               <input required type="text" value={name} onChange={e => setName(e.target.value)}
-                className="w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border bg-gray-50/50"
+                className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
                 placeholder="John Doe" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Phone Number</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Phone Number</label>
               <input required type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-                className="w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border bg-gray-50/50"
+                className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
                 placeholder="e.g., 0241234567" />
             </div>
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">Email Address</label>
+              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Email Address</label>
               <input required type="email" value={email} onChange={e => setEmail(e.target.value)}
-                className="w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border bg-gray-50/50"
+                className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
                 placeholder="receipt@example.com" />
             </div>
             {parseFloat(link.shipping_fee_ghs) > 0 && (
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Delivery Address</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Delivery Address</label>
                 <textarea required value={address} onChange={e => setAddress(e.target.value)}
-                  rows={2} className="w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border bg-gray-50/50"
+                  rows={2} className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
                   placeholder="Street, City, Landmark" />
               </div>
             )}
             <button disabled={isProcessing} type="submit"
-              className="mt-4 w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 transition-all">
+              className="mt-4 w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 transition-all cursor-pointer">
               {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Continue to Payment'}
               <ArrowRight className="ml-2 h-4 w-4" />
             </button>
-            <p className="text-center text-xs text-gray-500 flex items-center justify-center mt-4">
-              <ShieldCheck className="h-4 w-4 mr-1 text-gray-400" /> Secure Escrow Checkout
+            <p className="text-center text-xs text-gray-500 dark:text-slate-400 flex items-center justify-center mt-4">
+              <ShieldCheck className="h-4 w-4 mr-1 text-gray-400 dark:text-slate-500" /> Secure Escrow Checkout
             </p>
           </form>
         </div>
 
         {/* Streamlined Redirect to Tracking Portal */}
-        <div className="bg-gray-50 border-t border-gray-100 p-4 text-center text-xs">
-          <p className="text-gray-500">
+        <div className="bg-gray-50 dark:bg-slate-900/60 border-t border-gray-100 dark:border-slate-800 p-4 text-center text-xs">
+          <p className="text-gray-500 dark:text-slate-400">
             Already placed an order?{' '}
-            <a href="/track" className="text-blue-600 font-bold hover:underline inline-flex items-center gap-1">
+            <a href="/track" className="text-blue-600 dark:text-blue-400 font-bold hover:underline inline-flex items-center gap-1">
               Track your package status here <ArrowRight className="h-3 w-3" />
             </a>
           </p>
@@ -782,25 +782,25 @@ export default function PublicCheckoutView() {
 
       {/* OTP Modal */}
       {showOtpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/40 backdrop-blur-sm">
-          <div className="bg-white rounded-2xl p-8 max-w-sm w-full shadow-2xl">
+        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-slate-800">
             <div className="text-center mb-6">
-              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 mb-4">
-                <ShieldCheck className="h-6 w-6 text-blue-600" />
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-950/60 mb-4">
+                <ShieldCheck className="h-6 w-6 text-blue-600 dark:text-blue-400" />
               </div>
-              <h3 className="text-lg font-bold text-gray-900">Verify your phone</h3>
-              <p className="text-sm text-gray-500 mt-2">We sent a 6-digit code to {phone}</p>
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">Verify your phone</h3>
+              <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">We sent a 6-digit code to {phone}</p>
             </div>
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <input required type="text" maxLength={6} value={otp} onChange={e => setOtp(e.target.value)}
-                className="w-full text-center tracking-widest text-2xl font-mono rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border bg-gray-50/50"
+                className="w-full text-center tracking-widest text-2xl font-mono rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
                 placeholder="000000" />
               <button disabled={isProcessing} type="submit"
-                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-70 transition-all">
+                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-70 transition-all cursor-pointer">
                 {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Confirm & Pay'}
               </button>
               <button type="button" onClick={() => setShowOtpModal(false)}
-                className="w-full text-sm font-medium text-gray-500 hover:text-gray-700 transition-colors">
+                className="w-full text-sm font-medium text-gray-500 hover:text-gray-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors cursor-pointer">
                 Cancel
               </button>
             </form>

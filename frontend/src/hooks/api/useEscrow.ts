@@ -9,6 +9,11 @@ export const useTransactionQuery = (id: string) => {
       return data;
     },
     enabled: !!id,
+    refetchInterval: (query) => {
+      const status = (query.state.data as any)?.status;
+      const isPendingState = ['AWAITING_PAYMENT', 'DELIVERY_IN_PROGRESS', 'INSPECTION_PERIOD', 'RETURN_IN_PROGRESS', 'DISPUTED'].includes(status);
+      return isPendingState ? 5000 : false;
+    },
   });
 };
 

@@ -46,8 +46,8 @@ export default function DashboardLayout() {
               className={({ isActive }) =>
                 `flex items-center px-4 py-3 text-sm font-medium rounded-md transition-colors ${
                   isActive 
-                    ? 'bg-blue-50 text-blue-700' 
-                    : 'text-slate-600 hover:bg-slate-50 hover:text-slate-900'
+                    ? 'bg-blue-50 dark:bg-blue-950/50 text-blue-700 dark:text-blue-400 font-bold' 
+                    : 'text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 hover:text-slate-900 dark:hover:text-white'
                 }`
               }
             >
@@ -57,17 +57,17 @@ export default function DashboardLayout() {
           ))}
         </div>
 
-        <div className="p-4 border-t border-slate-200">
-          <div className="flex items-center px-4 py-3 mb-2 text-sm font-medium text-slate-700">
+        <div className="p-4 border-t border-slate-200 dark:border-slate-800">
+          <div className="flex items-center px-4 py-3 mb-2 text-sm font-medium text-slate-700 dark:text-slate-200">
             <div className="flex-1 min-w-0 truncate">
               <p className="truncate">{user?.email || 'user@example.com'}</p>
-              <p className="text-xs text-slate-500 capitalize">{user?.role || 'Seller'}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 capitalize">{user?.role || 'Seller'}</p>
             </div>
           </div>
           
           <button 
             onClick={handleLogout}
-            className="w-full flex items-center px-4 py-2 text-sm font-medium text-red-600 rounded-md hover:bg-red-50 transition-colors"
+            className="w-full flex items-center px-4 py-2 text-sm font-medium text-red-600 dark:text-red-400 rounded-md hover:bg-red-50 dark:hover:bg-red-950/40 transition-colors"
           >
             <LogOut className="mr-3 h-5 w-5" />
             Logout
@@ -78,8 +78,8 @@ export default function DashboardLayout() {
       {/* Main Content Area */}
       <main className="flex-1 flex flex-col min-h-screen overflow-hidden">
         {/* Mobile Header */}
-        <header className="md:hidden h-16 bg-white border-b border-slate-200 flex items-center px-4 justify-between">
-          <span className="text-xl font-bold text-blue-600">HendAxis Trust</span>
+        <header className="md:hidden h-16 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 flex items-center px-4 justify-between">
+          <span className="text-xl font-bold text-blue-600 dark:text-blue-400">HendAxis Trust</span>
           {/* Add Mobile Menu Toggle Here later if needed */}
         </header>
 

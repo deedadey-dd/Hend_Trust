@@ -313,14 +313,18 @@ def notify_buyer_payment_received_task(transaction_id):
         pass
 
 @shared_task
-def send_seller_payment_notification_task(transaction_id: int):
+def send_seller_payment_notification_task(transaction_id):
     from apps.escrow.models import Transaction
     default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
     frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
 
     try:
         txn = Transaction.objects.get(id=transaction_id)
-        seller = txn.link.user
+        seller = getattr(txn.link, 'seller', getattr(txn.link, 'user', None))
+        if not seller:
+            logger.error(f"No seller found for transaction {transaction_id}")
+            return
+
         seller_email = getattr(seller, 'email', None)
         
         msg = f"New order received for {txn.link.title}! Amount: GHS {txn.total_amount_ghs}. Log in to dispatch: {frontend_url}/dashboard"
@@ -369,3 +373,107 @@ def send_seller_payment_notification_task(transaction_id: int):
             
     except Transaction.DoesNotExist:
         logger.error(f"Transaction {transaction_id} not found for seller notification.")
+
+
+@shared_task
+def notify_seller_delivery_confirmed_task(transaction_id):
+    """
+    Notifies the seller via SMS & Email when the buyer confirms delivery / OTP is verified.
+    """
+    from apps.escrow.models import Transaction
+    try:
+        txn = Transaction.objects.get(id=transaction_id)
+        seller = getattr(txn.link, 'seller', None)
+        if not seller:
+            return
+
+        msg = (
+            f"Delivery Confirmed! The buyer has confirmed receipt of order {txn.paystack_reference} ({txn.link.title}). "
+            f"The inspection period has started. Funds will be released upon completion."
+        )
+
+        s_phone = getattr(seller, 'phone_number', None)
+        s_email = getattr(seller, 'email', None)
+        if s_phone:
+            dispatch_sms_task.delay(s_phone, msg)
+        if s_email:
+            dispatch_email_task.delay(
+                s_email,
+                f"Delivery Confirmed - Order #{txn.paystack_reference}",
+                msg
+            )
+    except Transaction.DoesNotExist:
+        pass
+
+
+@shared_task
+def notify_dispute_resolution_task(transaction_id, action: str, admin_notes: str = None, refund_amount: float = 0.0, seller_amount: float = 0.0):
+    """
+    Sends SMS & Email notifications to BOTH buyer and seller summarizing the dispute resolution ruling.
+    action: 'RELEASE_TO_SELLER', 'FULL_REFUND_TO_BUYER', 'PARTIAL_REFUND_TO_BUYER'
+    """
+    from apps.escrow.models import Transaction
+    try:
+        txn = Transaction.objects.get(id=transaction_id)
+        seller = getattr(txn.link, 'seller', None)
+        s_phone = getattr(seller, 'phone_number', None) if seller else None
+        s_email = getattr(seller, 'email', None) if seller else None
+        
+        notes_str = f" Notes: {admin_notes}" if admin_notes else ""
+
+        if action == "RELEASE_TO_SELLER":
+            b_msg = f"Dispute Ruling: The dispute for order {txn.paystack_reference} ({txn.link.title}) has been resolved. The funds have been released to the seller.{notes_str}"
+            s_msg = f"Dispute Resolved: The dispute for order {txn.paystack_reference} ({txn.link.title}) has been resolved in your favor and funds have been credited to your account.{notes_str}"
+            
+        elif action == "FULL_REFUND_TO_BUYER":
+            b_msg = f"Dispute Ruling: Your dispute for order {txn.paystack_reference} ({txn.link.title}) was approved for a full refund of GHS {txn.total_amount_ghs:.2f}.{notes_str}"
+            s_msg = f"Dispute Resolved: The dispute for order {txn.paystack_reference} ({txn.link.title}) was resolved with a full refund to the buyer.{notes_str}"
+
+        elif action in ["PARTIAL_REFUND_TO_BUYER", "PARTIAL_REFUND"]:
+            b_msg = f"Dispute Ruling: A partial refund of GHS {refund_amount:.2f} for order {txn.paystack_reference} ({txn.link.title}) has been approved.{notes_str}"
+            s_msg = f"Dispute Resolved: Order {txn.paystack_reference} ({txn.link.title}) settled. GHS {seller_amount:.2f} allocated to you, GHS {refund_amount:.2f} refunded to buyer.{notes_str}"
+        else:
+            return
+
+        # Send Buyer notifications
+        dispatch_sms_task.delay(txn.buyer_phone, b_msg)
+        if txn.buyer_email:
+            dispatch_email_task.delay(txn.buyer_email, f"Dispute Resolution Ruling - Order #{txn.paystack_reference}", b_msg)
+
+        # Send Seller notifications
+        if s_phone:
+            dispatch_sms_task.delay(s_phone, s_msg)
+        if s_email:
+            dispatch_email_task.delay(s_email, f"Dispute Resolution Ruling - Order #{txn.paystack_reference}", s_msg)
+
+    except Transaction.DoesNotExist:
+        pass
+
+
+@shared_task
+def notify_seller_payout_completed_task(transaction_id, amount_ghs: float):
+    """
+    Sends SMS & Email notification to seller when payout is successfully completed.
+    """
+    from apps.escrow.models import Transaction
+    try:
+        txn = Transaction.objects.get(id=transaction_id)
+        seller = getattr(txn.link, 'seller', None)
+        if not seller:
+            return
+
+        msg = (
+            f"Payout Completed! GHS {amount_ghs:.2f} has been disbursed to your account for order {txn.paystack_reference} ({txn.link.title}). "
+            f"Thank you for selling with HendAxis Trust."
+        )
+
+        s_phone = getattr(seller, 'phone_number', None)
+        s_email = getattr(seller, 'email', None)
+        if s_phone:
+            dispatch_sms_task.delay(s_phone, msg)
+        if s_email:
+            dispatch_email_task.delay(s_email, f"Payout Disbursed - Order #{txn.paystack_reference}", msg)
+
+    except Transaction.DoesNotExist:
+        pass
+

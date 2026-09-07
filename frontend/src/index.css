@@ -87,9 +87,8 @@
   [class*="bg-gradient"] h3,
   [class*="bg-gradient"] h4,
   [class*="bg-gradient"] .text-white,
-  [class*="bg-gradient"] a:not(.bg-white):not([class*="bg-white"]),
-  [class*="bg-gradient"] button:not(.bg-white):not([class*="bg-white"]),
-  header .text-white,
+  [class*="bg-gradient"] a:not(.bg-white),
+  [class*="bg-gradient"] button:not(.bg-white),
   button.bg-blue-600,
   button.bg-indigo-600,
   a.bg-blue-600,
@@ -100,12 +99,6 @@
     color: #ffffff !important;
   }
 
-  /* Explicit dark text preservation for white CTA buttons across Light and Dark themes */
-  .bg-white,
-  a.bg-white,
-  button.bg-white {
-    color: #0f172a !important;
-  }
 
   [class*="bg-gradient"] .text-blue-200 {
     color: #bfdbfe !important;
@@ -127,27 +120,10 @@
   html.light .border-slate-800, html.light .border-slate-700 {
     border-color: #e2e8f0 !important;
   }
-  html.light header.bg-slate-950\/95 {
-    background-color: rgba(255, 255, 255, 0.95) !important;
-    border-color: #e2e8f0 !important;
-    color: #0f172a !important;
-  }
-  html.light header nav a {
-    color: #1e293b;
-  }
-  html.light header nav a:hover {
-    color: #2563eb;
-    background-color: #eff6ff;
-  }
-  html.light header nav a.nav-blue-btn,
-  header nav a.nav-blue-btn {
-    color: #ffffff !important;
-    background-color: #2563eb !important;
-  }
-
   /* Ensure blue and dark primary action buttons ALWAYS retain white text in all themes */
   a.nav-blue-btn,
-  button.nav-blue-btn {
+  button.nav-blue-btn,
+  .nav-blue-btn {
     color: #ffffff !important;
   }
 

@@ -96,6 +96,11 @@ export const useAdminTransactionDetailQuery = (id: string | null) => {
       return data;
     },
     enabled: !!id,
+    refetchInterval: (query) => {
+      const status = (query.state.data as any)?.status;
+      const isPendingState = ['AWAITING_PAYMENT', 'DELIVERY_IN_PROGRESS', 'INSPECTION_PERIOD', 'RETURN_IN_PROGRESS', 'DISPUTED'].includes(status);
+      return isPendingState ? 5000 : false;
+    },
   });
 };
 
@@ -198,7 +203,11 @@ export const useAdminBroadcastCampaignsQuery = () => {
       const { data } = await apiClient.get('/admin/broadcast-campaigns');
       return data;
     },
-    refetchInterval: 3000,
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      const hasActive = data?.some((c) => c.status === 'PROCESSING' || c.status === 'PENDING');
+      return hasActive ? 3000 : false;
+    },
   });
 };
 

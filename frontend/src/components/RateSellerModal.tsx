@@ -60,9 +60,9 @@ export default function RateSellerModal({
 
   const renderStarPicker = (val: number, setVal: (n: number) => void, label: string) => (
     <div className="space-y-1.5">
-      <div className="flex items-center justify-between text-sm font-semibold text-gray-700">
+      <div className="flex items-center justify-between text-sm font-semibold text-gray-700 dark:text-slate-200">
         <span>{label}</span>
-        <span className="text-amber-600 font-bold text-sm">{val} / 5 ⭐</span>
+        <span className="text-amber-600 dark:text-amber-400 font-bold text-sm">{val} / 5 ⭐</span>
       </div>
       <div className="flex items-center gap-2">
         {[1, 2, 3, 4, 5].map((star) => (
@@ -74,7 +74,7 @@ export default function RateSellerModal({
           >
             <Star
               className={`h-7 w-7 transition-colors ${
-                star <= val ? 'text-amber-400 fill-amber-400' : 'text-gray-200'
+                star <= val ? 'text-amber-400 fill-amber-400' : 'text-gray-200 dark:text-slate-700'
               }`}
             />
           </button>
@@ -84,11 +84,11 @@ export default function RateSellerModal({
   );
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden relative text-gray-900 dark:text-slate-100">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
+        <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
           <div>
             <h3 className="text-lg font-bold">Rate & Review Seller</h3>
             <p className="text-sm text-blue-100 opacity-90">{itemTitle}</p>
@@ -100,11 +100,11 @@ export default function RateSellerModal({
 
         {submitted ? (
           <div className="p-8 text-center space-y-4">
-            <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto text-green-600">
+            <div className="w-16 h-16 bg-green-100 dark:bg-green-950/40 rounded-full flex items-center justify-center mx-auto text-green-600 dark:text-green-400">
               <CheckCircle2 className="h-10 w-10" />
             </div>
-            <h4 className="text-xl font-bold text-gray-900">Rating Published!</h4>
-            <p className="text-sm text-gray-600 leading-relaxed">
+            <h4 className="text-xl font-bold text-gray-900 dark:text-white">Rating Published!</h4>
+            <p className="text-sm text-gray-600 dark:text-slate-300 leading-relaxed">
               Thank you for reviewing <strong>{displayName}</strong>. Your feedback helps build earned trust across the HendAxis community.
             </p>
             <button
@@ -117,22 +117,22 @@ export default function RateSellerModal({
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
             {error && (
-              <div className="bg-red-50 text-red-600 p-3 rounded-xl text-sm font-medium border border-red-100 text-center">
+              <div className="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-xl text-sm font-medium border border-red-100 dark:border-red-900/50 text-center">
                 {error}
               </div>
             )}
 
-            <div className="bg-blue-50/70 p-3.5 rounded-xl border border-blue-100 flex items-center gap-3.5 text-sm text-blue-900">
+            <div className="bg-blue-50/70 dark:bg-blue-950/30 p-3.5 rounded-xl border border-blue-100 dark:border-blue-900/50 flex items-center gap-3.5 text-sm text-blue-900 dark:text-blue-200">
               {sellerLogoUrl ? (
-                <img src={sellerLogoUrl} alt={displayName} className="h-11 w-11 rounded-xl object-cover border border-blue-200 bg-white" />
+                <img src={sellerLogoUrl} alt={displayName} className="h-11 w-11 rounded-xl object-cover border border-blue-200 dark:border-blue-800 bg-white dark:bg-slate-800" />
               ) : (
                 <div className="h-11 w-11 rounded-xl bg-blue-600 text-white font-black text-base flex items-center justify-center">
                   {(shopName || sellerName).charAt(0).toUpperCase()}
                 </div>
               )}
               <div>
-                <span className="font-bold text-base text-gray-900 block">{shopName || sellerName}</span>
-                <span className="text-xs text-blue-700 font-medium">Reviewing merchant for completed escrow purchase</span>
+                <span className="font-bold text-base text-gray-900 dark:text-white block">{shopName || sellerName}</span>
+                <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">Reviewing merchant for completed escrow purchase</span>
               </div>
             </div>
 
@@ -145,15 +145,15 @@ export default function RateSellerModal({
 
             {/* Comment Area */}
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1.5 flex items-center gap-1.5">
-                <MessageSquare className="h-4 w-4 text-gray-400" /> Public Review Comment <span className="text-gray-400 text-xs">(optional)</span>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1.5 flex items-center gap-1.5">
+                <MessageSquare className="h-4 w-4 text-gray-400 dark:text-slate-500" /> Public Review Comment <span className="text-gray-400 dark:text-slate-500 text-xs">(optional)</span>
               </label>
               <textarea
                 rows={3}
                 value={comment}
                 onChange={e => setComment(e.target.value)}
                 placeholder="Share details about packaging, delivery speed, or product condition..."
-                className="w-full border border-gray-300 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl p-3 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 

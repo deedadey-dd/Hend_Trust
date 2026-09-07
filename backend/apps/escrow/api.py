@@ -341,7 +341,7 @@ def seller_verify_delivery_otp(request, transaction_id: uuid.UUID, data: SellerV
 
     transition_to_inspection(transaction)
 
-    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task, notify_seller_delivery_confirmed_task
     hours = get_inspection_hours_for_amount(transaction.total_amount_ghs)
     msg = (
         f"Your HendAxis Trust order ({transaction.paystack_reference}) has been delivered! "
@@ -351,6 +351,8 @@ def seller_verify_delivery_otp(request, transaction_id: uuid.UUID, data: SellerV
     dispatch_sms_task.delay(transaction.buyer_phone, msg)
     if transaction.buyer_email:
         dispatch_email_task.delay(transaction.buyer_email, "Inspection Period Started", msg)
+
+    notify_seller_delivery_confirmed_task.delay(transaction.id)
 
     return {"message": "OTP verified. Delivery confirmed. Inspection period has started."}
 
@@ -610,6 +612,8 @@ def confirm_receipt(request, transaction_id: uuid.UUID, data: ConfirmReceiptSche
     transaction.save(update_fields=['status', 'inspection_starts_at', 'updated_at'])
 
     _notify_buyer_inspection_started(transaction)
+    from apps.core.tasks import notify_seller_delivery_confirmed_task
+    notify_seller_delivery_confirmed_task.delay(transaction.id)
     return {"message": "Receipt confirmed. Inspection period started."}
     
 def process_and_optimize_dispute_photos(photos: list[str], max_dim: int = 1200, quality: int = 75) -> list[str]:
@@ -754,12 +758,14 @@ def resolve_dispute(request, transaction_id: uuid.UUID, data: ResolveDisputeSche
     if transaction.status != TransactionStatus.DISPUTED:
         raise HttpError(400, "Transaction is not currently disputed.")
         
+    from apps.core.tasks import notify_dispute_resolution_task
     if data.resolution == 'COMPLETED':
         transaction.status = TransactionStatus.COMPLETED
         transaction.save(update_fields=['status', 'updated_at'])
         
         # Trigger payout immediately as requested
         execute_payout_for_transaction(transaction)
+        notify_dispute_resolution_task.delay(transaction.id, "RELEASE_TO_SELLER", data.resolution)
         
         compress_dispute_images_total_1mb(transaction)
         return {"message": "Dispute resolved to COMPLETED. Funds transferred to seller."}
@@ -767,25 +773,39 @@ def resolve_dispute(request, transaction_id: uuid.UUID, data: ResolveDisputeSche
     elif data.resolution == 'CANCELLED':
         transaction.status = 'CANCELLED'
         transaction.save(update_fields=['status', 'updated_at'])
+        notify_dispute_resolution_task.delay(transaction.id, "FULL_REFUND_TO_BUYER", data.resolution)
         compress_dispute_images_total_1mb(transaction)
         return {"message": "Dispute resolved to CANCELLED. Funds hold."}
         
     raise HttpError(400, "Invalid resolution. Use 'COMPLETED' or 'CANCELLED'.")
 
 from ninja_jwt.authentication import JWTAuth
-from apps.core.permissions import is_admin_user
+from apps.core.permissions import is_admin_user, is_superuser_user
 from apps.ledger.models import LedgerAccount
 from django.db.models import Sum
 
 admin_router = Router(tags=["Admin Operations"], auth=JWTCookieAuth())
 
 class DisputeResolutionAdminSchema(Schema):
-    action: str  # 'RELEASE_TO_SELLER', 'FULL_REFUND_TO_BUYER', 'PARTIAL_REFUND_TO_BUYER'
+    action: str  # 'RELEASE_TO_SELLER', 'FULL_REFUND_TO_BUYER', 'PARTIAL_REFUND_TO_BUYER', 'REQUIRE_RETURN_FROM_BUYER'
     refund_amount_ghs: Optional[float] = 0.0
     seller_amount_ghs: Optional[float] = 0.0
     platform_retained_fee_ghs: Optional[float] = 0.0
     admin_notes: Optional[str] = None
     manager_photos: Optional[List[str]] = []
+
+class DispatchReturnSchema(Schema):
+    delivery_method: str  # 'COURIER_API' or 'INFORMAL_BUS'
+    courier_name: Optional[str] = None
+    tracking_number: Optional[str] = None
+    carrier_code: Optional[str] = None
+    driver_phone: Optional[str] = None
+    driver_car_number: Optional[str] = None
+    destination_station: Optional[str] = None
+    waybill_photo_url: Optional[str] = None
+
+class ConfirmReturnSchema(Schema):
+    confirmation_code: Optional[str] = None
 
 class RaiseDisputeSchema(Schema):
     reason: str
@@ -868,10 +888,128 @@ def seller_dispute_response(request, transaction_id: uuid.UUID, data: SellerDisp
     photos = process_and_optimize_dispute_photos(photos[:5])
 
     transaction.seller_dispute_response = data.response
-    transaction.seller_dispute_photos = photos
+    if photos:
+        transaction.seller_dispute_photos = photos
     transaction.save(update_fields=['seller_dispute_response', 'seller_dispute_photos', 'updated_at'])
     
-    return {"message": "Seller dispute response and evidence photos submitted successfully."}
+    return {"message": "Response and evidence photos saved."}
+
+
+@escrow_router.post("/{transaction_id}/dispatch-return", response=MessageResponse, auth=None)
+def dispatch_return(request, transaction_id: uuid.UUID, data: DispatchReturnSchema):
+    """Buyer dispatches the returned item back to the seller via Courier or Informal Bus."""
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    if transaction.status not in [TransactionStatus.RETURN_IN_PROGRESS, TransactionStatus.DISPUTED]:
+        raise HttpError(400, f"Cannot dispatch return for transaction in state {transaction.status}.")
+
+    waybill_photo = data.waybill_photo_url or ""
+    if waybill_photo and waybill_photo.startswith('data:image'):
+        opt = process_and_optimize_dispute_photos([waybill_photo])
+        if opt:
+            waybill_photo = opt[0]
+
+    from django.utils import timezone
+    transaction.return_delivery_method = data.delivery_method
+    transaction.return_waybill_photo_url = waybill_photo
+    transaction.return_dispatched_at = timezone.now()
+
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    seller = transaction.link.seller
+    s_phone = getattr(seller, 'phone_number', None)
+    s_email = getattr(seller, 'email', None)
+
+    if data.delivery_method == 'COURIER_API':
+        if not data.courier_name or not data.tracking_number:
+            raise HttpError(400, "courier_name and tracking_number are required for courier return.")
+
+        from apps.delivery.tracking import generate_carrier_tracking_url
+        carrier_code = (data.carrier_code or 'OTHERS').upper()
+        tracking_url = generate_carrier_tracking_url(
+            carrier_code=carrier_code,
+            tracking_number=data.tracking_number,
+            courier_name=data.courier_name
+        )
+
+        transaction.return_courier_name = data.courier_name
+        transaction.return_tracking_number = data.tracking_number
+        transaction.return_carrier_tracking_url = tracking_url
+        transaction.status = TransactionStatus.RETURN_IN_PROGRESS
+        transaction.save()
+
+        s_msg = (
+            f"Item Return Shipped! Buyer has dispatched order {transaction.paystack_reference} ({transaction.link.title}) "
+            f"via {data.courier_name} (Tracking: {data.tracking_number}). Track Package: {tracking_url}"
+        )
+
+    elif data.delivery_method == 'INFORMAL_BUS':
+        if not data.driver_phone or not data.destination_station:
+            raise HttpError(400, "driver_phone and destination_station are required for informal bus return.")
+
+        import secrets
+        otp = str(secrets.randbelow(900000) + 100000)
+        transaction.return_driver_phone = data.driver_phone
+        transaction.return_driver_car_number = data.driver_car_number or ""
+        transaction.return_destination_station = data.destination_station
+        transaction.return_confirmation_code = otp
+        transaction.status = TransactionStatus.RETURN_IN_PROGRESS
+        transaction.save()
+
+        s_msg = (
+            f"Item Return Dispatched via Bus! Order {transaction.paystack_reference} ({transaction.link.title}) is on its way back to {data.destination_station}. "
+            f"Driver: {data.driver_phone}. Car No: {data.driver_car_number or 'N/A'}. "
+            f"Reverse Pickup OTP: {otp}. Show this OTP to the driver at pickup."
+        )
+    else:
+        raise HttpError(400, "Invalid delivery_method. Use 'COURIER_API' or 'INFORMAL_BUS'.")
+
+    if s_phone:
+        dispatch_sms_task.delay(s_phone, s_msg)
+    if s_email:
+        dispatch_email_task.delay(s_email, f"Item Return Dispatched - Order #{transaction.paystack_reference}", s_msg)
+
+    return {"message": "Return shipment recorded successfully. Seller has been notified of return tracking details."}
+
+
+@escrow_router.post("/seller/transactions/{transaction_id}/confirm-return", response=MessageResponse, auth=JWTCookieAuth())
+def seller_confirm_return(request, transaction_id: uuid.UUID, data: ConfirmReturnSchema):
+    """Seller confirms receipt of returned item (or submits Reverse OTP for bus pickup). Triggers full refund to buyer."""
+    transaction = get_object_or_404(Transaction, id=transaction_id, link__seller=request.user)
+    if transaction.status != TransactionStatus.RETURN_IN_PROGRESS:
+        raise HttpError(400, "Transaction is not currently in RETURN_IN_PROGRESS state.")
+
+    if transaction.return_delivery_method == 'INFORMAL_BUS':
+        import secrets
+        if not data.confirmation_code or not secrets.compare_digest(str(transaction.return_confirmation_code), str(data.confirmation_code).strip()):
+            raise HttpError(400, "Invalid Reverse Pickup OTP code.")
+
+    # Execute full refund to buyer
+    from apps.ledger.services import execute_full_refund
+    execute_full_refund(
+        reference_id=str(transaction.id),
+        seller_user_id=request.user.id,
+        gross_amount=transaction.total_amount_ghs,
+        platform_fee=transaction.platform_fee_ghs
+    )
+
+    transaction.status = TransactionStatus.REFUNDED
+    transaction.save(update_fields=['status', 'updated_at'])
+
+    # Execute refund payout to buyer's payment method / account
+    from apps.wallet.services import execute_refund_payout
+    execute_refund_payout(
+        buyer_phone=transaction.buyer_phone,
+        buyer_email=transaction.buyer_email,
+        refund_amount=transaction.total_amount_ghs,
+        reference_id=str(transaction.id)
+    )
+
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    b_msg = f"Return Confirmed & Refunded! The seller has received the returned item for order {transaction.paystack_reference} ({transaction.link.title}). A full refund of GHS {transaction.total_amount_ghs:.2f} has been processed back to your original payment method."
+    dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
+    if transaction.buyer_email:
+        dispatch_email_task.delay(transaction.buyer_email, "Item Return Confirmed & Refund Issued", b_msg)
+
+    return {"message": "Return confirmed. Escrow refund issued to buyer."}
 
 class BroadcastMessageSchema(Schema):
     target_group: str  # 'ALL_USERS', 'ALL_SELLERS', 'ALL_BUYERS', 'USERS_WITH_ACTIVE_ESCROW', 'USERS_WITH_DISPUTES', 'CUSTOM'
@@ -970,10 +1108,12 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
     if manager_photos:
         transaction.manager_dispute_photos = process_and_optimize_dispute_photos(manager_photos[:5])
         
+    from apps.core.tasks import notify_dispute_resolution_task
     if data.action == "RELEASE_TO_SELLER":
         transaction.status = TransactionStatus.COMPLETED
         transaction.save()
         execute_payout_for_transaction(transaction)
+        notify_dispute_resolution_task.delay(transaction.id, "RELEASE_TO_SELLER", data.admin_notes)
         compress_dispute_images_total_1mb(transaction)
         return {"message": "Funds released to seller."}
         
@@ -987,6 +1127,7 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
         )
         transaction.status = TransactionStatus.REFUNDED
         transaction.save()
+        notify_dispute_resolution_task.delay(transaction.id, "FULL_REFUND_TO_BUYER", data.admin_notes)
         compress_dispute_images_total_1mb(transaction)
         return {"message": "Full refund issued to buyer. Seller charged for platform fee."}
         
@@ -1016,23 +1157,40 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
         transaction.status = TransactionStatus.REFUNDED
         transaction.save()
         
-        from apps.core.tasks import dispatch_sms_task, dispatch_email_task
-        if refund_val > 0:
-            b_msg = f"Dispute Refund Processed: A refund of GHS {refund_val:.2f} for order {transaction.paystack_reference} ({transaction.link.title}) has been queued to your original payment method and will be completed within 24 hours."
-            dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
-            if transaction.buyer_email:
-                dispatch_email_task.delay(transaction.buyer_email, "Dispute Refund Scheduled (24-Hour Settlement)", b_msg)
-            
-        if seller_val > 0:
-            s_msg = f"Dispute Settlement: GHS {seller_val:.2f} has been credited for order {transaction.paystack_reference}. Disbursement to your registered payout account will process within 24 hours."
-            seller = transaction.link.seller
-            s_phone = getattr(seller, 'phone_number', None)
-            s_email = getattr(seller, 'email', None)
-            if s_phone: dispatch_sms_task.delay(s_phone, s_msg)
-            if s_email: dispatch_email_task.delay(s_email, "Dispute Settlement Credit (24-Hour Payout)", s_msg)
+        notify_dispute_resolution_task.delay(
+            transaction.id,
+            "PARTIAL_REFUND_TO_BUYER",
+            data.admin_notes,
+            float(refund_val),
+            float(seller_val)
+        )
 
         compress_dispute_images_total_1mb(transaction)
         return {"message": f"Dispute settlement processed successfully. Payouts scheduled within 24 hours: GHS {refund_val:.2f} to buyer via original payment method, GHS {seller_val:.2f} to seller."}
+        
+    elif data.action in ["REQUIRE_RETURN_FROM_BUYER", "RETURN_IN_PROGRESS"]:
+        transaction.status = TransactionStatus.RETURN_IN_PROGRESS
+        transaction.save()
+
+        cfg = get_platform_settings()
+        return_days = cfg.get("return_dispatch_days", 3)
+
+        from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+        notes_str = f" Notes: {data.admin_notes}" if data.admin_notes else ""
+        b_msg = f"Dispute Ruling: Return Approved. Please dispatch order {transaction.paystack_reference} ({transaction.link.title}) back to the seller within {return_days} days and submit return tracking details.{notes_str}"
+        dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
+        if transaction.buyer_email:
+            dispatch_email_task.delay(transaction.buyer_email, "Dispute Ruling: Return Approved", b_msg)
+
+        s_msg = f"Dispute Ruling: Return Required. The buyer has been instructed to ship order {transaction.paystack_reference} back within {return_days} days. Escrow funds will remain held until return receipt is verified.{notes_str}"
+        seller = transaction.link.seller
+        s_phone = getattr(seller, 'phone_number', None)
+        s_email = getattr(seller, 'email', None)
+        if s_phone: dispatch_sms_task.delay(s_phone, s_msg)
+        if s_email: dispatch_email_task.delay(s_email, "Dispute Ruling: Item Return Required", s_msg)
+
+        compress_dispute_images_total_1mb(transaction)
+        return {"message": f"Dispute marked as Return Required ({return_days}-day limit). Buyer notified to dispatch return shipment."}
     
     raise HttpError(400, "Invalid action")
 
@@ -1562,6 +1720,8 @@ DEFAULT_SYSTEM_SETTINGS = {
     "enabled_carriers": ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"],
     "shipping_timeout_days": 4,
     "auto_delivery_hours": 48,
+    "return_dispatch_days": 3,
+    "return_auto_refund_hours": 48,
     "inspection_tier1_threshold": 2000.0,
     "inspection_tier1_hours": 24,
     "inspection_tier2_threshold": 10000.0,
@@ -1605,6 +1765,8 @@ class PlatformSettingsSchema(Schema):
     enabled_carriers: List[str]
     shipping_timeout_days: int = 4
     auto_delivery_hours: int = 48
+    return_dispatch_days: int = 3
+    return_auto_refund_hours: int = 48
     inspection_tier1_threshold: float = 2000.0
     inspection_tier1_hours: int = 24
     inspection_tier2_threshold: float = 10000.0
@@ -1618,6 +1780,8 @@ class UpdatePlatformSettingsSchema(Schema):
     enabled_carriers: Optional[List[str]] = None
     shipping_timeout_days: Optional[int] = None
     auto_delivery_hours: Optional[int] = None
+    return_dispatch_days: Optional[int] = None
+    return_auto_refund_hours: Optional[int] = None
     inspection_tier1_threshold: Optional[float] = None
     inspection_tier1_hours: Optional[int] = None
     inspection_tier2_threshold: Optional[float] = None
@@ -1627,15 +1791,17 @@ class UpdatePlatformSettingsSchema(Schema):
 
 @escrow_router.get("/admin/settings", response=PlatformSettingsSchema)
 def get_admin_settings(request):
-    """Retrieve current platform settings (Active Payment Gateway, Enabled Channels, Carriers & Shipping/Inspection Timelines)."""
+    """Retrieve current platform settings (Superuser only)."""
+    from apps.core.permissions import is_superuser_user
+    is_superuser_user(request)
     return get_platform_settings()
 
 
 @escrow_router.post("/admin/settings", response=PlatformSettingsSchema)
 def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     """Superuser endpoint to update active payment gateway, delivery channels/carriers, shipping timeouts & inspection tiers."""
-    from apps.core.permissions import is_admin_user
-    user = is_admin_user(request)
+    from apps.core.permissions import is_superuser_user
+    user = is_superuser_user(request)
 
     current = get_platform_settings()
     if data.active_payment_gateway:
@@ -1655,6 +1821,12 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
 
     if data.auto_delivery_hours is not None:
         current["auto_delivery_hours"] = max(1, data.auto_delivery_hours)
+
+    if data.return_dispatch_days is not None:
+        current["return_dispatch_days"] = max(1, data.return_dispatch_days)
+
+    if data.return_auto_refund_hours is not None:
+        current["return_auto_refund_hours"] = max(1, data.return_auto_refund_hours)
 
     if data.inspection_tier1_threshold is not None:
         current["inspection_tier1_threshold"] = float(data.inspection_tier1_threshold)

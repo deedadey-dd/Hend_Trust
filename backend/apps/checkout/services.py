@@ -78,7 +78,14 @@ def generate_and_send_otp(phone_number: str) -> str:
     cache.set(_otp_attempts_key(phone_number), 0, timeout=_OTP_TTL)
     cache.set(cooldown_key, 1, timeout=_OTP_SEND_COOLDOWN)
 
-    logger.info("OTP generated for phone %s***", phone_number[:5])
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*60, flush=True)
+        print(f"🔑 DEV CHECKOUT PHONE OTP: {otp}", flush=True)
+        print(f"To Phone: {phone_number}", flush=True)
+        print("="*60 + "\n", flush=True)
+        logger.info("OTP generated for phone %s*** [DEV OTP: %s]", phone_number[:5], otp)
+    else:
+        logger.info("OTP generated for phone %s***", phone_number[:5])
 
     msg = f"Your HendAxis Trust Checkout OTP is {otp}. Valid for 5 minutes. Do not share this code."
     from apps.core.tasks import dispatch_sms_task
@@ -101,7 +108,14 @@ def generate_and_send_email_otp(email: str) -> str:
     cache.set(_otp_attempts_key(email), 0, timeout=_OTP_TTL)
     cache.set(cooldown_key, 1, timeout=_OTP_SEND_COOLDOWN)
 
-    logger.info("Email OTP generated for %s***", email[:4])
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*60, flush=True)
+        print(f"🔑 DEV TRACKING EMAIL OTP: {otp}", flush=True)
+        print(f"To Email: {email}", flush=True)
+        print("="*60 + "\n", flush=True)
+        logger.info("Email OTP generated for %s*** [DEV OTP: %s]", email[:4], otp)
+    else:
+        logger.info("Email OTP generated for %s***", email[:4])
 
     msg = f"Your HendAxis Trust Tracking OTP is {otp}. Valid for 5 minutes. Do not share this code."
     from apps.core.tasks import dispatch_email_task

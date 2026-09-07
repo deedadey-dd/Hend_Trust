@@ -13,3 +13,18 @@ def is_admin_user(request):
         return request.user
         
     raise HttpError(403, "Forbidden. Admin access required.")
+
+
+def is_superuser_user(request):
+    """
+    Dependency to check if the authenticated user is a superuser.
+    Designed to be used alongside ninja_jwt.authentication.JWTAuth
+    """
+    if not hasattr(request, 'user') or not request.user.is_authenticated:
+        raise HttpError(401, "Authentication required")
+        
+    if request.user.is_superuser:
+        return request.user
+        
+    raise HttpError(403, "Forbidden. Superuser access required.")
+

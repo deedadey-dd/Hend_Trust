@@ -42,6 +42,11 @@ At the core of HendAxis Trust is an immutable, double-entry accounting ledger th
 - **24-Hour Settlement Guarantee**: All dispute rulings execute payouts within **24 hours**:
   - **Buyer Refund**: Returned via the **same payment medium** (Paystack MoMo/Card) used during checkout.
   - **Seller Payout**: Disbursed using registered payout account details on file.
+- **Item Return Subsystem (`REQUIRE_RETURN_FROM_BUYER`)**:
+  - Rulings can require the buyer to return the item (`RETURN_IN_PROGRESS`) within the configured return dispatch window (e.g. 3 days).
+  - **Dual Return Dispatch**: Buyer dispatches return via Courier (with tracking details & waybill photo) or Informal Bus (with driver phone, car registration, destination station, waybill photo).
+  - **Reverse Pickup OTP**: Generates a 6-digit Reverse OTP for informal bus returns to guarantee safe arrival back to the seller.
+  - **Seller Verification & Auto-Refund**: Seller verifies return receipt intact to issue full buyer refund. If seller does not object within the return auto-refund window (e.g. 48 hours), the system automatically executes the refund payout.
 - **Dispute Fund Allocation & Manager Extra Penalty**:
   - **Incurred Shipping**: Non-refundable if item was dispatched (shipping cost incurred).
   - **Platform Retained Fee & Manager Extra Fee**: Managers can specify platform retained fees or levy extra penalty fees for damaged/incorrect items. Any unallocated split funds accrue to platform fee revenue.
@@ -58,6 +63,13 @@ At the core of HendAxis Trust is an immutable, double-entry accounting ledger th
 ### 9. Superuser Platform Funds & Double-Entry Ledger Audit (`/admin/dashboard`)
 - Real-time double-entry account balances (System Bank Assets, Buyer Escrow Deposits, Platform Fee Revenue, Paystack Fee Expenses, Seller Wallet Liabilities).
 - Comprehensive ledger filtering, date range queries, and audit trail sorting.
+
+### 10. Superuser Dynamic Platform Settings (`⚙️ Gateway & Logistics Settings`)
+- **Dynamic Timeline Configuration**: Configurable parameters (`shipping_timeout_days`, `auto_delivery_hours`, `return_dispatch_days`, `return_auto_refund_hours`, and tiered inspection hours) editable via `GET/POST /api/v1/escrow/admin/settings`.
+- **Strict Superuser Authorization**: Endpoint and frontend tab access strictly restricted to `is_superuser == True`.
+
+### 11. Multi-Channel Event Notification Suite
+- Automated SMS & Email notifications for payment receipts, dispatch tracking, 6-hour pre-dispatch warnings, delivery reminders, dispute alerts, return pickup OTPs, return refund confirmations, and payout completions.
 
 ---
 

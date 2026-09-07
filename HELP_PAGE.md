@@ -71,6 +71,11 @@ If a buyer receives a damaged or incorrect item during the inspection period:
 - **24-Hour Dispute Settlement**: Rulings execute payouts within **24 hours**:
   - **Buyer Refund**: Issued via the **same payment medium** (MoMo/Card) used at checkout.
   - **Seller Payout**: Sent to seller's registered payout details or credited to seller's HendAxis Trust wallet.
+- **Dispute Rulings & Buyer Item Returns (`REQUIRE_RETURN_FROM_BUYER`)**:
+  - Rulings can require the buyer to return the item (`RETURN_IN_PROGRESS`) within the configured return dispatch window (e.g. 3 days).
+  - **Buyer Return Dispatch**: Buyers can dispatch returns via **Formal Courier** (Courier name, tracking #, waybill photo) or **Informal Bus** (Driver phone, car registration, destination station, waybill photo).
+  - **Reverse Pickup OTP**: Generates a 6-digit Reverse OTP for informal bus returns to ensure safe handoff back to the seller.
+  - **Seller Return Verification & Auto-Refund**: The seller verifies return receipt intact (or inputs the Reverse OTP) to release a full refund to the buyer. If the seller does not raise an objection within the configured return auto-refund window (e.g. 48 hours), the system automatically processes the refund payout.
 - **Dispute Fund Allocation & Extra Fee Rules**:
   - Incurred shipping costs are non-refundable if shipping was performed.
   - Managers can specify platform retained fees or levy custom extra penalty fees for damaged/incorrect items. Any unallocated split funds accrue to platform fee revenue.
@@ -98,11 +103,18 @@ If a buyer receives a damaged or incorrect item during the inspection period:
 ---
 
 ## 10. Admin Settings & System Controls (`⚙️ Gateway & Logistics Settings`)
-Superusers can manage system operations live from the Manager Portal (`/admin`):
+Superusers (`is_superuser == True`) can manage system operations and timeline parameters live from the Manager Portal (`/admin`):
 
 - **Active Payment Gateway Switcher**: Switch live checkout payment engine between **Paystack**, **AppsNMobile (Orchard API)**, and **Hubtel Ghana PSP**.
 - **Fulfillment Method Toggles**: Enable or disable entire shipping channels (**Formal Courier API** vs. **Informal Bus / Station OTP**).
 - **Courier Provider Controls**: Toggle availability of individual courier providers (**DHL**, **FedEx**, **UPS**, **EMS**, **Speedaf**, **Others**) to enforce approved logistics channels.
+- **Order Shipping & Inspection Timelines**: Adjust platform-wide timelines without touching underlying code:
+  - **Seller Shipping Deadline**: Default `4` days (96 hours).
+  - **Auto-Delivery Window**: Default `48` hours.
+  - **Return Dispatch Window**: Default `3` days (72 hours).
+  - **Return Auto-Refund Window**: Default `48` hours.
+  - **Tiered Buyer Inspection Periods**: Tier 1 (< GHS 2k): 24h, Tier 2 (GHS 2k–10k): 48h, Tier 3 (>= GHS 10k): 72h.
+- **Strict Superuser Access**: Access to Gateway & Logistics Settings is strictly restricted to accounts with `is_superuser == True` to maintain system security.
 
 ---
 
@@ -121,4 +133,18 @@ HendAxis Trust provides a full developer platform for third-party developers, cu
 - **HMAC SHA-256 Webhooks**:
   - Register Webhook Endpoint URLs to receive instant, signed POST payloads for events (`escrow.paid`, `escrow.dispatched`, `escrow.completed`, `escrow.disputed`, `escrow.refunded`). All payloads include `X-HendAxis-Signature` headers for payload verification.
 - **Interactive Documentation**: Full code snippets in **cURL**, **Node.js**, **Python**, and **PHP** available at `/developers` and `/docs/api`.
+
+---
+
+## 12. Automated SMS & Email Multi-Channel Notification Suite
+HendAxis Trust incorporates an event-triggered notification suite powered by Celery, Twilio/Arkesel SMS, and SendGrid Email:
+
+- **Payment Received**: Instant SMS & Email sent to both seller (to dispatch item) and buyer (with order tracking receipt).
+- **Package Dispatched**: Sent to buyer with live courier tracking links or informal bus details + Secret Delivery OTP.
+- **6-Hour Pre-Dispatch Expiry Warning**: Sent to seller 6 hours before the 4-day dispatch deadline to prevent order cancellation.
+- **Delivery Reminders & Auto-Confirm**: Automated SMS & Email reminders sent to buyer before auto-confirming delivery.
+- **Dispute Notifications**: Instant alert sent to seller when a dispute is opened, and resolution outcome sent to both parties once arbitrated.
+- **Return Dispatch & Receipt**: Sent to seller with return courier/bus tracking details + Reverse OTP, and confirmation sent to buyer upon refund completion.
+- **Seller Payout Completed**: Sent to seller upon successful disbursement of funds to their wallet or bank account.
+
 

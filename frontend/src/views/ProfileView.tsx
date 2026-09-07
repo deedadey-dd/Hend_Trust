@@ -315,54 +315,54 @@ export default function ProfileView() {
   }
 
   return (
-    <div className="min-h-[80vh] bg-gray-50 py-10 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-[80vh] bg-gray-50 dark:bg-slate-950 py-10 px-4 sm:px-6 lg:px-8 transition-colors">
       <div className="max-w-3xl mx-auto space-y-8">
         
         {/* Header */}
         <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 tracking-tight">Account & Storefront Settings</h1>
-          <p className="mt-1 text-sm text-gray-500">Manage your identity, store presentation, verification, and payout preferences.</p>
+          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Account & Storefront Settings</h1>
+          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Manage your identity, store presentation, verification, and payout preferences.</p>
         </div>
 
         {/* Feedback Messages */}
         {success && (
-          <div className="flex items-center gap-2 bg-green-50 text-green-700 border border-green-200 px-4 py-3 rounded-xl text-sm font-medium">
+          <div className="flex items-center gap-2 bg-green-50 dark:bg-emerald-950/40 text-green-700 dark:text-emerald-300 border border-green-200 dark:border-emerald-800 px-4 py-3 rounded-xl text-sm font-medium">
             <CheckCircle className="h-4 w-4 flex-shrink-0" />
             {success}
           </div>
         )}
         {error && (
-          <div className="flex items-center gap-2 bg-red-50 text-red-600 border border-red-200 px-4 py-3 rounded-xl text-sm font-medium">
+          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800 px-4 py-3 rounded-xl text-sm font-medium">
             <AlertTriangle className="h-4 w-4 flex-shrink-0" />
             {error}
           </div>
         )}
 
         {/* 1. SELLER VERIFICATION STATUS CARD */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100 flex items-center justify-between">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-emerald-100 flex items-center justify-center">
-                <ShieldCheck className="h-5 w-5 text-emerald-600" />
+              <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center">
+                <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
               </div>
               <div>
-                <h2 className="font-semibold text-gray-900">Seller Document Verification</h2>
-                <p className="text-xs text-gray-500">Earn the official Verified Seller badge</p>
+                <h2 className="font-semibold text-gray-900 dark:text-white">Seller Document Verification</h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400">Earn the official Verified Seller badge</p>
               </div>
             </div>
 
             {profile?.verification_status === 'APPROVED' && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3 py-1 rounded-full">
                 <CheckCircle className="h-3.5 w-3.5" /> 🛡️ VERIFIED SELLER
               </span>
             )}
             {profile?.verification_status === 'PENDING' && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 bg-amber-50 border border-amber-200 px-3 py-1 rounded-full">
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-1 rounded-full">
                 <Clock className="h-3.5 w-3.5" /> Pending Manager Approval
               </span>
             )}
             {profile?.verification_status === 'REJECTED' && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 bg-red-50 border border-red-200 px-3 py-1 rounded-full">
+              <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 px-3 py-1 rounded-full">
                 <XCircle className="h-3.5 w-3.5" /> Rejected
               </span>
             )}
@@ -370,61 +370,61 @@ export default function ProfileView() {
 
           <div className="px-6 py-5 space-y-5">
             {profile?.verification_status === 'APPROVED' ? (
-              <div className="p-4 bg-emerald-50 border border-emerald-200 rounded-xl text-xs text-emerald-800 space-y-1">
+              <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
                 <p className="font-bold text-sm">🎉 Your Account is Verified!</p>
                 <p>Your documents were verified on {profile.verified_at ? new Date(profile.verified_at).toLocaleDateString() : 'Management Review'}. Your store features the official Verified Seller badge across payment links and marketplace listings.</p>
               </div>
             ) : (
               <form onSubmit={handleSubmitVerification} className="space-y-4">
                 {profile?.verification_status === 'REJECTED' && (
-                  <div className="p-4 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 space-y-1">
+                  <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 space-y-1">
                     <p className="font-bold">❌ Previous Submission Rejected:</p>
                     <p>{profile.verification_rejection_reason}</p>
                   </div>
                 )}
 
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-gray-500 dark:text-slate-400">
                   Upload your <strong>Ghana Card / National ID</strong> and optional <strong>Business Registration License</strong>. Once submitted, our management team will review and grant your Verified badge.
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">National ID / Ghana Card Number *</label>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">National ID / Ghana Card Number *</label>
                   <input
                     type="text"
                     required
                     value={idNumber}
                     onChange={e => setIdNumber(e.target.value)}
                     placeholder="e.g. GHA-123456789-0"
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                   />
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   {/* National ID Photo */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">National ID Photo *</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">National ID Photo *</label>
                     <input
                       type="file"
                       accept="image/*"
                       onChange={e => handleFileUpload(e, setIdPhoto)}
-                      className="w-full text-xs text-gray-600 border border-gray-200 rounded-xl p-2 bg-gray-50 cursor-pointer"
+                      className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
                     />
                     {idPhoto && (
-                      <img src={idPhoto} alt="National ID" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300" />
+                      <img src={idPhoto} alt="National ID" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700" />
                     )}
                   </div>
 
                   {/* Business License Photo */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Business License <span className="text-gray-400">(optional)</span></label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Business License <span className="text-gray-400 dark:text-slate-500">(optional)</span></label>
                     <input
                       type="file"
                       accept="image/*"
                       onChange={e => handleFileUpload(e, setLicensePhoto)}
-                      className="w-full text-xs text-gray-600 border border-gray-200 rounded-xl p-2 bg-gray-50 cursor-pointer"
+                      className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
                     />
                     {licensePhoto && (
-                      <img src={licensePhoto} alt="Business License" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300" />
+                      <img src={licensePhoto} alt="Business License" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700" />
                     )}
                   </div>
                 </div>
@@ -432,7 +432,7 @@ export default function ProfileView() {
                 <button
                   type="submit"
                   disabled={submittingVerif}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2"
+                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
                 >
                   {submittingVerif ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
                   Submit Documents for Manager Verification
@@ -443,42 +443,42 @@ export default function ProfileView() {
         </div>
 
         {/* 2. STOREFRONT DISPLAY SETTINGS */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-amber-100 flex items-center justify-center">
-              <Store className="h-5 w-5 text-amber-600" />
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-950/60 flex items-center justify-center">
+              <Store className="h-5 w-5 text-amber-600 dark:text-amber-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900">Public Storefront Presentation</h2>
-              <p className="text-xs text-gray-500">Displayed on your public profile and marketplace directory</p>
+              <h2 className="font-semibold text-gray-900 dark:text-white">Public Storefront Presentation</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Displayed on your public profile and marketplace directory</p>
             </div>
           </div>
           
           <div className="px-6 py-5 space-y-5">
             {/* Branding Images: Logo & Banner */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50/80 p-4 rounded-xl border border-gray-200/80">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50/80 dark:bg-slate-800/50 p-4 rounded-xl border border-gray-200/80 dark:border-slate-700">
               {/* Profile Picture / Logo */}
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                    <Camera className="h-4 w-4 text-blue-600" /> Storefront Logo / Profile Picture
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Camera className="h-4 w-4 text-blue-600 dark:text-blue-400" /> Storefront Logo / Profile Picture
                   </label>
-                  {isCompressingProfilePic && <span className="text-xs text-blue-600 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
+                  {isCompressingProfilePic && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
                 </div>
                 <input
                   type="file"
                   accept="image/*"
                   disabled={isCompressingProfilePic}
                   onChange={handleProfilePictureUpload}
-                  className="w-full text-sm text-gray-600 border border-gray-300 rounded-xl p-2 bg-white cursor-pointer disabled:opacity-50"
+                  className="w-full text-sm text-gray-600 dark:text-slate-400 border border-gray-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-900 cursor-pointer disabled:opacity-50"
                 />
                 {profilePicture && (
                   <div className="mt-2 relative inline-block">
-                    <img src={profilePicture} alt="Profile Logo" className="h-16 w-16 object-cover rounded-xl border border-gray-300 shadow-sm" />
+                    <img src={profilePicture} alt="Profile Logo" className="h-16 w-16 object-cover rounded-xl border border-gray-300 dark:border-slate-700 shadow-sm" />
                     <button
                       type="button"
                       onClick={() => setProfilePicture('')}
-                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700"
+                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700 cursor-pointer"
                       title="Remove Logo"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -490,25 +490,25 @@ export default function ProfileView() {
               {/* Cover Banner */}
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-semibold text-gray-700 flex items-center gap-1.5">
-                    <ImageIcon className="h-4 w-4 text-indigo-600" /> Storefront Cover Banner
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <ImageIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" /> Storefront Cover Banner
                   </label>
-                  {isCompressingBanner && <span className="text-xs text-indigo-600 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
+                  {isCompressingBanner && <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
                 </div>
                 <input
                   type="file"
                   accept="image/*"
                   disabled={isCompressingBanner}
                   onChange={handleBannerUpload}
-                  className="w-full text-sm text-gray-600 border border-gray-300 rounded-xl p-2 bg-white cursor-pointer disabled:opacity-50"
+                  className="w-full text-sm text-gray-600 dark:text-slate-400 border border-gray-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-900 cursor-pointer disabled:opacity-50"
                 />
                 {banner && (
                   <div className="mt-2 relative inline-block">
-                    <img src={banner} alt="Cover Banner" className="h-16 w-36 object-cover rounded-xl border border-gray-300 shadow-sm" />
+                    <img src={banner} alt="Cover Banner" className="h-16 w-36 object-cover rounded-xl border border-gray-300 dark:border-slate-700 shadow-sm" />
                     <button
                       type="button"
                       onClick={() => setBanner('')}
-                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700"
+                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700 cursor-pointer"
                       title="Remove Banner"
                     >
                       <X className="h-3.5 w-3.5" />
@@ -519,29 +519,29 @@ export default function ProfileView() {
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Shop Name</label>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Shop Name</label>
               <input
                 type="text"
                 value={shopName}
                 onChange={e => setShopName(e.target.value)}
                 placeholder="e.g. Accra Gadgets Hub"
-                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-1">Shop Description</label>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Shop Description</label>
               <textarea
                 rows={3}
                 value={shopDescription}
                 onChange={e => setShopDescription(e.target.value)}
                 placeholder="Briefly describe your business, shipping options, and warranty terms..."
-                className="w-full rounded-xl border border-gray-300 px-4 py-2.5 text-sm text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none"
+                className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
               />
             </div>
 
             <div>
-              <label className="block text-sm font-semibold text-gray-700 mb-2">Product Categories (Select at most 3)</label>
+              <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-2">Product Categories (Select at most 3)</label>
               <div className="flex items-center gap-2 flex-wrap">
                 {CATEGORY_OPTIONS.map(cat => {
                   const isSelected = selectedCategories.includes(cat);
@@ -550,10 +550,10 @@ export default function ProfileView() {
                       key={cat}
                       type="button"
                       onClick={() => handleCategoryToggle(cat)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition ${
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
                         isSelected
                           ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-gray-100 text-gray-600 hover:bg-gray-200'
+                          : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
                       }`}
                     >
                       {cat} {isSelected && '✓'}
@@ -561,13 +561,13 @@ export default function ProfileView() {
                   );
                 })}
               </div>
-              <span className="text-[11px] text-gray-400 mt-1 block">Selected: {selectedCategories.length} / 3 categories</span>
+              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">Selected: {selectedCategories.length} / 3 categories</span>
             </div>
 
             <button
               onClick={handleSaveShop}
               disabled={savingShop}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2"
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
             >
               {savingShop ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               Save Storefront Details
@@ -576,47 +576,47 @@ export default function ProfileView() {
         </div>
 
         {/* 3. ACCOUNT INFO */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-blue-100 flex items-center justify-center">
-              <User className="h-5 w-5 text-blue-600" />
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center">
+              <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900">Personal Information</h2>
-              <p className="text-xs text-gray-500">Your account credentials</p>
+              <h2 className="font-semibold text-gray-900 dark:text-white">Personal Information</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Your account credentials</p>
             </div>
           </div>
           <div className="px-6 py-5 space-y-5">
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">First Name</label>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">First Name</label>
                 <input
                   value={firstName}
                   onChange={e => setFirstName(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                   placeholder="First name"
                 />
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Last Name</label>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Last Name</label>
                 <input
                   value={lastName}
                   onChange={e => setLastName(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                   placeholder="Last name"
                 />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Username</label>
-                <div className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-500">
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Username</label>
+                <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800 px-4 py-2 text-xs text-gray-500 dark:text-slate-400">
                   {profile?.username}
                 </div>
               </div>
               <div>
-                <label className="block text-xs font-semibold text-gray-700 mb-1">Phone Number</label>
-                <div className="w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-2 text-xs text-gray-500">
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Phone Number</label>
+                <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800 px-4 py-2 text-xs text-gray-500 dark:text-slate-400">
                   {profile?.phone_number}
                 </div>
               </div>
@@ -625,70 +625,70 @@ export default function ProfileView() {
         </div>
 
         {/* 4. PAYOUT SETTINGS */}
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-          <div className="px-6 py-5 border-b border-gray-100 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-indigo-100 flex items-center justify-center">
-              <Wallet className="h-5 w-5 text-indigo-600" />
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
+            <div className="h-9 w-9 rounded-full bg-indigo-100 dark:bg-indigo-950/60 flex items-center justify-center">
+              <Wallet className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h2 className="font-semibold text-gray-900">Payout Settings</h2>
-              <p className="text-xs text-gray-500">Choose how you receive your earnings</p>
+              <h2 className="font-semibold text-gray-900 dark:text-white">Payout Settings</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Choose how you receive your earnings</p>
             </div>
           </div>
           <div className="px-6 py-5 space-y-5">
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-3">Payout Mode</label>
+              <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-3">Payout Mode</label>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   type="button"
                   onClick={() => setPayoutMode('INSTANT')}
-                  className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+                  className={`relative p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
                     payoutMode === 'INSTANT'
-                      ? 'border-blue-500 bg-blue-50 shadow-sm'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
+                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 shadow-sm'
+                      : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-gray-300 dark:hover:border-slate-700'
                   }`}
                 >
                   <div className={`h-8 w-8 rounded-full flex items-center justify-center mb-2 ${
-                    payoutMode === 'INSTANT' ? 'bg-blue-100' : 'bg-gray-100'
+                    payoutMode === 'INSTANT' ? 'bg-blue-100 dark:bg-blue-900/60' : 'bg-gray-100 dark:bg-slate-800'
                   }`}>
-                    <Zap className={`h-4 w-4 ${payoutMode === 'INSTANT' ? 'text-blue-600' : 'text-gray-500'}`} />
+                    <Zap className={`h-4 w-4 ${payoutMode === 'INSTANT' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'}`} />
                   </div>
-                  <p className={`font-semibold text-xs ${payoutMode === 'INSTANT' ? 'text-blue-800' : 'text-gray-800'}`}>
+                  <p className={`font-semibold text-xs ${payoutMode === 'INSTANT' ? 'text-blue-800 dark:text-blue-300' : 'text-gray-800 dark:text-slate-200'}`}>
                     Instant Payout
                   </p>
-                  <p className="text-[11px] text-gray-500 mt-1">Automatic transfer upon order completion.</p>
+                  <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">Automatic transfer upon order completion.</p>
                 </button>
 
                 <button
                   type="button"
                   onClick={() => setPayoutMode('MANUAL')}
-                  className={`relative p-4 rounded-xl border-2 text-left transition-all ${
+                  className={`relative p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
                     payoutMode === 'MANUAL'
-                      ? 'border-purple-500 bg-purple-50 shadow-sm'
-                      : 'border-gray-200 bg-white hover:border-gray-300'
+                      ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40 shadow-sm'
+                      : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-gray-300 dark:hover:border-slate-700'
                   }`}
                 >
                   <div className={`h-8 w-8 rounded-full flex items-center justify-center mb-2 ${
-                    payoutMode === 'MANUAL' ? 'bg-purple-100' : 'bg-gray-100'
+                    payoutMode === 'MANUAL' ? 'bg-purple-100 dark:bg-purple-900/60' : 'bg-gray-100 dark:bg-slate-800'
                   }`}>
-                    <PiggyBank className={`h-4 w-4 ${payoutMode === 'MANUAL' ? 'text-purple-600' : 'text-gray-500'}`} />
+                    <PiggyBank className={`h-4 w-4 ${payoutMode === 'MANUAL' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-slate-400'}`} />
                   </div>
-                  <p className={`font-semibold text-xs ${payoutMode === 'MANUAL' ? 'text-purple-800' : 'text-gray-800'}`}>
+                  <p className={`font-semibold text-xs ${payoutMode === 'MANUAL' ? 'text-purple-800 dark:text-purple-300' : 'text-gray-800 dark:text-slate-200'}`}>
                     Manual Withdrawal
                   </p>
-                  <p className="text-[11px] text-gray-500 mt-1">Accumulate in wallet and withdraw on demand.</p>
+                  <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">Accumulate in wallet and withdraw on demand.</p>
                 </button>
               </div>
             </div>
 
             <div>
-              <label className="block text-xs font-semibold text-gray-700 mb-2">Payout Destination</label>
-              <div className="flex gap-2 mb-4 p-1 bg-gray-100 rounded-lg">
+              <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-2">Payout Destination</label>
+              <div className="flex gap-2 mb-4 p-1 bg-gray-100 dark:bg-slate-800 rounded-lg">
                 <button
                   type="button"
                   onClick={() => setPayoutType('MOMO')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition ${
-                    payoutType === 'MOMO' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition cursor-pointer ${
+                    payoutType === 'MOMO' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'
                   }`}
                 >
                   <Phone className="h-3.5 w-3.5" /> Mobile Money
@@ -696,8 +696,8 @@ export default function ProfileView() {
                 <button
                   type="button"
                   onClick={() => setPayoutType('BANK')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition ${
-                    payoutType === 'BANK' ? 'bg-white shadow text-blue-600' : 'text-gray-500'
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition cursor-pointer ${
+                    payoutType === 'BANK' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'
                   }`}
                 >
                   <Building2 className="h-3.5 w-3.5" /> Bank Account
@@ -706,34 +706,34 @@ export default function ProfileView() {
 
               {payoutType === 'MOMO' ? (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 mb-1">MoMo Number</label>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">MoMo Number</label>
                   <input
                     type="tel"
                     value={momoNumber}
                     onChange={e => setMomoNumber(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                     placeholder="e.g. 0244000000"
                   />
                 </div>
               ) : (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Bank Name</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Bank Name</label>
                     <input
                       type="text"
                       value={bankName}
                       onChange={e => setBankName(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                       placeholder="e.g. GCB Bank"
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 mb-1">Account Number</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Account Number</label>
                     <input
                       type="text"
                       value={bankAccount}
                       onChange={e => setBankAccount(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
                       placeholder="Account number"
                     />
                   </div>
@@ -744,7 +744,7 @@ export default function ProfileView() {
             <button
               onClick={handleSaveProfile}
               disabled={saving || sendingOtp}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2"
+              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
             >
               {saving || sendingOtp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
               {sendingOtp ? 'Sending Verification Code...' : 'Save Profile & Payout Settings'}

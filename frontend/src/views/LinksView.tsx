@@ -204,7 +204,7 @@ export const LinksView: React.FC = () => {
 
       {/* Results count */}
       {!loading && (
-        <p className="text-sm text-gray-500">
+        <p className="text-sm text-gray-500 dark:text-slate-400">
           {totalCount === 0
             ? 'No payment links found.'
             : `Showing ${offset + 1}–${Math.min(offset + limit, totalCount)} of ${totalCount} links`}
@@ -212,24 +212,24 @@ export const LinksView: React.FC = () => {
       )}
 
       {/* Table */}
-      <div className="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+      <div className="bg-white dark:bg-slate-950 rounded-xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden transition-colors">
         {loading ? (
-          <div className="p-16 flex flex-col items-center justify-center text-gray-400">
+          <div className="p-16 flex flex-col items-center justify-center text-gray-400 dark:text-slate-500">
             <Loader2 className="h-8 w-8 animate-spin mb-3 text-blue-500" />
             <p className="text-sm">Loading your links...</p>
           </div>
         ) : links.length === 0 ? (
           <div className="p-16 text-center">
-            <div className="h-14 w-14 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-4">
-              <Link2 className="h-7 w-7 text-blue-400" />
+            <div className="h-14 w-14 bg-blue-50 dark:bg-blue-950/50 rounded-full flex items-center justify-center mx-auto mb-4">
+              <Link2 className="h-7 w-7 text-blue-400 dark:text-blue-500" />
             </div>
-            <p className="font-semibold text-gray-800">
+            <p className="font-semibold text-gray-800 dark:text-slate-200">
               {hasFilters ? 'No links match your filters.' : "You haven't created any payment links yet."}
             </p>
             {!hasFilters && (
               <RouterLink
                 to="/create-link"
-                className="inline-flex items-center gap-2 mt-4 text-blue-600 hover:text-blue-800 text-sm font-medium underline"
+                className="inline-flex items-center gap-2 mt-4 text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 text-sm font-medium underline"
               >
                 <Plus className="h-4 w-4" />
                 Create your first link

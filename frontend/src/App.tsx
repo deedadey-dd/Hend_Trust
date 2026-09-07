@@ -40,7 +40,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
             role: data.role || 'SELLER',
             email: data.email || '',
             name: data.username || data.first_name,
-            username: data.username
+            username: data.username,
+            is_superuser: Boolean(data.is_superuser),
+            is_staff: Boolean(data.is_staff)
           });
         })
         .catch(() => {

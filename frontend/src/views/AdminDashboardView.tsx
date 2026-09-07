@@ -78,6 +78,8 @@ interface PlatformSettings {
   enabled_carriers: string[];
   shipping_timeout_days?: number;
   auto_delivery_hours?: number;
+  return_dispatch_days?: number;
+  return_auto_refund_hours?: number;
   inspection_tier1_threshold?: number;
   inspection_tier1_hours?: number;
   inspection_tier2_threshold?: number;
@@ -89,10 +91,27 @@ export const AdminDashboardView: React.FC = () => {
   const { user } = useAuthStore();
   const isSuperUser = Boolean(user?.is_superuser);
 
-  const [activeTab, setActiveTab] = useState<AdminTab>(() => isSuperUser ? 'OVERVIEW' : 'TRANSACTIONS');
+  useEffect(() => {
+    if (user && user.is_superuser === undefined) {
+      apiClient.get('/profile/').then((res: any) => {
+        const data = res.data;
+        useAuthStore.getState().login(useAuthStore.getState().token || '', {
+          id: data.id,
+          role: data.role || 'SELLER',
+          email: data.email || '',
+          name: data.username || data.first_name,
+          username: data.username,
+          is_superuser: Boolean(data.is_superuser),
+          is_staff: Boolean(data.is_staff)
+        });
+      }).catch(() => {});
+    }
+  }, [user]);
+
+  const [activeTab, setActiveTab] = useState<AdminTab>('OVERVIEW');
 
   useEffect(() => {
-    if (!isSuperUser && (activeTab === 'OVERVIEW' || activeTab === 'FUNDS' || activeTab === 'SETTINGS')) {
+    if (!isSuperUser && activeTab === 'SETTINGS') {
       setActiveTab('TRANSACTIONS');
     }
   }, [isSuperUser, activeTab]);
@@ -104,6 +123,8 @@ export const AdminDashboardView: React.FC = () => {
     enabled_carriers: ['DHL', 'FEDEX', 'UPS', 'EMS', 'SPEEDAF', 'OTHERS'],
     shipping_timeout_days: 4,
     auto_delivery_hours: 48,
+    return_dispatch_days: 3,
+    return_auto_refund_hours: 48,
     inspection_tier1_threshold: 2000,
     inspection_tier1_hours: 24,
     inspection_tier2_threshold: 10000,
@@ -451,11 +472,11 @@ export const AdminDashboardView: React.FC = () => {
         {/* Tab Navigation */}
         <div className="max-w-7xl mx-auto mt-6 flex overflow-x-auto gap-2 border-b border-slate-200 dark:border-slate-800 scrollbar-none pb-px">
           {[
-            { id: 'OVERVIEW', label: 'Overview & Health', icon: BarChart3, superuserOnly: true },
+            { id: 'OVERVIEW', label: 'Overview & Health', icon: BarChart3 },
             { id: 'TRANSACTIONS', label: 'All Transactions', icon: Package, badge: txnsData?.total_count },
             { id: 'DISPUTES', label: 'Disputes Center', icon: ShieldAlert, badge: metrics?.active_disputes, alert: (metrics?.active_disputes || 0) > 0 },
             { id: 'VERIFICATIONS', label: 'Seller Verifications', icon: FileCheck, badge: verifications.filter(v => v.verification_status === 'PENDING').length, alert: verifications.filter(v => v.verification_status === 'PENDING').length > 0 },
-            { id: 'FUNDS', label: 'Platform Funds & Ledger', icon: DollarSign, badge: fundsSummary ? `GHS ${fundsSummary.system_bank_asset_ghs.toLocaleString()}` : undefined, superuserOnly: true },
+            { id: 'FUNDS', label: 'Platform Funds & Ledger', icon: DollarSign, badge: fundsSummary ? `GHS ${fundsSummary.system_bank_asset_ghs.toLocaleString()}` : undefined },
             { id: 'SELLERS', label: 'Sellers Directory', icon: Users },
             { id: 'BUYERS', label: 'Buyer Phone Registry', icon: PhoneCall },
             { id: 'BROADCAST', label: 'Broadcast Messaging Studio', icon: Send },
@@ -1900,6 +1921,48 @@ export const AdminDashboardView: React.FC = () => {
                     <span className="text-xs font-bold text-slate-400">Hours</span>
                   </div>
                 </div>
+
+                {/* 3. Item Return Dispatch Limit (Days) */}
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-200 block">
+                    Item Return Dispatch Limit (Days)
+                  </label>
+                  <p className="text-[11px] text-slate-400">
+                    Maximum days given to a buyer to dispatch an approved return shipment back to the seller.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={platformSettings.return_dispatch_days ?? 3}
+                      onChange={(e) => handleUpdateSettings({ return_dispatch_days: parseInt(e.target.value) || 3 })}
+                      className="bg-slate-900 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-400">Days</span>
+                  </div>
+                </div>
+
+                {/* 4. Item Return Auto-Refund Window (Hours) */}
+                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-200 block">
+                    Item Return Auto-Refund Window (Hours)
+                  </label>
+                  <p className="text-[11px] text-slate-400">
+                    Hours after return dispatch before system auto-confirms return receipt and issues full refund to buyer.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="168"
+                      value={platformSettings.return_auto_refund_hours ?? 48}
+                      onChange={(e) => handleUpdateSettings({ return_auto_refund_hours: parseInt(e.target.value) || 48 })}
+                      className="bg-slate-900 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-400">Hours</span>
+                  </div>
+                </div>
               </div>
 
               {/* Inspection Period Tiers */}
@@ -2205,6 +2268,7 @@ export const AdminDashboardView: React.FC = () => {
                 >
                   <option value="RELEASE_TO_SELLER">RELEASE_TO_SELLER — Mark Completed & Release Escrow to Seller</option>
                   <option value="FULL_REFUND_TO_BUYER">FULL_REFUND_TO_BUYER — 100% Refund Buyer & Charge Seller Penalty</option>
+                  <option value="REQUIRE_RETURN_FROM_BUYER">REQUIRE_RETURN_FROM_BUYER — Item Return Required Before Refund</option>
                   <option value="PARTIAL_REFUND_TO_BUYER">PARTIAL_REFUND_TO_BUYER — Custom Split (Buyer, Seller & Platform)</option>
                 </select>
               </div>

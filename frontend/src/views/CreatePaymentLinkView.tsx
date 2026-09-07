@@ -112,22 +112,22 @@ export default function CreatePaymentLinkView() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8 transition-colors">
       <div className="max-w-3xl mx-auto space-y-8">
         <div>
-          <h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">Create Payment Link</h2>
-          <p className="mt-2 text-sm text-gray-500">Generate a single-use escrow link for your buyer.</p>
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Create Payment Link</h2>
+          <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">Generate a single-use escrow link for your buyer.</p>
         </div>
 
         {/* Quick Autofill Selector from Past Products */}
         {pastLinks.length > 0 && (
-          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-200 rounded-2xl p-4 space-y-2">
+          <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-800/60 rounded-2xl p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                <Sparkles className="h-4 w-4 text-blue-600" />
+              <label className="text-xs font-bold text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
+                <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 Quick Autofill from Previous Products
               </label>
-              <span className="text-[11px] text-blue-700 font-medium">{pastLinks.length} products saved</span>
+              <span className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">{pastLinks.length} products saved</span>
             </div>
             <select
               value={selectedPastId}
@@ -136,7 +136,7 @@ export default function CreatePaymentLinkView() {
                 const found = pastLinks.find(p => p.id === e.target.value);
                 if (found) handleAutofill(found);
               }}
-              className="w-full text-xs border border-blue-200 rounded-xl p-2.5 bg-white font-medium text-gray-800 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
+              className="w-full text-xs border border-blue-200 dark:border-blue-800 rounded-xl p-2.5 bg-white dark:bg-slate-900 font-medium text-gray-800 dark:text-slate-200 focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer"
             >
               <option value="">-- Select a previous product to autofill details --</option>
               {pastLinks.map(p => (
@@ -149,19 +149,19 @@ export default function CreatePaymentLinkView() {
         )}
 
         {autofillNotice && (
-          <div className="bg-emerald-50 text-emerald-800 border border-emerald-200 p-3 rounded-xl text-xs font-bold flex items-center justify-between">
+          <div className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 p-3 rounded-xl text-xs font-bold flex items-center justify-between">
             <span>{autofillNotice}</span>
-            <button onClick={() => setAutofillNotice('')} className="text-emerald-600 hover:text-emerald-900">
+            <button onClick={() => setAutofillNotice('')} className="text-emerald-600 dark:text-emerald-400 hover:text-emerald-900 dark:hover:text-emerald-200">
               <X className="h-4 w-4" />
             </button>
           </div>
         )}
 
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden transition-colors">
           <form onSubmit={handleSubmit} className="p-8 space-y-6">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700">Product Title</label>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Product Title</label>
                 <input
                   required
                   type="text"
@@ -175,7 +175,7 @@ export default function CreatePaymentLinkView() {
                       handleAutofill(matchingPast);
                     }
                   }}
-                  className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border"
+                  className="mt-1 block w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border"
                   placeholder="e.g., iPhone 13 Pro Max"
                 />
                 <datalist id="past-products-datalist">
@@ -185,24 +185,24 @@ export default function CreatePaymentLinkView() {
                 </datalist>
               </div>
               <div>
-                <label className="block text-sm font-medium text-gray-700">Description (Optional)</label>
-                <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border"></textarea>
+                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Description (Optional)</label>
+                <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="mt-1 block w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border"></textarea>
               </div>
 
               {/* Product Image Field */}
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-medium text-gray-700 flex items-center gap-1.5">
-                    <ImageIcon className="h-4 w-4 text-blue-600" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <ImageIcon className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                     Product Image (Optional)
                   </label>
                   {isCompressingImage && (
-                    <span className="text-xs text-blue-600 font-medium flex items-center gap-1">
+                    <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1">
                       <Loader2 className="h-3 w-3 animate-spin" /> Optimizing WebP...
                     </span>
                   )}
                 </div>
-                <p className="text-xs text-gray-500 mb-2">
+                <p className="text-xs text-gray-500 dark:text-slate-400 mb-2">
                   Add a photo of the product. This will be shown to the buyer on the payment page so they can verify what they are paying for.
                 </p>
                 <input
@@ -210,11 +210,11 @@ export default function CreatePaymentLinkView() {
                   accept="image/*"
                   disabled={isCompressingImage}
                   onChange={handleImageUpload}
-                  className="block w-full text-xs text-gray-500 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100 cursor-pointer border border-gray-300 rounded-lg p-1.5 disabled:opacity-50"
+                  className="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-3 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-blue-50 dark:file:bg-blue-900/50 file:text-blue-700 dark:file:text-blue-300 hover:file:bg-blue-100 dark:hover:file:bg-blue-900 cursor-pointer border border-gray-300 dark:border-slate-700 rounded-lg p-1.5 disabled:opacity-50 bg-white dark:bg-slate-900"
                 />
                 {imageUrl && (
                   <div className="mt-3 relative inline-block group">
-                    <img src={imageUrl} alt="Product preview" className="w-24 h-24 object-cover rounded-xl border border-gray-300 shadow-sm" />
+                    <img src={imageUrl} alt="Product preview" className="w-24 h-24 object-cover rounded-xl border border-gray-300 dark:border-slate-700 shadow-sm" />
                     <button
                       type="button"
                       onClick={() => setImageUrl('')}
@@ -263,7 +263,7 @@ export default function CreatePaymentLinkView() {
               </div>
 
               {/* Compact Fee Handling Toggle Checkbox */}
-              <div className="bg-blue-50/60 border border-blue-100 rounded-xl p-3.5 flex items-center justify-between">
+              <div className="bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/40 rounded-xl p-3.5 flex items-center justify-between">
                 <label className="flex items-center gap-3 cursor-pointer select-none">
                   <input
                     type="checkbox"
@@ -272,8 +272,8 @@ export default function CreatePaymentLinkView() {
                     className="h-4 w-4 text-blue-600 rounded border-gray-300 focus:ring-blue-500 cursor-pointer"
                   />
                   <div>
-                    <span className="text-sm font-bold text-gray-900 block">Pass Platform Fee (GHS {platformFee.toFixed(2)}) to Buyer</span>
-                    <span className="text-xs text-gray-500">
+                    <span className="text-sm font-bold text-gray-900 dark:text-slate-100 block">Pass Platform Fee (GHS {platformFee.toFixed(2)}) to Buyer</span>
+                    <span className="text-xs text-gray-500 dark:text-slate-400">
                       {feeHandling === 'PASS_TO_BUYER' 
                         ? 'Buyer pays item price + shipping + escrow fee. You receive 100% of price + shipping.' 
                         : 'You absorb the escrow fee. Fee will be deducted from your final payout.'}
@@ -284,12 +284,12 @@ export default function CreatePaymentLinkView() {
             </div>
 
             {/* Dynamic Calculator Summary */}
-            <div className="bg-gray-50 rounded-xl p-5 border border-gray-200 text-sm space-y-2 font-mono">
-              <div className="flex justify-between text-gray-600">
+            <div className="bg-gray-50 dark:bg-slate-800/60 rounded-xl p-5 border border-gray-200 dark:border-slate-800 text-sm space-y-2 font-mono">
+              <div className="flex justify-between text-gray-600 dark:text-slate-400">
                 <span>Buyer Total Payment:</span>
-                <span className="font-bold text-gray-900">GHS {buyerPays.toFixed(2)}</span>
+                <span className="font-bold text-gray-900 dark:text-slate-100">GHS {buyerPays.toFixed(2)}</span>
               </div>
-              <div className="flex justify-between text-blue-700 font-bold border-t border-gray-200 pt-2 text-base">
+              <div className="flex justify-between text-blue-700 dark:text-blue-400 font-bold border-t border-gray-200 dark:border-slate-700 pt-2 text-base">
                 <span>Net Seller Payout:</span>
                 <span>GHS {sellerReceives.toFixed(2)}</span>
               </div>
@@ -302,27 +302,27 @@ export default function CreatePaymentLinkView() {
 
           {/* Inline Success Area */}
           {createdUrl && (
-            <div className="p-6 bg-green-50 border-t border-green-100">
-              <p className="text-sm text-green-800 font-medium mb-3 text-center">Link created successfully! Share it with your buyer.</p>
-              <div className="flex items-center gap-2 bg-white rounded-lg border border-green-200 p-3">
-                <LinkIcon className="h-4 w-4 text-green-600 flex-shrink-0" />
+            <div className="p-6 bg-green-50 dark:bg-emerald-950/30 border-t border-green-100 dark:border-emerald-900/40">
+              <p className="text-sm text-green-800 dark:text-emerald-300 font-medium mb-3 text-center">Link created successfully! Share it with your buyer.</p>
+              <div className="flex items-center gap-2 bg-white dark:bg-slate-900 rounded-lg border border-green-200 dark:border-emerald-800/60 p-3">
+                <LinkIcon className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                 <a
                   href={createdUrl}
                   target="_blank" rel="noreferrer"
-                  className="text-blue-600 text-sm font-medium hover:underline flex-1 truncate">
+                  className="text-blue-600 dark:text-blue-400 text-sm font-medium hover:underline flex-1 truncate">
                   {createdUrl}
                 </a>
                 <button
                   onClick={() => handleCopy(createdUrl)}
-                  className="flex-shrink-0 p-1.5 rounded-md hover:bg-green-100 transition-colors"
+                  className="flex-shrink-0 p-1.5 rounded-md hover:bg-green-100 dark:hover:bg-emerald-900/50 transition-colors"
                   title="Copy link">
-                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4 text-gray-400" />}
+                  {copied ? <Check className="h-4 w-4 text-green-600 dark:text-green-400" /> : <Copy className="h-4 w-4 text-gray-400 dark:text-slate-500" />}
                 </button>
                 <button
                   onClick={() => handleShare(createdUrl)}
-                  className="flex-shrink-0 p-1.5 rounded-md hover:bg-green-100 transition-colors"
+                  className="flex-shrink-0 p-1.5 rounded-md hover:bg-green-100 dark:hover:bg-emerald-900/50 transition-colors"
                   title="Share link">
-                  <Share2 className="h-4 w-4 text-gray-400" />
+                  <Share2 className="h-4 w-4 text-gray-400 dark:text-slate-500" />
                 </button>
               </div>
             </div>
@@ -332,22 +332,22 @@ export default function CreatePaymentLinkView() {
 
       {/* Success Modal Pop-up */}
       {showModal && createdUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl shadow-xl max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-gray-100 dark:border-slate-800 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
             <div className="relative p-6 text-center">
               <button 
                 onClick={() => setShowModal(false)}
-                className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 p-1 rounded-full hover:bg-gray-100 transition-colors"
+                className="absolute right-4 top-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 p-1 rounded-full hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
               >
                 <X className="h-5 w-5" />
               </button>
               
-              <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Check className="h-8 w-8 text-green-600" />
+              <div className="w-16 h-16 bg-green-100 dark:bg-emerald-900/40 rounded-full flex items-center justify-center mx-auto mb-4">
+                <Check className="h-8 w-8 text-green-600 dark:text-emerald-400" />
               </div>
               
-              <h3 className="text-xl font-bold text-gray-900 mb-2">Payment Link Ready!</h3>
-              <p className="text-gray-500 mb-6 text-sm">
+              <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 mb-2">Payment Link Ready!</h3>
+              <p className="text-gray-500 dark:text-slate-400 mb-6 text-sm">
                 Your secure escrow link has been generated. Share it with your buyer to get paid.
               </p>
 

@@ -13,6 +13,8 @@ def test_get_platform_settings_defaults():
     assert settings['active_payment_gateway'] == 'PAYSTACK'
     assert 'COURIER_API' in settings['enabled_delivery_methods']
     assert 'SPEEDAF' in settings['enabled_carriers']
+    assert settings['return_dispatch_days'] == 3
+    assert settings['return_auto_refund_hours'] == 48
 
 @pytest.mark.django_db
 def test_admin_settings_endpoint_superuser(db):
@@ -25,7 +27,7 @@ def test_admin_settings_endpoint_superuser(db):
     client = TestClient(escrow_router)
     auth_headers = {"Authorization": "Bearer test_token"}
 
-    with patch('apps.escrow.api.is_admin_user', return_value=superuser), \
+    with patch('apps.escrow.api.is_superuser_user', return_value=superuser), \
          patch('ninja_jwt.authentication.JWTAuth.__call__', return_value=superuser):
 
         get_res = client.get("/admin/settings", headers=auth_headers)
@@ -59,6 +61,25 @@ def test_admin_settings_endpoint_forbidden_non_superuser(db):
     with patch('ninja_jwt.authentication.JWTAuth.__call__', return_value=regular_user):
         res = client.post("/admin/settings", json={"active_payment_gateway": "HUBTEL"}, headers=auth_headers)
         assert res.status_code == 403
+
+@pytest.mark.django_db
+def test_admin_settings_endpoint_forbidden_regular_admin(db):
+    normal_admin = User.objects.create_user(
+        username="normal_admin",
+        email="admin_staff@example.com",
+        password="password123",
+        role=Role.ADMIN,
+        is_staff=True,
+        is_superuser=False
+    )
+    client = TestClient(escrow_router)
+    auth_headers = {"Authorization": "Bearer test_token"}
+
+    with patch('ninja_jwt.authentication.JWTAuth.__call__', return_value=normal_admin):
+        get_res = client.get("/admin/settings", headers=auth_headers)
+        assert get_res.status_code == 403
+        post_res = client.post("/admin/settings", json={"active_payment_gateway": "HUBTEL"}, headers=auth_headers)
+        assert post_res.status_code == 403
 
 @pytest.mark.django_db
 def test_advance_transaction_status_dev_endpoint(db):

@@ -61,6 +61,14 @@ class LoginSchema(Schema):
     username: str
     password: str
     remember: Optional[bool] = False
+    totp_code: Optional[str] = None
+
+class Verify2FASchema(Schema):
+    otp_code: str
+
+class Disable2FASchema(Schema):
+    password: str
+    otp_code: str
 
 class MessageSchema(Schema):
     message: str
@@ -80,6 +88,8 @@ class LoginResponseSchema(Schema):
     username: str
     role: str
     email: str
+    is_superuser: bool = False
+    is_staff: bool = False
 
 class ForgotPasswordSchema(Schema):
     email: str
@@ -425,6 +435,18 @@ def login(request, data: LoginSchema, response: HttpResponse):
             _send_user_phone_otp(user)
         raise HttpError(403, f"PHONE_VERIFICATION_REQUIRED:{uid}:{user.phone_number}")
 
+    # Two-Factor Authentication (2FA TOTP) Enforcement
+    enforce_staff_2fa = getattr(settings, 'ENFORCE_STAFF_2FA', False) and (user.is_staff or user.is_superuser)
+    if user.is_2fa_enabled or enforce_staff_2fa:
+        totp_code = getattr(data, 'totp_code', None)
+        if not totp_code or not str(totp_code).strip():
+            raise HttpError(401, "2FA_REQUIRED:Two-Factor Authentication (TOTP) code is required for this account.")
+        
+        from apps.core.two_factor import verify_totp_code
+        if not verify_totp_code(user.totp_secret, str(totp_code).strip()):
+            record_failure()
+            raise HttpError(401, "Invalid Two-Factor Authentication (TOTP) code. Please check your authenticator app.")
+
     clear_failures()  # Reset lockout counter on successful auth
     refresh = RefreshToken.for_user(user)
     set_auth_cookies(response, refresh, remember=bool(getattr(data, 'remember', False)))
@@ -705,3 +727,54 @@ def submit_verification_documents(request, data: SubmitVerificationRequest):
     ])
 
     return {"message": "Verification documents submitted successfully! A manager will review your submission."}
+
+@profile_router.post("/2fa/setup", response=dict)
+def setup_2fa(request):
+    user = request.user
+    from apps.core.two_factor import generate_totp_secret, get_totp_uri, generate_qr_code_data_uri
+    if not user.totp_secret:
+        user.totp_secret = generate_totp_secret()
+        user.save(update_fields=['totp_secret'])
+    
+    otpauth_url = get_totp_uri(user.email or user.username, user.totp_secret)
+    qr_code_data = generate_qr_code_data_uri(otpauth_url)
+    return {
+        "secret": user.totp_secret,
+        "otpauth_url": otpauth_url,
+        "qr_code": qr_code_data,
+        "is_2fa_enabled": bool(user.is_2fa_enabled)
+    }
+
+@profile_router.post("/2fa/verify", response=dict)
+def verify_2fa(request, data: Verify2FASchema):
+    user = request.user
+    if not user.totp_secret:
+        raise HttpError(400, "Please initialize 2FA setup first before verifying.")
+    
+    from apps.core.two_factor import verify_totp_code
+    if not verify_totp_code(user.totp_secret, data.otp_code.strip()):
+        raise HttpError(400, "Invalid 6-digit authenticator code. Please check your app and try again.")
+    
+    user.is_2fa_enabled = True
+    user.totp_last_verified_at = timezone.now()
+    user.save(update_fields=['is_2fa_enabled', 'totp_last_verified_at'])
+    return {"message": "Two-Factor Authentication (2FA) successfully enabled and verified for your account."}
+
+@profile_router.post("/2fa/disable", response=dict)
+def disable_2fa(request, data: Disable2FASchema):
+    user = request.user
+    if not user.is_2fa_enabled:
+        return {"message": "2FA is not enabled on this account."}
+    
+    if not user.check_password(data.password):
+        raise HttpError(400, "Incorrect account password.")
+    
+    from apps.core.two_factor import verify_totp_code
+    if not verify_totp_code(user.totp_secret, data.otp_code.strip()):
+        raise HttpError(400, "Invalid 6-digit authenticator code.")
+    
+    user.is_2fa_enabled = False
+    user.totp_secret = ''
+    user.save(update_fields=['is_2fa_enabled', 'totp_secret'])
+    return {"message": "Two-Factor Authentication (2FA) has been disabled."}
+
