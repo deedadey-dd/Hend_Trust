@@ -9,7 +9,7 @@ import SEOHead from '../components/SEOHead';
 
 interface FAQItem {
   id: string;
-  category: 'BUYERS' | 'SELLERS' | 'LOGISTICS' | 'DISPUTES' | 'DEVELOPERS' | 'SECURITY';
+  category: 'BUYERS' | 'SELLERS' | 'LOGISTICS' | 'DISPUTES' | 'DEVELOPERS';
   question: string;
   answer: string;
 }
@@ -19,73 +19,67 @@ const FAQS: FAQItem[] = [
     id: 'faq-1',
     category: 'BUYERS',
     question: 'How does HendAxis Trust protect my money?',
-    answer: 'When you purchase through a HendAxis Trust Payment Link, your payment goes directly into a double-entry escrow account. The seller is notified to dispatch your package, but your funds remain locked in escrow. Money is only released to the seller after you receive the item and approve it during your inspection period.'
+    answer: 'When you purchase through a HendAxis Trust Payment Link, your money is held safely in escrow. The seller is notified to dispatch your package, but your payment remains securely locked. Funds are only released to the seller after you receive your package and verify its condition during your inspection window.'
   },
   {
     id: 'faq-2',
     category: 'SELLERS',
     question: 'How do I get paid as a seller?',
-    answer: 'Once your buyer confirms receipt or the inspection timer expires, your funds release instantly into your HendAxis Trust Wallet balance. Depending on your account payout mode (Instant MoMo vs Manual Withdrawal), funds can be automatically transferred to your Mobile Money account.'
+    answer: 'Once the buyer confirms receipt of the package or the inspection window completes smoothly, your earnings are automatically released into your HendAxis Trust Wallet. You can withdraw your balance directly to your Mobile Money account at any time.'
   },
   {
     id: 'faq-3',
-    category: 'SECURITY',
-    question: 'How does Two-Factor Authentication (2FA) and Account Security work?',
-    answer: 'You can pair your authenticator app (Google Authenticator, Authy, 1Password) on your Profile page. Once enabled, logging in requires your password and a 6-digit TOTP code. Staff accounts are protected with strict 2FA enforcement, IP whitelisting, per-username lockout timers, and secret admin gateways with decoy honeypot logging.'
+    category: 'SELLERS',
+    question: 'What is the difference between "Absorb Fee" and "Pass Fee to Buyer"?',
+    answer: 'When creating a payment link, choosing "Absorb Fee" deducts the platform fee from your item price so your customer pays only the listed item cost. Choosing "Pass Fee to Buyer" adds the transaction fee to checkout so you receive 100% of your listed item price.'
   },
   {
     id: 'faq-4',
     category: 'SELLERS',
-    question: 'What is the difference between "Absorb Fee" and "Pass Fee to Buyer"?',
-    answer: 'When creating a payment link, choosing "Absorb Fee" deducts the platform fee from your item price so the buyer pays only the exact item cost. Choosing "Pass to Buyer" adds the fee to the checkout total so you receive 100% of your listed item price.'
+    question: 'What is the Seller Dispatch Timeframe?',
+    answer: 'Once a buyer completes payment into escrow, the seller must dispatch the item within the designated timeframe (typically 4 days). If a seller fails to dispatch on time, the transaction automatically cancels, the buyer receives a 100% full refund, and the seller account may incur a non-dispatch penalty.'
   },
   {
     id: 'faq-5',
-    category: 'DISPUTES',
-    question: 'How do Buyer Returns and Reverse Pickup OTP work during a dispute?',
-    answer: 'If a dispute ruling requires returning the item, the buyer dispatches the return via Courier (with tracking number) or Informal Bus (with driver details). For bus returns, a 6-Digit Reverse OTP is issued for the seller to verify return receipt intact before a full refund is released.'
+    category: 'LOGISTICS',
+    question: 'What is the difference between Courier Delivery and Station / Bus Delivery?',
+    answer: 'Courier Delivery (DHL, Speedaf, FedEx, UPS, EMS) includes direct package tracking links and live delivery updates. Station / Bus Delivery logs driver details, and the buyer receives a secret 6-digit OTP to present at the station upon pickup.'
   },
   {
     id: 'faq-6',
-    category: 'SELLERS',
-    question: 'What is the 4-Day Seller Dispatch Rule?',
-    answer: 'Once a buyer completes payment into escrow, you have exactly 4 days (96 hours) to dispatch the package. If you fail to dispatch within 4 days, the order is automatically cancelled, the buyer is refunded 100%, and your seller account is charged a non-dispatch penalty.'
+    category: 'BUYERS',
+    question: 'How long is my inspection period?',
+    answer: 'Inspection timeframes give you time to inspect your item before funds release. The timer starts automatically once delivery is verified: 24 hours for orders under GHS 2,000; 48 hours for orders GHS 2,000 to GHS 9,999; and 72 hours for orders GHS 10,000 and above.'
   },
   {
     id: 'faq-7',
-    category: 'LOGISTICS',
-    question: 'What is the difference between Path A (Courier) and Path B (Bus OTP)?',
-    answer: 'Path A is for formal shipping providers (DHL, Speedaf, FedEx, UPS, EMS) with live tracking links and 17TRACK/ShipEngine webhook integrations. Path B is for station/bus deliveries, where driver details are logged and the buyer presents a Secret 6-Digit OTP at the station upon pickup.'
+    category: 'DISPUTES',
+    question: 'What happens if I receive a damaged or wrong item?',
+    answer: 'If your package arrives damaged or differs from what you ordered, click "Raise Dispute" on your tracking page before your inspection window expires. Upload photos of the item and a description of the issue. Our support team reviews all evidence and resolves disputes within 24 hours.'
   },
   {
     id: 'faq-8',
-    category: 'BUYERS',
-    question: 'How long is my inspection period?',
-    answer: 'Inspection periods are tiered based on transaction value: Under GHS 2,000 = 24 Hours; GHS 2,000 to GHS 9,999 = 48 Hours; GHS 10,000+ = 72 Hours. The inspection timer starts automatically once delivery is verified.'
+    category: 'DISPUTES',
+    question: 'How do Buyer Item Returns work during a dispute?',
+    answer: 'If a dispute ruling requires returning the item, the buyer ships the product back via Courier or Bus transport. For bus returns, a secret 6-digit Reverse OTP is provided for the seller to verify receipt of the returned item before the full refund is processed.'
   },
   {
     id: 'faq-9',
-    category: 'DISPUTES',
-    question: 'What happens if I receive a damaged or wrong item?',
-    answer: 'Click "Raise Dispute" on your order page during your inspection period. Upload up to 5 photo evidence images and a statement. The seller can submit a counter-statement with 5 photos. Management arbitrates and executes refunds/payouts within 24 hours.'
+    category: 'SELLERS',
+    question: 'How do I get the "Verified Seller 🛡️" badge?',
+    answer: 'Sellers can apply for the Verified Seller 🛡️ badge by submitting their Ghana Card / National ID and business registration documents under Profile Settings. Our verification team reviews submissions to issue official verification badges.'
   },
   {
     id: 'faq-10',
     category: 'SELLERS',
-    question: 'How do I get the "Verified Seller 🛡️" badge?',
-    answer: 'Upload your Ghana Card / National ID and optional Business Registration documents on your Profile page. Management manually inspects and verifies your identity documents in the Manager Portal before issuing the Verified badge.'
+    question: 'How do Paid Shop Promotions work in the Marketplace Directory?',
+    answer: 'Sellers can feature their store at the top of the Marketplace Directory (/shops) with a "Featured Ad ⚡" badge by choosing a promotion package (GHS 50 for 7 Days / GHS 150 for 30 Days) directly in their Store Settings.'
   },
   {
     id: 'faq-11',
-    category: 'SELLERS',
-    question: 'How do Paid Shop Promotions work in the Marketplace Directory?',
-    answer: 'Sellers can feature their shop at the top of the /shops directory with a "Featured Ad ⚡" badge by selecting a promotion package (GHS 50 for 7 Days / GHS 150 for 30 Days) directly in their Store Settings.'
-  },
-  {
-    id: 'faq-12',
     category: 'DEVELOPERS',
-    question: 'How do I integrate HendAxis Escrow into my website or store?',
-    answer: 'Integrate using our REST APIs (`/api/v1/links`) or Drop-in JavaScript SDK. Visit /developers for code examples in cURL, Node.js, Python, and PHP/WooCommerce, plus HMAC-SHA256 webhook verification guides.'
+    question: 'How do I integrate HendAxis Escrow into my website or online store?',
+    answer: 'Merchants and developers can integrate HendAxis Escrow directly into their custom websites or store checkout using our REST APIs or Drop-in JavaScript SDK. Code examples and documentation are available on our /developers portal.'
   }
 ];
 
@@ -181,7 +175,6 @@ export const HelpView: React.FC = () => {
             { id: 'SELLERS', label: 'For Sellers' },
             { id: 'LOGISTICS', label: 'Logistics & Shipping' },
             { id: 'DISPUTES', label: 'Disputes & Refunds' },
-            { id: 'SECURITY', label: 'Security & 2FA' },
             { id: 'DEVELOPERS', label: 'Developer APIs' }
           ].map(cat => (
             <button

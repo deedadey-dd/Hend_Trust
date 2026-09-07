@@ -15,7 +15,7 @@ To build trust with buyers, sellers can customize their public store presence an
 
 ---
 
-## 2. Creating a Payment Link & 4-Day Seller Dispatch Rule
+## 2. Creating a Payment Link & Configurable Seller Dispatch Rule
 Sellers can create secure Payment Links to send to their buyers.
 
 1. **Log in** to your Seller Dashboard and click **Create Payment Link**.
@@ -23,8 +23,8 @@ Sellers can create secure Payment Links to send to their buyers.
 3. **Choose Fee Handling**:
    - **Absorb Fee**: Seller pays the platform fee. The buyer pays only the exact item price.
    - **Pass to Buyer**: The buyer pays the item price + platform fee. Seller receives 100% of their item price.
-4. **4-Day Seller Dispatch Guarantee**: Once the buyer pays, the seller has **4 days (96 hours)** to dispatch the package.
-   - If the seller fails to dispatch within 4 days, the order is automatically cancelled.
+4. **Configurable Seller Dispatch Guarantee**: Once the buyer pays, the seller must dispatch the package within the platform-configured dispatch window (default: **4 days / 96 hours**, managed via **Gateway & Logistics Settings** in the Admin Portal).
+   - If the seller fails to dispatch within the configured timeframe, the order is automatically cancelled.
    - The buyer gets a **100% full refund** (including all fees).
    - The defaulting seller is charged a **Non-Dispatch Default Penalty** (Platform Fee + gateway charges).
 
