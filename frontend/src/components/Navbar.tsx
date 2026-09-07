@@ -5,9 +5,10 @@ import { useThemeStore } from '../store/themeStore';
 import { apiClient } from '../api/client';
 import { 
   Shield, LayoutDashboard, Link2, LogIn, UserPlus, LogOut, Menu, X, Wallet, MapPin, 
-  UserCircle, Store, Sun, Moon, Laptop, HelpCircle, Phone, Code, ChevronDown, Settings
+  UserCircle, Store, Sun, Moon, Laptop, HelpCircle, Phone, Code, ChevronDown, Settings, Scale
 } from 'lucide-react';
 import TrackingModal from './TrackingModal';
+import TermsModal from './TermsModal';
 import logoWhite from '../assets/hendaxis_trust_logo_white.svg';
 import logoBlack from '../assets/hendaxis_trust_logo_black.svg';
 
@@ -20,6 +21,7 @@ export default function Navbar() {
   const [userMenuOpen, setUserMenuOpen] = useState(false);
   const [balance, setBalance] = useState<number | null>(null);
   const [showTrackModal, setShowTrackModal] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
   const cycleTheme = () => {
@@ -195,6 +197,15 @@ export default function Navbar() {
                           >
                             <MapPin className="h-4 w-4 text-slate-500 dark:text-slate-400" />
                             Track Order
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => { setShowTermsModal(true); setUserMenuOpen(false); }}
+                            className="w-full flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white transition-colors text-left cursor-pointer"
+                          >
+                            <Scale className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
+                            Terms of Service & Rules
                           </button>
 
                           <Link
@@ -402,6 +413,12 @@ export default function Navbar() {
       {showTrackModal && (
         <TrackingModal onClose={() => setShowTrackModal(false)} />
       )}
+
+      {/* Global Terms Modal for Registered Sellers / Users */}
+      <TermsModal
+        isOpen={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+      />
     </>
   );
 }

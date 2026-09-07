@@ -293,21 +293,32 @@ def notify_buyer_payment_received_task(transaction_id):
         </html>
         """
         
-        print("\n" + "="*50)
-        print("DEV: PAYMENT RECEIVED NOTIFICATION")
-        print(f"To: {txn.buyer_phone} / {txn.buyer_email}")
-        print(msg)
-        print("="*50 + "\n")
+        print("\n" + "="*60, flush=True)
+        print("📢 DEV: BUYER PAYMENT RECEIVED NOTIFICATION", flush=True)
+        print(f"To Buyer Phone: {txn.buyer_phone} | Email: {txn.buyer_email}", flush=True)
+        print(f"Message: {msg}", flush=True)
+        print("="*60 + "\n", flush=True)
         
         if txn.buyer_email:
-            dispatch_email_task.delay(
-                txn.buyer_email,
-                f"Payment Confirmed - Order #{txn.paystack_reference}",
-                msg,
-                html_message=html_msg
-            )
+            try:
+                dispatch_email_task.delay(
+                    txn.buyer_email,
+                    f"Payment Confirmed - Order #{txn.paystack_reference}",
+                    msg,
+                    html_message=html_msg
+                )
+            except Exception:
+                dispatch_email_task(
+                    txn.buyer_email,
+                    f"Payment Confirmed - Order #{txn.paystack_reference}",
+                    msg,
+                    html_message=html_msg
+                )
             
-        dispatch_sms_task.delay(txn.buyer_phone, msg)
+        try:
+            dispatch_sms_task.delay(txn.buyer_phone, msg)
+        except Exception:
+            dispatch_sms_task(txn.buyer_phone, msg)
         
     except Transaction.DoesNotExist:
         pass
@@ -326,6 +337,7 @@ def send_seller_payment_notification_task(transaction_id):
             return
 
         seller_email = getattr(seller, 'email', None)
+        seller_phone = getattr(seller, 'phone_number', None)
         
         msg = f"New order received for {txn.link.title}! Amount: GHS {txn.total_amount_ghs}. Log in to dispatch: {frontend_url}/dashboard"
         
@@ -357,22 +369,29 @@ def send_seller_payment_notification_task(transaction_id):
         </html>
         """
         
-        print("\n" + "="*50)
-        print("DEV: SELLER PAYMENT RECEIVED NOTIFICATION")
-        print(f"To Seller: {seller_email}")
-        print(msg)
-        print("="*50 + "\n")
+        print("\n" + "="*60, flush=True)
+        print("🔔 DEV: SELLER PAYMENT RECEIVED NOTIFICATION", flush=True)
+        print(f"To Seller Username: {seller.username} | Phone: {seller_phone} | Email: {seller_email}", flush=True)
+        print(f"Message: {msg}", flush=True)
+        print("="*60 + "\n", flush=True)
         
         if seller_email:
             subject = f"New Order Received - {txn.link.title}"
-            dispatch_email_task.delay(seller_email, subject, msg, html_message=html_msg)
+            try:
+                dispatch_email_task.delay(seller_email, subject, msg, html_message=html_msg)
+            except Exception:
+                dispatch_email_task(seller_email, subject, msg, html_message=html_msg)
             
-        seller_phone = getattr(seller, 'phone_number', None)
         if seller_phone:
-            dispatch_sms_task.delay(seller_phone, msg)
+            try:
+                dispatch_sms_task.delay(seller_phone, msg)
+            except Exception:
+                dispatch_sms_task(seller_phone, msg)
             
     except Transaction.DoesNotExist:
         logger.error(f"Transaction {transaction_id} not found for seller notification.")
+
+notify_seller_payment_received_task = send_seller_payment_notification_task
 
 
 @shared_task

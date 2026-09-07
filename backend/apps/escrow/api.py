@@ -1,5 +1,6 @@
 from typing import List, Optional
 import secrets
+from django.conf import settings
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from django.shortcuts import get_object_or_404
@@ -1731,15 +1732,20 @@ DEFAULT_SYSTEM_SETTINGS = {
 
 
 def get_platform_settings():
+    admin_url = getattr(settings, 'DJANGO_ADMIN_URL', 'admin/').strip('/') + '/'
     try:
         setting = PlatformSetting.objects.filter(key="system_config").first()
         if not setting or not setting.value:
-            return DEFAULT_SYSTEM_SETTINGS.copy()
-        res = DEFAULT_SYSTEM_SETTINGS.copy()
-        res.update(setting.value)
+            res = DEFAULT_SYSTEM_SETTINGS.copy()
+        else:
+            res = DEFAULT_SYSTEM_SETTINGS.copy()
+            res.update(setting.value)
+        res['django_admin_url'] = admin_url
         return res
     except Exception:
-        return DEFAULT_SYSTEM_SETTINGS.copy()
+        res = DEFAULT_SYSTEM_SETTINGS.copy()
+        res['django_admin_url'] = admin_url
+        return res
 
 
 def get_inspection_hours_for_amount(amount) -> int:
@@ -1759,6 +1765,21 @@ def get_inspection_hours_for_amount(amount) -> int:
         return t3_hrs
 
 
+class PublicPlatformSettingsSchema(Schema):
+    active_payment_gateway: str
+    enabled_delivery_methods: List[str]
+    enabled_carriers: List[str]
+    shipping_timeout_days: int = 4
+    auto_delivery_hours: int = 48
+    return_dispatch_days: int = 3
+    return_auto_refund_hours: int = 48
+    inspection_tier1_threshold: float = 2000.0
+    inspection_tier1_hours: int = 24
+    inspection_tier2_threshold: float = 10000.0
+    inspection_tier2_hours: int = 48
+    inspection_tier3_hours: int = 72
+
+
 class PlatformSettingsSchema(Schema):
     active_payment_gateway: str
     enabled_delivery_methods: List[str]
@@ -1772,6 +1793,7 @@ class PlatformSettingsSchema(Schema):
     inspection_tier2_threshold: float = 10000.0
     inspection_tier2_hours: int = 48
     inspection_tier3_hours: int = 72
+    django_admin_url: Optional[str] = 'admin/'
 
 
 class UpdatePlatformSettingsSchema(Schema):
@@ -1787,6 +1809,12 @@ class UpdatePlatformSettingsSchema(Schema):
     inspection_tier2_threshold: Optional[float] = None
     inspection_tier2_hours: Optional[int] = None
     inspection_tier3_hours: Optional[int] = None
+
+
+@escrow_router.get("/public-settings", response=PublicPlatformSettingsSchema, auth=None)
+def get_public_settings(request):
+    """Public endpoint to fetch current platform configuration (timeout days, delivery methods, carriers)."""
+    return get_platform_settings()
 
 
 @escrow_router.get("/admin/settings", response=PlatformSettingsSchema)

@@ -5,8 +5,8 @@ from hendaxis_trust.auth import JWTCookieAuth
 from apps.links.models import PaymentLink, FeeHandling
 from typing import Optional
 from decimal import Decimal
-from django.db.models import Q
 import uuid
+from apps.users.api import _get_request_frontend_url
 
 links_router = Router(tags=["Payment Links"], auth=JWTCookieAuth())
 
@@ -36,6 +36,7 @@ class LinkDetailSchema(Schema):
     seller_email: Optional[str] = ""
     seller_phone: Optional[str] = ""
     seller_profile_picture_url: Optional[str] = ""
+    shipping_timeout_days: Optional[int] = 4
 
 class SellerLinkSchema(Schema):
     id: uuid.UUID
@@ -58,46 +59,60 @@ def list_seller_links(request, search: str = None, status_filter: str = 'all', s
     else: # 'all' non-archived links
         links = links.filter(is_archived=False)
 
-    if search:
-        links = links.filter(Q(title__icontains=search) | Q(description__icontains=search))
+    if search and search.strip():
+        q_term = search.strip()
+        links = links.filter(
+            Q(title__icontains=q_term) |
+            Q(description__icontains=q_term)
+        )
+
     if start_date:
-        links = links.filter(created_at__date__gte=start_date)
+        links = links.filter(created_at__gte=start_date)
     if end_date:
-        links = links.filter(created_at__date__lte=end_date)
-    total = links.count()
-    page = links[offset:offset + limit]
+        links = links.filter(created_at__lte=end_date)
+
+    total_count = links.count()
+    paginated_links = links[offset:offset+limit]
+
+    base_url = _get_request_frontend_url(request)
     return {
-        "count": total,
         "items": [
             {
-                "id": str(l.id),
-                "title": l.title,
-                "description": l.description,
-                "price_ghs": str(l.price_ghs),
-                "shipping_fee_ghs": str(l.shipping_fee_ghs),
-                "fee_handling": l.fee_handling,
-                "image_url": l.image_url or "",
-                "is_active": l.is_active,
-                "is_archived": l.is_archived,
-                "created_at": l.created_at.isoformat(),
-                "url": f"https://pay.hendaxis.com/l/{l.id}"
-            } for l in page
-        ]
+                "id": link.id,
+                "title": link.title,
+                "price_ghs": link.price_ghs,
+                "image_url": link.image_url or "",
+                "created_at": link.created_at.isoformat(),
+                "url": f"{base_url}/l/{link.id}",
+                "is_active": link.is_active,
+                "is_archived": link.is_archived,
+            }
+            for link in paginated_links
+        ],
+        "total_count": total_count,
+        "count": total_count,
+        "limit": limit,
+        "offset": offset,
     }
 
 @links_router.post("/create", response=LinkResponseSchema)
-def create_link(request, data: CreateLinkSchema):
+def create_payment_link(request, data: CreateLinkSchema):
     link = PaymentLink.objects.create(
         seller=request.user,
-        title=data.title,
-        description=data.description,
+        title=data.title.strip(),
+        description=data.description.strip(),
         price_ghs=data.price_ghs,
-        shipping_fee_ghs=data.shipping_fee_ghs,
+        shipping_fee_ghs=data.shipping_fee_ghs or Decimal('0.00'),
         fee_handling=data.fee_handling,
-        intended_buyer_phone=data.intended_buyer_phone,
-        image_url=data.image_url or ''
+        intended_buyer_phone=data.intended_buyer_phone.strip() if data.intended_buyer_phone else None,
+        image_url=data.image_url.strip() if data.image_url else None
     )
-    return {"id": link.id, "url": f"https://pay.hendaxis.com/l/{link.id}"}
+
+    base_url = _get_request_frontend_url(request)
+    return {
+        "id": link.id,
+        "url": f"{base_url}/l/{link.id}"
+    }
 
 @links_router.post("/{link_id}/toggle-active", response=dict)
 def toggle_link_active(request, link_id: uuid.UUID):
@@ -107,7 +122,7 @@ def toggle_link_active(request, link_id: uuid.UUID):
     return {
         "id": str(link.id),
         "is_active": link.is_active,
-        "message": f"Payment link {'enabled' if link.is_active else 'disabled'} successfully"
+        "message": f"Link is now {'active' if link.is_active else 'disabled'}"
     }
 
 @links_router.post("/{link_id}/archive", response=dict)
@@ -144,6 +159,10 @@ def get_link(request, link_id: uuid.UUID):
         contact_target = f"Contact {seller_name}" if seller_name else "Contact Seller"
         raise HttpError(404, f"Payment link is invalid or inactive. {contact_target}")
         
+    from apps.escrow.api import get_platform_settings
+    cfg = get_platform_settings()
+    timeout_days = int(cfg.get("shipping_timeout_days", 4))
+
     return {
         "id": link.id,
         "title": link.title,
@@ -157,4 +176,5 @@ def get_link(request, link_id: uuid.UUID):
         "seller_email": getattr(link.seller, 'email', ''),
         "seller_phone": getattr(link.seller, 'phone_number', ''),
         "seller_profile_picture_url": getattr(link.seller, 'profile_picture_url', '') or "",
+        "shipping_timeout_days": timeout_days,
     }

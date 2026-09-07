@@ -12,7 +12,7 @@ from django.utils.encoding import force_bytes, force_str
 from django.core.mail import send_mail
 from django.core.validators import validate_email as django_validate_email
 from django.http import HttpResponse
-
+from django.db.models import Q
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from ninja_jwt.tokens import RefreshToken
@@ -151,6 +151,33 @@ def _get_request_frontend_url(request=None):
     default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
     return getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
 
+def _async_send_mail(subject, message, from_email, recipient_list, html_message=None):
+    if getattr(settings, 'DEBUG', True):
+        import sys
+        print(f"\n" + "="*80, file=sys.stdout, flush=True)
+        print(f"=== DEV EMAIL NOTIFICATION LOG ===", file=sys.stdout, flush=True)
+        print(f"TO: {recipient_list}", file=sys.stdout, flush=True)
+        print(f"FROM: {from_email}", file=sys.stdout, flush=True)
+        print(f"SUBJECT: {subject}", file=sys.stdout, flush=True)
+        print(f"BODY:\n{message}", file=sys.stdout, flush=True)
+        print("="*80 + "\n", file=sys.stdout, flush=True)
+
+    def target():
+        try:
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=from_email,
+                recipient_list=recipient_list,
+                html_message=html_message,
+                fail_silently=True
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Async send_mail error: {e}")
+    import threading
+    threading.Thread(target=target, daemon=True).start()
+
 def send_account_activation_email(user, request=None):
     uid = urlsafe_base64_encode(force_bytes(user.pk))
     token = default_token_generator.make_token(user)
@@ -171,13 +198,12 @@ def send_account_activation_email(user, request=None):
       <p style="color: #64748b; font-size: 13px; margin-top: 24px;">If the button above does not work, copy and paste this link into your web browser:<br/><a href="{activation_link}" style="color: #2563eb;">{activation_link}</a></p>
     </div>
     """
-    send_mail(
+    _async_send_mail(
         subject=subject,
         message=message,
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[user.email],
-        html_message=html_message,
-        fail_silently=False
+        html_message=html_message
     )
 
 def send_password_reset_email(user, request=None):
@@ -200,13 +226,12 @@ def send_password_reset_email(user, request=None):
       <p style="color: #64748b; font-size: 13px; margin-top: 24px;">If you did not request this, your account remains secure and no action is required.</p>
     </div>
     """
-    send_mail(
+    _async_send_mail(
         subject=subject,
         message=message,
         from_email=settings.DEFAULT_FROM_EMAIL,
         recipient_list=[user.email],
-        html_message=html_message,
-        fail_silently=False
+        html_message=html_message
     )
 
 @auth_router.post("/register", response=MessageSchema)
@@ -361,10 +386,23 @@ def verify_phone_otp(request, data: VerifyPhoneOtpSchema):
 @auth_router.post("/resend-activation", response=MessageSchema)
 @rate_limit('auth_resend_activation', max_calls=3, window_seconds=600)
 def resend_activation(request, data: ResendActivationSchema):
-    user = User.objects.filter(email__iexact=data.email.strip()).first()
+    identifier = data.email.strip()
+    user = User.objects.filter(Q(email__iexact=identifier) | Q(username__iexact=identifier)).first()
     if not user:
+        if getattr(settings, 'DEBUG', True):
+            import sys
+            print(f"\n" + "="*80, file=sys.stdout, flush=True)
+            print(f"=== DEV EMAIL NOTIFICATION LOG ===", file=sys.stdout, flush=True)
+            print(f"NOTICE: Resend activation requested for '{identifier}', but NO account was found.", file=sys.stdout, flush=True)
+            print("="*80 + "\n", file=sys.stdout, flush=True)
         return {"message": "If an account exists with that email, an activation link has been sent."}
     if user.is_email_verified:
+        if getattr(settings, 'DEBUG', True):
+            import sys
+            print(f"\n" + "="*80, file=sys.stdout, flush=True)
+            print(f"=== DEV EMAIL NOTIFICATION LOG ===", file=sys.stdout, flush=True)
+            print(f"NOTICE: Resend activation requested for '{identifier}', but user @{user.username} ({user.email}) is ALREADY ACTIVATED.", file=sys.stdout, flush=True)
+            print("="*80 + "\n", file=sys.stdout, flush=True)
         return {"message": "Your account is already activated. Please sign in."}
 
     try:
@@ -377,13 +415,21 @@ def resend_activation(request, data: ResendActivationSchema):
 @auth_router.post("/forgot-password", response=MessageSchema)
 @rate_limit('auth_forgot_password', max_calls=5, window_seconds=600)
 def forgot_password(request, data: ForgotPasswordSchema):
-    user = User.objects.filter(email__iexact=data.email.strip()).first()
+    identifier = data.email.strip()
+    user = User.objects.filter(Q(email__iexact=identifier) | Q(username__iexact=identifier)).first()
     if user:
         try:
             send_password_reset_email(user, request)
         except Exception as e:
             import logging
             logging.getLogger(__name__).error(f"Password reset email error for user {user.id}: {e}")
+    else:
+        if getattr(settings, 'DEBUG', True):
+            import sys
+            print(f"\n" + "="*80, file=sys.stdout, flush=True)
+            print(f"=== DEV EMAIL NOTIFICATION LOG ===", file=sys.stdout, flush=True)
+            print(f"NOTICE: Password reset requested for '{identifier}', but NO account was found.", file=sys.stdout, flush=True)
+            print("="*80 + "\n", file=sys.stdout, flush=True)
     return {"message": "If an account exists with that email, password reset instructions have been sent."}
 
 @auth_router.post("/reset-password", response=MessageSchema)

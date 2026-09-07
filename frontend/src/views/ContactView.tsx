@@ -85,7 +85,7 @@ export const ContactView: React.FC = () => {
                 <div>
                   <span className="font-bold text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Email Enquiries</span>
                   <a href="mailto:support@hendaxistrust.com" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">
-                    support@hendaxistrust.com
+                    support@hendaxis.com
                   </a>
                 </div>
               </div>

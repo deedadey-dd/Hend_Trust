@@ -1,13 +1,16 @@
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
-import { ShieldCheck, User, Lock, Phone, Mail, Loader2, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, User, Lock, Phone, Mail, Loader2, CheckCircle2, Scale } from 'lucide-react';
 import { apiClient, getErrorMessage } from '../api/client';
+import TermsModal from '../components/TermsModal';
 
 export default function RegisterView() {
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
@@ -36,6 +39,10 @@ export default function RegisterView() {
     }
     if (!/[A-Za-z]/.test(password) || !/[0-9]/.test(password)) {
       setError('Password must contain at least one letter and one number.');
+      return;
+    }
+    if (!acceptedTerms) {
+      setError('You must agree to the Terms of Service & User Agreement to create an account.');
       return;
     }
 
@@ -145,13 +152,40 @@ export default function RegisterView() {
                 </div>
               </div>
 
-              <button disabled={loading} type="submit" className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-70 transition-all">
+              <div className="flex items-start gap-2 pt-1">
+                <input
+                  id="agree-terms"
+                  type="checkbox"
+                  checked={acceptedTerms}
+                  onChange={e => setAcceptedTerms(e.target.checked)}
+                  className="mt-1 h-4 w-4 text-indigo-600 rounded border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-indigo-500 cursor-pointer shrink-0"
+                />
+                <label htmlFor="agree-terms" className="text-xs text-gray-600 dark:text-slate-400">
+                  I agree to the{' '}
+                  <button
+                    type="button"
+                    onClick={() => setShowTermsModal(true)}
+                    className="text-indigo-600 dark:text-indigo-400 font-bold hover:underline cursor-pointer inline-flex items-center gap-1"
+                  >
+                    <Scale className="h-3.5 w-3.5" /> Terms of Service & User Agreement
+                  </button>
+                </label>
+              </div>
+
+              <button disabled={loading || !acceptedTerms} type="submit" className="w-full flex justify-center py-3.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 disabled:opacity-50 transition-all cursor-pointer">
                 {loading ? <Loader2 className="animate-spin h-5 w-5" /> : 'Create Account'}
               </button>
             </form>
           )}
         </div>
       </div>
+
+      <TermsModal
+        isOpen={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+        onAccept={() => setAcceptedTerms(true)}
+        showAcceptButton
+      />
     </div>
   );
 }

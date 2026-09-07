@@ -8,6 +8,7 @@ import {
 import RateSellerModal from '../components/RateSellerModal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import SEOHead from '../components/SEOHead';
+import TermsModal from '../components/TermsModal';
 
 interface LinkData {
   id: string;
@@ -22,6 +23,7 @@ interface LinkData {
   seller_email?: string;
   seller_phone?: string;
   seller_profile_picture_url?: string;
+  shipping_timeout_days?: number;
 }
 
 interface TxnDetail {
@@ -41,6 +43,7 @@ interface TxnDetail {
   seller_phone?: string;
   seller_profile_picture_url?: string;
   waybill_photo_url?: string;
+  shipping_timeout_days?: number;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -250,8 +253,8 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
           <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 flex items-center gap-3">
             <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
             <div className="text-xs text-amber-900 dark:text-amber-300">
-              <span className="font-bold block">4-Day Seller Dispatch Guarantee</span>
-              <span>The seller has 4 days to dispatch your item. If not dispatched on time, your funds will be 100% automatically refunded.</span>
+              <span className="font-bold block">{txn.shipping_timeout_days || 4}-Day Seller Dispatch Guarantee</span>
+              <span>The seller has {txn.shipping_timeout_days || 4} {(txn.shipping_timeout_days || 4) === 1 ? 'day' : 'days'} to dispatch your item. If not dispatched on time, your funds will be 100% automatically refunded.</span>
             </div>
           </div>
         )}
@@ -522,6 +525,8 @@ export default function PublicCheckoutView() {
   const [phone, setPhone] = useState('');
   const [email, setEmail] = useState('');
   const [address, setAddress] = useState('');
+  const [acceptedTerms, setAcceptedTerms] = useState(false);
+  const [showTermsModal, setShowTermsModal] = useState(false);
 
   // OTP state
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -550,6 +555,10 @@ export default function PublicCheckoutView() {
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!acceptedTerms) {
+      alert('Please read and agree to the Terms of Service & Inspection Expiry Rules before proceeding.');
+      return;
+    }
     setIsProcessing(true);
     try {
       await axios.post('/api/v1/checkout/send-otp', { phone_number: phone });
@@ -758,8 +767,30 @@ export default function PublicCheckoutView() {
                   placeholder="Street, City, Landmark" />
               </div>
             )}
-            <button disabled={isProcessing} type="submit"
-              className="mt-4 w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-70 transition-all cursor-pointer">
+            {/* Mandatory Terms Acceptance Checkbox */}
+            <div className="flex items-start gap-2 pt-2">
+              <input
+                id="buyer-agree-terms"
+                type="checkbox"
+                required
+                checked={acceptedTerms}
+                onChange={e => setAcceptedTerms(e.target.checked)}
+                className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-blue-500 cursor-pointer shrink-0"
+              />
+              <label htmlFor="buyer-agree-terms" className="text-xs text-gray-600 dark:text-slate-400">
+                I agree to the{' '}
+                <button
+                  type="button"
+                  onClick={() => setShowTermsModal(true)}
+                  className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer inline-flex items-center gap-1"
+                >
+                  Terms of Service & Inspection Expiry Rules 📜
+                </button>
+              </label>
+            </div>
+
+            <button disabled={isProcessing || !acceptedTerms} type="submit"
+              className="mt-4 w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all cursor-pointer">
               {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Continue to Payment'}
               <ArrowRight className="ml-2 h-4 w-4" />
             </button>
@@ -807,6 +838,14 @@ export default function PublicCheckoutView() {
           </div>
         </div>
       )}
+
+      {/* Terms of Service Modal */}
+      <TermsModal
+        isOpen={showTermsModal}
+        onClose={() => setShowTermsModal(false)}
+        onAccept={() => setAcceptedTerms(true)}
+        showAcceptButton
+      />
     </div>
   );
 }

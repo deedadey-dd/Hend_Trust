@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Search, Store, Star, Zap, Shield, ShieldCheck, Loader2, Award, ArrowUpRight, X, CheckCircle2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -49,13 +49,23 @@ const IconTooltip = ({ text, children }: { text: string; children: React.ReactNo
 
 export default function ShopsDirectoryView() {
   const { user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+  const initialQuery = searchParams.get('query') || searchParams.get('search') || '';
+  
   const [featuredShops, setFeaturedShops] = useState<ShopCard[]>([]);
   const [standardShops, setStandardShops] = useState<ShopCard[]>([]);
   const [loading, setLoading] = useState(true);
   
   // Search & Filter
-  const [query, setQuery] = useState('');
+  const [query, setQuery] = useState(initialQuery);
   const [selectedCategory, setSelectedCategory] = useState('All');
+
+  useEffect(() => {
+    const urlQuery = searchParams.get('query') || searchParams.get('search');
+    if (urlQuery !== null && urlQuery !== query) {
+      setQuery(urlQuery);
+    }
+  }, [searchParams]);
 
   // Promote Shop Modal State
   const [showPromoteModal, setShowPromoteModal] = useState(false);

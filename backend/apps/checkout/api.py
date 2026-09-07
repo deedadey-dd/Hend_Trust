@@ -70,6 +70,7 @@ class TransactionStatusSchema(Schema):
     buyer_dispute_photos: Optional[list[str]] = []
     seller_dispute_response: Optional[str] = None
     seller_dispute_photos: Optional[list[str]] = []
+    shipping_timeout_days: Optional[int] = 4
 
 class InitializeResponse(Schema):
     authorization_url: str
@@ -119,6 +120,10 @@ def _build_txn_status_dict(t):
     seller_uname = seller.username if seller else (seller.email.split('@')[0] if (seller and seller.email) else 'seller')
     shop_n = seller.shop_name if (seller and seller.shop_name) else (f"@{seller_uname}'s Store" if seller_uname else 'Seller Store')
 
+    from apps.escrow.api import get_platform_settings
+    cfg = get_platform_settings()
+    timeout_days = int(cfg.get("shipping_timeout_days", 4))
+
     return {
         "id": str(t.id),
         "status": str(t.status),
@@ -138,6 +143,7 @@ def _build_txn_status_dict(t):
         "seller_phone": getattr(seller, 'phone_number', '') if seller else '',
         "seller_profile_picture_url": getattr(seller, 'profile_picture_url', '') if seller else '',
         "delivery_method": log.delivery_method if log else None,
+        "shipping_timeout_days": timeout_days,
         "courier_name": log.courier_name if log else None,
         "carrier_code": getattr(log, 'carrier_code', None) if log else None,
         "tracking_number": log.tracking_number if log else None,
