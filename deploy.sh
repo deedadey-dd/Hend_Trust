@@ -36,13 +36,14 @@ git rm --cached backend/celerybeat-schedule* 2>/dev/null || true
 git pull origin main
 echo -e "${GREEN}✓ Git pull completed successfully.${NC}\n"
 
-# 2. BACKEND MIGRATIONS & STATIC ASSETS
-echo -e "${YELLOW}[2/6] Applying Django database migrations & static assets...${NC}"
+# 2. BACKEND DEPENDENCIES, MIGRATIONS & STATIC ASSETS
+echo -e "${YELLOW}[2/6] Installing backend dependencies, applying Django database migrations & static assets...${NC}"
 cd "$BACKEND_DIR"
 source "$VENV_ACTIVATE"
+pip install -r requirements.txt
 python manage.py migrate --noinput
 python manage.py collectstatic --noinput
-echo -e "${GREEN}✓ Database migrations & static assets updated.${NC}\n"
+echo -e "${GREEN}✓ Backend dependencies, database migrations & static assets updated.${NC}\n"
 
 # 3. REDIS HEALTH CHECK
 echo -e "${YELLOW}[3/6] Checking Redis server status...${NC}"
