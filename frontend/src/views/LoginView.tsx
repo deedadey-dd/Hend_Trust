@@ -21,6 +21,9 @@ export default function LoginView() {
   const [resending, setResending] = useState(false);
   const [resendMsg, setResendMsg] = useState('');
 
+  const [requires2FA, setRequires2FA] = useState(false);
+  const [totpCode, setTotpCode] = useState('');
+
   const handleResendActivation = async () => {
     if (!username) {
       setError('Please enter your email or username first.');
@@ -44,10 +47,21 @@ export default function LoginView() {
     setResendMsg('');
     setLoading(true);
     try {
-      const res = await apiClient.post('/auth/login', { username, password, remember });
+      const payload: any = { username, password, remember };
+      if (requires2FA && totpCode.trim()) {
+        payload.totp_code = totpCode.trim();
+      }
+      const res = await apiClient.post('/auth/login', payload);
+
+      if (res.data?.requires_2fa) {
+        setRequires2FA(true);
+        setLoading(false);
+        return;
+      }
+
       const { user_id, username: uname, role, email, is_superuser, is_staff } = res.data;
       login('', { id: user_id, role, email, name: uname, username: uname, is_superuser: Boolean(is_superuser), is_staff: Boolean(is_staff) });
-      if (role === 'ADMIN' || role === 'SUPPORT_AGENT') {
+      if (role === 'ADMIN' || role === 'SUPPORT_AGENT' || is_staff || is_superuser) {
         navigate('/admin-portal/dashboard');
       } else {
         navigate('/dashboard');
@@ -122,26 +136,54 @@ export default function LoginView() {
                 {resendMsg}
               </div>
             )}
-            
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Username or Email</label>
-              <div className="relative rounded-lg shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <User className="h-5 w-5 text-gray-400 dark:text-slate-500" />
-                </div>
-                <input required type="text" value={username} onChange={e => setUsername(e.target.value)} className="block w-full pl-10 sm:text-sm border-gray-300 dark:border-slate-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 p-3 border bg-white/50 dark:bg-slate-800/80 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 transition-colors" placeholder="johndoe" />
-              </div>
-            </div>
 
-            <div>
-              <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Password</label>
-              <div className="relative rounded-lg shadow-sm">
-                <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
-                  <Lock className="h-5 w-5 text-gray-400 dark:text-slate-500" />
+            {requires2FA && (
+              <div className="p-4 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 space-y-3">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                  <h4 className="font-bold text-sm text-blue-900 dark:text-blue-200">Two-Factor Security Verification</h4>
                 </div>
-                <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="block w-full pl-10 sm:text-sm border-gray-300 dark:border-slate-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 p-3 border bg-white/50 dark:bg-slate-800/80 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 transition-colors" placeholder="••••••••" />
+                <p className="text-xs text-blue-700 dark:text-blue-300">
+                  Enter the 6-digit code from your Authenticator app (e.g. Google Authenticator, Authy, 1Password) to complete sign in.
+                </p>
+                <div>
+                  <label className="block text-xs font-semibold text-blue-900 dark:text-blue-200 mb-1">2FA Authenticator Code</label>
+                  <input
+                    type="text"
+                    required
+                    maxLength={6}
+                    value={totpCode}
+                    onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                    placeholder="123456"
+                    className="w-full text-center text-xl tracking-widest font-mono font-bold py-2.5 bg-white dark:bg-slate-800 border border-blue-300 dark:border-blue-700 rounded-lg text-slate-900 dark:text-white focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
               </div>
-            </div>
+            )}
+            
+            {!requires2FA && (
+              <>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Username or Email</label>
+                  <div className="relative rounded-lg shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <User className="h-5 w-5 text-gray-400 dark:text-slate-500" />
+                    </div>
+                    <input required type="text" value={username} onChange={e => setUsername(e.target.value)} className="block w-full pl-10 sm:text-sm border-gray-300 dark:border-slate-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 p-3 border bg-white/50 dark:bg-slate-800/80 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 transition-colors" placeholder="johndoe" />
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Password</label>
+                  <div className="relative rounded-lg shadow-sm">
+                    <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                      <Lock className="h-5 w-5 text-gray-400 dark:text-slate-500" />
+                    </div>
+                    <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="block w-full pl-10 sm:text-sm border-gray-300 dark:border-slate-700 rounded-lg focus:ring-blue-500 focus:border-blue-500 p-3 border bg-white/50 dark:bg-slate-800/80 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 transition-colors" placeholder="••••••••" />
+                  </div>
+                </div>
+              </>
+            )}
 
             <div className="flex items-center justify-between text-sm">
               <div className="flex items-center">

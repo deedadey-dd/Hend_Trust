@@ -44,5 +44,14 @@ class LedgerEntry(models.Model):
     entry_type = models.CharField(max_length=50)
     timestamp = models.DateTimeField(auto_now_add=True)
 
+    # Immutable Payout Destination Snapshot Audit Fields
+    payout_destination_type = models.CharField(max_length=20, blank=True, default='')
+    payout_account_number = models.CharField(max_length=50, blank=True, default='')
+    payout_bank_name = models.CharField(max_length=100, blank=True, default='')
+    payout_bank_code = models.CharField(max_length=20, blank=True, default='')
+    payout_account_name = models.CharField(max_length=150, blank=True, default='')
+    payout_name_matched = models.BooleanField(default=True)
+    payout_gateway = models.CharField(max_length=50, blank=True, default='')
+
     def __str__(self):
         return f"{self.entry_type} | {self.amount_ghs} GHS | {self.timestamp.date()}"

@@ -19,6 +19,88 @@ import {
 import { compressImageToWebP } from '../utils/imageUtils';
 import { apiClient, getErrorMessage } from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { ExportButton } from '../components/ExportButton';
+import type { ExportColumn } from '../utils/exportUtils';
+
+const adminTxnExportHeaders: ExportColumn[] = [
+  { label: 'Transaction ID', key: 'id' },
+  { label: 'Paystack Reference', key: 'paystack_reference' },
+  { label: 'Date Created', key: 'created_at' },
+  { label: 'Item Title', key: 'title' },
+  { label: 'Status', key: 'status' },
+  { label: 'Total Amount (GHS)', key: 'total_amount_ghs' },
+  { label: 'Platform Fee (GHS)', key: 'platform_fee_ghs' },
+  { label: 'Seller Username', key: 'seller_username' },
+  { label: 'Seller Email', key: 'seller_email' },
+  { label: 'Seller Phone', key: 'seller_phone' },
+  { label: 'Buyer Name', key: 'buyer_name' },
+  { label: 'Buyer Phone', key: 'buyer_phone' },
+  { label: 'Buyer Email', key: 'buyer_email' },
+  { label: 'Delivery Method', key: 'delivery_method' },
+  { label: 'Courier Name', key: 'courier_name' },
+  { label: 'Tracking Number', key: 'tracking_number' },
+];
+
+const disputeExportHeaders: ExportColumn[] = [
+  { label: 'Transaction ID', key: 'id' },
+  { label: 'Paystack Reference', key: 'paystack_reference' },
+  { label: 'Item Title', key: 'link_title' },
+  { label: 'Status', key: 'status' },
+  { label: 'Total Amount (GHS)', key: 'total_amount_ghs' },
+  { label: 'Platform Fee (GHS)', key: 'platform_fee_ghs' },
+  { label: 'Seller Username', key: 'seller_username' },
+  { label: 'Seller Phone', key: 'seller_phone' },
+  { label: 'Buyer Name', key: 'buyer_name' },
+  { label: 'Buyer Phone', key: 'buyer_phone' },
+  { label: 'Buyer Dispute Reason', key: 'buyer_dispute_reason' },
+  { label: 'Seller Response', key: 'seller_dispute_response' },
+  { label: 'Manager Notes', key: 'manager_dispute_notes' },
+];
+
+const accountsExportHeaders: ExportColumn[] = [
+  { label: 'Account ID', key: 'id' },
+  { label: 'Account Name', key: 'name' },
+  { label: 'Account Type', key: 'account_type' },
+  { label: 'Balance (GHS)', key: 'balance' },
+  { label: 'Username', key: 'user_username' },
+];
+
+const ledgerExportHeaders: ExportColumn[] = [
+  { label: 'Entry ID', key: 'id' },
+  { label: 'Reference ID', key: 'reference_id' },
+  { label: 'Timestamp', key: 'timestamp' },
+  { label: 'Entry Type', key: 'entry_type' },
+  { label: 'Debit Account Name', key: 'debit_account_name' },
+  { label: 'Debit Account Type', key: 'debit_account_type' },
+  { label: 'Credit Account Name', key: 'credit_account_name' },
+  { label: 'Credit Account Type', key: 'credit_account_type' },
+  { label: 'Amount (GHS)', key: 'amount_ghs' },
+];
+
+const sellerExportHeaders: ExportColumn[] = [
+  { label: 'Seller ID', key: 'id' },
+  { label: 'Username', key: 'username' },
+  { label: 'Email', key: 'email' },
+  { label: 'Phone Number', key: 'phone_number' },
+  { label: 'Payout Mode', key: 'payout_mode' },
+  { label: 'Payment Links Count', key: 'payment_links_count' },
+  { label: 'Total Transactions', key: 'total_transactions_count' },
+  { label: 'Completed Volume (GHS)', key: 'completed_gmv_ghs' },
+  { label: 'Wallet Balance (GHS)', key: 'wallet_balance_ghs' },
+  { label: 'Date Joined', key: 'created_at' },
+];
+
+const buyerExportHeaders: ExportColumn[] = [
+  { label: 'Buyer Phone', key: 'buyer_phone' },
+  { label: 'Buyer Name', key: 'buyer_name' },
+  { label: 'Buyer Email', key: 'buyer_email' },
+  { label: 'Total Orders', key: 'total_orders' },
+  { label: 'Active Escrow Orders', key: 'active_escrow_orders' },
+  { label: 'Disputed Orders', key: 'disputed_orders' },
+  { label: 'Completed Orders', key: 'completed_orders' },
+  { label: 'Total Spent (GHS)', key: 'total_spent_ghs' },
+  { label: 'Last Order Date', key: 'last_order_at' },
+];
 
 type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'SETTINGS';
 
@@ -80,6 +162,7 @@ interface PlatformSettings {
   auto_delivery_hours?: number;
   return_dispatch_days?: number;
   return_auto_refund_hours?: number;
+  otp_reveal_delay_hours?: number;
   inspection_tier1_threshold?: number;
   inspection_tier1_hours?: number;
   inspection_tier2_threshold?: number;
@@ -146,7 +229,12 @@ export const AdminDashboardView: React.FC = () => {
       const res = await apiClient.get('/escrow/admin/settings');
       setPlatformSettings(res.data);
     } catch {
-      console.error("Failed to load platform settings");
+      try {
+        const publicRes = await apiClient.get('/escrow/public-settings');
+        setPlatformSettings(prev => ({ ...prev, ...publicRes.data }));
+      } catch {
+        console.error("Failed to load platform settings");
+      }
     } finally {
       setLoadingSettings(false);
     }
@@ -209,6 +297,19 @@ export const AdminDashboardView: React.FC = () => {
       fetchVerifications();
     } catch (err: any) {
       alert(err.response?.data?.message || "Failed to approve verification.");
+    } finally {
+      setIsActioningVerif(false);
+    }
+  };
+
+  const handleAutoVerifyVerification = async (userId: string) => {
+    setIsActioningVerif(true);
+    try {
+      const res = await apiClient.post(`/admin/verifications/${userId}/auto-verify`);
+      alert(res.data.message);
+      fetchVerifications();
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.detail || "Auto-verification check failed.");
     } finally {
       setIsActioningVerif(false);
     }
@@ -657,6 +758,14 @@ export const AdminDashboardView: React.FC = () => {
                   <option value="DISPUTED">Disputed</option>
                   <option value="REFUNDED">Refunded</option>
                 </select>
+                <ExportButton
+                  filename={`admin_transactions_${new Date().toISOString().split('T')[0]}`}
+                  title="Admin Platform Transactions Audit Report"
+                  headers={adminTxnExportHeaders}
+                  data={txnsData?.items || []}
+                  sheetName="Transactions"
+                  label="Export Transactions"
+                />
               </div>
             </div>
 
@@ -732,14 +841,24 @@ export const AdminDashboardView: React.FC = () => {
         {/* ─── TAB 3: DISPUTES CENTER ──────────────────────────────────────────── */}
         {activeTab === 'DISPUTES' && (
           <div className="space-y-6">
-            <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-5 flex items-start gap-4">
-              <ShieldAlert className="h-6 w-6 text-rose-400 shrink-0 mt-0.5" />
-              <div>
-                <h3 className="text-base font-bold text-rose-300">Manager Dispute Arbitration Queue</h3>
-                <p className="text-xs text-slate-300 mt-1">
-                  Transactions listed here have had auto-payouts frozen by a buyer dispute claim. Platform managers can review evidence, logs, and issue final binding settlements.
-                </p>
+            <div className="bg-rose-500/10 border border-rose-500/20 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <ShieldAlert className="h-6 w-6 text-rose-400 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-base font-bold text-rose-300">Manager Dispute Arbitration Queue</h3>
+                  <p className="text-xs text-slate-300 mt-1">
+                    Transactions listed here have had auto-payouts frozen by a buyer dispute claim. Platform managers can review evidence, logs, and issue final binding settlements.
+                  </p>
+                </div>
               </div>
+              <ExportButton
+                filename={`admin_disputes_${new Date().toISOString().split('T')[0]}`}
+                title="Admin Dispute Centre Arbitration Report"
+                headers={disputeExportHeaders}
+                data={disputes || []}
+                sheetName="Disputes"
+                label="Export Disputes"
+              />
             </div>
 
             <div className="grid grid-cols-1 gap-6">
@@ -956,20 +1075,28 @@ export const AdminDashboardView: React.FC = () => {
                         </div>
                       </div>
 
-                      <div className="flex gap-2">
+                      <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+                        <button
+                          onClick={() => handleAutoVerifyVerification(v.id)}
+                          disabled={isActioningVerif}
+                          className="py-2 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                          title="Run instant auto-verification check against NIA / Identity API"
+                        >
+                          <Zap className="h-4 w-4" /> Run NIA Auto-Verify
+                        </button>
                         {v.verification_status !== 'APPROVED' && (
                           <button
                             onClick={() => handleApproveVerification(v.id)}
                             disabled={isActioningVerif}
-                            className="py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 disabled:opacity-50"
+                            className="py-2 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                           >
-                            <ShieldCheck className="h-4 w-4" /> Approve & Grant Verified Badge
+                            <ShieldCheck className="h-4 w-4" /> Approve & Grant Badge
                           </button>
                         )}
                         {v.verification_status !== 'REJECTED' && (
                           <button
                             onClick={() => { setRejectUserId(v.id); setRejectReason(''); }}
-                            className="py-2 px-4 bg-rose-50 dark:bg-rose-950/80 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-700/50 font-bold text-xs rounded-xl transition"
+                            className="py-2 px-3 bg-rose-50 dark:bg-rose-950/80 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-700/50 font-bold text-xs rounded-xl transition cursor-pointer"
                           >
                             Reject Document
                           </button>
@@ -1134,9 +1261,25 @@ export const AdminDashboardView: React.FC = () => {
                 </h4>
                 <div className="flex items-center gap-2">
                   <span className="text-xs text-slate-600 dark:text-slate-400">Total Filtered: <strong>{ledgerTotalCount} entries</strong></span>
-                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                  <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-500/10 border border-emerald-500/30 px-2.5 py-0.5 rounded-full mr-2">
                     GHS {ledgerTotalVolume.toLocaleString('en-US', { minimumFractionDigits: 2 })}
                   </span>
+                  <ExportButton
+                    filename={`admin_ledger_audit_${new Date().toISOString().split('T')[0]}`}
+                    title="Platform Double-Entry Ledger Audit Log"
+                    headers={ledgerExportHeaders}
+                    data={ledgerEntries}
+                    sheetName="Ledger Audit"
+                    label="Export Audit Log"
+                  />
+                  <ExportButton
+                    filename={`admin_accounts_chart_${new Date().toISOString().split('T')[0]}`}
+                    title="Platform Chart of Accounts Summary"
+                    headers={accountsExportHeaders}
+                    data={accountsList}
+                    sheetName="Accounts"
+                    label="Export Accounts"
+                  />
                 </div>
               </div>
 
@@ -1331,8 +1474,8 @@ export const AdminDashboardView: React.FC = () => {
         {/* ─── TAB 4: SELLERS DIRECTORY ───────────────────────────────────────── */}
         {activeTab === 'SELLERS' && (
           <div className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-lg">
-              <div className="relative flex-1 max-w-md">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+              <div className="relative flex-1 max-w-md w-full">
                 <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-500" />
                 <input
                   type="text"
@@ -1342,6 +1485,14 @@ export const AdminDashboardView: React.FC = () => {
                   className="w-full bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
                 />
               </div>
+              <ExportButton
+                filename={`seller_directory_${new Date().toISOString().split('T')[0]}`}
+                title="HendAxis Trust Seller Directory Report"
+                headers={sellerExportHeaders}
+                data={sellers || []}
+                sheetName="Sellers"
+                label="Export Sellers"
+              />
             </div>
 
             <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -1402,8 +1553,8 @@ export const AdminDashboardView: React.FC = () => {
         {/* ─── TAB 5: BUYER PHONE REGISTRY ────────────────────────────────────── */}
         {activeTab === 'BUYERS' && (
           <div className="space-y-6">
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex items-center justify-between shadow-lg">
-              <div className="relative flex-1 max-w-md">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+              <div className="relative flex-1 max-w-md w-full">
                 <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-500" />
                 <input
                   type="text"
@@ -1413,6 +1564,14 @@ export const AdminDashboardView: React.FC = () => {
                   className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-500 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
                 />
               </div>
+              <ExportButton
+                filename={`buyer_registry_${new Date().toISOString().split('T')[0]}`}
+                title="HendAxis Trust Buyer Phone Registry Report"
+                headers={buyerExportHeaders}
+                data={buyers || []}
+                sheetName="Buyers"
+                label="Export Buyers"
+              />
             </div>
 
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-xl">
@@ -1950,11 +2109,11 @@ export const AdminDashboardView: React.FC = () => {
                 </div>
 
                 {/* 4. Item Return Auto-Refund Window (Hours) */}
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-slate-200 block">
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
                     Item Return Auto-Refund Window (Hours)
                   </label>
-                  <p className="text-[11px] text-slate-400">
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
                     Hours after return dispatch before system auto-confirms return receipt and issues full refund to buyer.
                   </p>
                   <div className="flex items-center gap-2 pt-1">
@@ -1964,22 +2123,43 @@ export const AdminDashboardView: React.FC = () => {
                       max="168"
                       value={platformSettings.return_auto_refund_hours ?? 48}
                       onChange={(e) => handleUpdateSettings({ return_auto_refund_hours: parseInt(e.target.value) || 48 })}
-                      className="bg-slate-900 border border-slate-700 text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
                     />
-                    <span className="text-xs font-bold text-slate-400">Hours</span>
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Hours</span>
+                  </div>
+                </div>
+
+                {/* 5. Delivery OTP Verification Lock Window (Hours) */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    Delivery OTP Verification Lock Window (Hours)
+                  </label>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Delay after dispatch before seller can submit buyer's delivery OTP (prevents seller pressuring buyer prematurely).
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="0"
+                      max="168"
+                      value={platformSettings.otp_reveal_delay_hours ?? 24}
+                      onChange={(e) => handleUpdateSettings({ otp_reveal_delay_hours: parseInt(e.target.value) >= 0 ? parseInt(e.target.value) : 24 })}
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Hours</span>
                   </div>
                 </div>
               </div>
 
               {/* Inspection Period Tiers */}
-              <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-4">
-                <h5 className="text-xs font-bold text-slate-200 uppercase tracking-wider">Tiered Inspection Windows (Based on Order Amount)</h5>
+              <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">Tiered Inspection Windows (Based on Order Amount)</h5>
                 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   {/* Tier 1 */}
-                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-2">
-                    <span className="text-[10px] font-bold text-blue-400 uppercase font-mono block">Tier 1: Standard Orders</span>
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase font-mono block">Tier 1: Standard Orders</span>
+                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                       <span>Order Value &lt;</span>
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-slate-500">GHS</span>
@@ -1987,18 +2167,18 @@ export const AdminDashboardView: React.FC = () => {
                           type="number"
                           value={platformSettings.inspection_tier1_threshold ?? 2000}
                           onChange={(e) => handleUpdateSettings({ inspection_tier1_threshold: parseFloat(e.target.value) || 2000 })}
-                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-20 font-mono text-right"
+                          className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2 py-1 w-20 font-mono text-right"
                         />
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-1">
                       <span>Inspection Duration:</span>
                       <div className="flex items-center gap-1">
                         <input
                           type="number"
                           value={platformSettings.inspection_tier1_hours ?? 24}
                           onChange={(e) => handleUpdateSettings({ inspection_tier1_hours: parseInt(e.target.value) || 24 })}
-                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-16 font-mono text-right font-bold text-emerald-400"
+                          className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2 py-1 w-16 font-mono text-right font-bold text-emerald-600 dark:text-emerald-400"
                         />
                         <span className="text-[10px]">hrs</span>
                       </div>
@@ -2006,9 +2186,9 @@ export const AdminDashboardView: React.FC = () => {
                   </div>
 
                   {/* Tier 2 */}
-                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-2">
-                    <span className="text-[10px] font-bold text-purple-400 uppercase font-mono block">Tier 2: Mid-Value Orders</span>
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <span className="text-[10px] font-bold text-purple-600 dark:text-purple-400 uppercase font-mono block">Tier 2: Mid-Value Orders</span>
+                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                       <span>Order Value &lt;</span>
                       <div className="flex items-center gap-1">
                         <span className="text-[10px] text-slate-500">GHS</span>
@@ -2016,18 +2196,18 @@ export const AdminDashboardView: React.FC = () => {
                           type="number"
                           value={platformSettings.inspection_tier2_threshold ?? 10000}
                           onChange={(e) => handleUpdateSettings({ inspection_tier2_threshold: parseFloat(e.target.value) || 10000 })}
-                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-20 font-mono text-right"
+                          className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2 py-1 w-20 font-mono text-right"
                         />
                       </div>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-1">
                       <span>Inspection Duration:</span>
                       <div className="flex items-center gap-1">
                         <input
                           type="number"
                           value={platformSettings.inspection_tier2_hours ?? 48}
                           onChange={(e) => handleUpdateSettings({ inspection_tier2_hours: parseInt(e.target.value) || 48 })}
-                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-16 font-mono text-right font-bold text-emerald-400"
+                          className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2 py-1 w-16 font-mono text-right font-bold text-emerald-600 dark:text-emerald-400"
                         />
                         <span className="text-[10px]">hrs</span>
                       </div>
@@ -2035,20 +2215,20 @@ export const AdminDashboardView: React.FC = () => {
                   </div>
 
                   {/* Tier 3 */}
-                  <div className="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-2">
-                    <span className="text-[10px] font-bold text-amber-400 uppercase font-mono block">Tier 3: High-Value Orders</span>
-                    <div className="flex items-center justify-between text-xs text-slate-400">
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase font-mono block">Tier 3: High-Value Orders</span>
+                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400">
                       <span>Order Value &ge;</span>
-                      <span className="font-mono text-slate-300 font-bold">GHS {(platformSettings.inspection_tier2_threshold ?? 10000).toLocaleString()}</span>
+                      <span className="font-mono text-slate-800 dark:text-slate-300 font-bold">GHS {(platformSettings.inspection_tier2_threshold ?? 10000).toLocaleString()}</span>
                     </div>
-                    <div className="flex items-center justify-between text-xs text-slate-400 pt-1">
+                    <div className="flex items-center justify-between text-xs text-slate-600 dark:text-slate-400 pt-1">
                       <span>Inspection Duration:</span>
                       <div className="flex items-center gap-1">
                         <input
                           type="number"
                           value={platformSettings.inspection_tier3_hours ?? 72}
                           onChange={(e) => handleUpdateSettings({ inspection_tier3_hours: parseInt(e.target.value) || 72 })}
-                          className="bg-slate-950 border border-slate-700 text-white text-xs rounded px-2 py-1 w-16 font-mono text-right font-bold text-emerald-400"
+                          className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2 py-1 w-16 font-mono text-right font-bold text-emerald-600 dark:text-emerald-400"
                         />
                         <span className="text-[10px]">hrs</span>
                       </div>

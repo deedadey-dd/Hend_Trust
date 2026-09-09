@@ -1,5 +1,6 @@
 from decimal import Decimal, ROUND_HALF_UP
 from django.db import transaction
+from django.conf import settings
 from ninja.errors import HttpError
 from apps.wallet.models import SellerWallet
 from apps.ledger.models import LedgerAccount, LedgerEntry, AccountType
@@ -93,14 +94,22 @@ def execute_withdrawal(wallet: SellerWallet, amount: Decimal, destination_type: 
     fee_expense_account = _get_or_create_fee_account('PAYSTACK_FEES_EXPENSE', AccountType.ASSET)
     
     ref_id = uuid.uuid4()
+    active_gateway = getattr(settings, 'ACTIVE_PAYMENT_GATEWAY', 'PAYSTACK')
     
-    # Entry 1: Debit Seller Wallet for the gross withdrawal amount
+    # Entry 1: Debit Seller Wallet for the gross withdrawal amount with immutable payout snapshot
     LedgerEntry.objects.create(
         reference_id=ref_id,
         debit_account=wallet.ledger_account,
         credit_account=payout_liability,
         amount_ghs=amount,
-        entry_type="SELLER_WITHDRAWAL_REQUEST"
+        entry_type="SELLER_WITHDRAWAL_REQUEST",
+        payout_destination_type=destination_type or wallet.preferred_payout_type,
+        payout_account_number=destination_account or wallet.bank_account_number or wallet.momo_number or '',
+        payout_bank_name=wallet.bank_name or '',
+        payout_bank_code=wallet.bank_code or '',
+        payout_account_name=wallet.bank_account_name or f"{wallet.user.first_name} {wallet.user.last_name}".strip() or wallet.user.username,
+        payout_name_matched=getattr(wallet, 'bank_name_matched', True),
+        payout_gateway=active_gateway
     )
     _apply_entry_to_balances(wallet.ledger_account, payout_liability, amount)
     
@@ -110,7 +119,8 @@ def execute_withdrawal(wallet: SellerWallet, amount: Decimal, destination_type: 
         debit_account=wallet.ledger_account,
         credit_account=fee_expense_account,
         amount_ghs=paystack_fee,
-        entry_type="PAYSTACK_PAYOUT_FEE"
+        entry_type="PAYSTACK_PAYOUT_FEE",
+        payout_gateway=active_gateway
     )
     _apply_entry_to_balances(wallet.ledger_account, fee_expense_account, paystack_fee)
     

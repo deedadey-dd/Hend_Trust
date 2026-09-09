@@ -362,3 +362,12 @@ if not DEBUG:
     SECURE_HSTS_SECONDS = 31536000  # 1 year
     SECURE_HSTS_INCLUDE_SUBDOMAINS = True
     SECURE_HSTS_PRELOAD = True
+
+# Ghana Card Auto-Verification Settings
+ENABLE_GHANA_CARD_AUTO_VERIFY = env.bool('ENABLE_GHANA_CARD_AUTO_VERIFY', default=True)
+GHANA_CARD_VERIFY_PROVIDER = env('GHANA_CARD_VERIFY_PROVIDER', default='PAYSTACK')
+NIA_API_URL = env('NIA_API_URL', default='https://api.nia.gov.gh/v1/verify')
+NIA_API_KEY = env('NIA_API_KEY', default='')
+NIA_CLIENT_ID = env('NIA_CLIENT_ID', default='')
+PREMBLY_API_KEY = env('PREMBLY_API_KEY', default='')
+

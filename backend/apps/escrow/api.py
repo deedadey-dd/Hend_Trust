@@ -53,6 +53,8 @@ class SellerTransactionSchema(Schema):
     seller_dispute_photos: Optional[list[str]] = []
     manager_dispute_notes: Optional[str] = None
     manager_dispute_photos: Optional[list[str]] = []
+    shipping_timeout_days: int = 4
+    otp_reveal_delay_hours: int = 24
 
 @escrow_router.get("/seller/transactions", response=list[SellerTransactionSchema])
 @paginate(LimitOffsetPagination)
@@ -85,6 +87,10 @@ def get_seller_transactions(request, search: str = None, status: str = None, sta
             txns = txns.filter(created_at__lte=date_obj)
         except ValueError:
             pass
+
+    cfg = get_platform_settings()
+    timeout_days = cfg.get("shipping_timeout_days", 4)
+    otp_delay_hrs = cfg.get("otp_reveal_delay_hours", 24)
 
     items = []
     for t in txns.prefetch_related('delivery_logs'):
@@ -119,6 +125,8 @@ def get_seller_transactions(request, search: str = None, status: str = None, sta
             "seller_dispute_photos": t.seller_dispute_photos or [],
             "manager_dispute_notes": t.manager_dispute_notes,
             "manager_dispute_photos": t.manager_dispute_photos or [],
+            "shipping_timeout_days": timeout_days,
+            "otp_reveal_delay_hours": otp_delay_hrs,
         })
             
     return items
@@ -327,6 +335,18 @@ def seller_verify_delivery_otp(request, transaction_id: uuid.UUID, data: SellerV
     )
     if transaction.status != TransactionStatus.DELIVERY_IN_PROGRESS:
         raise HttpError(400, "This transaction is not currently in delivery.")
+
+    # Anti-fraud check: Ensure OTP delay period has elapsed since dispatch
+    cfg = get_platform_settings()
+    delay_hours = int(cfg.get("otp_reveal_delay_hours", 24))
+    if delay_hours > 0 and transaction.dispatched_at:
+        now = timezone.now()
+        hours_passed = (now - transaction.dispatched_at).total_seconds() / 3600.0
+        if hours_passed < delay_hours:
+            rem_sec = (delay_hours - hours_passed) * 3600.0
+            rem_h = int(rem_sec // 3600)
+            rem_m = int((rem_sec % 3600) // 60)
+            raise HttpError(400, f"Delivery OTP verification is locked for {delay_hours} hours after dispatch to protect buyers from premature OTP pressure. Time remaining: {rem_h}h {rem_m}m.")
 
     otp_code = data.otp_code
     if not verify_delivery_otp(str(transaction.id), otp_code):
@@ -1557,13 +1577,40 @@ def reject_seller_verification(request, user_id: uuid.UUID, data: RejectVerifica
     seller.verification_status = VerificationStatus.REJECTED
     seller.verification_rejection_reason = data.reason or "Submitted documents were unclear or invalid."
     seller.save(update_fields=['verification_status', 'verification_rejection_reason'])
-    
+
     dispatch_sms_task.delay(
-        seller.phone_number, 
-        f"Verification Request Update: Your document submission was not approved. Reason: {seller.verification_rejection_reason}. Please re-submit valid documents on your profile page."
+        seller.phone_number,
+        f"Your verification documents for {seller.shop_name or seller.username} were rejected. Reason: {seller.verification_rejection_reason}"
     )
 
-    return {"message": f"Verification for @{seller.username} rejected."}
+    return {"message": f"Seller @{seller.username} verification rejected."}
+
+@admin_router.post("/verifications/{user_id}/auto-verify", response=dict)
+def auto_verify_seller_verification(request, user_id: uuid.UUID):
+    is_admin_user(request)
+    from apps.users.models import User, VerificationStatus
+    from apps.users.ghana_card import verify_ghana_card
+    from django.utils import timezone
+    seller = get_object_or_404(User, id=user_id)
+
+    if not seller.national_id_number:
+        raise HttpError(400, f"Seller @{seller.username} has not submitted a Ghana Card number.")
+
+    full_name = f"{seller.first_name} {seller.last_name}".strip() or seller.username
+    is_verified, msg, _data = verify_ghana_card(
+        card_number=seller.national_id_number,
+        full_name=full_name,
+        phone=seller.phone_number
+    )
+
+    if is_verified:
+        seller.verification_status = VerificationStatus.APPROVED
+        seller.verified_at = timezone.now()
+        seller.verification_rejection_reason = ""
+        seller.save(update_fields=['verification_status', 'verified_at', 'verification_rejection_reason'])
+        return {"success": True, "message": f"Auto-verification succeeded! Seller @{seller.username} approved via NIA/Identity API."}
+    else:
+        return {"success": False, "message": f"Auto-verification failed: {msg}"}
 
 
 @admin_router.get("/funds/accounts", response=dict)
@@ -1700,7 +1747,14 @@ def get_platform_ledger_entries(
             "credit_account_name": e.credit_account.name,
             "credit_account_type": e.credit_account.account_type,
             "amount_ghs": float(e.amount_ghs),
-            "timestamp": e.timestamp.isoformat()
+            "timestamp": e.timestamp.isoformat(),
+            "payout_destination_type": e.payout_destination_type or "",
+            "payout_account_number": e.payout_account_number or "",
+            "payout_bank_name": e.payout_bank_name or "",
+            "payout_bank_code": e.payout_bank_code or "",
+            "payout_account_name": e.payout_account_name or "",
+            "payout_name_matched": e.payout_name_matched,
+            "payout_gateway": e.payout_gateway or "",
         } for e in entries
     ]
 
@@ -1721,6 +1775,7 @@ DEFAULT_SYSTEM_SETTINGS = {
     "enabled_carriers": ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"],
     "shipping_timeout_days": 4,
     "auto_delivery_hours": 48,
+    "otp_reveal_delay_hours": 24,
     "return_dispatch_days": 3,
     "return_auto_refund_hours": 48,
     "inspection_tier1_threshold": 2000.0,
@@ -1771,6 +1826,7 @@ class PublicPlatformSettingsSchema(Schema):
     enabled_carriers: List[str]
     shipping_timeout_days: int = 4
     auto_delivery_hours: int = 48
+    otp_reveal_delay_hours: int = 24
     return_dispatch_days: int = 3
     return_auto_refund_hours: int = 48
     inspection_tier1_threshold: float = 2000.0
@@ -1786,6 +1842,7 @@ class PlatformSettingsSchema(Schema):
     enabled_carriers: List[str]
     shipping_timeout_days: int = 4
     auto_delivery_hours: int = 48
+    otp_reveal_delay_hours: int = 24
     return_dispatch_days: int = 3
     return_auto_refund_hours: int = 48
     inspection_tier1_threshold: float = 2000.0
@@ -1802,6 +1859,7 @@ class UpdatePlatformSettingsSchema(Schema):
     enabled_carriers: Optional[List[str]] = None
     shipping_timeout_days: Optional[int] = None
     auto_delivery_hours: Optional[int] = None
+    otp_reveal_delay_hours: Optional[int] = None
     return_dispatch_days: Optional[int] = None
     return_auto_refund_hours: Optional[int] = None
     inspection_tier1_threshold: Optional[float] = None
@@ -1849,6 +1907,9 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
 
     if data.auto_delivery_hours is not None:
         current["auto_delivery_hours"] = max(1, data.auto_delivery_hours)
+
+    if data.otp_reveal_delay_hours is not None:
+        current["otp_reveal_delay_hours"] = max(0, data.otp_reveal_delay_hours)
 
     if data.return_dispatch_days is not None:
         current["return_dispatch_days"] = max(1, data.return_dispatch_days)

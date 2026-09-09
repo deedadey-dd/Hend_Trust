@@ -31,15 +31,16 @@ def transition_to_inspection(transaction: Transaction) -> None:
     transaction.save(update_fields=['status', 'delivered_at', 'inspection_starts_at', 'updated_at'])
 
 
-def _build_delivery_sms(transaction: Transaction, otp: str) -> str:
-    """Build a rich SMS message for the buyer with driver info and OTP."""
+def _build_delivery_sms(transaction: Transaction, otp: str, is_resend: bool = False) -> str:
+    """Build a rich SMS message for the buyer with driver info, OTP, and anti-fraud warning."""
     # Fetch the latest informal bus delivery log for this transaction
     log = DeliveryLog.objects.filter(
         transaction=transaction,
         delivery_method='INFORMAL_BUS'
     ).order_by('-created_at').first()
 
-    parts = [f"Your order {transaction.paystack_reference} is on its way!"]
+    header = f"Your order {transaction.paystack_reference} delivery OTP (Resent):" if is_resend else f"Your order {transaction.paystack_reference} is on its way!"
+    parts = [header]
 
     if log:
         if log.driver_phone:
@@ -51,6 +52,7 @@ def _build_delivery_sms(transaction: Transaction, otp: str) -> str:
 
     parts.append(f"Secret OTP: {otp}")
     parts.append("Show your ID + this OTP at pickup.")
+    parts.append("⚠️ SECURITY NOTICE: Giving this OTP to the seller confirms you have received your package. ONLY share this OTP after physically receiving and inspecting your item!")
 
     return "\n".join(parts)
 
@@ -62,11 +64,12 @@ def generate_delivery_otp(transaction_id: str) -> str:
 
     try:
         txn = Transaction.objects.get(id=transaction_id)
-        msg = _build_delivery_sms(txn, otp)
+        msg = _build_delivery_sms(txn, otp, is_resend=False)
 
-        print("\n" + "="*60, flush=True)
-        print(f"🔑 DEV DELIVERY PICKUP OTP FOR {txn.buyer_phone}: {otp}", flush=True)
-        print("="*60 + "\n", flush=True)
+        print("\n" + "="*70, flush=True)
+        print(f"🔑 DEV DELIVERY PICKUP OTP FOR {txn.buyer_phone} / {txn.buyer_email}: {otp}", flush=True)
+        print("⚠️  SECURITY WARNING: Buyer must ONLY give OTP to seller after receiving item!", flush=True)
+        print("="*70 + "\n", flush=True)
 
         dispatch_sms_task.delay(txn.buyer_phone, msg)
         if txn.buyer_email:
@@ -91,11 +94,12 @@ def resend_delivery_otp(transaction_id: str) -> str:
 
     try:
         txn = Transaction.objects.get(id=transaction_id)
-        msg = _build_delivery_sms(txn, otp)
+        msg = _build_delivery_sms(txn, otp, is_resend=True)
 
-        print("\n" + "="*50)
-        print(f"DEV DELIVERY OTP FOR {txn.buyer_phone}: {otp}")
-        print("="*50 + "\n")
+        print("\n" + "="*70, flush=True)
+        print(f"🔑 [RESENT OTP TO BUYER] {txn.buyer_phone} / {txn.buyer_email}: {otp}", flush=True)
+        print("⚠️  SECURITY WARNING: Buyer must ONLY give OTP to seller after receiving item!", flush=True)
+        print("="*70 + "\n", flush=True)
 
         dispatch_sms_task.delay(txn.buyer_phone, msg)
         if txn.buyer_email:

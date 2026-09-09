@@ -25,6 +25,9 @@ class SellerWallet(models.Model):
     momo_number = models.CharField(max_length=20, null=True, blank=True)
     bank_account_number = models.CharField(max_length=50, null=True, blank=True)
     bank_name = models.CharField(max_length=100, null=True, blank=True)
+    bank_code = models.CharField(max_length=20, null=True, blank=True)
+    bank_account_name = models.CharField(max_length=150, null=True, blank=True)
+    bank_name_matched = models.BooleanField(default=True)
 
     # Cumulative Paystack transfer fees paid
     total_paystack_fees_ghs = models.DecimalField(max_digits=12, decimal_places=2, default=0.00)

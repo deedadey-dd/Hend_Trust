@@ -18,6 +18,9 @@ interface ProfileData {
   momo_number: string | null;
   bank_account_number: string | null;
   bank_name: string | null;
+  bank_code?: string | null;
+  bank_account_name?: string | null;
+  bank_name_matched?: boolean;
   total_paystack_fees_ghs: number | null;
   // Shop details
   shop_name: string;
@@ -33,6 +36,7 @@ interface ProfileData {
   business_license_photo_url: string;
   verification_rejection_reason: string;
   verified_at?: string;
+  is_2fa_enabled?: boolean;
 }
 
 const CATEGORY_OPTIONS = ['Electronics', 'Fashion', 'Beauty', 'Home & Living', 'Services', 'General'];
@@ -46,6 +50,18 @@ export default function ProfileView() {
   const [success, setSuccess] = useState('');
   const [error, setError] = useState('');
 
+  // 2FA State
+  const [is2FAEnabled, setIs2FAEnabled] = useState(false);
+  const [show2FASetupModal, setShow2FASetupModal] = useState(false);
+  const [show2FADisableModal, setShow2FADisableModal] = useState(false);
+  const [totpSecret, setTotpSecret] = useState('');
+  const [qrCodeUri, setQrCodeUri] = useState('');
+  const [totpCode, setTotpCode] = useState('');
+  const [disablePassword, setDisablePassword] = useState('');
+  const [totpLoading, setTotpLoading] = useState(false);
+  const [totpError, setTotpError] = useState('');
+  const [copiedSecret, setCopiedSecret] = useState(false);
+
   // Editable Profile fields
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
@@ -54,6 +70,12 @@ export default function ProfileView() {
   const [momoNumber, setMomoNumber] = useState('');
   const [bankAccount, setBankAccount] = useState('');
   const [bankName, setBankName] = useState('');
+  const [bankCode, setBankCode] = useState('');
+  const [bankAccountName, setBankAccountName] = useState('');
+  const [bankNameMatched, setBankNameMatched] = useState(true);
+  const [banksList, setBanksList] = useState<Array<{ name: string; code: string; type?: string }>>([]);
+  const [resolvingBank, setResolvingBank] = useState(false);
+  const [bankResolveError, setBankResolveError] = useState('');
 
   // Editable Shop fields
   const [shopName, setShopName] = useState('');
@@ -74,6 +96,7 @@ export default function ProfileView() {
       const res = await apiClient.get('/profile/');
       const data = res.data as ProfileData;
       setProfile(data);
+      setIs2FAEnabled(Boolean(data.is_2fa_enabled));
       setFirstName(data.first_name || '');
       setLastName(data.last_name || '');
       setPayoutMode(data.payout_mode || 'INSTANT');
@@ -81,6 +104,9 @@ export default function ProfileView() {
       setMomoNumber(data.momo_number || '');
       setBankAccount(data.bank_account_number || '');
       setBankName(data.bank_name || '');
+      setBankCode(data.bank_code || '');
+      setBankAccountName(data.bank_account_name || '');
+      setBankNameMatched(data.bank_name_matched !== false);
       
       setShopName(data.shop_name || '');
       setShopDescription(data.shop_description || '');
@@ -98,9 +124,45 @@ export default function ProfileView() {
     }
   };
 
+  const fetchBanks = async () => {
+    try {
+      const res = await apiClient.get('/profile/banks');
+      setBanksList(res.data || []);
+    } catch {
+      console.error("Failed to load supported banks directory.");
+    }
+  };
+
   useEffect(() => {
     fetchProfile();
+    fetchBanks();
   }, []);
+
+  const handleResolveBank = async (codeToUse?: string, accToUse?: string) => {
+    const targetCode = codeToUse || bankCode;
+    const targetAcc = accToUse || bankAccount;
+    if (!targetCode || !targetAcc || targetAcc.length < 5) return;
+    setResolvingBank(true);
+    setBankResolveError('');
+    try {
+      const res = await apiClient.post('/profile/resolve-bank-account', {
+        bank_code: targetCode,
+        account_number: targetAcc
+      });
+      if (res.data.success) {
+        setBankAccountName(res.data.account_name);
+        setBankNameMatched(Boolean(res.data.is_name_matched));
+      } else {
+        setBankAccountName('');
+        setBankResolveError(res.data.message || "Failed to resolve account number with selected bank.");
+      }
+    } catch (err: any) {
+      setBankAccountName('');
+      setBankResolveError(err.response?.data?.message || "Error connecting to bank account resolution service.");
+    } finally {
+      setResolvingBank(false);
+    }
+  };
 
   // MoMo OTP Verification modal state
   const [showOtpModal, setShowOtpModal] = useState(false);
@@ -166,6 +228,69 @@ export default function ProfileView() {
     }
   };
 
+  // 2FA Setup & Disable Handlers
+  const handleStart2FASetup = async () => {
+    setTotpLoading(true);
+    setTotpError('');
+    try {
+      const res = await apiClient.post('/profile/2fa/setup');
+      setTotpSecret(res.data.secret || '');
+      setQrCodeUri(res.data.qr_code || '');
+      setTotpCode('');
+      setShow2FASetupModal(true);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'Failed to initialize 2FA setup.');
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  const handleVerify2FASetup = async () => {
+    if (totpCode.length !== 6) {
+      setTotpError('Please enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    setTotpLoading(true);
+    setTotpError('');
+    try {
+      await apiClient.post('/profile/2fa/verify', { otp_code: totpCode.trim() });
+      setIs2FAEnabled(true);
+      setShow2FASetupModal(false);
+      setSuccess('Two-Factor Authentication (2FA) has been successfully enabled on your account!');
+      setTimeout(() => setSuccess(''), 5000);
+    } catch (err: any) {
+      setTotpError(err.response?.data?.detail || 'Invalid code. Please check your app and try again.');
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
+  const handleDisable2FA = async () => {
+    if (totpCode.length !== 6) {
+      setTotpError('Please enter the 6-digit code from your authenticator app.');
+      return;
+    }
+    if (!disablePassword) {
+      setTotpError('Please enter your account password.');
+      return;
+    }
+    setTotpLoading(true);
+    setTotpError('');
+    try {
+      await apiClient.post('/profile/2fa/disable', { password: disablePassword, otp_code: totpCode.trim() });
+      setIs2FAEnabled(false);
+      setShow2FADisableModal(false);
+      setDisablePassword('');
+      setTotpCode('');
+      setSuccess('Two-Factor Authentication (2FA) has been disabled.');
+      setTimeout(() => setSuccess(''), 5000);
+    } catch (err: any) {
+      setTotpError(err.response?.data?.detail || 'Failed to disable 2FA.');
+    } finally {
+      setTotpLoading(false);
+    }
+  };
+
   const handleSaveProfile = async () => {
     setSuccess('');
     setError('');
@@ -189,6 +314,8 @@ export default function ProfileView() {
         momo_number: payoutType === 'MOMO' ? momoNumber : null,
         bank_account_number: payoutType === 'BANK' ? bankAccount : null,
         bank_name: payoutType === 'BANK' ? bankName : null,
+        bank_code: payoutType === 'BANK' ? bankCode : null,
+        bank_account_name: payoutType === 'BANK' ? bankAccountName : null,
       });
       setSuccess('Profile & Payout settings saved!');
       setTimeout(() => setSuccess(''), 4000);
@@ -383,8 +510,13 @@ export default function ProfileView() {
                   </div>
                 )}
 
-                <div className="text-xs text-gray-500 dark:text-slate-400">
-                  Upload your <strong>Ghana Card / National ID</strong> and optional <strong>Business Registration License</strong>. Once submitted, our management team will review and grant your Verified badge.
+                <div className="text-xs text-gray-500 dark:text-slate-400 space-y-1">
+                  <p>
+                    Enter your <strong>Ghana Card / National ID number</strong> and upload a clear photo of your card.
+                  </p>
+                  <p className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                    <Zap className="h-3.5 w-3.5" /> Instant NIA Auto-Verification enabled. Valid Ghana Cards are verified immediately!
+                  </p>
                 </div>
 
                 <div>
@@ -395,8 +527,9 @@ export default function ProfileView() {
                     value={idNumber}
                     onChange={e => setIdNumber(e.target.value)}
                     placeholder="e.g. GHA-123456789-0"
-                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none font-mono"
                   />
+                  <span className="text-[10px] text-gray-400 dark:text-slate-500 mt-1 block">Format: GHA-XXXXXXXXX-X (15 characters)</span>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
@@ -435,7 +568,7 @@ export default function ProfileView() {
                   className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
                 >
                   {submittingVerif ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
-                  Submit Documents for Manager Verification
+                  Submit for Auto / Manager Verification
                 </button>
               </form>
             )}
@@ -718,25 +851,80 @@ export default function ProfileView() {
               ) : (
                 <div className="space-y-3">
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Bank Name</label>
-                    <input
-                      type="text"
-                      value={bankName}
-                      onChange={e => setBankName(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                      placeholder="e.g. GCB Bank"
-                    />
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Select Bank *</label>
+                    <select
+                      value={bankCode}
+                      onChange={e => {
+                        const selectedCode = e.target.value;
+                        setBankCode(selectedCode);
+                        const selectedBank = banksList.find(b => b.code === selectedCode);
+                        if (selectedBank) setBankName(selectedBank.name);
+                        if (selectedCode && bankAccount) handleResolveBank(selectedCode, bankAccount);
+                      }}
+                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer font-medium"
+                    >
+                      <option value="">Select your Commercial Bank / MoMo</option>
+                      {banksList.map(b => (
+                        <option key={b.code} value={b.code}>
+                          {b.name} ({b.code})
+                        </option>
+                      ))}
+                    </select>
                   </div>
+
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Account Number</label>
-                    <input
-                      type="text"
-                      value={bankAccount}
-                      onChange={e => setBankAccount(e.target.value)}
-                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                      placeholder="Account number"
-                    />
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Account Number *</label>
+                    <div className="flex gap-2">
+                      <input
+                        type="text"
+                        value={bankAccount}
+                        onChange={e => {
+                          setBankAccount(e.target.value);
+                          if (bankCode && e.target.value.length >= 6) {
+                            handleResolveBank(bankCode, e.target.value);
+                          }
+                        }}
+                        onBlur={() => handleResolveBank()}
+                        className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                        placeholder="e.g. 1441000123456"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleResolveBank()}
+                        disabled={resolvingBank || !bankCode || !bankAccount}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition shadow flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+                      >
+                        {resolvingBank ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                        Verify
+                      </button>
+                    </div>
                   </div>
+
+                  {/* Resolution Feedback Status */}
+                  {bankAccountName && (
+                    <div className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                      bankNameMatched
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                        : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                    }`}>
+                      <div>
+                        <span className="font-bold block">Account Holder: {bankAccountName}</span>
+                        <span className="text-[11px] opacity-90">
+                          {bankNameMatched
+                            ? '✓ Account name matches profile identity.'
+                            : 'ℹ️ Third-Party / Business Account detected. Details recorded for payout audit log.'}
+                        </span>
+                      </div>
+                      <CheckCircle className={`h-4 w-4 shrink-0 ${bankNameMatched ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`} />
+                    </div>
+                  )}
+
+                  {bankResolveError && (
+                    <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs flex items-center gap-2">
+                      <AlertTriangle className="h-4 w-4 shrink-0" />
+                      <span>{bankResolveError}</span>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -752,7 +940,252 @@ export default function ProfileView() {
           </div>
         </div>
 
+        {/* 5. SECURITY & 2FA SETTINGS */}
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center">
+                <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+              </div>
+              <div>
+                <h2 className="font-semibold text-gray-900 dark:text-white">Account Security & 2FA</h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400">Protect your account using an Authenticator App (Google Authenticator, Authy, 1Password)</p>
+              </div>
+            </div>
+            <span className={`px-3 py-1 rounded-full text-xs font-bold ${
+              is2FAEnabled
+                ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                : 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-400'
+            }`}>
+              {is2FAEnabled ? '🟢 2FA Enabled' : '⚪ 2FA Disabled'}
+            </span>
+          </div>
+
+          <div className="p-6 space-y-4">
+            <p className="text-xs text-gray-600 dark:text-slate-300 leading-relaxed">
+              Two-Factor Authentication (2FA) adds an extra layer of security to your HendAxis account. When enabled, signing in will require both your password and a 6-digit verification code from your authenticator app.
+            </p>
+
+            {is2FAEnabled ? (
+              <div className="flex items-center justify-between p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800/60">
+                <div className="flex items-center gap-3">
+                  <ShieldCheck className="h-6 w-6 text-emerald-600 dark:text-emerald-400" />
+                  <div>
+                    <p className="text-xs font-bold text-emerald-900 dark:text-emerald-200">Your account is secured with 2FA</p>
+                    <p className="text-[11px] text-emerald-700 dark:text-emerald-400">You will be prompted for an authenticator code whenever you log in.</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setTotpCode('');
+                    setDisablePassword('');
+                    setTotpError('');
+                    setShow2FADisableModal(true);
+                  }}
+                  className="px-4 py-2 bg-red-50 dark:bg-red-950/50 hover:bg-red-100 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 rounded-xl text-xs font-bold transition cursor-pointer"
+                >
+                  Disable 2FA
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center justify-between p-4 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800">
+                <div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Set up Authenticator App</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Optional security feature for all user accounts.</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleStart2FASetup}
+                  disabled={totpLoading}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl text-xs font-bold transition shadow flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                >
+                  {totpLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                  Enable 2FA Authenticator
+                </button>
+              </div>
+            )}
+          </div>
+        </div>
+
       </div>
+
+      {/* 2FA Setup Modal */}
+      {show2FASetupModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 relative text-slate-900 dark:text-white">
+            <button
+              onClick={() => setShow2FASetupModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <ShieldCheck className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base">Setup 2FA Authenticator</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Google Authenticator / Authy / 1Password</p>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              <p className="text-xs font-semibold text-slate-700 dark:text-slate-300">
+                1. Scan this QR code with your authenticator app:
+              </p>
+              
+              {qrCodeUri ? (
+                <div className="flex flex-col items-center justify-center p-4 bg-white rounded-xl border border-slate-200 shadow-sm">
+                  <img src={qrCodeUri} alt="2FA QR Code" className="w-44 h-44 object-contain" />
+                </div>
+              ) : (
+                <div className="h-44 flex items-center justify-center bg-slate-100 dark:bg-slate-800 rounded-xl">
+                  <Loader2 className="h-6 w-6 animate-spin text-slate-400" />
+                </div>
+              )}
+
+              <div className="space-y-1">
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Can't scan? Enter key manually:</p>
+                <div className="flex items-center gap-2">
+                  <code className="flex-1 bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-slate-200 px-3 py-1.5 rounded-lg text-xs font-mono font-bold tracking-wider select-all border border-slate-200 dark:border-slate-700 overflow-x-auto">
+                    {totpSecret}
+                  </code>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(totpSecret);
+                      setCopiedSecret(true);
+                      setTimeout(() => setCopiedSecret(false), 2000);
+                    }}
+                    className="px-3 py-1.5 bg-slate-200 dark:bg-slate-800 hover:bg-slate-300 dark:hover:bg-slate-700 text-xs font-semibold rounded-lg transition"
+                  >
+                    {copiedSecret ? 'Copied!' : 'Copy'}
+                  </button>
+                </div>
+              </div>
+
+              <div className="pt-2 space-y-1">
+                <label className="block text-xs font-bold text-slate-800 dark:text-slate-200">
+                  2. Enter 6-digit code from your app to confirm:
+                </label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="123456"
+                  className="w-full text-center text-xl tracking-widest font-mono font-bold py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-emerald-500 outline-none"
+                />
+              </div>
+
+              {totpError && (
+                <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-xs font-semibold text-red-600 dark:text-red-400">
+                  {totpError}
+                </div>
+              )}
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShow2FASetupModal(false)}
+                  className="px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleVerify2FASetup}
+                  disabled={totpLoading || totpCode.length !== 6}
+                  className="px-5 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-2"
+                >
+                  {totpLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ShieldCheck className="h-4 w-4" />}
+                  Verify & Enable 2FA
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* 2FA Disable Modal */}
+      {show2FADisableModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white">
+            <button
+              onClick={() => setShow2FADisableModal(false)}
+              className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
+            >
+              <X className="h-5 w-5" />
+            </button>
+
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-500/10 border border-red-500/20 text-red-600 dark:text-red-400 flex items-center justify-center">
+                <AlertTriangle className="h-5 w-5" />
+              </div>
+              <div>
+                <h3 className="font-bold text-base text-red-600 dark:text-red-400">Disable Two-Factor Security</h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Security Check</p>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-300 leading-relaxed">
+              Enter your account password and the current 6-digit code from your authenticator app to disable 2FA.
+            </p>
+
+            {totpError && (
+              <div className="p-3 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 text-xs font-semibold text-red-600 dark:text-red-400">
+                {totpError}
+              </div>
+            )}
+
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-bold mb-1">Account Password</label>
+                <input
+                  type="password"
+                  value={disablePassword}
+                  onChange={e => setDisablePassword(e.target.value)}
+                  placeholder="••••••••"
+                  className="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl text-xs outline-none focus:ring-2 focus:ring-red-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold mb-1">6-Digit Authenticator Code</label>
+                <input
+                  type="text"
+                  maxLength={6}
+                  value={totpCode}
+                  onChange={e => setTotpCode(e.target.value.replace(/\D/g, ''))}
+                  placeholder="123456"
+                  className="w-full text-center text-xl tracking-widest font-mono font-bold py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-300 dark:border-slate-700 rounded-xl focus:ring-2 focus:ring-red-500 outline-none"
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-end gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShow2FADisableModal(false)}
+                className="px-4 py-2 border border-slate-300 dark:border-slate-700 rounded-xl text-xs font-semibold text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleDisable2FA}
+                disabled={totpLoading || !disablePassword || totpCode.length !== 6}
+                className="px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold text-xs rounded-xl shadow transition flex items-center gap-2 cursor-pointer"
+              >
+                {totpLoading ? <Loader2 className="h-4 w-4 animate-spin" /> : <AlertTriangle className="h-4 w-4" />}
+                Confirm & Disable 2FA
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* MoMo OTP Verification Modal */}
       {showOtpModal && (

@@ -3,11 +3,31 @@ import { useSearchParams } from 'react-router-dom';
 import { 
   Search, Filter, Package, CheckCircle, 
   Printer, X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
-  ShieldAlert, MapPin, Copy
+  ShieldAlert, MapPin, Copy, Lock
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { ExportButton } from '../components/ExportButton';
+import type { ExportColumn } from '../utils/exportUtils';
+
+const merchantTxnExportHeaders: ExportColumn[] = [
+  { label: 'Transaction ID', key: 'id' },
+  { label: 'Paystack Reference', key: 'paystack_reference' },
+  { label: 'Date Created', key: 'created_at' },
+  { label: 'Item Title', key: 'title' },
+  { label: 'Status', key: 'status' },
+  { label: 'Total Amount (GHS)', key: 'total_amount_ghs' },
+  { label: 'Platform Fee (GHS)', key: 'platform_fee_ghs' },
+  { label: 'Shipping Fee (GHS)', key: 'shipping_fee_ghs' },
+  { label: 'Buyer Name', key: 'buyer_name' },
+  { label: 'Buyer Phone', key: 'buyer_phone' },
+  { label: 'Buyer Email', key: 'buyer_email' },
+  { label: 'Shipping Address', key: 'shipping_address' },
+  { label: 'Delivery Method', key: 'delivery_method' },
+  { label: 'Courier Name', key: 'courier_name' },
+  { label: 'Tracking Number', key: 'tracking_number' },
+];
 
 interface SellerTxn {
   id: string;
@@ -15,6 +35,8 @@ interface SellerTxn {
   total_amount_ghs: number;
   platform_fee_ghs?: number;
   shipping_fee_ghs?: number;
+  shipping_timeout_days?: number;
+  otp_reveal_delay_hours?: number;
   buyer_name: string;
   buyer_phone: string;
   buyer_email: string;
@@ -414,8 +436,17 @@ function VerifyOtpModal({ txn, onClose, onSuccess }: VerifyOtpModalProps) {
   const [error, setError] = useState('');
   const [resendMsg, setResendMsg] = useState('');
 
+  const delayHours = txn.otp_reveal_delay_hours ?? 24;
+  const dispatchedMs = txn.dispatched_at ? new Date(txn.dispatched_at).getTime() : Date.now();
+  const unlockTimeMs = dispatchedMs + delayHours * 3600 * 1000;
+  const isLocked = Date.now() < unlockTimeMs;
+  const msRemaining = Math.max(0, unlockTimeMs - Date.now());
+  const hoursLeft = Math.floor(msRemaining / (1000 * 3600));
+  const minsLeft = Math.floor((msRemaining % (1000 * 3600)) / (1000 * 60));
+
   const handleVerify = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isLocked) return;
     setError('');
     setLoading(true);
     try {
@@ -460,9 +491,24 @@ function VerifyOtpModal({ txn, onClose, onSuccess }: VerifyOtpModalProps) {
         </div>
 
         <form onSubmit={handleVerify} className="p-6 space-y-4">
-          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
-            Ask the buyer to show you their Secret OTP from the SMS they received. Enter it below to confirm delivery and start the inspection period.
-          </div>
+          {isLocked ? (
+            <div className="bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800/80 rounded-xl p-3.5 text-xs text-amber-800 dark:text-amber-300 space-y-1.5">
+              <div className="flex items-center gap-1.5 font-bold text-amber-900 dark:text-amber-200">
+                <Lock className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>Delivery OTP Verification Locked</span>
+              </div>
+              <p className="text-[11px] leading-relaxed text-amber-700 dark:text-amber-300/90">
+                To protect buyers from pressure to reveal codes before receipt, OTP verification is locked for <strong>{delayHours} hours</strong> after dispatch.
+              </p>
+              <div className="text-[11px] font-mono font-bold text-amber-900 dark:text-amber-100 bg-amber-100 dark:bg-amber-900/50 px-2 py-1 rounded inline-block">
+                ⏳ Unlocks in {hoursLeft}h {minsLeft}m
+              </div>
+            </div>
+          ) : (
+            <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-lg p-3 text-xs text-amber-800 dark:text-amber-300">
+              Ask the buyer to show you their Secret OTP from the SMS they received. Enter it below to confirm delivery and start the inspection period.
+            </div>
+          )}
 
           <div>
             <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Secret OTP (from buyer)</label>
@@ -470,10 +516,11 @@ function VerifyOtpModal({ txn, onClose, onSuccess }: VerifyOtpModalProps) {
               type="text"
               required
               maxLength={6}
+              disabled={isLocked || loading}
               value={otpCode}
               onChange={e => setOtpCode(e.target.value.replace(/\D/g, ''))}
-              placeholder="e.g. 482913"
-              className="block w-full px-3 py-2.5 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-lg text-sm text-center font-mono text-lg tracking-widest focus:ring-amber-500 focus:border-amber-500"
+              placeholder={isLocked ? "Locked" : "e.g. 482913"}
+              className="block w-full px-3 py-2.5 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-lg text-sm text-center font-mono text-lg tracking-widest focus:ring-amber-500 focus:border-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
           </div>
 
@@ -481,10 +528,11 @@ function VerifyOtpModal({ txn, onClose, onSuccess }: VerifyOtpModalProps) {
             <label className="block text-xs font-medium text-gray-700 dark:text-slate-300 mb-1">Buyer ID Photo URL (Optional)</label>
             <input
               type="url"
+              disabled={isLocked || loading}
               value={buyerIdPhotoUrl}
               onChange={e => setBuyerIdPhotoUrl(e.target.value)}
               placeholder="https://link-to-id-image.com/..."
-              className="block w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-lg text-sm focus:ring-amber-500 focus:border-amber-500"
+              className="block w-full px-3 py-2 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-lg text-sm focus:ring-amber-500 focus:border-amber-500 disabled:opacity-50 disabled:cursor-not-allowed"
             />
             <p className="text-[10px] text-gray-500 dark:text-slate-400 mt-1">Upload a photo of the buyer's ID for extra security.</p>
           </div>
@@ -514,7 +562,7 @@ function VerifyOtpModal({ txn, onClose, onSuccess }: VerifyOtpModalProps) {
             </button>
             <button
               type="submit"
-              disabled={loading || otpCode.length < 6}
+              disabled={isLocked || loading || otpCode.length < 6}
               className="flex-1 py-2.5 px-4 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2 disabled:opacity-60 cursor-pointer"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <KeyRound className="h-4 w-4" />}
@@ -1013,6 +1061,22 @@ export default function DashboardView() {
             Manage your escrow sales, track active order payouts, print parcel tags, and manage deliveries.
           </p>
         </div>
+        <div className="mt-4 sm:mt-0 flex items-center gap-2">
+          <ExportButton
+            filename={`merchant_transactions_${new Date().toISOString().split('T')[0]}`}
+            title="Merchant Transactions Escrow Report"
+            headers={merchantTxnExportHeaders}
+            data={txns}
+            sheetName="Transactions"
+            label="Export Sales Report"
+          />
+          <button
+            onClick={handlePrint}
+            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+          >
+            <Printer className="w-3.5 h-3.5" /> Print Page
+          </button>
+        </div>
       </div>
 
       {/* ─── PENDING TRANSACTIONS & AMOUNTS DUE SUMMARY ─────────────────────────── */}
@@ -1337,16 +1401,34 @@ export default function DashboardView() {
                             </button>
                           </div>
                         ) : isInformalInTransit ? (
-                          <div className="flex flex-col items-end gap-2">
-                            <button
-                              onClick={() => setVerifyOtpTxn(txn)}
-                              className="text-white bg-green-600 hover:bg-green-700 px-3 py-1.5 rounded-lg transition-colors font-semibold flex items-center gap-1.5"
-                            >
-                              <KeyRound className="h-4 w-4" />
-                              Verify Delivery OTP
-                            </button>
-                            <p className="text-xs text-gray-400 dark:text-slate-500 text-right">Ask buyer for their OTP at pickup</p>
-                          </div>
+                          (() => {
+                            const delayHours = txn.otp_reveal_delay_hours ?? 24;
+                            const dispatchedMs = txn.dispatched_at ? new Date(txn.dispatched_at).getTime() : Date.now();
+                            const unlockTimeMs = dispatchedMs + delayHours * 3600 * 1000;
+                            const isLocked = Date.now() < unlockTimeMs;
+                            const msRemaining = Math.max(0, unlockTimeMs - Date.now());
+                            const hoursLeft = Math.floor(msRemaining / (1000 * 3600));
+                            const minsLeft = Math.floor((msRemaining % (1000 * 3600)) / (1000 * 60));
+
+                            return (
+                              <div className="flex flex-col items-end gap-1">
+                                <button
+                                  onClick={() => setVerifyOtpTxn(txn)}
+                                  className={`px-3 py-1.5 rounded-lg transition-colors font-semibold flex items-center gap-1.5 text-xs ${
+                                    isLocked
+                                      ? 'text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 hover:bg-amber-200 dark:hover:bg-amber-900/60'
+                                      : 'text-white bg-green-600 hover:bg-green-700'
+                                  }`}
+                                >
+                                  {isLocked ? <Lock className="h-3.5 w-3.5" /> : <KeyRound className="h-4 w-4" />}
+                                  {isLocked ? `OTP Locked (${hoursLeft}h ${minsLeft}m)` : 'Verify Delivery OTP'}
+                                </button>
+                                <p className="text-[11px] text-gray-400 dark:text-slate-500 text-right">
+                                  {isLocked ? `Anti-fraud lock active (${delayHours}h)` : 'Ask buyer for their OTP at pickup'}
+                                </p>
+                              </div>
+                            );
+                          })()
                         ) : isCourierStuck ? (
                            <div className="flex flex-col items-end gap-2">
                             <button

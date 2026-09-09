@@ -60,7 +60,7 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 ### 3.1 Merchant Dashboard (`/dashboard`)
 - [ ] **Overview Cards**: Verify Total Sales, Pending Escrow Balance, Active Payment Links, and Dispatched Orders.
 - [ ] **Search & Date Filters**: Filter orders by status (*Pending*, *Dispatched*, *Completed*, *Disputed*).
-- [ ] **Export Report**: Download transaction CSV report.
+- [x] **Export Report**: Download transaction reports in PDF (`.pdf`) and Excel (`.xlsx`) formats (available on `/dashboard` and `/admin-portal` tabs).
 
 ### 3.2 Payment Link Creation (`/create-link`)
 - [ ] **Create Link**: Fill in Item Title, Amount (GHS), Description, and Delivery Fee settings.
@@ -72,12 +72,12 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 
 ### 3.4 Store & KYC Verification (`/profile`)
 - [ ] **Profile Updates**: Update shop description, upload banner and profile photo.
-- [ ] **KYC Document Submission**: Submit Ghana Card / National ID number and photo. Confirm status updates to **Pending Approval**.
+- [x] **KYC Document Submission**: Submit Ghana Card (`GHA-XXXXXXXXX-X`) and ID photo. Confirm instant auto-verification via Paystack/NIA API, or fallback to **Pending Approval** for manual manager review.
 - [ ] **Payout Configuration**: Toggle between **Instant MoMo Payout** and **Manual Withdrawal**.
 
 ### 3.5 Financial Settlement & Wallet (`/ledger`)
 - [ ] **Ledger Inspection**: Verify Available Balance vs. Escrow Locked Balance.
-- [ ] **Withdrawal Request**: Request payout to Mobile Money (MTN / Vodafone / AirtelTigo).
+- [x] **Withdrawal Request**: Request payout to Mobile Money or Commercial Bank with real-time NIP account resolution, name matching, and immutable transaction audit logging.
 - [ ] **Settlement Audit**: Click transaction row to inspect platform fee deduction, courier payout, and net seller payout.
 
 ---

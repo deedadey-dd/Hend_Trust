@@ -1,3 +1,4 @@
+# 2FA & Users API Module
 import secrets
 from datetime import timedelta
 from typing import Optional, List
@@ -543,6 +544,9 @@ class ProfileResponse(Schema):
     momo_number: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_name: Optional[str] = None
+    bank_code: Optional[str] = None
+    bank_account_name: Optional[str] = None
+    bank_name_matched: Optional[bool] = True
     total_paystack_fees_ghs: Optional[float] = None
     # Shop Details
     shop_name: Optional[str] = ""
@@ -558,6 +562,7 @@ class ProfileResponse(Schema):
     business_license_photo_url: Optional[str] = ""
     verification_rejection_reason: Optional[str] = ""
     verified_at: Optional[str] = None
+    is_2fa_enabled: bool = False
 
 class ProfileUpdateRequest(Schema):
     first_name: Optional[str] = None
@@ -568,6 +573,12 @@ class ProfileUpdateRequest(Schema):
     momo_otp: Optional[str] = None
     bank_account_number: Optional[str] = None
     bank_name: Optional[str] = None
+    bank_code: Optional[str] = None
+    bank_account_name: Optional[str] = None
+
+class ResolveBankAccountRequest(Schema):
+    bank_code: str
+    account_number: str
 
 class UpdateShopProfileRequest(Schema):
     shop_name: Optional[str] = ""
@@ -620,6 +631,7 @@ def _build_profile_response(user) -> dict:
         "business_license_photo_url": user.business_license_photo_url or "",
         "verification_rejection_reason": user.verification_rejection_reason or "",
         "verified_at": user.verified_at.isoformat() if user.verified_at else None,
+        "is_2fa_enabled": bool(user.is_2fa_enabled),
     }
     try:
         wallet = user.wallet
@@ -627,6 +639,9 @@ def _build_profile_response(user) -> dict:
         data["momo_number"] = wallet.momo_number
         data["bank_account_number"] = wallet.bank_account_number
         data["bank_name"] = wallet.bank_name
+        data["bank_code"] = getattr(wallet, 'bank_code', None)
+        data["bank_account_name"] = getattr(wallet, 'bank_account_name', None)
+        data["bank_name_matched"] = getattr(wallet, 'bank_name_matched', True)
         data["total_paystack_fees_ghs"] = float(wallet.total_paystack_fees_ghs)
     except Exception:
         pass
@@ -635,6 +650,37 @@ def _build_profile_response(user) -> dict:
 @profile_router.get("/", response=ProfileResponse)
 def get_profile(request):
     return _build_profile_response(request.user)
+
+@profile_router.get("/banks", response=List[dict])
+def list_supported_banks(request):
+    from apps.users.bank_verification import get_supported_banks
+    return get_supported_banks()
+
+@profile_router.post("/resolve-bank-account", response=dict)
+@rate_limit('resolve_bank_account', max_calls=15, window_seconds=60)
+def resolve_bank_account_endpoint(request, data: ResolveBankAccountRequest):
+    from apps.users.bank_verification import resolve_bank_account, match_account_name
+    success, acc_name_or_msg, raw_data = resolve_bank_account(
+        bank_code=data.bank_code,
+        account_number=data.account_number
+    )
+
+    if not success:
+        return {
+            "success": False,
+            "message": acc_name_or_msg
+        }
+
+    is_matched, score = match_account_name(acc_name_or_msg, request.user)
+    return {
+        "success": True,
+        "account_number": data.account_number,
+        "bank_code": data.bank_code,
+        "account_name": acc_name_or_msg,
+        "is_name_matched": is_matched,
+        "match_score": score,
+        "message": f"Account resolved to {acc_name_or_msg}."
+    }
 
 @profile_router.post("/request-momo-otp", response=ProfileMessageResponse)
 @rate_limit('momo_otp_request', max_calls=5, window_seconds=600)
@@ -711,13 +757,19 @@ def update_profile(request, data: ProfileUpdateRequest):
         "momo_number": data.momo_number,
         "bank_account_number": data.bank_account_number,
         "bank_name": data.bank_name,
+        "bank_code": data.bank_code,
+        "bank_account_name": data.bank_account_name,
     }
     if any(v is not None for v in wallet_fields.values()):
         from apps.wallet.api import get_user_wallet
+        from apps.users.bank_verification import match_account_name
         wallet = get_user_wallet(user)
         for field, value in wallet_fields.items():
             if value is not None:
                 setattr(wallet, field, value)
+        if data.bank_account_name:
+            is_matched, _score = match_account_name(data.bank_account_name, user)
+            wallet.bank_name_matched = is_matched
         wallet.save()
     
     return {"message": "Profile updated successfully."}
@@ -755,24 +807,51 @@ def update_shop_profile(request, data: UpdateShopProfileRequest):
 @profile_router.post("/submit-verification", response=ProfileMessageResponse)
 def submit_verification_documents(request, data: SubmitVerificationRequest):
     user = request.user
-    if not data.national_id_number.strip():
+    raw_id = data.national_id_number.strip()
+    if not raw_id:
         raise HttpError(400, "Please provide your National ID / Ghana Card number.")
     if not data.national_id_photo_url.strip():
         raise HttpError(400, "Please upload a photo of your National ID / Ghana Card.")
 
     from apps.users.models import VerificationStatus
-    user.national_id_number = data.national_id_number.strip()
+    from apps.users.ghana_card import normalize_ghana_card_number, validate_ghana_card_format, verify_ghana_card
+    from django.utils import timezone
+
+    normalized_id = normalize_ghana_card_number(raw_id)
+    if not validate_ghana_card_format(normalized_id):
+        raise HttpError(400, "Invalid Ghana Card format. Please ensure it follows the format GHA-123456789-0.")
+
+    user.national_id_number = normalized_id
     user.national_id_photo_url = data.national_id_photo_url.strip()
     user.business_license_photo_url = (data.business_license_photo_url or "").strip()
-    user.verification_status = VerificationStatus.PENDING
     user.verification_rejection_reason = ""
-    user.save(update_fields=[
-        'national_id_number', 'national_id_photo_url', 
-        'business_license_photo_url', 'verification_status', 
-        'verification_rejection_reason'
-    ])
 
-    return {"message": "Verification documents submitted successfully! A manager will review your submission."}
+    # Attempt Auto-Verification via NIA / Identity Provider
+    full_name = f"{user.first_name} {user.last_name}".strip() or user.username
+    is_verified, v_msg, _v_data = verify_ghana_card(
+        card_number=normalized_id,
+        full_name=full_name,
+        phone=user.phone_number
+    )
+
+    if is_verified:
+        user.verification_status = VerificationStatus.APPROVED
+        user.verified_at = timezone.now()
+        user.save(update_fields=[
+            'national_id_number', 'national_id_photo_url', 
+            'business_license_photo_url', 'verification_status', 
+            'verification_rejection_reason', 'verified_at'
+        ])
+        return {"message": "Ghana Card auto-verified successfully! Verified merchant badge granted."}
+    else:
+        user.verification_status = VerificationStatus.PENDING
+        user.save(update_fields=[
+            'national_id_number', 'national_id_photo_url', 
+            'business_license_photo_url', 'verification_status', 
+            'verification_rejection_reason'
+        ])
+        return {"message": f"Submission received! Auto-verification note: {v_msg}. Your documents have been forwarded to platform managers for manual verification."}
+
 
 @profile_router.post("/2fa/setup", response=dict)
 def setup_2fa(request):
