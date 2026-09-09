@@ -27,9 +27,13 @@ class SellerReview(models.Model):
     rating_overall = models.PositiveSmallIntegerField(default=5)
     
     comment = models.TextField(blank=True)
+    image_url = models.TextField(blank=True, default='')
     
     seller_reply = models.TextField(blank=True)
     seller_replied_at = models.DateTimeField(null=True, blank=True)
+    
+    upvotes_count = models.PositiveIntegerField(default=0)
+    downvotes_count = models.PositiveIntegerField(default=0)
     
     is_active = models.BooleanField(
         default=True,
@@ -44,3 +48,33 @@ class SellerReview(models.Model):
 
     def __str__(self):
         return f"Review for {self.seller.username} by {self.buyer_name} ({self.rating_overall}★)"
+
+
+class ReviewVote(models.Model):
+    VOTE_UP = 'UP'
+    VOTE_DOWN = 'DOWN'
+    VOTE_CHOICES = [
+        (VOTE_UP, 'Upvote'),
+        (VOTE_DOWN, 'Downvote'),
+    ]
+
+    id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
+    review = models.ForeignKey(
+        SellerReview,
+        on_delete=models.CASCADE,
+        related_name='votes'
+    )
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='review_votes'
+    )
+    vote_type = models.CharField(max_length=4, choices=VOTE_CHOICES)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        unique_together = ('review', 'user')
+
+    def __str__(self):
+        return f"{self.user.username} voted {self.vote_type} on review {self.review.id}"
+

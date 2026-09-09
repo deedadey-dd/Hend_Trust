@@ -8,6 +8,7 @@ import {
 import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.jpg';
 import SEOHead from '../components/SEOHead';
+import RecentReviewsCarousel from '../components/RecentReviewsCarousel';
 
 const STEPS = [
   {
@@ -190,6 +191,15 @@ export default function HomeView() {
             </div>
           ))}
         </div>
+      </section>
+
+      {/* ── Recent Customer Reviews Carousel ── */}
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 pt-10 pb-2">
+        <RecentReviewsCarousel
+          mode="single-row"
+          title="Verified Buyer Experiences"
+          subtitle="See what buyers across Ghana say about purchasing through HendAxis Trust escrow."
+        />
       </section>
 
       {/* ── How it works ── */}

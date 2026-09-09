@@ -18,9 +18,36 @@ class SubmitReviewSchema(Schema):
     rating_communication: int
     rating_overall: int
     comment: Optional[str] = ""
+    image_url: Optional[str] = ""
 
 class SellerReplySchema(Schema):
     reply: str
+
+class ReviewVoteSchema(Schema):
+    vote_type: str  # 'UP' or 'DOWN'
+
+class RecentReviewShopSchema(Schema):
+    seller_id: uuid.UUID
+    seller_username: str
+    shop_name: str
+    profile_picture_url: Optional[str] = ""
+
+class RecentReviewItemSchema(Schema):
+    id: uuid.UUID
+    buyer_name: str
+    rating_speed: int
+    rating_communication: int
+    rating_overall: int
+    comment: str
+    seller_reply: Optional[str] = ""
+    seller_replied_at: Optional[str] = None
+    created_at: str
+    item_title: str
+    item_image_url: Optional[str] = ""
+    upvotes_count: int
+    downvotes_count: int
+    user_voted: Optional[str] = None
+    shop: RecentReviewShopSchema
 
 class ReviewItemSchema(Schema):
     id: uuid.UUID
@@ -33,6 +60,11 @@ class ReviewItemSchema(Schema):
     seller_replied_at: Optional[str] = None
     created_at: str
     item_title: str
+    item_image_url: Optional[str] = ""
+    upvotes_count: int = 0
+    downvotes_count: int = 0
+    user_voted: Optional[str] = None
+
 
 class SellerStorefrontSchema(Schema):
     seller_id: uuid.UUID
@@ -75,6 +107,7 @@ def submit_seller_review(request, data: SubmitReviewSchema):
             'rating_communication': data.rating_communication,
             'rating_overall': data.rating_overall,
             'comment': data.comment or "",
+            'image_url': data.image_url or "",
             'is_active': True
         }
     )
@@ -139,7 +172,11 @@ def get_seller_storefront(request, identifier: str):
             "seller_reply": r.seller_reply,
             "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
             "created_at": r.created_at.isoformat(),
-            "item_title": r.transaction.link.title if r.transaction and r.transaction.link else "Item Purchase"
+            "item_title": r.transaction.link.title if (r.transaction and r.transaction.link) else "Item Purchase",
+            "item_image_url": r.image_url or (r.transaction.link.image_url if (r.transaction and r.transaction.link) else ""),
+            "upvotes_count": r.upvotes_count,
+            "downvotes_count": r.downvotes_count,
+            "user_voted": None
         } for r in active_reviews
     ]
 
@@ -403,4 +440,107 @@ def promote_shop_ad(request, data: PromoteShopSchema):
         }
     except Exception as e:
         raise HttpError(400, f"Failed to initialize Paystack ad payment: {str(e)}")
+
+
+@reviews_router.get("/recent", response=List[RecentReviewItemSchema], auth=None)
+def get_recent_reviews_feed(request, limit: int = 15):
+    from apps.reviews.models import ReviewVote
+    
+    # Try optional user authentication from cookie/header if present
+    user = None
+    try:
+        auth = JWTCookieAuth()
+        user = auth.authenticate(request, None)
+    except Exception:
+        pass
+
+    reviews = SellerReview.objects.filter(is_active=True).select_related(
+        'seller', 'transaction', 'transaction__link'
+    ).order_by('-created_at')[:limit]
+
+    # Pre-fetch votes for this user if logged in
+    user_votes_map = {}
+    if user and getattr(user, 'is_authenticated', False):
+        review_ids = [r.id for r in reviews]
+        votes = ReviewVote.objects.filter(review_id__in=review_ids, user=user)
+        user_votes_map = {v.review_id: v.vote_type for v in votes}
+
+    result = []
+    for r in reviews:
+        seller = r.seller
+        item_title = r.transaction.link.title if (r.transaction and r.transaction.link) else "Verified Purchase"
+        item_image_url = r.image_url or (r.transaction.link.image_url if (r.transaction and r.transaction.link) else "")
+        result.append({
+            "id": r.id,
+            "buyer_name": r.buyer_name or "Verified Customer",
+            "rating_speed": r.rating_speed,
+            "rating_communication": r.rating_communication,
+            "rating_overall": r.rating_overall,
+            "comment": r.comment,
+            "seller_reply": r.seller_reply,
+            "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
+            "created_at": r.created_at.isoformat(),
+            "item_title": item_title,
+            "item_image_url": item_image_url,
+            "upvotes_count": r.upvotes_count,
+            "downvotes_count": r.downvotes_count,
+            "user_voted": user_votes_map.get(r.id),
+            "shop": {
+                "seller_id": seller.id,
+                "seller_username": seller.username or seller.email.split('@')[0],
+                "shop_name": seller.shop_name or f"@{seller.username}'s Store",
+                "profile_picture_url": seller.profile_picture_url or ""
+            }
+        })
+    return result
+
+
+@reviews_router.post("/{review_id}/vote", response=dict, auth=JWTCookieAuth())
+def vote_on_review(request, review_id: uuid.UUID, data: ReviewVoteSchema):
+    from apps.reviews.models import ReviewVote
+    from django.db import transaction
+
+    vote_type = data.vote_type.upper().strip()
+    if vote_type not in ['UP', 'DOWN']:
+        raise HttpError(400, "Invalid vote_type. Must be 'UP' or 'DOWN'.")
+
+    review = get_object_or_404(SellerReview, id=review_id)
+    user = request.user
+
+    with transaction.atomic():
+        existing_vote = ReviewVote.objects.filter(review=review, user=user).first()
+        
+        if existing_vote:
+            if existing_vote.vote_type == vote_type:
+                # User clicked same vote button again -> cancel vote
+                existing_vote.delete()
+                user_voted = None
+                message = "Vote removed."
+            else:
+                # User switched vote
+                existing_vote.vote_type = vote_type
+                existing_vote.save(update_fields=['vote_type'])
+                user_voted = vote_type
+                message = f"Vote updated to {vote_type.capitalize()}."
+        else:
+            # New vote
+            ReviewVote.objects.create(review=review, user=user, vote_type=vote_type)
+            user_voted = vote_type
+            message = f"Voted {vote_type.capitalize()}!"
+
+        # Recalculate upvotes and downvotes counts
+        up_count = ReviewVote.objects.filter(review=review, vote_type='UP').count()
+        down_count = ReviewVote.objects.filter(review=review, vote_type='DOWN').count()
+
+        review.upvotes_count = up_count
+        review.downvotes_count = down_count
+        review.save(update_fields=['upvotes_count', 'downvotes_count'])
+
+    return {
+        "message": message,
+        "upvotes_count": up_count,
+        "downvotes_count": down_count,
+        "user_voted": user_voted
+    }
+
 

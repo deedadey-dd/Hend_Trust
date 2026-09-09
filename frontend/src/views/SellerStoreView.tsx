@@ -4,6 +4,8 @@ import { Shield, Star, Award, CheckCircle2, MessageSquare, Loader2, Calendar, Pa
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import SEOHead from '../components/SEOHead';
+import ReviewDetailModal from '../components/ReviewDetailModal';
+import type { RecentReview } from '../components/TrustpilotReviewCard';
 
 interface ReviewItem {
   id: string;
@@ -16,6 +18,10 @@ interface ReviewItem {
   seller_replied_at?: string;
   created_at: string;
   item_title: string;
+  item_image_url?: string;
+  upvotes_count?: number;
+  downvotes_count?: number;
+  user_voted?: 'UP' | 'DOWN' | null;
 }
 
 interface RecommendedShop {
@@ -53,6 +59,9 @@ export default function SellerStoreView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
+  // Selected review for detail modal
+  const [selectedReview, setSelectedReview] = useState<RecentReview | null>(null);
+
   // Seller reply state
   const [replyingReviewId, setReplyingReviewId] = useState<string | null>(null);
   const [replyText, setReplyText] = useState('');
@@ -89,6 +98,33 @@ export default function SellerStoreView() {
       fetchRecommendedShops();
     }
   }, [username]);
+
+  const openReviewModal = (r: ReviewItem) => {
+    if (!store) return;
+    const mapped: RecentReview = {
+      id: r.id,
+      buyer_name: r.buyer_name,
+      rating_speed: r.rating_speed,
+      rating_communication: r.rating_communication,
+      rating_overall: r.rating_overall,
+      comment: r.comment,
+      seller_reply: r.seller_reply,
+      seller_replied_at: r.seller_replied_at,
+      created_at: r.created_at,
+      item_title: r.item_title,
+      item_image_url: r.item_image_url || '',
+      upvotes_count: r.upvotes_count || 0,
+      downvotes_count: r.downvotes_count || 0,
+      user_voted: r.user_voted || null,
+      shop: {
+        seller_id: store.seller_id,
+        seller_username: store.seller_username,
+        shop_name: store.shop_name || `@${store.seller_username}'s Store`,
+        profile_picture_url: store.profile_picture_url || ''
+      }
+    };
+    setSelectedReview(mapped);
+  };
 
   const handleSellerReplySubmit = async (reviewId: string) => {
     if (!replyText.trim()) return;
@@ -345,12 +381,15 @@ export default function SellerStoreView() {
                       )}
 
                       {/* Review Card */}
-                      <div className="bg-gray-50/70 dark:bg-slate-800/70 p-5 rounded-2xl border border-gray-200/90 dark:border-slate-700/80 space-y-3 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition flex flex-col justify-between">
+                      <div
+                        onClick={() => openReviewModal(r)}
+                        className="bg-gray-50/70 dark:bg-slate-800/70 p-5 rounded-2xl border border-gray-200/90 dark:border-slate-700/80 space-y-3 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition flex flex-col justify-between cursor-pointer group"
+                      >
                         <div className="space-y-2">
                           <div className="flex items-start justify-between gap-2">
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
-                                <span className="font-bold text-gray-900 dark:text-white text-base">{r.buyer_name}</span>
+                                <span className="font-bold text-gray-900 dark:text-white text-base group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition">{r.buyer_name}</span>
                                 <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-emerald-300 bg-green-50 dark:bg-emerald-950/60 border border-green-200 dark:border-emerald-800 px-2 py-0.5 rounded-full font-semibold">
                                   <CheckCircle2 className="h-3.5 w-3.5" /> Verified Buyer
                                 </span>
@@ -388,7 +427,7 @@ export default function SellerStoreView() {
 
                         {/* Seller Reply Action Form (for owner) */}
                         {isOwner && !r.seller_reply && (
-                          <div className="pt-2 border-t border-gray-200/60 dark:border-slate-700">
+                          <div className="pt-2 border-t border-gray-200/60 dark:border-slate-700" onClick={e => e.stopPropagation()}>
                             {replyingReviewId === r.id ? (
                               <div className="space-y-2">
                                 <textarea
@@ -438,6 +477,13 @@ export default function SellerStoreView() {
         </div>
 
       </div>
+
+      {/* Review Detail Modal */}
+      <ReviewDetailModal
+        review={selectedReview}
+        onClose={() => setSelectedReview(null)}
+        showVisitStoreButton={false}
+      />
     </div>
   );
 }

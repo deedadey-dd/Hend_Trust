@@ -4,6 +4,11 @@
 
 At the core of HendAxis Trust is an immutable, double-entry accounting ledger that tracks every single pesewa (GHS) through intermediate clearing accounts. This guarantees that funds can never be artificially inflated, lost, or misplaced without triggering cryptographic balance violations.
 
+## 📜 Master System Blueprint & Documentation
+
+For an exhaustive technical and functional breakdown of all platform modules, API endpoints, frontend routes, data schemas, and background tasks, refer to the master blueprint:
+👉 **[System Blueprint & Feature Documentation](file:///d:/PROJECTS/Hend_Trust/docs/SYSTEM_BLUEPRINT.md)**
+
 ---
 
 ## 📜 Master Platform Rules & Terms of Service (Source of Truth)

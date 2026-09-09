@@ -18,6 +18,7 @@ import { LinksView } from './views/LinksView';
 import ProfileView from './views/ProfileView';
 import SellerStoreView from './views/SellerStoreView';
 import ShopsDirectoryView from './views/ShopsDirectoryView';
+import ReviewsView from './views/ReviewsView';
 import { AdminDashboardView } from './views/AdminDashboardView';
 import { HelpView } from './views/HelpView';
 import { ContactView } from './views/ContactView';
@@ -89,6 +90,7 @@ function App() {
         <Route path="/activate-account" element={<ActivateAccountView />} />
         <Route path="/shops" element={<ShopsDirectoryView />} />
         <Route path="/directory" element={<ShopsDirectoryView />} />
+        <Route path="/reviews" element={<ReviewsView />} />
         <Route path="/help" element={<HelpView />} />
         <Route path="/contact" element={<ContactView />} />
         <Route path="/developers" element={<DeveloperView />} />

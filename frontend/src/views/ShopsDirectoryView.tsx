@@ -6,6 +6,8 @@ import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.jpg';
 import SEOHead from '../components/SEOHead';
 
+import RecentReviewsCarousel from '../components/RecentReviewsCarousel';
+
 import { useEscapeKey } from '../utils/useEscapeKey';
 
 interface ShopProduct {
@@ -336,7 +338,14 @@ export default function ShopsDirectoryView() {
       </div>
 
       {/* Main Content Area */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-10">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 space-y-8">
+        
+        {/* RECENT CUSTOMER REVIEWS MULTI-COLUMN CAROUSEL */}
+        <RecentReviewsCarousel
+          mode="multi-column"
+          title="Recent Customer Reviews"
+          subtitle="Explore verified feedback and ratings from recent escrow purchases across Ghana."
+        />
         
         {loading ? (
           <div className="py-20 text-center space-y-3">
