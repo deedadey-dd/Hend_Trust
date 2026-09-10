@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, Star, ShieldCheck, ArrowRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, ArrowRight } from 'lucide-react';
 import TrustpilotReviewCard from './TrustpilotReviewCard';
 import type { RecentReview } from './TrustpilotReviewCard';
 import ReviewDetailModal from './ReviewDetailModal';
@@ -181,14 +181,6 @@ export default function RecentReviewsCarousel({
       {/* Header Bar with Verified Rating Summary & Navigation Buttons */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="flex items-center gap-1 bg-emerald-500 text-white font-extrabold text-xs px-2.5 py-1 rounded-md">
-              <Star className="w-3.5 h-3.5 fill-white stroke-none" /> Verified Rating
-            </span>
-            <span className="text-xs font-bold text-emerald-700 dark:text-emerald-400 flex items-center gap-1">
-              <ShieldCheck className="w-4 h-4" /> 4.9 out of 5 — Excellent Customer Satisfaction
-            </span>
-          </div>
           <h2 className="text-xl sm:text-2xl font-black text-gray-900 dark:text-slate-100">{title}</h2>
           <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400">{subtitle}</p>
         </div>

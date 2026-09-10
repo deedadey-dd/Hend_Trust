@@ -6,7 +6,7 @@ import {
   ShieldCheck, Star, HelpCircle
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
-import heroBanner from '../assets/hero_banner.jpg';
+import heroBanner from '../assets/hero_banner.webp';
 import SEOHead from '../components/SEOHead';
 import RecentReviewsCarousel from '../components/RecentReviewsCarousel';
 
@@ -78,7 +78,7 @@ const STATS = [
   { value: 'GHS 0', label: 'Advance payment risk' },
   { value: '1.5%', label: 'Platform fee + GHS 10' },
   { value: '24–72h', label: 'Tiered inspection guarantee' },
-  { value: 'Multi-Courier', label: 'DHL, Speedaf, FedEx & Bus OTP' },
+  { value: 'Multi-Courier', label: 'Formal (DHL, Speedaf...) \n Local Intercity Bus' },
 ];
 
 export default function HomeView() {
@@ -130,7 +130,7 @@ export default function HomeView() {
       {/* ── Hero ── */}
       <section className="relative overflow-hidden bg-slate-950 text-white min-h-[560px] sm:min-h-[640px] flex flex-col justify-between border-b border-slate-800">
         <div className="absolute inset-0 z-0">
-          <img src={heroBanner} alt="Hero Banner" className="w-full h-full object-cover opacity-100" />
+          <img src={heroBanner} alt="Hero Banner" className="w-full h-full object-cover opacity-100" fetchPriority="high" decoding="async" loading="eager" />
         </div>
         <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-2 flex flex-col justify-between flex-1">
           {/* Bottom: Marketplace Search Box & Action Buttons */}
@@ -197,8 +197,8 @@ export default function HomeView() {
       <section className="max-w-5xl mx-auto px-4 sm:px-6 pt-10 pb-2">
         <RecentReviewsCarousel
           mode="single-row"
-          title="Verified Buyer Experiences"
-          subtitle="See what buyers across Ghana say about purchasing through HendAxis Trust escrow."
+          title="Recent Buyer Reviews"
+          subtitle="Read verified feedback from real buyers across Ghana about items and merchants."
         />
       </section>
 

@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Search, Star, ShieldCheck, Loader2, MessageSquare, ArrowLeft } from 'lucide-react';
+import { Search, Star, Loader2, MessageSquare, ArrowLeft } from 'lucide-react';
 import { Link } from 'react-router-dom';
 import TrustpilotReviewCard from '../components/TrustpilotReviewCard';
 import type { RecentReview } from '../components/TrustpilotReviewCard';
@@ -189,10 +189,7 @@ export default function ReviewsView() {
 
           <div className="flex items-center gap-2">
             <span className="flex items-center gap-1 bg-emerald-500 text-white font-extrabold text-xs px-3 py-1 rounded-full">
-              <Star className="w-3.5 h-3.5 fill-white stroke-none" /> Verified Ratings
-            </span>
-            <span className="text-xs font-bold text-emerald-400 flex items-center gap-1">
-              <ShieldCheck className="w-4 h-4" /> 4.9 out of 5 — Excellent Customer Satisfaction
+              <Star className="w-3.5 h-3.5 fill-white stroke-none" /> Verified Purchase Ratings
             </span>
           </div>
 

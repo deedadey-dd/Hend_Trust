@@ -3,7 +3,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Search, Store, Star, Zap, Shield, ShieldCheck, Loader2, Award, ArrowUpRight, X, CheckCircle2 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
-import heroBanner from '../assets/hero_banner.jpg';
+import heroBanner from '../assets/hero_banner.webp';
 import SEOHead from '../components/SEOHead';
 
 import RecentReviewsCarousel from '../components/RecentReviewsCarousel';
@@ -284,7 +284,7 @@ export default function ShopsDirectoryView() {
       {/* Hero Banner Section */}
       <div className="bg-slate-950 text-white min-h-[320px] sm:min-h-[380px] px-4 sm:px-6 lg:px-8 pt-6 pb-1 relative overflow-hidden flex flex-col justify-between">
         <div className="absolute inset-0 z-0">
-          <img src={heroBanner} alt="Marketplace Banner" className="w-full h-full object-cover opacity-100" />
+          <img src={heroBanner} alt="Marketplace Banner" className="w-full h-full object-cover opacity-100" fetchPriority="high" decoding="async" loading="eager" />
         </div>
         
         <div className="max-w-5xl w-full mx-auto relative z-10 flex flex-col justify-between flex-1">
