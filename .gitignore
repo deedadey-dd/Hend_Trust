@@ -56,9 +56,13 @@ Thumbs.db
 *.log
 *.log.*
 *.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
 celerybeat-schedule*
 celerybeat-schedule.*
 celerybeat-schedule-*
+celery@*
+*.pid
 dump.rdb
 backend/celery_worker.log
 backend/celery_beat.log
@@ -67,5 +71,14 @@ backend/gunicorn.log
 # Uploads and Static files
 /media/*
 /static/*
+backend/media/*
+backend/static/*
 !/media/.gitkeep
 !/static/.gitkeep
+!backend/media/.gitkeep
+!backend/static/.gitkeep
+
+# Temp CLI / shell paste dumps
+backend/EOF
+backend/from
+backend/try:
