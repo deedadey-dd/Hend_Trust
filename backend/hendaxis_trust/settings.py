@@ -34,8 +34,21 @@ if sentry_dsn:
 
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-replace-me-with-a-secure-key-in-production')
 DEBUG = env.bool('DEBUG', default=False)
-ALLOWED_HOSTS = [h.strip() for h in env('ALLOWED_HOSTS', default='*').split(',') if h.strip()]
+
+if not DEBUG:
+    if not SECRET_KEY or SECRET_KEY.startswith('django-insecure-') or SECRET_KEY == 'django-insecure-replace-me-with-a-secure-key-in-production':
+        from django.core.exceptions import ImproperlyConfigured
+        raise ImproperlyConfigured("SECRET_KEY must be explicitly set to a unique, cryptographically secure string in production (DEBUG=False).")
+
+raw_allowed_hosts = env('ALLOWED_HOSTS', default='')
+if raw_allowed_hosts:
+    ALLOWED_HOSTS = [h.strip() for h in raw_allowed_hosts.split(',') if h.strip()]
+else:
+    ALLOWED_HOSTS = ['*'] if DEBUG else ['trust.hendaxis.com', 'pay.hendaxis.com', 'api.hendaxis.com', 'hendaxis.com']
+
 FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173' if DEBUG else 'https://trust.hendaxis.com').rstrip('/')
+ENABLE_PUBLIC_DOCS = env.bool('ENABLE_PUBLIC_DOCS', default=DEBUG)
+
 
 PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = env('PAYSTACK_PUBLIC_KEY', default='')
@@ -240,7 +253,12 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.escrow.tasks.process_auto_return_refunds',
         'schedule': 900.0, # 15 minutes
     },
+    'check-pending-payments-every-15-mins': {
+        'task': 'apps.escrow.tasks.check_pending_payments',
+        'schedule': 900.0, # 15 minutes
+    },
 }
+
 
 # CORS Configuration
 if DEBUG:
@@ -256,6 +274,7 @@ if DEBUG:
     
     CSRF_TRUSTED_ORIGINS = [f'http://{ip}:5173' for ip in local_ips] + [f'https://{ip}:5173' for ip in local_ips]
 else:
+    CORS_ALLOW_ALL_ORIGINS = False
     raw_cors = env('CORS_ALLOWED_ORIGINS', default='')
     if raw_cors and raw_cors != '*':
         CORS_ALLOWED_ORIGINS = [o.strip() for o in raw_cors.split(',') if o.strip()]
@@ -267,6 +286,7 @@ else:
         CSRF_TRUSTED_ORIGINS = [o.strip() for o in raw_csrf.split(',') if o.strip()]
     else:
         CSRF_TRUSTED_ORIGINS = ['https://*.hendaxis.com', 'https://trust.hendaxis.com', 'https://pay.hendaxis.com', 'https://api.hendaxis.com', 'http://localhost:5173', 'http://127.0.0.1:8000']
+
 
 CORS_ALLOW_CREDENTIALS = True
 

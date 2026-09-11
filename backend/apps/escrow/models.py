@@ -1,3 +1,4 @@
+import secrets
 import uuid6
 from django.db import models
 from apps.links.models import PaymentLink
@@ -20,13 +21,14 @@ class Transaction(models.Model):
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     link = models.ForeignKey(PaymentLink, on_delete=models.PROTECT, related_name='transactions')
     buyer_name = models.CharField(max_length=255, blank=True)
-    buyer_phone = models.CharField(max_length=20)
-    buyer_email = models.EmailField(blank=True)
+    buyer_phone = models.CharField(max_length=20, db_index=True)
+    buyer_email = models.EmailField(blank=True, db_index=True)
     shipping_address = models.TextField(blank=True)
     total_amount_ghs = models.DecimalField(max_digits=12, decimal_places=2)
     platform_fee_ghs = models.DecimalField(max_digits=12, decimal_places=2)
-    status = models.CharField(max_length=30, choices=TransactionStatus.choices, default=TransactionStatus.AWAITING_PAYMENT)
+    status = models.CharField(max_length=30, choices=TransactionStatus.choices, default=TransactionStatus.AWAITING_PAYMENT, db_index=True)
     paystack_reference = models.CharField(max_length=100, unique=True, db_index=True)
+    buyer_review_token = models.CharField(max_length=64, blank=True, db_index=True)
     
     # State tracking timestamps
     dispatched_at = models.DateTimeField(null=True, blank=True)
@@ -62,11 +64,24 @@ class Transaction(models.Model):
     manager_dispute_notes = models.TextField(blank=True)
     manager_dispute_photos = models.JSONField(default=list, blank=True)
 
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['status', '-created_at']),
+            models.Index(fields=['status', 'is_archived', 'created_at']),
+        ]
+
+    def save(self, *args, **kwargs):
+        if not self.buyer_review_token:
+            self.buyer_review_token = secrets.token_urlsafe(24)
+        super().save(*args, **kwargs)
 
     def __str__(self):
         return f"Tx {self.id} | {self.status} | {self.total_amount_ghs} GHS"
+
 
 
 class PlatformSetting(models.Model):

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X, AlertTriangle } from 'lucide-react';
 import axios from 'axios';
 import { apiClient, getErrorMessage } from '../api/client';
@@ -136,13 +136,29 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
     }
   };
 
+  // OTP Resend Cooldown (60 seconds)
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
   const handleOpenConfirmModal = async (id: string) => {
-    setIsSendingCode(true);
     setConfirmTxnId(id);
     setConfirmError('');
     setConfirmCode('');
+
+    if (resendCooldown > 0) {
+      return;
+    }
+    setIsSendingCode(true);
     try {
       await axios.post(`/api/v1/escrow/${id}/send-confirmation-code`);
+      setResendCooldown(60);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to send confirmation code.');
       setConfirmTxnId(null);
@@ -560,14 +576,22 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                         <div className="flex items-center justify-between gap-2 pt-1">
                           <span className="text-xs text-gray-400 dark:text-slate-500">Date: {new Date(txn.created_at).toLocaleDateString()}</span>
                           <div className="flex gap-2 flex-wrap">
-                            {txn.status !== 'AWAITING_PAYMENT' && txn.status !== 'CANCELLED' && txn.status !== 'DISPUTED' && (
+                            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') ? (
                               <button
                                 onClick={() => setRateTxn(txn)}
                                 className="py-1.5 px-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition"
                               >
                                 ⭐ Rate Seller
                               </button>
-                            )}
+                            ) : (txn.status === 'PAYMENT_RECEIVED' || txn.status === 'DELIVERY_IN_PROGRESS') ? (
+                              <button
+                                disabled
+                                title="Unlocks after delivery"
+                                className="py-1.5 px-3 rounded-lg bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80"
+                              >
+                                🔒 Rate Seller
+                              </button>
+                            ) : null}
                             {txn.status === 'DELIVERY_IN_PROGRESS' && (
                               <button
                                 onClick={() => handleOpenConfirmModal(txn.id)}
@@ -621,6 +645,21 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                 className="w-full py-2.5 bg-green-600 text-white font-bold rounded-xl text-sm hover:bg-green-700 transition"
               >
                 {isConfirming ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : "Confirm Receipt"}
+              </button>
+              
+              <button
+                type="button"
+                onClick={() => {
+                  if (confirmTxnId && resendCooldown === 0) handleOpenConfirmModal(confirmTxnId);
+                }}
+                disabled={isSendingCode || resendCooldown > 0}
+                className="w-full text-xs font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors mt-2 text-center disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isSendingCode 
+                  ? 'Sending...' 
+                  : resendCooldown > 0 
+                    ? `Resend Code (${resendCooldown}s)` 
+                    : "Didn't receive it? Resend Code"}
               </button>
             </form>
           </div>
@@ -710,6 +749,8 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
       {rateTxn && (
         <RateSellerModal
           transactionId={rateTxn.id}
+          paystackReference={rateTxn.paystack_reference}
+          reviewToken={rateTxn.buyer_review_token}
           sellerName={rateTxn.seller_username || 'Seller'}
           itemTitle={rateTxn.title}
           onClose={() => setRateTxn(null)}

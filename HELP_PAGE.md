@@ -27,6 +27,7 @@ Sellers can create secure Payment Links to send to their buyers.
    - If the seller fails to dispatch within the configured timeframe, the order is automatically cancelled.
    - The buyer gets a **100% full refund** (including all fees).
    - The defaulting seller is charged a **Non-Dispatch Default Penalty** (Platform Fee + gateway charges).
+5. **Stale Transaction Management & Manual Payment Check**: Unpaid transaction entries auto-archive after the platform's configured duration (`unpaid_auto_archive_days`, default: 3 days). Sellers can click the **Check Payment** button to manually query gateway completion before archiving. If payment is confirmed, the transaction auto-unarchives (`is_archived = False`).
 
 ---
 
@@ -51,13 +52,15 @@ Sellers must dispatch items promptly after receiving payment notification:
 
 ---
 
-## 5. Tiered Buyer Inspection Period
+## 5. Tiered Buyer Inspection Period, Full-Screen Lightbox & 60s OTP Cooldown
 Once delivery is confirmed, the buyer inspection timer starts automatically:
 
 - **Inspection Timeframes**:
   - `< GHS 2,000`: **24 Hours**
   - `GHS 2,000 – GHS 9,999.99`: **48 Hours**
   - `>= GHS 10,000`: **72 Hours**
+- **60-Second OTP SMS Cooldown**: Confirmation code requests enforce a 60-second cooldown between SMS dispatches, saving costs while keeping the first generated OTP valid.
+- **Full-Screen Image Lightbox**: Product and parcel inspection photos feature a full-screen zoom lightbox modal with 90° rotation and download controls.
 - **Automatic Completion & Rating Modal**: Once the buyer confirms receipt via their 6-digit confirmation code, payment is released to the seller, and the **3-Axis Rate Seller Modal** automatically launches on screen so the buyer can instantly leave a review.
 
 ---
@@ -83,9 +86,11 @@ If a buyer receives a damaged or incorrect item during the inspection period:
 
 ---
 
-## 7. Escrow-Gated Reviews & Trustpilot Rating Framework
-- **Escrow-Gated Reviews**: Only buyers who have completed an escrow purchase can rate a seller.
-- **3-Axis Ratings**: Speed, Communication, and Overall Satisfaction (1 to 5 stars).
+## 7. Escrow-Gated Reviews, Hardened Security & Rating Lock
+- **1 Review Per Transaction**: Enforced via a `SellerReview.transaction` `OneToOneField` constraint. Submitting feedback again for an existing order updates the original review.
+- **Transit Rating Lock**: Rating a seller is locked while a package is in transit (`AWAITING_PAYMENT`, `PAYMENT_RECEIVED`, `DELIVERY_IN_PROGRESS`) with a clear tooltip/badge (`🔒 Rate Seller (Unlocks upon delivery)`). Rating unlocks upon delivery and inspection.
+- **Cryptographic Review Token (`buyer_review_token`)**: Auto-generated upon purchase and returned strictly in buyer-facing checkout responses. Sellers never receive or see this token, preventing sellers from forging or altering buyer reviews.
+- **$0-Cost Email Magic Link Fallback**: Buyers editing a review from a new device can request a free magic link emailed to `buyer_email` (`/reviews/request-edit-link`).
 - **Public Storefront (`/store/:username`)**: Shows seller ratings, public review feedback, and seller replies.
 
 ---
@@ -106,6 +111,7 @@ If a buyer receives a damaged or incorrect item during the inspection period:
 Superusers (`is_superuser == True`) can manage system operations and timeline parameters live from the Manager Portal (`/admin`):
 
 - **Active Payment Gateway Switcher**: Switch live checkout payment engine between **Paystack**, **AppsNMobile (Orchard API)**, and **Hubtel Ghana PSP**.
+- **Unpaid Auto-Archive Duration**: Configure the number of days (`unpaid_auto_archive_days`, default: 3 days) before uncompleted orders auto-archive.
 - **Fulfillment Method Toggles**: Enable or disable entire shipping channels (**Formal Courier API** vs. **Informal Bus / Station OTP**).
 - **Courier Provider Controls**: Toggle availability of individual courier providers (**DHL**, **FedEx**, **UPS**, **EMS**, **Speedaf**, **Others**) to enforce approved logistics channels.
 - **Order Shipping & Inspection Timelines**: Adjust platform-wide timelines without touching underlying code:
@@ -146,5 +152,20 @@ HendAxis Trust incorporates an event-triggered notification suite powered by Cel
 - **Dispute Notifications**: Instant alert sent to seller when a dispute is opened, and resolution outcome sent to both parties once arbitrated.
 - **Return Dispatch & Receipt**: Sent to seller with return courier/bus tracking details + Reverse OTP, and confirmation sent to buyer upon refund completion.
 - **Seller Payout Completed**: Sent to seller upon successful disbursement of funds to their wallet or bank account.
+
+---
+
+## 13. Seller Dispute Health Monitoring & Account Suspension
+To protect buyers and platform integrity, HendAxis Trust dynamically monitors seller dispute metrics:
+
+- **Multi-Window Dispute Rate Calculation**: Evaluates dispute percentages across (1) Last 30 Days, (2) Last 15 Sales, and (3) Lifetime Sales. System applies the window with the highest rate among sets with `paid_transactions > 5` to prevent low-volume sample distortion.
+- **Tiered Dashboard Banners & Notifications**:
+  - **Yellow Alert Banner (20% – 29.9% Dispute Rate)**: Displays an inline caution banner on the seller dashboard.
+  - **Orange Warning Banner (30% – 39.9% Dispute Rate)**: Displays a high-priority warning banner and sends an email notification to the seller.
+  - **Red Suspension Banner (≥ 40% Dispute Rate or Manual Action)**: Account is suspended (`is_suspended = True`).
+- **Enforcement & Admin Controls**:
+  - **Link Deactivation**: Active payment links are automatically disabled.
+  - **Creation & Checkout Block**: Link creation and checkout access are blocked with HTTP 403.
+  - **Manual Admin Controls**: Administrators can manually suspend or reinstate sellers anytime in `/admin-portal`.
 
 

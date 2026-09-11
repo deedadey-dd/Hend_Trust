@@ -86,11 +86,24 @@ def generate_delivery_otp(transaction_id: str) -> str:
 
 def resend_delivery_otp(transaction_id: str) -> str:
     """Resend an existing OTP (or generate a new one if expired) to the buyer."""
+    import time
+    now_ts = int(time.time())
+    sent_key = f"delivery_otp_sent_at_{transaction_id}"
+    last_sent_ts = cache.get(sent_key)
+    COOLDOWN_SECONDS = 60
+
     otp = cache.get(f"delivery_otp_{transaction_id}")
+
+    if last_sent_ts and (now_ts - last_sent_ts) < COOLDOWN_SECONDS and otp:
+        # Cooldown active — return active OTP without dispatching duplicate SMS/Email
+        return otp
+
     if not otp:
         # OTP expired — generate a fresh one
         otp = str(random.randint(100000, 999999))
         cache.set(f"delivery_otp_{transaction_id}", otp, timeout=OTP_CACHE_TIMEOUT)
+
+    cache.set(sent_key, now_ts, timeout=300)
 
     try:
         txn = Transaction.objects.get(id=transaction_id)

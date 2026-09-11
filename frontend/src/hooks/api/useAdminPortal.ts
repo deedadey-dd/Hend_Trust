@@ -50,6 +50,9 @@ export interface AdminSellerItem {
   total_transactions_count: number;
   completed_gmv_ghs: number;
   wallet_balance_ghs: number;
+  is_suspended?: boolean;
+  suspension_reason?: string;
+  dispute_health?: any;
 }
 
 export interface AdminBuyerItem {

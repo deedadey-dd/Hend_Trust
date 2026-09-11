@@ -19,9 +19,15 @@ class PaymentLink(models.Model):
     fee_handling = models.CharField(max_length=20, choices=FeeHandling.choices, default=FeeHandling.PASS_TO_BUYER)
     intended_buyer_phone = models.CharField(max_length=20, null=True, blank=True)
     image_url = models.TextField(blank=True, default='')
-    is_active = models.BooleanField(default=True)
-    is_archived = models.BooleanField(default=False)
-    created_at = models.DateTimeField(auto_now_add=True)
+    is_active = models.BooleanField(default=True, db_index=True)
+    is_archived = models.BooleanField(default=False, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        indexes = [
+            models.Index(fields=['seller', 'is_archived', 'is_active']),
+        ]
 
     def __str__(self):
         return f"{self.title} ({self.price_ghs} GHS) - {'Active' if self.is_active else 'Inactive'}"
+

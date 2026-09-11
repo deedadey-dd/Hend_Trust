@@ -71,6 +71,7 @@ class TransactionStatusSchema(Schema):
     seller_dispute_response: Optional[str] = None
     seller_dispute_photos: Optional[list[str]] = []
     shipping_timeout_days: Optional[int] = 4
+    buyer_review_token: Optional[str] = ""
 
 class InitializeResponse(Schema):
     authorization_url: str
@@ -157,6 +158,7 @@ def _build_txn_status_dict(t):
         "buyer_dispute_photos": t.buyer_dispute_photos or [],
         "seller_dispute_response": t.seller_dispute_response or None,
         "seller_dispute_photos": t.seller_dispute_photos or [],
+        "buyer_review_token": getattr(t, 'buyer_review_token', ''),
     }
 
 @checkout_router.post("/track", response=list[TransactionStatusSchema])
@@ -273,9 +275,12 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
     if not verify_otp(data.phone_number, data.otp_code):
         raise HttpError(400, "Invalid or expired OTP")
 
-    link = get_object_or_404(PaymentLink, id=data.link_id)
-    if not link.is_active:
+    link = get_object_or_404(PaymentLink.objects.select_related('seller'), id=data.link_id)
+    if not link.is_active or link.is_archived:
         raise HttpError(404, "Payment link is inactive")
+
+    if getattr(link.seller, 'is_suspended', False):
+        raise HttpError(403, "This payment link is currently unavailable because the seller's account has been suspended.")
 
     # Fee logic calculation
     gross_product_total = link.price_ghs + link.shipping_fee_ghs

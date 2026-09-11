@@ -23,12 +23,20 @@ from apps.users.models import User, PayoutMode
 from hendaxis_trust.auth import JWTCookieAuth
 from apps.core.ratelimit import rate_limit, lockout_on_failure
 from apps.core.tasks import dispatch_sms_task
+from utils.mnotify import MNotifyService
 
 auth_router = Router(tags=["Authentication"])
 profile_router = Router(tags=["Seller Profile"], auth=JWTCookieAuth())
 
 def _send_user_phone_otp(user):
     import random, logging
+    
+    # 60-second SMS cooldown check
+    if user.phone_otp_created_at and user.phone_otp_code:
+        elapsed = (timezone.now() - user.phone_otp_created_at).total_seconds()
+        if elapsed < 60:
+            return user.phone_otp_code
+
     code = f"{random.randint(100000, 999999):06d}"
     user.phone_otp_code = code
     user.phone_otp_created_at = timezone.now()
@@ -153,7 +161,7 @@ def _get_request_frontend_url(request=None):
     return getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
 
 def _async_send_mail(subject, message, from_email, recipient_list, html_message=None):
-    if getattr(settings, 'DEBUG', True):
+    if getattr(settings, 'DEBUG', False):
         import sys
         print(f"\n" + "="*80, file=sys.stdout, flush=True)
         print(f"=== DEV EMAIL NOTIFICATION LOG ===", file=sys.stdout, flush=True)
@@ -390,7 +398,7 @@ def resend_activation(request, data: ResendActivationSchema):
     identifier = data.email.strip()
     user = User.objects.filter(Q(email__iexact=identifier) | Q(username__iexact=identifier)).first()
     if not user:
-        if getattr(settings, 'DEBUG', True):
+        if getattr(settings, 'DEBUG', False):
             import sys
             print(f"\n" + "="*80, file=sys.stdout, flush=True)
             print(f"=== DEV EMAIL NOTIFICATION LOG ===", file=sys.stdout, flush=True)
@@ -398,7 +406,7 @@ def resend_activation(request, data: ResendActivationSchema):
             print("="*80 + "\n", file=sys.stdout, flush=True)
         return {"message": "If an account exists with that email, an activation link has been sent."}
     if user.is_email_verified:
-        if getattr(settings, 'DEBUG', True):
+        if getattr(settings, 'DEBUG', False):
             import sys
             print(f"\n" + "="*80, file=sys.stdout, flush=True)
             print(f"=== DEV EMAIL NOTIFICATION LOG ===", file=sys.stdout, flush=True)
@@ -425,7 +433,7 @@ def forgot_password(request, data: ForgotPasswordSchema):
             import logging
             logging.getLogger(__name__).error(f"Password reset email error for user {user.id}: {e}")
     else:
-        if getattr(settings, 'DEBUG', True):
+        if getattr(settings, 'DEBUG', False):
             import sys
             print(f"\n" + "="*80, file=sys.stdout, flush=True)
             print(f"=== DEV EMAIL NOTIFICATION LOG ===", file=sys.stdout, flush=True)
@@ -689,6 +697,13 @@ def request_momo_otp(request, data: RequestMomoOTPSchema):
     momo = data.momo_number.strip()
     if not momo:
         raise HttpError(400, "Mobile money number is required.")
+
+    # 60-second SMS cooldown check
+    if user.momo_otp_created_at and user.momo_otp_code and user.pending_momo_number == momo:
+        elapsed = (timezone.now() - user.momo_otp_created_at).total_seconds()
+        if elapsed < 60:
+            remaining = int(60 - elapsed)
+            return {"message": f"Verification code sent to {momo}. (Resend available in {remaining}s)."}
 
     # Use cryptographically secure OTP
     code = str(secrets.randbelow(900000) + 100000)

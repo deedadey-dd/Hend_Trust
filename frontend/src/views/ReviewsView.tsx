@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
 import { Search, Star, Loader2, MessageSquare, ArrowLeft } from 'lucide-react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import TrustpilotReviewCard from '../components/TrustpilotReviewCard';
 import type { RecentReview } from '../components/TrustpilotReviewCard';
 import ReviewDetailModal from '../components/ReviewDetailModal';
+import RateSellerModal from '../components/RateSellerModal';
 import { apiClient } from '../api/client';
+import { saveReviewToken } from '../utils/reviewStorage';
 import SEOHead from '../components/SEOHead';
 
 // Fallback mock reviews if backend DB has no reviews yet
@@ -126,11 +128,29 @@ const MOCK_FALLBACK_REVIEWS: RecentReview[] = [
 ];
 
 export default function ReviewsView() {
+  const [searchParams] = useSearchParams();
+  const editRef = searchParams.get('ref');
+  const editToken = searchParams.get('token');
+  const [editTxn, setEditTxn] = useState<any | null>(null);
+
   const [reviews, setReviews] = useState<RecentReview[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedRating, setSelectedRating] = useState<number | 'ALL'>('ALL');
   const [selectedReview, setSelectedReview] = useState<RecentReview | null>(null);
+
+  useEffect(() => {
+    if (editRef && editToken) {
+      saveReviewToken(editRef, editToken);
+      apiClient.get(`/reviews/transaction-review/${editRef}?token=${editToken}`)
+        .then(res => {
+          setEditTxn(res.data);
+        })
+        .catch(err => {
+          console.error("Failed to load review edit details from magic link:", err);
+        });
+    }
+  }, [editRef, editToken]);
 
   const fetchReviews = async () => {
     try {
@@ -264,6 +284,19 @@ export default function ReviewsView() {
         onClose={() => setSelectedReview(null)}
         onVoteUpdate={handleVoteUpdate}
       />
+
+      {/* Edit Review Modal from Magic Link */}
+      {editTxn && (
+        <RateSellerModal
+          transactionId={editTxn.transaction_id}
+          paystackReference={editTxn.paystack_reference}
+          reviewToken={editToken || undefined}
+          sellerName={editTxn.seller_name}
+          itemTitle={editTxn.item_title}
+          onClose={() => { setEditTxn(null); fetchReviews(); }}
+          onSuccess={() => { setEditTxn(null); fetchReviews(); }}
+        />
+      )}
     </div>
   );
 }

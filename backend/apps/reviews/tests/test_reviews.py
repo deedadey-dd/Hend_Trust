@@ -40,6 +40,7 @@ def escrow_client():
 def test_submit_review_success(reviews_client, completed_transaction):
     payload = {
         "transaction_id": str(completed_transaction.id),
+        "review_token": completed_transaction.buyer_review_token,
         "rating_speed": 5,
         "rating_communication": 4,
         "rating_overall": 5,
@@ -48,7 +49,7 @@ def test_submit_review_success(reviews_client, completed_transaction):
     
     res = reviews_client.post("/submit", json=payload)
     assert res.status_code == 200
-    assert "published to the seller's storefront profile" in res.json()['message']
+    assert "on the seller's storefront profile" in res.json()['message']
     
     review = SellerReview.objects.get(transaction=completed_transaction)
     assert review.seller == completed_transaction.link.seller
@@ -59,10 +60,83 @@ def test_submit_review_success(reviews_client, completed_transaction):
     assert review.is_active is True
 
 @pytest.mark.django_db
+def test_submit_review_invalid_token_forbidden(reviews_client, completed_transaction):
+    payload = {
+        "transaction_id": str(completed_transaction.id),
+        "review_token": "WRONG_TOKEN_123",
+        "rating_speed": 5,
+        "rating_communication": 5,
+        "rating_overall": 5,
+        "comment": "Fake review by seller impersonation"
+    }
+    
+    res = reviews_client.post("/submit", json=payload)
+    assert res.status_code == 403
+    assert "Invalid review authorization token" in res.json()['detail']
+
+@pytest.mark.django_db
+def test_one_review_per_transaction_update(reviews_client, completed_transaction):
+    # First submission
+    reviews_client.post("/submit", json={
+        "transaction_id": str(completed_transaction.id),
+        "review_token": completed_transaction.buyer_review_token,
+        "rating_speed": 3,
+        "rating_communication": 3,
+        "rating_overall": 3,
+        "comment": "Initial review - okay experience"
+    })
+    
+    assert SellerReview.objects.filter(transaction=completed_transaction).count() == 1
+    
+    # Second submission (edit)
+    res = reviews_client.post("/submit", json={
+        "transaction_id": str(completed_transaction.id),
+        "review_token": completed_transaction.buyer_review_token,
+        "rating_speed": 5,
+        "rating_communication": 5,
+        "rating_overall": 5,
+        "comment": "Updated review - seller resolved my concern perfectly!"
+    })
+    assert res.status_code == 200
+    assert "updated" in res.json()['message']
+    
+    # Verify count is still 1 and values updated
+    assert SellerReview.objects.filter(transaction=completed_transaction).count() == 1
+    review = SellerReview.objects.get(transaction=completed_transaction)
+    assert review.rating_overall == 5
+    assert review.comment == "Updated review - seller resolved my concern perfectly!"
+
+@pytest.mark.django_db
+def test_get_transaction_review_detail(reviews_client, completed_transaction):
+    # Before review exists
+    res = reviews_client.get(f"/transaction-review/{completed_transaction.paystack_reference}?token={completed_transaction.buyer_review_token}")
+    assert res.status_code == 200
+    assert res.json()['has_existing_review'] is False
+    
+    # Post review
+    reviews_client.post("/submit", json={
+        "transaction_id": str(completed_transaction.id),
+        "review_token": completed_transaction.buyer_review_token,
+        "rating_speed": 4,
+        "rating_communication": 5,
+        "rating_overall": 4,
+        "comment": "Great product"
+    })
+    
+    # After review exists
+    res = reviews_client.get(f"/transaction-review/{completed_transaction.paystack_reference}?token={completed_transaction.buyer_review_token}")
+    assert res.status_code == 200
+    data = res.json()
+    assert data['has_existing_review'] is True
+    assert data['rating_communication'] == 5
+    assert data['comment'] == "Great product"
+
+@pytest.mark.django_db
 def test_dispute_deactivates_buyer_review(reviews_client, escrow_client, completed_transaction):
     # 1. Submit review first
     reviews_client.post("/submit", json={
         "transaction_id": str(completed_transaction.id),
+        "review_token": completed_transaction.buyer_review_token,
         "rating_speed": 4,
         "rating_communication": 4,
         "rating_overall": 4,
@@ -99,3 +173,35 @@ def test_fetch_seller_reviews_aggregate(reviews_client, seller, link, db):
     assert data['avg_speed'] == 4.0
     assert data['avg_communication'] == 4.0
     assert data['avg_overall'] == 4.0
+
+@pytest.mark.django_db
+def test_submit_review_status_restriction(reviews_client, link, db):
+    txn = Transaction.objects.create(
+        link=link,
+        buyer_phone="0247778889",
+        total_amount_ghs=Decimal('100.00'),
+        platform_fee_ghs=Decimal('10.00'),
+        status=TransactionStatus.DELIVERY_IN_PROGRESS,
+        paystack_reference="REF_LOCKED_REVIEW"
+    )
+    
+    payload = {
+        "transaction_id": str(txn.id),
+        "review_token": txn.buyer_review_token,
+        "rating_speed": 5,
+        "rating_communication": 5,
+        "rating_overall": 5,
+        "comment": "Attempting review in transit"
+    }
+    
+    # In delivery in progress -> 400
+    res = reviews_client.post("/submit", json=payload)
+    assert res.status_code == 400
+    assert "Reviews unlock once the package is delivered" in res.json()['detail']
+
+    # Transition to INSPECTION_PERIOD -> 200
+    txn.status = TransactionStatus.INSPECTION_PERIOD
+    txn.save()
+    res2 = reviews_client.post("/submit", json=payload)
+    assert res2.status_code == 200
+

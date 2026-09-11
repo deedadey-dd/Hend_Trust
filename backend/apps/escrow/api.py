@@ -11,6 +11,7 @@ from apps.core.ratelimit import rate_limit
 import uuid
 from django.db.models import Q
 from datetime import datetime
+from django.utils import timezone
 from ninja.pagination import paginate, LimitOffsetPagination
 
 escrow_router = Router(tags=["Escrow Transactions"], auth=JWTCookieAuth())
@@ -26,6 +27,7 @@ from typing import Optional
 class SellerTransactionSchema(Schema):
     id: uuid.UUID
     status: str
+    is_archived: bool = False
     total_amount_ghs: float
     platform_fee_ghs: Optional[float] = 0.0
     shipping_fee_ghs: Optional[float] = 0.0
@@ -58,9 +60,23 @@ class SellerTransactionSchema(Schema):
 
 @escrow_router.get("/seller/transactions", response=list[SellerTransactionSchema])
 @paginate(LimitOffsetPagination)
-def get_seller_transactions(request, search: str = None, status: str = None, start_date: str = None, end_date: str = None):
+def get_seller_transactions(request, search: str = None, status: str = None, start_date: str = None, end_date: str = None, include_archived: bool = False):
     """Get paginated, filtered, and searchable transactions for the logged-in seller."""
-    txns = Transaction.objects.filter(link__seller=request.user).select_related('link').order_by('-created_at')
+    from django.db.models import Prefetch
+    from apps.delivery.models import DeliveryLog
+
+    txns = Transaction.objects.filter(link__seller=request.user).select_related('link').prefetch_related(
+        Prefetch('delivery_logs', queryset=DeliveryLog.objects.order_by('-created_at'))
+    ).order_by('-created_at')
+
+    if status == 'ARCHIVED':
+        txns = txns.filter(is_archived=True)
+    elif not include_archived:
+        txns = txns.filter(is_archived=False)
+        if status:
+            txns = txns.filter(status=status)
+    elif status:
+        txns = txns.filter(status=status)
     
     if search:
         txns = txns.filter(
@@ -69,9 +85,6 @@ def get_seller_transactions(request, search: str = None, status: str = None, sta
             Q(buyer_email__icontains=search) |
             Q(link__title__icontains=search)
         )
-        
-    if status:
-        txns = txns.filter(status=status)
         
     if start_date:
         try:
@@ -93,11 +106,13 @@ def get_seller_transactions(request, search: str = None, status: str = None, sta
     otp_delay_hrs = cfg.get("otp_reveal_delay_hours", 24)
 
     items = []
-    for t in txns.prefetch_related('delivery_logs'):
-        latest_log = t.delivery_logs.order_by('-created_at').first()
+    for t in txns:
+        logs = list(t.delivery_logs.all())
+        latest_log = logs[0] if logs else None
         items.append({
             "id": t.id,
             "status": t.status,
+            "is_archived": getattr(t, 'is_archived', False),
             "total_amount_ghs": float(t.total_amount_ghs),
             "platform_fee_ghs": float(t.platform_fee_ghs or 0.0),
             "shipping_fee_ghs": float(t.link.shipping_fee_ghs or 0.0),
@@ -125,11 +140,11 @@ def get_seller_transactions(request, search: str = None, status: str = None, sta
             "seller_dispute_photos": t.seller_dispute_photos or [],
             "manager_dispute_notes": t.manager_dispute_notes,
             "manager_dispute_photos": t.manager_dispute_photos or [],
-            "shipping_timeout_days": timeout_days,
             "otp_reveal_delay_hours": otp_delay_hrs,
         })
             
     return items
+
 
 
 class SellerSummaryMetricsSchema(Schema):
@@ -146,6 +161,131 @@ class SellerSummaryMetricsSchema(Schema):
     in_dispute_net_ghs: float
     completed_transactions_count: int
     completed_total_earned_ghs: float
+    dispute_health: Optional[dict] = None
+
+
+def compute_seller_dispute_health(seller_user) -> dict:
+    from apps.escrow.models import Transaction, TransactionStatus
+    from apps.links.models import PaymentLink
+    from django.utils import timezone
+    from datetime import timedelta
+    from django.db.models import Q
+    from django.core.mail import send_mail
+
+    # All paid transactions belonging to seller
+    all_paid_txns = Transaction.objects.filter(
+        link__seller=seller_user
+    ).exclude(
+        status__in=[TransactionStatus.AWAITING_PAYMENT, TransactionStatus.CANCELLED]
+    )
+
+    total_paid_lifetime = all_paid_txns.count()
+
+    def get_disputed_count(qs):
+        return qs.filter(Q(status=TransactionStatus.DISPUTED) | ~Q(buyer_dispute_reason='')).count()
+
+    # Set 1: Rolling 30-day window
+    thirty_days_ago = timezone.now() - timedelta(days=30)
+    paid_30d_qs = all_paid_txns.filter(created_at__gte=thirty_days_ago)
+    paid_30d_count = paid_30d_qs.count()
+    disputed_30d_count = get_disputed_count(paid_30d_qs)
+
+    # Set 2: Recent 15 paid transactions
+    recent_15_ids = list(all_paid_txns.order_by('-created_at')[:15].values_list('id', flat=True))
+    paid_15_qs = Transaction.objects.filter(id__in=recent_15_ids)
+    paid_15_count = len(recent_15_ids)
+    disputed_15_count = get_disputed_count(paid_15_qs)
+
+    # Set 3: Lifetime paid transactions
+    disputed_lifetime_count = get_disputed_count(all_paid_txns)
+
+    # Calculate dispute rates for sets where paid_count > 5
+    applicable_rates = []
+    
+    if paid_30d_count > 5:
+        applicable_rates.append({
+            'sample_name': '30-Day Window',
+            'paid_count': paid_30d_count,
+            'disputed_count': disputed_30d_count,
+            'rate': round((disputed_30d_count / paid_30d_count) * 100.0, 1)
+        })
+
+    if paid_15_count > 5:
+        applicable_rates.append({
+            'sample_name': 'Last 15 Transactions',
+            'paid_count': paid_15_count,
+            'disputed_count': disputed_15_count,
+            'rate': round((disputed_15_count / paid_15_count) * 100.0, 1)
+        })
+
+    if total_paid_lifetime > 5:
+        applicable_rates.append({
+            'sample_name': 'Lifetime',
+            'paid_count': total_paid_lifetime,
+            'disputed_count': disputed_lifetime_count,
+            'rate': round((disputed_lifetime_count / total_paid_lifetime) * 100.0, 1)
+        })
+
+    # Pick the highest dispute rate among sets with > 5 paid transactions
+    max_rate = 0.0
+    highest_sample = None
+    if applicable_rates:
+        highest_sample = max(applicable_rates, key=lambda x: x['rate'])
+        max_rate = highest_sample['rate']
+
+    dispute_level = "NORMAL"
+    if seller_user.is_suspended:
+        dispute_level = "SUSPENDED"
+    elif applicable_rates:
+        if max_rate >= 40.0:
+            dispute_level = "SUSPENDED"
+            # Auto-suspend seller
+            seller_user.is_suspended = True
+            seller_user.suspension_reason = f"Automated Suspension: Dispute rate reached {max_rate}% (≥40%) in {highest_sample['sample_name']} sample set ({highest_sample['disputed_count']} of {highest_sample['paid_count']} transactions disputed)."
+            seller_user.suspended_at = timezone.now()
+            seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
+
+            # Deactivate all active payment links for this seller
+            PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
+
+            # Send Email Alert
+            try:
+                send_mail(
+                    subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended",
+                    message=f"Hi {seller_user.username},\n\nYour seller account has been suspended because your dispute rate reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nYour payment links have been disabled and you are currently blocked from creating new payment links.\n\nPlease contact HendAxis Trust support/management to request an account review and manual reinstatement.",
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending suspension email: {mail_err}")
+
+        elif max_rate >= 30.0:
+            dispute_level = "WARNING"
+            try:
+                send_mail(
+                    subject="WARNING: Elevated Dispute Rate on Your HendAxis Trust Account",
+                    message=f"Hi {seller_user.username},\n\nYour dispute rate has reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nPlease ensure high product quality and prompt customer support. Reaching 40% will cause automatic account suspension.",
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending warning email: {mail_err}")
+        elif max_rate >= 20.0:
+            dispute_level = "ALERT"
+
+    return {
+        "total_paid_transactions": total_paid_lifetime,
+        "disputed_transactions_count": disputed_lifetime_count,
+        "dispute_rate_pct": max_rate,
+        "dispute_level": dispute_level,
+        "is_suspended": seller_user.is_suspended,
+        "suspension_reason": seller_user.suspension_reason or "",
+        "sample_evaluated": highest_sample['sample_name'] if highest_sample else "Insufficient volume (≤5 txns)",
+        "sample_paid_count": highest_sample['paid_count'] if highest_sample else total_paid_lifetime,
+        "sample_disputed_count": highest_sample['disputed_count'] if highest_sample else disputed_lifetime_count
+    }
 
 
 @escrow_router.get("/seller/summary-metrics", response=SellerSummaryMetricsSchema)
@@ -156,8 +296,13 @@ def get_seller_summary_metrics(request):
     """
     seller_txns = Transaction.objects.filter(link__seller=request.user)
 
-    pending_txns = seller_txns.exclude(
-        status__in=[TransactionStatus.COMPLETED, TransactionStatus.CANCELLED, TransactionStatus.REFUNDED]
+    pending_txns = seller_txns.filter(is_archived=False).exclude(
+        status__in=[
+            TransactionStatus.AWAITING_PAYMENT,
+            TransactionStatus.COMPLETED,
+            TransactionStatus.CANCELLED,
+            TransactionStatus.REFUNDED,
+        ]
     )
 
     pending_count = pending_txns.count()
@@ -218,6 +363,7 @@ def get_seller_summary_metrics(request):
         "in_dispute_net_ghs": round(in_dispute_net, 2),
         "completed_transactions_count": completed_count,
         "completed_total_earned_ghs": round(completed_earned, 2),
+        "dispute_health": compute_seller_dispute_health(request.user)
     }
 
 
@@ -542,6 +688,53 @@ def seller_cancel(request, transaction_id: uuid.UUID):
         
     return {"message": "Transaction cancelled. Buyer refunded and platform fee charged to your account."}
 
+
+@escrow_router.post("/seller/transactions/{transaction_id}/verify-payment", response=dict)
+def verify_seller_transaction_payment(request, transaction_id: uuid.UUID):
+    """Seller endpoint to manually check payment gateway status for an AWAITING_PAYMENT transaction."""
+    tx = get_object_or_404(Transaction.objects.select_related('link', 'link__seller'), id=transaction_id)
+    if tx.link.seller != request.user and not (request.user.is_staff or request.user.is_superuser):
+        raise HttpError(403, "You do not have permission to verify this transaction.")
+
+    if tx.status != TransactionStatus.AWAITING_PAYMENT:
+        return {
+            "verified": True,
+            "status": tx.status,
+            "is_archived": tx.is_archived,
+            "message": f"Transaction status is currently '{tx.get_status_display()}'."
+        }
+
+    from apps.escrow.services import verify_payment_gateway_status
+    res = verify_payment_gateway_status(tx)
+    tx.refresh_from_db()
+    res["is_archived"] = tx.is_archived
+    return res
+
+
+@escrow_router.post("/seller/transactions/{transaction_id}/archive", response=dict)
+def archive_seller_transaction(request, transaction_id: uuid.UUID):
+    """Seller endpoint to manually archive a transaction."""
+    tx = get_object_or_404(Transaction.objects.select_related('link', 'link__seller'), id=transaction_id)
+    if tx.link.seller != request.user and not (request.user.is_staff or request.user.is_superuser):
+        raise HttpError(403, "You do not have permission to modify this transaction.")
+
+    tx.is_archived = True
+    tx.save(update_fields=['is_archived', 'updated_at'])
+    return {"message": "Transaction archived successfully.", "is_archived": True}
+
+
+@escrow_router.post("/seller/transactions/{transaction_id}/unarchive", response=dict)
+def unarchive_seller_transaction(request, transaction_id: uuid.UUID):
+    """Seller endpoint to manually unarchive a transaction."""
+    tx = get_object_or_404(Transaction.objects.select_related('link', 'link__seller'), id=transaction_id)
+    if tx.link.seller != request.user and not (request.user.is_staff or request.user.is_superuser):
+        raise HttpError(403, "You do not have permission to modify this transaction.")
+
+    tx.is_archived = False
+    tx.save(update_fields=['is_archived', 'updated_at'])
+    return {"message": "Transaction unarchived successfully.", "is_archived": False}
+
+
 @escrow_router.post("/{transaction_id}/dispute", response=MessageResponse, auth=JWTCookieAuth())
 def open_dispute(request, transaction_id: uuid.UUID):
     transaction = get_object_or_404(Transaction, id=transaction_id)
@@ -595,14 +788,29 @@ def send_confirmation_code(request, transaction_id: uuid.UUID):
     if transaction.status not in [TransactionStatus.INSPECTION_PERIOD, TransactionStatus.DELIVERY_IN_PROGRESS]:
         raise HttpError(400, "Cannot send confirmation code for this transaction state.")
 
-    # Use cryptographically secure random for confirmation code
+    import time
+    from django.core.cache import cache
+    now_ts = int(time.time())
+    sent_key = f"delivery_conf_sent_at_{transaction.id}"
+    last_sent_ts = cache.get(sent_key)
+    COOLDOWN_SECONDS = 60
+
+    if last_sent_ts and (now_ts - last_sent_ts) < COOLDOWN_SECONDS and transaction.delivery_confirmation_code:
+        remaining = COOLDOWN_SECONDS - (now_ts - last_sent_ts)
+        return {
+            "message": f"Confirmation code already sent recently. Please check your phone/email. (Resend available in {remaining}s)."
+        }
+
+    # Generate fresh code if outside cooldown or no code set
     code = str(secrets.randbelow(900000) + 100000)
     transaction.delivery_confirmation_code = code
     transaction.save(update_fields=['delivery_confirmation_code'])
+    cache.set(sent_key, now_ts, timeout=300)
     
-    print("\n" + "="*50)
-    print(f"DEV CONFIRMATION CODE FOR {transaction.buyer_phone}: {code}")
-    print("="*50 + "\n")
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*50)
+        print(f"DEV CONFIRMATION CODE FOR {transaction.buyer_phone}: {code}")
+        print("="*50 + "\n")
 
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
     msg = f"Your HendAxis Trust order ({transaction.paystack_reference}) delivery confirmation code is: {code}"
@@ -1364,6 +1572,8 @@ def get_sellers_admin(request, search: Optional[str] = None):
         wallet = SellerWallet.objects.filter(user=s).first()
         wallet_balance = float(wallet.available_balance_ghs) if wallet else 0.0
         payout_mode = getattr(s, 'payout_mode', 'INSTANT')
+
+        dh = compute_seller_dispute_health(s)
         
         res.append({
             "id": str(s.id),
@@ -1376,9 +1586,56 @@ def get_sellers_admin(request, search: Optional[str] = None):
             "total_transactions_count": total_txns,
             "completed_gmv_ghs": float(completed_gmv),
             "wallet_balance_ghs": wallet_balance,
+            "is_suspended": s.is_suspended,
+            "suspension_reason": s.suspension_reason or "",
+            "dispute_health": dh
         })
         
     return res
+
+class AdminSuspendSellerSchema(Schema):
+    reason: Optional[str] = "Manual administrative suspension by management."
+
+@admin_router.post("/sellers/{seller_id}/suspend", response=dict)
+def admin_suspend_seller(request, seller_id: uuid.UUID, data: AdminSuspendSellerSchema):
+    is_admin_user(request)
+    from apps.users.models import User
+    from apps.links.models import PaymentLink
+
+    seller = get_object_or_404(User, id=seller_id)
+    reason = data.reason.strip() if data.reason else "Manual administrative suspension"
+
+    seller.is_suspended = True
+    seller.suspension_reason = reason
+    seller.suspended_at = timezone.now()
+    seller.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
+
+    # Deactivate all active payment links for this seller
+    PaymentLink.objects.filter(seller=seller, is_active=True).update(is_active=False)
+
+    return {
+        "message": f"Seller @{seller.username} has been suspended.",
+        "seller_id": str(seller.id),
+        "is_suspended": True,
+        "suspension_reason": seller.suspension_reason
+    }
+
+@admin_router.post("/sellers/{seller_id}/reinstate", response=dict)
+def admin_reinstate_seller(request, seller_id: uuid.UUID):
+    is_admin_user(request)
+    from apps.users.models import User
+
+    seller = get_object_or_404(User, id=seller_id)
+    seller.is_suspended = False
+    seller.suspension_reason = ""
+    seller.suspended_at = None
+    seller.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
+
+    return {
+        "message": f"Seller @{seller.username} has been reinstated successfully.",
+        "seller_id": str(seller.id),
+        "is_suspended": False
+    }
 
 @admin_router.get("/buyers")
 def get_buyers_admin(request, search: Optional[str] = None):
@@ -1778,6 +2035,7 @@ DEFAULT_SYSTEM_SETTINGS = {
     "otp_reveal_delay_hours": 24,
     "return_dispatch_days": 3,
     "return_auto_refund_hours": 48,
+    "unpaid_auto_archive_days": 3,
     "inspection_tier1_threshold": 2000.0,
     "inspection_tier1_hours": 24,
     "inspection_tier2_threshold": 10000.0,
@@ -1829,6 +2087,7 @@ class PublicPlatformSettingsSchema(Schema):
     otp_reveal_delay_hours: int = 24
     return_dispatch_days: int = 3
     return_auto_refund_hours: int = 48
+    unpaid_auto_archive_days: int = 3
     inspection_tier1_threshold: float = 2000.0
     inspection_tier1_hours: int = 24
     inspection_tier2_threshold: float = 10000.0
@@ -1845,6 +2104,7 @@ class PlatformSettingsSchema(Schema):
     otp_reveal_delay_hours: int = 24
     return_dispatch_days: int = 3
     return_auto_refund_hours: int = 48
+    unpaid_auto_archive_days: int = 3
     inspection_tier1_threshold: float = 2000.0
     inspection_tier1_hours: int = 24
     inspection_tier2_threshold: float = 10000.0
@@ -1862,11 +2122,13 @@ class UpdatePlatformSettingsSchema(Schema):
     otp_reveal_delay_hours: Optional[int] = None
     return_dispatch_days: Optional[int] = None
     return_auto_refund_hours: Optional[int] = None
+    unpaid_auto_archive_days: Optional[int] = None
     inspection_tier1_threshold: Optional[float] = None
     inspection_tier1_hours: Optional[int] = None
     inspection_tier2_threshold: Optional[float] = None
     inspection_tier2_hours: Optional[int] = None
     inspection_tier3_hours: Optional[int] = None
+
 
 
 @escrow_router.get("/public-settings", response=PublicPlatformSettingsSchema, auth=None)
@@ -1916,6 +2178,10 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
 
     if data.return_auto_refund_hours is not None:
         current["return_auto_refund_hours"] = max(1, data.return_auto_refund_hours)
+
+    if data.unpaid_auto_archive_days is not None:
+        current["unpaid_auto_archive_days"] = max(1, data.unpaid_auto_archive_days)
+
 
     if data.inspection_tier1_threshold is not None:
         current["inspection_tier1_threshold"] = float(data.inspection_tier1_threshold)

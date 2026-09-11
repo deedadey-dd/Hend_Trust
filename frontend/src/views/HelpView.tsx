@@ -80,6 +80,30 @@ const FAQS: FAQItem[] = [
     category: 'DEVELOPERS',
     question: 'How do I integrate HendAxis Escrow into my website or online store?',
     answer: 'Merchants and developers can integrate HendAxis Escrow directly into their custom websites or store checkout using our REST APIs or Drop-in JavaScript SDK. Code examples and documentation are available on our /developers portal.'
+  },
+  {
+    id: 'faq-12',
+    category: 'SELLERS',
+    question: 'How does Seller Dispute Health Monitoring & Account Suspension work?',
+    answer: 'HendAxis Trust monitors dispute percentages across recent orders (minimum 5 paid transactions). If a seller reaches a 20% dispute rate, a yellow alert banner appears. At 30%, an orange warning banner and email alert are issued. If disputes reach 40% or higher, the seller account is automatically suspended, active payment links are disabled, and link creation is blocked until manual review by platform administration.'
+  },
+  {
+    id: 'faq-13',
+    category: 'BUYERS',
+    question: 'When can I rate a seller, and can I edit my review later?',
+    answer: 'To ensure honest feedback, rating a seller is locked while your package is in transit and unlocks automatically once your item is delivered and inspection begins. Each transaction is limited to 1 review. If you wish to edit your review on another device, click "Request Edit Link" to receive a free magic link via email.'
+  },
+  {
+    id: 'faq-14',
+    category: 'SELLERS',
+    question: 'What happens to unpaid checkout entries on my dashboard?',
+    answer: 'Unpaid transactions that remain abandoned auto-archive after the platform\'s configured duration (default: 3 days). Sellers can click the "Check Payment" button next to any unpaid transaction to manually verify if the buyer\'s payment completed before archiving occurs.'
+  },
+  {
+    id: 'faq-15',
+    category: 'LOGISTICS',
+    question: 'Why is there a 60-second countdown when requesting a Delivery Confirmation Code?',
+    answer: 'To protect users from SMS spam and reduce transaction costs, a 60-second cooldown is enforced between confirmation SMS requests. The initial OTP sent remains valid and active during the cooldown period so you can confirm receipt without waiting for duplicate messages.'
   }
 ];
 

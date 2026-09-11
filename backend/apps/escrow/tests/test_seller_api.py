@@ -130,13 +130,26 @@ def test_seller_cancel_refunds_buyer_and_notifies(seller_user, transaction_await
 
 
 @pytest.mark.django_db
-def test_get_seller_summary_metrics(seller_user, transaction_awaiting_shipping):
+def test_get_seller_summary_metrics(seller_user, transaction_awaiting_shipping, payment_link):
+    from apps.escrow.models import Transaction, TransactionStatus
+    # Create an unpaid transaction
+    Transaction.objects.create(
+        link=payment_link,
+        buyer_name="Unpaid Buyer",
+        buyer_phone="0240000000",
+        buyer_email="unpaid@example.com",
+        total_amount_ghs=Decimal('500.00'),
+        platform_fee_ghs=Decimal('25.00'),
+        status=TransactionStatus.AWAITING_PAYMENT,
+        paystack_reference="REF_UNPAID_METRIC_TEST"
+    )
+
     request = MockRequest(seller_user)
     from apps.escrow.api import get_seller_summary_metrics
     
     metrics = get_seller_summary_metrics(request)
     assert metrics['pending_transactions_count'] == 1
-    # total 111.50 - platform fee 11.50 = net 100.00 due to seller
+    # total 111.50 - platform fee 11.50 = net 100.00 due to seller (unpaid 500 GHS is excluded)
     assert metrics['pending_net_due_seller_ghs'] == 100.0
     assert metrics['awaiting_dispatch_count'] == 1
     assert metrics['awaiting_dispatch_net_ghs'] == 100.0

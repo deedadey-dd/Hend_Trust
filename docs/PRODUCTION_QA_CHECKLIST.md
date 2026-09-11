@@ -58,14 +58,17 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 ## 💼 Phase 3: Seller Persona (Merchant Dashboard)
 
 ### 3.1 Merchant Dashboard (`/dashboard`)
-- [ ] **Overview Cards**: Verify Total Sales, Pending Escrow Balance, Active Payment Links, and Dispatched Orders.
+- [ ] **Overview Cards**: Verify Total Sales, Pending Escrow Balance, Active Payment Links, and Dispatched Orders. Exclude `AWAITING_PAYMENT` and archived transactions from Pending Escrow Payouts card.
 - [ ] **Search & Date Filters**: Filter orders by status (*Pending*, *Dispatched*, *Completed*, *Disputed*).
 - [x] **Export Report**: Download transaction reports in PDF (`.pdf`) and Excel (`.xlsx`) formats (available on `/dashboard` and `/admin-portal` tabs).
+- [x] **Stale Transaction Verification**: Click **"Check Payment"** on `AWAITING_PAYMENT` orders to manually poll payment status before auto-archiving. Confirm payment auto-restores transaction.
+- [x] **Dispute Health Banners**: Verify Yellow Alert Banner (20-29.9% dispute rate), Orange Warning Banner (30-39.9%), and Red Lock Banner (≥40% dispute rate or suspended state).
 
 ### 3.2 Payment Link Creation (`/create-link`)
 - [ ] **Create Link**: Fill in Item Title, Amount (GHS), Description, and Delivery Fee settings.
 - [ ] **Fee Calculator**: Confirm real-time platform fee vs. seller payout calculation.
 - [ ] **QR Code Generator**: Click **"Generate QR Poster"**. Download PNG poster.
+- [x] **Suspension Enforcement**: Confirm suspended sellers are blocked from creating new payment links (HTTP 403).
 
 ### 3.3 My Payment Links (`/links`)
 - [ ] **Link Management**: Copy payment link URL. Verify status toggle (Active / Deactivated).
@@ -85,7 +88,7 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 ## 🛒 Phase 4: Buyer Persona (Public Checkout & Delivery)
 
 ### 4.1 Public Escrow Checkout (`/l/:link_code`)
-- [ ] **Link Access**: Open seller payment link in incognito or guest browser.
+- [ ] **Link Access**: Open seller payment link in incognito or guest browser. Confirm HTTP 403 page if link belongs to a suspended seller.
 - [ ] **Order Breakdown**: Confirm item name, image, description, escrow badge, and total price.
 - [ ] **Buyer Details Form**: Input delivery address, region, full name, and mobile number.
 - [ ] **Payment Processing**: Select Payment Method (MoMo / Card via Paystack). Complete test transaction.
@@ -93,10 +96,14 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 ### 4.2 Order Tracking & Parcel Handover
 - [ ] **SMS Notification**: Verify buyer receives order tracking code via SMS.
 - [ ] **Delivery Inspection**: Open Tracking Modal. Verify dispatch proof photo and courier details.
+- [x] **Full-Screen Image Lightbox**: Click product photo or delivery proof thumbnail to test full-screen zoom, 90° rotation, and download modal.
 
-### 4.3 Goods Confirmation & Ratings
+### 4.3 Goods Confirmation, OTP Cooldown & Hardened Ratings
 - [ ] **Confirm Delivery**: Enter delivery OTP upon receiving parcel. Confirm escrow status transitions to **Completed**.
-- [ ] **Seller Rating**: Rate seller on 3 axes (Delivery, Item Accuracy, Communication) and leave review comment.
+- [x] **60-Second OTP SMS Cooldown**: Re-click **"Resend Code"** within 60 seconds. Verify countdown timer button (`Resend Code (58s)`), disabled state, and zero duplicate SMS dispatches.
+- [x] **Transit Rating Lock**: Verify rating button shows `🔒 Rate Seller (Unlocks upon delivery)` during transit (`DELIVERY_IN_PROGRESS`) and unlocks upon delivery.
+- [x] **1 Review Per Transaction**: Verify submitting feedback again updates the initial review instead of creating duplicate records.
+- [x] **$0-Cost Email Edit Link**: Test `/reviews/request-edit-link` fallback for buyers editing feedback from a new device or browser.
 - [ ] **Dispute Flow Test**: On a test order, click **"Raise Dispute"**, select reason (*Damaged / Wrong Item*), upload photo, and submit.
 
 ---
@@ -124,8 +131,10 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Decoy Honeypot Verification**: Open `/admin/` in incognito. Confirm decoy login trap renders. Verify intruder IP & attempt logged in backend security logs.
 - [ ] **Staff 2FA**: Confirm superuser login requires TOTP authenticator code.
 
-### 6.2 Platform System Audits
+### 6.2 Platform System Audits & Seller Dispute Governance
 - [ ] **Financial Balance Audit**: Inspect Platform Escrow Account, Fee Ledger, and Courier Settlement Account balances.
 - [ ] **User Role Governance**: Promote or adjust staff roles (`ADMIN`, `SUPPORT_AGENT`, `SELLER`).
+- [x] **Manual Admin Suspend & Reinstate**: Locate seller in Admin Portal directory. Click **"Suspend Seller"** (confirm links deactivate and user status locks to suspended) and **"Reinstate"** (confirm account unlocks).
+- [x] **Gateway & Logistics Settings**: Test updating `unpaid_auto_archive_days` and active payment gateway engine settings in `/admin`.
 - [ ] **Security Lockout Audit**: Verify failed login attempts counter (`django-axes` / cache) and unlock blocked IPs if required.
 - [ ] **Developer Webhook Logs**: Audit outbound HMAC webhook delivery logs and retry statuses.

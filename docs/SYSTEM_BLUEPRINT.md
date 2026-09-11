@@ -118,6 +118,7 @@ graph TD
    - **Item Catalog Integration**: Optionally attach product stock image URL and custom SKU metadata.
    - **Delivery Configuration**: Set delivery fee options (Pickup, Fixed Delivery Fee, or Dynamic Courier Delivery).
    - **Custom Checkout Fields**: Collect buyer delivery address, landmark, phone number, and optional notes.
+   - **Stale Transaction Management & Auto-Archiving**: Unpaid transactions older than the platform's configured duration (`unpaid_auto_archive_days`, default: 3 days) automatically archive (`is_archived = True`). Sellers can click **"Check Payment"** on `AWAITING_PAYMENT` entries to manually query gateway completion before archiving occurs. Confirmed payments automatically restore transactions (`is_archived = False`).
    - **Archiving & Expiration**: Deactivate or archive stale links without breaking existing escrow histories.
 
 2. **Public Checkout Page (`/pay/:slug`)**:
@@ -183,7 +184,7 @@ stateDiagram-v2
 
 ---
 
-### Module E: Dispute Resolution Center
+### Module E: Dispute Resolution & Seller Dispute Health Governance
 
 #### Key Features & Workflows
 1. **Dispute Initiation (`/dashboard`)**:
@@ -191,7 +192,16 @@ stateDiagram-v2
    - Requires selecting a dispute reason and providing a detailed explanation.
    - Supports uploading up to 5 evidence files (photos, receipts, delivery slips, chat screenshots).
 
-2. **Admin Mediation Desk (`/admin-portal`)**:
+2. **Automated Seller Dispute Health Monitoring & Account Suspension**:
+   - **Multi-Window Calculation**: System computes seller dispute percentage across (1) Last 30 Days, (2) Last 15 Sales, and (3) Lifetime Sales, selecting the highest dispute rate among sets with `paid_transactions > 5` to prevent low-volume sample distortion.
+   - **Tiered Dashboard Banners & Notifications**:
+     - **Yellow Alert Banner (20% – 29.9% Dispute Rate)**: Displays inline caution on seller dashboard.
+     - **Orange Warning Banner (30% – 39.9% Dispute Rate)**: Displays high-priority warning banner and sends an email notification to seller.
+     - **Red Suspension Banner (≥ 40% Dispute Rate or Admin Action)**: Sets seller account status to `is_suspended = True`.
+   - **Suspension Enforcement**: Deactivates all active payment links, blocks payment link creation, and returns HTTP 403 Forbidden on public checkout for suspended seller links.
+   - **Manual Admin Controls**: Administrators can manually suspend (`POST /admin/sellers/{id}/suspend`) or reinstate (`POST /admin/sellers/{id}/reinstate`) sellers at any time.
+
+3. **Admin Mediation Desk (`/admin-portal`)**:
    - Dedicated interface displaying all active and past disputes.
    - Side-by-side comparison of buyer claim vs. seller evidence.
    - Direct action buttons for Admin Resolution:
@@ -201,37 +211,38 @@ stateDiagram-v2
      - **Require Item Return**: Places order into `RETURN_IN_PROGRESS` status requiring buyer to ship item back before refund execution.
    - System automatically generates double-entry ledger adjustments upon resolution.
 
-#### Database Models (`backend/apps/escrow/models.py`)
-- `EscrowDispute`: Holds `escrow`, `raised_by`, `reason`, `description`, `evidence_urls`, `status` (`OPEN`, `RESOLVED_REFUND`, `RESOLVED_RELEASE`, `RESOLVED_SPLIT`, `RESOLVED_REQUIRE_RETURN`), `resolution_notes`, `resolved_by`, `resolved_at`.
+#### Database Models (`backend/apps/escrow/models.py`, `backend/apps/users/models.py`)
+- `EscrowDispute`: Holds `escrow`, `raised_by`, `reason`, `description`, `evidence_urls`, `status`, `resolution_notes`, `resolved_by`, `resolved_at`.
+- `User`: Extended with `is_suspended`, `suspension_reason`, and `suspended_at`.
 
 ---
 
-### Module F: Logistics & Delivery Tracking Engine
+### Module F: Logistics, Delivery Tracking & Image Inspection
 
 #### Key Features & Workflows
 1. **Tracking View (`/tracking`)**:
    - Universal order tracking page accessible by entering a unique Transaction Reference or Delivery Tracking ID.
    - Displays visual timeline of order progression (Payment Received ➔ Order Processing ➔ Dispatched ➔ In Transit ➔ Delivered).
 
-2. **Logistics Gateway Integrations**:
+2. **Logistics Gateway Integrations & 60s OTP Cooldown**:
    - Supports Webhook listeners for automated status updates from courier partners (Hubtel Logistics, Yango Delivery, local dispatch API).
-   - **Delivery PIN / OTP Verification**: Optional OTP code generated for buyer. Courier enters code upon delivery to confirm handing over package.
+   - **60-Second OTP SMS Cooldown**: Delivery confirmation OTP requests (`send_confirmation_code`) enforce a 60-second cooldown period, preventing duplicate SMS dispatches while retaining active codes for confirmation.
+   - **Full-Screen Image Lightbox**: Product photos and delivery proof thumbnails feature a full-screen zoom lightbox modal (`ImageLightboxModal.tsx`) with 90° rotation and download controls.
 
 #### Database Models (`backend/apps/delivery/models.py`)
 - `DeliveryRecord`: Holds `escrow`, `courier_name`, `tracking_number`, `dispatch_status`, `delivery_pin`, `estimated_delivery_time`, `delivered_at`.
 
 ---
 
-### Module G: Customer Review, Rating & Trust Engine
+### Module G: Customer Review, Rating & Security Hardening
 
 #### Key Features & Workflows
-1. **Verified Review Submission**:
-   - Only buyers with completed, paid escrow transactions can submit reviews for a seller (guaranteeing 100% verified customer reviews).
-   - Multi-metric star ratings:
-     - **Item Quality** (1 - 5 Stars)
-     - **Delivery Speed** (1 - 5 Stars)
-     - **Communication** (1 - 5 Stars)
-   - Customer product photo upload (`item_image_url`).
+1. **Verified Review Submission & 1 Review Per Transaction**:
+   - **1 Review Per Transaction**: Enforced via `SellerReview.transaction` `OneToOneField`. Submitting feedback again for an order updates the original review.
+   - **Transit Rating Lock**: Rating a seller is locked while a package is in transit (`AWAITING_PAYMENT`, `PAYMENT_RECEIVED`, `DELIVERY_IN_PROGRESS`) displaying `🔒 Rate Seller (Unlocks upon delivery)` and unlocks upon delivery/inspection.
+   - **Cryptographic Review Token (`buyer_review_token`)**: Returned strictly in buyer checkout responses; excluded from seller API endpoints to prevent seller review tampering/forgery.
+   - **$0-Cost Email Magic Link Fallback**: Buyers editing a review from a new device can request a free magic link emailed to `buyer_email` (`/reviews/request-edit-link`).
+   - Multi-metric star ratings: **Item Quality**, **Delivery Speed**, **Communication** (1 - 5 Stars).
 
 2. **Interactive `ReviewDetailModal`**:
    - Opens detailed view of customer review with reviewer avatar, verified buyer badge, review text, uploaded product photo, exact metric breakdowns, and helpfulness voting buttons (Thumbs Up / Down).
@@ -246,7 +257,7 @@ stateDiagram-v2
    - Visual carousels embedded on Home (`/`) and Shops (`/shops`) showcasing top reviews with **"Verified Rating"** headers and **"View All Reviews"** navigation buttons.
 
 #### Database Models (`backend/apps/reviews/models.py`)
-- `SellerReview`: Holds `escrow`, `seller`, `buyer`, `rating` (overall), `quality_rating`, `speed_rating`, `communication_rating`, `comment`, `image_url`, `upvotes_count`, `downvotes_count`, `created_at`.
+- `SellerReview`: Holds `transaction` (`OneToOneField`), `seller`, `buyer`, `rating`, `quality_rating`, `speed_rating`, `communication_rating`, `comment`, `image_url`, `created_at`.
 - `ReviewVote`: Tracks user votes (`UPVOTE` / `DOWNVOTE`) to prevent duplicate voting.
 
 ---

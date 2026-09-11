@@ -10,6 +10,8 @@ from apps.reviews.models import SellerReview
 from typing import Optional, List
 import uuid
 
+from django.conf import settings
+
 reviews_router = Router(tags=["Seller Reviews & Public Storefronts"])
 
 class SubmitReviewSchema(Schema):
@@ -19,6 +21,24 @@ class SubmitReviewSchema(Schema):
     rating_overall: int
     comment: Optional[str] = ""
     image_url: Optional[str] = ""
+    review_token: Optional[str] = None
+
+class RequestEditLinkSchema(Schema):
+    paystack_reference: str
+    buyer_phone: str
+
+class TransactionReviewDetailSchema(Schema):
+    has_existing_review: bool
+    transaction_id: uuid.UUID
+    paystack_reference: str
+    item_title: str
+    seller_name: str
+    buyer_name: str
+    rating_speed: int = 5
+    rating_communication: int = 5
+    rating_overall: int = 5
+    comment: str = ""
+    review_id: Optional[str] = None
 
 class SellerReplySchema(Schema):
     reply: str
@@ -87,11 +107,17 @@ class SellerStorefrontSchema(Schema):
 def submit_seller_review(request, data: SubmitReviewSchema):
     transaction = get_object_or_404(Transaction.objects.select_related('link', 'link__seller'), id=data.transaction_id)
     
+    if transaction.buyer_review_token and data.review_token != transaction.buyer_review_token:
+        raise HttpError(403, "Invalid review authorization token. Only the verified buyer can submit or edit this review.")
+
     if transaction.status in [TransactionStatus.CANCELLED, TransactionStatus.REFUNDED]:
         raise HttpError(400, "Cannot review a cancelled or refunded transaction.")
         
     if transaction.status == TransactionStatus.DISPUTED:
         raise HttpError(400, "Cannot submit review while transaction is in dispute.")
+
+    if transaction.status not in [TransactionStatus.INSPECTION_PERIOD, TransactionStatus.COMPLETED]:
+        raise HttpError(400, "Reviews unlock once the package is delivered and inspection begins.")
 
     for field, val in [('rating_speed', data.rating_speed), ('rating_communication', data.rating_communication), ('rating_overall', data.rating_overall)]:
         if val < 1 or val > 5:
@@ -112,9 +138,68 @@ def submit_seller_review(request, data: SubmitReviewSchema):
         }
     )
 
+    action = "created" if created else "updated"
     return {
-        "message": "Thank you! Your rating and review have been published to the seller's storefront profile.",
-        "review_id": str(review.id)
+        "message": f"Thank you! Your rating and review have been {action} on the seller's storefront profile.",
+        "review_id": str(review.id),
+        "review_token": transaction.buyer_review_token
+    }
+
+@reviews_router.get("/transaction-review/{paystack_reference}", response=TransactionReviewDetailSchema, auth=None)
+def get_transaction_review_detail(request, paystack_reference: str, token: Optional[str] = None):
+    transaction = get_object_or_404(Transaction.objects.select_related('link', 'link__seller'), paystack_reference=paystack_reference)
+
+    if transaction.buyer_review_token and token != transaction.buyer_review_token:
+        raise HttpError(403, "Invalid review authorization token.")
+
+    review = SellerReview.objects.filter(transaction=transaction).first()
+    seller = transaction.link.seller if (transaction.link and transaction.link.seller) else None
+    seller_title = seller.shop_name or seller.username if seller else "Seller"
+
+    return {
+        "has_existing_review": bool(review),
+        "transaction_id": transaction.id,
+        "paystack_reference": transaction.paystack_reference,
+        "item_title": transaction.link.title if transaction.link else "Escrow Purchase",
+        "seller_name": seller_title,
+        "buyer_name": transaction.buyer_name,
+        "rating_speed": review.rating_speed if review else 5,
+        "rating_communication": review.rating_communication if review else 5,
+        "rating_overall": review.rating_overall if review else 5,
+        "comment": review.comment if review else "",
+        "review_id": str(review.id) if review else None,
+    }
+
+@reviews_router.post("/request-edit-link", response=dict, auth=None)
+def request_review_edit_link(request, data: RequestEditLinkSchema):
+    transaction = Transaction.objects.filter(
+        paystack_reference__iexact=data.paystack_reference.strip(),
+        buyer_phone__icontains=data.buyer_phone.strip()
+    ).first()
+
+    if not transaction:
+        raise HttpError(404, "No transaction found matching the reference and buyer phone number.")
+
+    if not transaction.buyer_email:
+        raise HttpError(400, "No buyer email address was provided during checkout for this transaction.")
+
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    magic_link = f"{frontend_url}/reviews?ref={transaction.paystack_reference}&token={transaction.buyer_review_token}"
+
+    try:
+        from django.core.mail import send_mail
+        send_mail(
+            subject="HendAxis Trust - Edit Your Seller Review",
+            message=f"Hi {transaction.buyer_name or 'Buyer'},\n\nUse the link below to view or edit your review for transaction {transaction.paystack_reference}:\n\n{magic_link}\n\nThank you for using HendAxis Trust!",
+            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+            recipient_list=[transaction.buyer_email],
+            fail_silently=True
+        )
+    except Exception as e:
+        print(f"Error sending review magic link email: {e}")
+
+    return {
+        "message": f"A secure edit link has been sent to {transaction.buyer_email}."
     }
 
 @reviews_router.get("/seller/{identifier}", response=SellerStorefrontSchema, auth=None)
@@ -251,7 +336,7 @@ class MarketplaceDirectorySchema(Schema):
 
 @reviews_router.get("/shops", response=MarketplaceDirectorySchema, auth=None)
 def get_marketplace_directory(request, query: Optional[str] = None, category: Optional[str] = None):
-    from django.db.models import Q
+    from django.db.models import Q, Prefetch, Count, Avg
     from apps.links.models import PaymentLink
     from apps.users.models import VerificationStatus
 
@@ -260,7 +345,9 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
     # Select all sellers or users with links, shop details, or non-unsubmitted verification
     sellers_qs = User.objects.filter(
         Q(role='SELLER') | Q(payment_links__isnull=False) | ~Q(shop_name='') | ~Q(verification_status='UNSUBMITTED')
-    ).distinct()
+    ).distinct().prefetch_related(
+        Prefetch('payment_links', queryset=PaymentLink.objects.filter(is_active=True), to_attr='active_links')
+    )
 
     if category and category.lower() != 'all':
         sellers_qs = sellers_qs.filter(
@@ -282,26 +369,40 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
         )
 
     sellers = list(sellers_qs)
+    seller_ids = [s.id for s in sellers]
+
+    # Pre-fetch completed escrows count per seller in 1 batch query
+    escrow_counts = dict(
+        Transaction.objects.filter(
+            link__seller_id__in=seller_ids,
+            status=TransactionStatus.COMPLETED
+        ).values('link__seller_id').annotate(total=Count('id')).values_list('link__seller_id', 'total')
+    )
+
+    # Pre-fetch review stats per seller in 1 batch query
+    review_stats_qs = SellerReview.objects.filter(
+        seller_id__in=seller_ids,
+        is_active=True
+    ).values('seller_id').annotate(
+        avg_o=Avg('rating_overall'),
+        total=Count('id')
+    )
+    review_stats = {r['seller_id']: (r['avg_o'], r['total']) for r in review_stats_qs}
 
     featured_list = []
     standard_list = []
 
     for seller in sellers:
+        seller_links = getattr(seller, 'active_links', [])
         # Skip internal superusers without links or shop name
-        seller_links = PaymentLink.objects.filter(seller=seller, is_active=True)
-        if (seller.is_superuser or seller.is_staff) and seller.role != 'SELLER' and seller_links.count() == 0 and not seller.shop_name:
+        if (seller.is_superuser or seller.is_staff) and seller.role != 'SELLER' and len(seller_links) == 0 and not seller.shop_name:
             continue
 
-        completed_escrows = Transaction.objects.filter(
-            link__seller=seller,
-            status=TransactionStatus.COMPLETED
-        ).count()
-
-        active_reviews = SellerReview.objects.filter(seller=seller, is_active=True)
-        totals = active_reviews.aggregate(avg_o=Avg('rating_overall'), count=Count('id'))
+        completed_escrows = escrow_counts.get(seller.id, 0)
+        avg_o_val, total_reviews_val = review_stats.get(seller.id, (0.0, 0))
         
-        avg_overall = round(totals['avg_o'] or 0.0, 1)
-        total_reviews = totals['count'] or 0
+        avg_overall = round(avg_o_val or 0.0, 1)
+        total_reviews = total_reviews_val or 0
 
         # Badge Logic - Verified badge ONLY granted if manager approved documents!
         badge_verified_seller = (seller.verification_status == VerificationStatus.APPROVED)
@@ -358,6 +459,7 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
         "featured_shops": featured_list,
         "standard_shops": standard_list
     }
+
 
 
 @reviews_router.put("/shop/profile", response=dict, auth=JWTCookieAuth())

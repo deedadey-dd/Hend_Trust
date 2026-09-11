@@ -3,13 +3,14 @@ import { useSearchParams } from 'react-router-dom';
 import { 
   Search, Filter, Package, CheckCircle, 
   Printer, X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
-  ShieldAlert, MapPin, Copy, Lock
+  ShieldAlert, MapPin, Copy, Lock, ZoomIn, Archive, ArchiveRestore
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
 import { ExportButton } from '../components/ExportButton';
 import type { ExportColumn } from '../utils/exportUtils';
+import { ImageLightboxModal } from '../components/ImageLightboxModal';
 
 const merchantTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -32,6 +33,7 @@ const merchantTxnExportHeaders: ExportColumn[] = [
 interface SellerTxn {
   id: string;
   status: string;
+  is_archived?: boolean;
   total_amount_ghs: number;
   platform_fee_ghs?: number;
   shipping_fee_ghs?: number;
@@ -737,15 +739,15 @@ interface SellerDisputeModalProps {
   txn: SellerTxn;
   onClose: () => void;
   onSuccess: () => void;
+  onOpenLightbox: (url: string) => void;
 }
 
-function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps) {
+function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerDisputeModalProps) {
   const [response, setResponse] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState('');
-  const [previewImg, setPreviewImg] = useState<string | null>(null);
 
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
@@ -816,13 +818,20 @@ function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps
               <span className="text-gray-500 dark:text-slate-400 font-medium block mt-2 mb-1">Buyer Evidence Photos ({txn.buyer_dispute_photos.length}/5):</span>
               <div className="flex flex-wrap gap-2">
                 {txn.buyer_dispute_photos.map((url: string, idx: number) => (
-                  <img
+                  <div
                     key={idx}
-                    src={url}
-                    alt={`Buyer evidence ${idx + 1}`}
-                    onClick={() => setPreviewImg(url)}
-                    className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 hover:border-red-500 transition cursor-pointer"
-                  />
+                    onClick={() => onOpenLightbox(url)}
+                    className="relative group cursor-pointer"
+                  >
+                    <img
+                      src={url}
+                      alt={`Buyer evidence ${idx + 1}`}
+                      className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 hover:border-red-500 transition"
+                    />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-lg transition">
+                      <ZoomIn className="w-4 h-4 text-white" />
+                    </div>
+                  </div>
                 ))}
               </div>
             </div>
@@ -871,12 +880,15 @@ function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps
             {photos.length > 0 && (
               <div className="flex flex-wrap gap-2 mt-2">
                 {photos.map((img, idx) => (
-                  <div key={idx} className="relative group">
-                    <img src={img} alt={`Seller evidence ${idx + 1}`} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700" />
+                  <div key={idx} className="relative group cursor-pointer" onClick={() => onOpenLightbox(img)}>
+                    <img src={img} alt={`Seller evidence ${idx + 1}`} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 hover:opacity-90 transition" />
+                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-lg transition">
+                      <ZoomIn className="w-4 h-4 text-white" />
+                    </div>
                     <button
                       type="button"
-                      onClick={() => setPhotos(prev => prev.filter((_, i) => i !== idx))}
-                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow cursor-pointer"
+                      onClick={(e) => { e.stopPropagation(); setPhotos(prev => prev.filter((_, i) => i !== idx)); }}
+                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow cursor-pointer z-10"
                     >
                       <X className="h-3 w-3" />
                     </button>
@@ -903,12 +915,6 @@ function SellerDisputeModal({ txn, onClose, onSuccess }: SellerDisputeModalProps
             </button>
           </div>
         </form>
-
-        {previewImg && (
-          <div onClick={() => setPreviewImg(null)} className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-gray-900/80 cursor-zoom-out">
-            <img src={previewImg} alt="Preview" className="max-w-full max-h-[80vh] object-contain rounded-xl" />
-          </div>
-        )}
       </div>
     </div>
   );
@@ -930,6 +936,17 @@ interface SellerMetrics {
   in_dispute_net_ghs: number;
   completed_transactions_count: number;
   completed_total_earned_ghs: number;
+  dispute_health?: {
+    total_paid_transactions: number;
+    disputed_transactions_count: number;
+    dispute_rate_pct: number;
+    dispute_level: string;
+    is_suspended: boolean;
+    suspension_reason: string;
+    sample_evaluated: string;
+    sample_paid_count: number;
+    sample_disputed_count: number;
+  };
 }
 
 export default function DashboardView() {
@@ -955,6 +972,13 @@ export default function DashboardView() {
   const [selectedTxn, setSelectedTxn] = useState<SellerTxn | null>(null);
   const [activeDetailTab, setActiveDetailTab] = useState<'AUDIT' | 'TAG'>('AUDIT');
 
+  // Lightbox Modal
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  // Payment Verification & Archive Loading States
+  const [verifyingPaymentId, setVerifyingPaymentId] = useState<string | null>(null);
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
   // Dispatch modal
   const [dispatchTxn, setDispatchTxn] = useState<SellerTxn | null>(null);
 
@@ -972,13 +996,17 @@ export default function DashboardView() {
 
   // Escape key listener for all seller dashboard modals
   useEscapeKey(() => {
+    if (lightboxImage) {
+      setLightboxImage(null);
+      return;
+    }
     setSelectedTxn(null);
     setDispatchTxn(null);
     setVerifyOtpTxn(null);
     setForceCourierTxn(null);
     setSellerDisputeTxn(null);
     setRateSellerTxn(null);
-  }, Boolean(selectedTxn || dispatchTxn || verifyOtpTxn || forceCourierTxn || sellerDisputeTxn || rateSellerTxn));
+  }, Boolean(lightboxImage || selectedTxn || dispatchTxn || verifyOtpTxn || forceCourierTxn || sellerDisputeTxn || rateSellerTxn));
 
   // Seller dispute response modal
   const [disputeTxn, setDisputeTxn] = useState<SellerTxn | null>(null);
@@ -1010,6 +1038,53 @@ export default function DashboardView() {
       setMetrics(res.data);
     } catch (err) {
       console.error('Failed to fetch seller summary metrics', err);
+    }
+  };
+
+  const handleVerifyPayment = async (txnId: string) => {
+    setVerifyingPaymentId(txnId);
+    try {
+      const res = await apiClient.post(`/escrow/seller/transactions/${txnId}/verify-payment`);
+      if (res.data.payment_confirmed) {
+        alert('Payment confirmed! The transaction status has been updated to Awaiting Shipping.');
+      } else {
+        alert(res.data.detail || 'Payment has not been received yet. Please try again later.');
+      }
+      fetchTransactions();
+      fetchMetrics();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.detail || 'Failed to verify payment status.');
+    } finally {
+      setVerifyingPaymentId(null);
+    }
+  };
+
+  const handleArchive = async (txnId: string) => {
+    setActionLoadingId(txnId);
+    try {
+      await apiClient.post(`/escrow/seller/transactions/${txnId}/archive`);
+      fetchTransactions();
+      fetchMetrics();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.detail || 'Failed to archive transaction.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleUnarchive = async (txnId: string) => {
+    setActionLoadingId(txnId);
+    try {
+      await apiClient.post(`/escrow/seller/transactions/${txnId}/unarchive`);
+      fetchTransactions();
+      fetchMetrics();
+    } catch (err: any) {
+      console.error(err);
+      alert(err.response?.data?.detail || 'Failed to unarchive transaction.');
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
@@ -1078,6 +1153,69 @@ export default function DashboardView() {
           </button>
         </div>
       </div>
+
+      {/* ─── SELLER DISPUTE HEALTH & ACCOUNT SUSPENSION BANNERS ───────────────── */}
+      {metrics?.dispute_health && (
+        <div className="mb-6 print:hidden">
+          {/* Level 3: Suspended */}
+          {(metrics.dispute_health.dispute_level === 'SUSPENDED' || metrics.dispute_health.is_suspended) && (
+            <div className="bg-red-50 dark:bg-red-950/60 border-2 border-red-500 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+              <div className="flex items-start gap-3">
+                <ShieldAlert className="h-7 w-7 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
+                <div>
+                  <h3 className="text-base font-bold text-red-900 dark:text-red-200 flex items-center gap-2">
+                    🚨 Account Suspended
+                  </h3>
+                  <p className="text-xs text-red-800 dark:text-red-300 mt-1 leading-relaxed">
+                    Your seller account is currently suspended. You cannot create new payment links and all existing payment links have been deactivated.
+                  </p>
+                  {metrics.dispute_health.suspension_reason && (
+                    <p className="text-xs font-mono bg-red-100 dark:bg-red-900/50 text-red-900 dark:text-red-200 p-2 rounded-lg mt-2 border border-red-200 dark:border-red-800">
+                      Reason: {metrics.dispute_health.suspension_reason}
+                    </p>
+                  )}
+                </div>
+              </div>
+              <a
+                href="/contact"
+                className="py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition shrink-0 text-center shadow-md shadow-red-500/20"
+              >
+                Contact Management Support
+              </a>
+            </div>
+          )}
+
+          {/* Level 2: Warning */}
+          {metrics.dispute_health.dispute_level === 'WARNING' && !metrics.dispute_health.is_suspended && (
+            <div className="bg-orange-50 dark:bg-orange-950/60 border border-orange-400 rounded-2xl p-5 shadow-md flex items-start gap-3">
+              <AlertTriangle className="h-6 w-6 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-bold text-orange-900 dark:text-orange-200">
+                  ⚠️ High Dispute Warning — Action Required
+                </h3>
+                <p className="text-xs text-orange-800 dark:text-orange-300 mt-1 leading-relaxed">
+                  Your dispute rate has reached <strong className="font-mono text-orange-950 dark:text-white font-black">{metrics.dispute_health.dispute_rate_pct}%</strong> ({metrics.dispute_health.sample_disputed_count} of {metrics.dispute_health.sample_paid_count} paid orders disputed) evaluated over your <strong>{metrics.dispute_health.sample_evaluated}</strong>. Reaching <strong>40%</strong> will result in automatic account suspension and link disablement. Please ensure fast shipping and high product accuracy.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Level 1: Alert */}
+          {metrics.dispute_health.dispute_level === 'ALERT' && !metrics.dispute_health.is_suspended && (
+            <div className="bg-amber-50 dark:bg-amber-950/50 border border-amber-300 rounded-2xl p-4 shadow-sm flex items-start gap-3">
+              <AlertTriangle className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                  ⚡ Dispute Rate Notice ({metrics.dispute_health.dispute_rate_pct}%)
+                </h3>
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-0.5 leading-relaxed">
+                  Your dispute rate is at <strong>{metrics.dispute_health.dispute_rate_pct}%</strong> ({metrics.dispute_health.sample_disputed_count} of {metrics.dispute_health.sample_paid_count} paid orders) in your <strong>{metrics.dispute_health.sample_evaluated}</strong> sample. Maintain high customer satisfaction to prevent escalation to account warning or suspension thresholds.
+                </p>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* ─── PENDING TRANSACTIONS & AMOUNTS DUE SUMMARY ─────────────────────────── */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 print:hidden">
@@ -1238,6 +1376,7 @@ export default function DashboardView() {
                 <option value="INSPECTION_PERIOD">Inspection Period</option>
                 <option value="COMPLETED">Completed</option>
                 <option value="DISPUTED">Disputed</option>
+                <option value="ARCHIVED">Archived</option>
               </select>
             </div>
           </div>
@@ -1383,7 +1522,66 @@ export default function DashboardView() {
                         )}
                       </td>
                       <td className="px-6 py-4 text-right text-sm font-medium">
-                        {txn.status === 'PAYMENT_RECEIVED' ? (
+                        {txn.status === 'AWAITING_PAYMENT' ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleVerifyPayment(txn.id)}
+                              disabled={verifyingPaymentId === txn.id}
+                              className="text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-950/60 hover:bg-amber-200 dark:hover:bg-amber-900/60 border border-amber-300 dark:border-amber-800 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                              title="Check with payment gateway if buyer payment went through"
+                            >
+                              <RefreshCw className={`h-3.5 w-3.5 ${verifyingPaymentId === txn.id ? 'animate-spin' : ''}`} />
+                              {verifyingPaymentId === txn.id ? 'Checking...' : 'Check Payment'}
+                            </button>
+                            {txn.is_archived ? (
+                              <button
+                                onClick={() => handleUnarchive(txn.id)}
+                                disabled={actionLoadingId === txn.id}
+                                className="text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                                title="Unarchive Transaction"
+                              >
+                                <ArchiveRestore className="h-3.5 w-3.5" />
+                                Unarchive
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleArchive(txn.id)}
+                                disabled={actionLoadingId === txn.id}
+                                className="text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-800 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                                title="Archive unpaid transaction"
+                              >
+                                <Archive className="h-3.5 w-3.5" />
+                                Archive
+                              </button>
+                            )}
+                            <button
+                              onClick={() => setSelectedTxn(txn)}
+                              className="text-gray-700 dark:text-slate-200 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                              title="View Transaction Details"
+                            >
+                              Details
+                            </button>
+                          </div>
+                        ) : txn.is_archived ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleUnarchive(txn.id)}
+                              disabled={actionLoadingId === txn.id}
+                              className="text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 border border-slate-300 dark:border-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition flex items-center gap-1 disabled:opacity-50 cursor-pointer"
+                              title="Unarchive Transaction"
+                            >
+                              <ArchiveRestore className="h-3.5 w-3.5" />
+                              Unarchive
+                            </button>
+                            <button
+                              onClick={() => setSelectedTxn(txn)}
+                              className="text-gray-700 dark:text-slate-200 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                              title="View Transaction Details"
+                            >
+                              Details
+                            </button>
+                          </div>
+                        ) : txn.status === 'PAYMENT_RECEIVED' ? (
                           <div className="flex items-center justify-end gap-2">
                             <button 
                               onClick={() => setDispatchTxn(txn)}
@@ -1655,7 +1853,12 @@ export default function DashboardView() {
                         {selectedTxn.manager_dispute_photos && selectedTxn.manager_dispute_photos.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 pt-1">
                             {selectedTxn.manager_dispute_photos.map((url, idx) => (
-                              <img key={idx} src={url} alt="Manager ruling proof" className="w-12 h-12 object-cover rounded border border-gray-200 dark:border-slate-700" />
+                              <div key={idx} className="relative group cursor-pointer" onClick={() => setLightboxImage(url)}>
+                                <img src={url} alt="Manager ruling proof" className="w-12 h-12 object-cover rounded border border-gray-200 dark:border-slate-700 hover:opacity-90 transition" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded transition">
+                                  <ZoomIn className="w-4 h-4 text-white" />
+                                </div>
+                              </div>
                             ))}
                           </div>
                         )}
@@ -1670,7 +1873,12 @@ export default function DashboardView() {
                         {selectedTxn.buyer_dispute_photos && selectedTxn.buyer_dispute_photos.length > 0 && (
                           <div className="flex flex-wrap gap-1.5 pt-1">
                             {selectedTxn.buyer_dispute_photos.map((url, idx) => (
-                              <img key={idx} src={url} alt="Buyer proof" className="w-12 h-12 object-cover rounded border border-gray-200 dark:border-slate-700" />
+                              <div key={idx} className="relative group cursor-pointer" onClick={() => setLightboxImage(url)}>
+                                <img src={url} alt="Buyer proof" className="w-12 h-12 object-cover rounded border border-gray-200 dark:border-slate-700 hover:opacity-90 transition" />
+                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded transition">
+                                  <ZoomIn className="w-4 h-4 text-white" />
+                                </div>
+                              </div>
                             ))}
                           </div>
                         )}
@@ -1709,11 +1917,16 @@ export default function DashboardView() {
                   {selectedTxn.waybill_photo_url && (
                     <div className="pt-2">
                       <span className="text-[10px] font-mono font-bold text-gray-500 dark:text-slate-400 block mb-1 uppercase">Dispatch Waybill Photo:</span>
-                      <img
-                        src={selectedTxn.waybill_photo_url}
-                        alt="Waybill proof"
-                        className="w-20 h-20 object-cover rounded-lg border border-gray-300 dark:border-slate-700"
-                      />
+                      <div className="relative group cursor-pointer inline-block" onClick={() => setLightboxImage(selectedTxn.waybill_photo_url!)}>
+                        <img
+                          src={selectedTxn.waybill_photo_url}
+                          alt="Waybill proof"
+                          className="w-20 h-20 object-cover rounded-lg border border-gray-300 dark:border-slate-700 hover:opacity-90 transition"
+                        />
+                        <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-lg transition">
+                          <ZoomIn className="w-5 h-5 text-white" />
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1790,6 +2003,15 @@ export default function DashboardView() {
           txn={disputeTxn}
           onClose={() => setDisputeTxn(null)}
           onSuccess={fetchTransactions}
+          onOpenLightbox={(url) => setLightboxImage(url)}
+        />
+      )}
+
+      {/* Image Lightbox Modal */}
+      {lightboxImage && (
+        <ImageLightboxModal
+          imageUrl={lightboxImage}
+          onClose={() => setLightboxImage(null)}
         />
       )}
     </div>

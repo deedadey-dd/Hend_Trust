@@ -9,6 +9,9 @@ import RateSellerModal from '../components/RateSellerModal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import SEOHead from '../components/SEOHead';
 import TermsModal from '../components/TermsModal';
+import ImageLightboxModal from '../components/ImageLightboxModal';
+import { saveReviewToken } from '../utils/reviewStorage';
+
 
 interface LinkData {
   id: string;
@@ -44,6 +47,7 @@ interface TxnDetail {
   seller_profile_picture_url?: string;
   waybill_photo_url?: string;
   shipping_timeout_days?: number;
+  buyer_review_token?: string;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -97,10 +101,26 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const [isCompressingBuyerPhotos, setIsCompressingBuyerPhotos] = useState(false);
   const [disputeError, setDisputeError] = useState('');
 
+  // OTP Resend Cooldown (60 seconds)
+  const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
   const handleOpenConfirmModal = async () => {
+    if (resendCooldown > 0) {
+      setShowConfirmModal(true);
+      return;
+    }
     setIsSendingCode(true);
     try {
       await axios.post(`/api/v1/escrow/${txn.id}/send-confirmation-code`);
+      setResendCooldown(60);
       setShowConfirmModal(true);
     } catch (err: any) {
       alert(err.response?.data?.message || 'Failed to send confirmation code.');
@@ -334,6 +354,38 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
           </div>
         )}
 
+        {/* Rating Section */}
+        {txn.status !== 'AWAITING_PAYMENT' && txn.status !== 'CANCELLED' && txn.status !== 'DISPUTED' && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
+                ⭐ Seller Experience Rating
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED')
+                  ? "Share your feedback on product quality, shipping speed, and seller communication."
+                  : "Seller rating unlocks once package is delivered and inspection begins."}
+              </p>
+            </div>
+            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') ? (
+              <button
+                onClick={() => setShowRatingModal(true)}
+                className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition whitespace-nowrap shadow-sm cursor-pointer"
+              >
+                ⭐ Rate Seller
+              </button>
+            ) : (
+              <button
+                disabled
+                title="Unlocks after delivery"
+                className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80 whitespace-nowrap"
+              >
+                🔒 Rate Seller
+              </button>
+            )}
+          </div>
+        )}
+
         {/* Delivery Process Info — shown while item is in transit or inspection */}
         {(txn.status === 'DELIVERY_IN_PROGRESS' || txn.status === 'INSPECTION_PERIOD') && (
           <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-5 text-sm text-amber-900 dark:text-amber-200">
@@ -414,11 +466,17 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
               
               <button
                 type="button"
-                onClick={handleOpenConfirmModal}
-                disabled={isSendingCode}
-                className="w-full text-sm font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors mt-2"
+                onClick={() => {
+                  if (resendCooldown === 0) handleOpenConfirmModal();
+                }}
+                disabled={isSendingCode || resendCooldown > 0}
+                className="w-full text-sm font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
-                {isSendingCode ? 'Sending...' : 'Didn\'t receive it? Resend Code'}
+                {isSendingCode 
+                  ? 'Sending...' 
+                  : resendCooldown > 0 
+                    ? `Resend Code (${resendCooldown}s)` 
+                    : "Didn't receive it? Resend Code"}
               </button>
             </form>
           </div>
@@ -501,6 +559,8 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
       {showRatingModal && (
         <RateSellerModal
           transactionId={txn.id}
+          paystackReference={txn.paystack_reference}
+          reviewToken={txn.buyer_review_token}
           sellerName={txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller')}
           itemTitle={txn.title}
           onClose={() => { setShowRatingModal(false); window.location.reload(); }}
@@ -517,8 +577,10 @@ export default function PublicCheckoutView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchParams] = useSearchParams();
-  const txRef = searchParams.get('reference') || searchParams.get('trxref') || searchParams.get('tx_ref');
+  const txRef = searchParams.get('tx_ref');
   const [txnDetail, setTxnDetail] = useState<TxnDetail | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
 
   // Form state
   const [name, setName] = useState('');
@@ -539,6 +601,9 @@ export default function PublicCheckoutView() {
         if (txRef) {
           const res = await axios.get(`/api/v1/checkout/transaction/${txRef}`);
           setTxnDetail(res.data);
+          if (res.data.paystack_reference && res.data.buyer_review_token) {
+            saveReviewToken(res.data.paystack_reference, res.data.buyer_review_token);
+          }
         } else {
           const res = await axios.get(`/api/v1/links/${linkId}`);
           setLink(res.data);
@@ -692,16 +757,24 @@ export default function PublicCheckoutView() {
                 </div>
               </div>
 
-              {/* Right Column: Product Image (Portrait friendly object-contain without cropping) */}
+              {/* Right Column: Product Image (Clickable for full screen Lightbox) */}
               <div className="sm:col-span-5 flex justify-center">
-                <div className="w-full max-w-[260px] sm:max-w-none h-60 sm:h-64 rounded-2xl overflow-hidden border border-white/20 shadow-xl bg-slate-950/60 p-2 flex items-center justify-center backdrop-blur-xs">
+                <div 
+                  onClick={() => setLightboxImage(link.image_url || null)}
+                  className="w-full max-w-[260px] sm:max-w-none h-60 sm:h-64 rounded-2xl overflow-hidden border border-white/20 shadow-xl bg-slate-950/60 p-2 flex items-center justify-center backdrop-blur-xs cursor-pointer group relative hover:border-blue-400/50 transition-all"
+                  title="Click to view full screen"
+                >
                   <img
                     src={link.image_url}
                     alt={link.title}
-                    className="w-full h-full object-contain rounded-xl"
+                    className="w-full h-full object-contain rounded-xl group-hover:scale-105 transition-transform duration-200"
                   />
+                  <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white text-xs font-semibold rounded-xl transition-opacity">
+                    🔍 Click to Enlarge
+                  </div>
                 </div>
               </div>
+
             </div>
           ) : (
             /* Fallback when no image exists */
@@ -846,6 +919,14 @@ export default function PublicCheckoutView() {
         onAccept={() => setAcceptedTerms(true)}
         showAcceptButton
       />
+
+      {/* Image Lightbox Modal */}
+      <ImageLightboxModal
+        src={lightboxImage || ''}
+        isOpen={Boolean(lightboxImage)}
+        onClose={() => setLightboxImage(null)}
+      />
     </div>
   );
 }
+

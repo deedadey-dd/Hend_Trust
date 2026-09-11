@@ -1,10 +1,13 @@
-import React, { useState } from 'react';
-import { Star, X, Loader2, CheckCircle2, MessageSquare } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { Star, X, Loader2, CheckCircle2, MessageSquare, Mail } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { getReviewToken, saveReviewToken } from '../utils/reviewStorage';
 
 interface RateSellerModalProps {
   transactionId: string;
+  paystackReference?: string;
+  reviewToken?: string;
   sellerName: string;
   shopName?: string;
   sellerUsername?: string;
@@ -16,6 +19,8 @@ interface RateSellerModalProps {
 
 export default function RateSellerModal({
   transactionId,
+  paystackReference,
+  reviewToken: initialToken,
   sellerName,
   shopName,
   sellerUsername,
@@ -30,8 +35,36 @@ export default function RateSellerModal({
   const [overall, setOverall] = useState(5);
   const [comment, setComment] = useState('');
   const [loading, setLoading] = useState(false);
+  const [loadingInitial, setLoadingInitial] = useState(false);
+  const [isExisting, setIsExisting] = useState(false);
   const [error, setError] = useState('');
   const [submitted, setSubmitted] = useState(false);
+  const [emailMsg, setEmailMsg] = useState('');
+  const [sendingEmail, setSendingEmail] = useState(false);
+
+  const activeToken = initialToken || (paystackReference ? getReviewToken(paystackReference) : null);
+
+  useEffect(() => {
+    if (!paystackReference || !activeToken) return;
+    const fetchExisting = async () => {
+      setLoadingInitial(true);
+      try {
+        const res = await apiClient.get(`/reviews/transaction-review/${paystackReference}?token=${activeToken}`);
+        if (res.data.has_existing_review) {
+          setIsExisting(true);
+          setSpeed(res.data.rating_speed || 5);
+          setCommunication(res.data.rating_communication || 5);
+          setOverall(res.data.rating_overall || 5);
+          setComment(res.data.comment || '');
+        }
+      } catch (err) {
+        console.error("Could not fetch existing review detail:", err);
+      } finally {
+        setLoadingInitial(false);
+      }
+    };
+    fetchExisting();
+  }, [paystackReference, activeToken]);
 
   const displayName = shopName 
     ? (sellerUsername ? `${shopName} (@${sellerUsername})` : shopName) 
@@ -42,19 +75,46 @@ export default function RateSellerModal({
     setError('');
     setLoading(true);
     try {
-      await apiClient.post('/reviews/submit', {
+      const res = await apiClient.post('/reviews/submit', {
         transaction_id: transactionId,
         rating_speed: speed,
         rating_communication: communication,
         rating_overall: overall,
-        comment
+        comment,
+        review_token: activeToken || undefined
       });
+      
+      if (paystackReference && res.data.review_token) {
+        saveReviewToken(paystackReference, res.data.review_token);
+      }
+
       setSubmitted(true);
       if (onSuccess) onSuccess();
     } catch (err: any) {
       setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit rating.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRequestMagicLink = async () => {
+    if (!paystackReference) return;
+    const buyerPhone = prompt("Enter your Buyer Phone Number used during checkout:");
+    if (!buyerPhone) return;
+    
+    setSendingEmail(true);
+    setEmailMsg('');
+    setError('');
+    try {
+      const res = await apiClient.post('/reviews/request-edit-link', {
+        paystack_reference: paystackReference,
+        buyer_phone: buyerPhone.trim()
+      });
+      setEmailMsg(res.data.message || 'Magic link sent to your email.');
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to send review edit link.');
+    } finally {
+      setSendingEmail(false);
     }
   };
 
@@ -70,7 +130,7 @@ export default function RateSellerModal({
             key={star}
             type="button"
             onClick={() => setVal(star)}
-            className="p-1 hover:scale-110 transition-transform focus:outline-none"
+            className="p-1 hover:scale-110 transition-transform focus:outline-none cursor-pointer"
           >
             <Star
               className={`h-7 w-7 transition-colors ${
@@ -90,10 +150,10 @@ export default function RateSellerModal({
         {/* Header */}
         <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-blue-600 to-indigo-700 text-white">
           <div>
-            <h3 className="text-lg font-bold">Rate & Review Seller</h3>
+            <h3 className="text-lg font-bold">{isExisting ? 'Edit Your Seller Review' : 'Rate & Review Seller'}</h3>
             <p className="text-sm text-blue-100 opacity-90">{itemTitle}</p>
           </div>
-          <button onClick={onClose} className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition">
+          <button onClick={onClose} className="text-white/80 hover:text-white p-1 rounded-full hover:bg-white/10 transition cursor-pointer">
             <X className="h-5 w-5" />
           </button>
         </div>
@@ -103,22 +163,32 @@ export default function RateSellerModal({
             <div className="w-16 h-16 bg-green-100 dark:bg-green-950/40 rounded-full flex items-center justify-center mx-auto text-green-600 dark:text-green-400">
               <CheckCircle2 className="h-10 w-10" />
             </div>
-            <h4 className="text-xl font-bold text-gray-900 dark:text-white">Rating Published!</h4>
+            <h4 className="text-xl font-bold text-gray-900 dark:text-white">{isExisting ? 'Review Updated!' : 'Rating Published!'}</h4>
             <p className="text-sm text-gray-600 dark:text-slate-300 leading-relaxed">
               Thank you for reviewing <strong>{displayName}</strong>. Your feedback helps build earned trust across the HendAxis community.
             </p>
             <button
               onClick={onClose}
-              className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl text-sm hover:bg-blue-700 transition"
+              className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl text-sm hover:bg-blue-700 transition cursor-pointer"
             >
               Done
             </button>
+          </div>
+        ) : loadingInitial ? (
+          <div className="p-12 text-center space-y-3">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto" />
+            <p className="text-sm text-gray-500 dark:text-slate-400">Loading your review details...</p>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="p-6 space-y-5">
             {error && (
               <div className="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-xl text-sm font-medium border border-red-100 dark:border-red-900/50 text-center">
                 {error}
+              </div>
+            )}
+            {emailMsg && (
+              <div className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 p-3 rounded-xl text-sm font-medium border border-emerald-200 dark:border-emerald-900/50 text-center">
+                {emailMsg}
               </div>
             )}
 
@@ -132,7 +202,9 @@ export default function RateSellerModal({
               )}
               <div>
                 <span className="font-bold text-base text-gray-900 dark:text-white block">{shopName || sellerName}</span>
-                <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">Reviewing merchant for completed escrow purchase</span>
+                <span className="text-xs text-blue-700 dark:text-blue-300 font-medium">
+                  {isExisting ? 'Editing previous review for completed order' : 'Reviewing merchant for completed escrow purchase'}
+                </span>
               </div>
             </div>
 
@@ -157,12 +229,26 @@ export default function RateSellerModal({
               />
             </div>
 
+            {paystackReference && !activeToken && (
+              <div className="pt-1 text-center">
+                <button
+                  type="button"
+                  onClick={handleRequestMagicLink}
+                  disabled={sendingEmail}
+                  className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:underline inline-flex items-center gap-1 cursor-pointer"
+                >
+                  <Mail className="h-3.5 w-3.5" />
+                  {sendingEmail ? 'Sending email...' : 'Editing on a new device? Email me a $0 edit link'}
+                </button>
+              </div>
+            )}
+
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl text-base hover:bg-blue-700 transition shadow-lg shadow-blue-500/20 disabled:opacity-70 flex justify-center items-center"
+              className="w-full py-3.5 bg-blue-600 text-white font-bold rounded-xl text-base hover:bg-blue-700 transition shadow-lg shadow-blue-500/20 disabled:opacity-70 flex justify-center items-center cursor-pointer"
             >
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Publish Verified Review"}
+              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (isExisting ? "Update Verified Review" : "Publish Verified Review")}
             </button>
           </form>
         )}

@@ -97,6 +97,9 @@ def list_seller_links(request, search: str = None, status_filter: str = 'all', s
 
 @links_router.post("/create", response=LinkResponseSchema)
 def create_payment_link(request, data: CreateLinkSchema):
+    if getattr(request.user, 'is_suspended', False):
+        raise HttpError(403, "Your seller account is currently suspended. You cannot create new payment links. Please contact support or management for manual review.")
+
     link = PaymentLink.objects.create(
         seller=request.user,
         title=data.title.strip(),
@@ -158,6 +161,9 @@ def get_link(request, link_id: uuid.UUID):
         seller_name = link.seller.shop_name or getattr(link.seller, 'name', '') or link.seller.username
         contact_target = f"Contact {seller_name}" if seller_name else "Contact Seller"
         raise HttpError(404, f"Payment link is invalid or inactive. {contact_target}")
+
+    if getattr(link.seller, 'is_suspended', False):
+        raise HttpError(403, "This payment link is currently unavailable because the seller's account has been suspended.")
         
     from apps.escrow.api import get_platform_settings
     cfg = get_platform_settings()

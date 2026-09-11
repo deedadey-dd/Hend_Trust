@@ -23,7 +23,7 @@ def generate_uuid7():
 
 class User(AbstractUser):
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
-    role = models.CharField(max_length=20, choices=Role.choices, default=Role.BUYER)
+    role = models.CharField(max_length=20, choices=Role.choices, default=Role.BUYER, db_index=True)
     phone_number = models.CharField(max_length=20, unique=True, db_index=True)
     payout_mode = models.CharField(
         max_length=10,
@@ -33,9 +33,9 @@ class User(AbstractUser):
     )
     
     # Storefront Directory & Advertising
-    shop_name = models.CharField(max_length=150, blank=True)
+    shop_name = models.CharField(max_length=150, blank=True, db_index=True)
     shop_description = models.TextField(blank=True)
-    shop_category = models.CharField(max_length=50, default='General', blank=True)
+    shop_category = models.CharField(max_length=50, default='General', blank=True, db_index=True)
     shop_categories = models.JSONField(default=list, blank=True, help_text="Up to 3 product categories associated with this shop.")
     advertised_until = models.DateTimeField(null=True, blank=True, help_text="Timestamp until which the shop is featured as a paid ad.")
     profile_picture_url = models.TextField(blank=True, default='')
@@ -45,8 +45,10 @@ class User(AbstractUser):
     verification_status = models.CharField(
         max_length=20,
         choices=VerificationStatus.choices,
-        default=VerificationStatus.UNSUBMITTED
+        default=VerificationStatus.UNSUBMITTED,
+        db_index=True
     )
+
     national_id_number = models.CharField(max_length=50, blank=True)
     national_id_photo_url = models.TextField(blank=True)
     business_license_photo_url = models.TextField(blank=True)
@@ -66,6 +68,10 @@ class User(AbstractUser):
     totp_secret = models.CharField(max_length=64, blank=True, default='', help_text="Encrypted or Base32 TOTP secret for authenticator apps.")
     is_2fa_enabled = models.BooleanField(default=False, help_text="Whether 2FA Authenticator app is enabled for this account.")
     totp_last_verified_at = models.DateTimeField(null=True, blank=True)
+    # Account Suspension & Risk Status
+    is_suspended = models.BooleanField(default=False, db_index=True)
+    suspension_reason = models.TextField(blank=True)
+    suspended_at = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         if (self.is_superuser or self.is_staff) and self.role == Role.BUYER:

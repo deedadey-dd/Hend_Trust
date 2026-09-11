@@ -1,3 +1,4 @@
+from django.conf import settings
 from ninja import NinjaAPI
 from apps.users.api import auth_router, profile_router
 from apps.links.api import links_router
@@ -15,8 +16,10 @@ from apps.developer.v1_api import v1_developer_router
 api = NinjaAPI(
     title="HendAxis Trust API",
     version="1.0.0",
-    docs_url="/docs/"
+    docs_url="/docs/" if getattr(settings, 'ENABLE_PUBLIC_DOCS', settings.DEBUG) else None,
+    openapi_url="/openapi.json" if getattr(settings, 'ENABLE_PUBLIC_DOCS', settings.DEBUG) else None
 )
+
 
 api.add_router("/auth", auth_router)
 api.add_router("/links", links_router)

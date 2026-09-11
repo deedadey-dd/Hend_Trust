@@ -8,8 +8,32 @@ export default defineConfig({
   plugins: [react(), basicSsl()],
   resolve: {
     alias: {
-      "@": path.resolve(__dirname, "./src"),
+      "@": path.resolve(import.meta.dirname, "./src"),
     },
+  },
+  build: {
+    chunkSizeWarningLimit: 800,
+    rollupOptions: {
+      output: {
+        manualChunks(id: string) {
+          if (id.includes('node_modules')) {
+            if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              return 'react-vendor';
+            }
+            if (id.includes('lucide-react')) {
+              return 'icons-vendor';
+            }
+            if (id.includes('html2canvas') || id.includes('dompurify') || id.includes('jspdf')) {
+              return 'pdf-canvas-vendor';
+            }
+            if (id.includes('recharts') || id.includes('d3')) {
+              return 'charts-vendor';
+            }
+            return 'vendor';
+          }
+        }
+      }
+    }
   },
   server: {
     proxy: {

@@ -1,5 +1,5 @@
 import { 
-  Clock, Package, Truck, AlertCircle, CheckCircle, AlertTriangle 
+  Clock, Package, Truck, AlertCircle, CheckCircle, AlertTriangle, Archive
 } from 'lucide-react';
 
 export const STATUS_CONFIG: Record<string, { icon: any; color: string; bg: string; label: string }> = {
@@ -11,4 +11,5 @@ export const STATUS_CONFIG: Record<string, { icon: any; color: string; bg: strin
   DISPUTED:            { icon: AlertTriangle, color: 'text-red-600',    bg: 'bg-red-50',    label: 'Disputed' },
   CANCELLED:           { icon: AlertTriangle, color: 'text-gray-600',   bg: 'bg-gray-50',   label: 'Cancelled' },
   REFUNDED:            { icon: CheckCircle,   color: 'text-teal-600',   bg: 'bg-teal-50',   label: 'Refunded' },
+  ARCHIVED:            { icon: Archive,       color: 'text-slate-500',  bg: 'bg-slate-100 dark:bg-slate-800', label: 'Archived' },
 };

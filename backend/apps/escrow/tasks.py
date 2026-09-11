@@ -318,3 +318,41 @@ def process_auto_return_refunds():
         refunded_count += 1
 
     return f"Auto-refunded {refunded_count} returned transactions older than {auto_refund_hrs} hours."
+
+
+@shared_task
+def check_pending_payments():
+    """
+    Periodic task (every 15 mins):
+    1. Polls payment status for AWAITING_PAYMENT transactions created within the dynamic unpaid_auto_archive_days window (default 3 days).
+    2. Auto-archives (is_archived=True) AWAITING_PAYMENT transactions older than unpaid_auto_archive_days (default 3 days / 72h).
+    """
+    from apps.escrow.api import get_platform_settings
+    from apps.escrow.services import verify_payment_gateway_status
+    now = timezone.now()
+    cfg = get_platform_settings()
+    archive_days = int(cfg.get("unpaid_auto_archive_days", 3))
+    archive_cutoff = now - timedelta(days=archive_days)
+
+    # 1. Poll gateway for pending transactions within the active window
+    active_pending = Transaction.objects.filter(
+        status=TransactionStatus.AWAITING_PAYMENT,
+        created_at__gte=archive_cutoff
+    )
+
+    verified_count = 0
+    for tx in active_pending:
+        res = verify_payment_gateway_status(tx)
+        if res.get("verified"):
+            verified_count += 1
+
+    # 2. Auto-archive transactions that remained AWAITING_PAYMENT past the archive_days limit
+    stale_transactions = Transaction.objects.filter(
+        status=TransactionStatus.AWAITING_PAYMENT,
+        is_archived=False,
+        created_at__lt=archive_cutoff
+    )
+    archived_count = stale_transactions.update(is_archived=True)
+
+    return f"Verified {verified_count} pending payments. Auto-archived {archived_count} unpaid transactions older than {archive_days} days."
+

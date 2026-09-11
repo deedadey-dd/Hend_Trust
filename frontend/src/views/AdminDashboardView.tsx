@@ -168,8 +168,10 @@ interface PlatformSettings {
   inspection_tier2_threshold?: number;
   inspection_tier2_hours?: number;
   inspection_tier3_hours?: number;
+  unpaid_auto_archive_days?: number;
   django_admin_url?: string;
 }
+
 
 export const AdminDashboardView: React.FC = () => {
   const { user } = useAuthStore();
@@ -448,7 +450,30 @@ export const AdminDashboardView: React.FC = () => {
 
   // Sellers State & Query
   const [sellerSearch, setSellerSearch] = useState<string>('');
-  const { data: sellers, isLoading: sellersLoading } = useAdminSellersQuery(sellerSearch);
+  const { data: sellers, isLoading: sellersLoading, refetch: refetchSellers } = useAdminSellersQuery(sellerSearch);
+
+  const handleSuspendSeller = async (sellerId: string, username: string) => {
+    const reason = prompt(`Enter reason for suspending seller @${username}:`, "Manual administrative suspension");
+    if (reason === null) return;
+    try {
+      await apiClient.post(`/escrow/admin/sellers/${sellerId}/suspend`, { reason });
+      alert(`Seller @${username} has been suspended successfully.`);
+      refetchSellers();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to suspend seller.');
+    }
+  };
+
+  const handleReinstateSeller = async (sellerId: string, username: string) => {
+    if (!window.confirm(`Are you sure you want to reinstate seller @${username}? This will restore their ability to create payment links.`)) return;
+    try {
+      await apiClient.post(`/escrow/admin/sellers/${sellerId}/reinstate`);
+      alert(`Seller @${username} has been reinstated successfully.`);
+      refetchSellers();
+    } catch (err: any) {
+      alert(err.response?.data?.detail || 'Failed to reinstate seller.');
+    }
+  };
 
   // Buyers State & Query
   const [buyerSearch, setBuyerSearch] = useState<string>('');
@@ -1502,21 +1527,27 @@ export const AdminDashboardView: React.FC = () => {
                     <tr>
                       <th className="px-5 py-4">Seller Username</th>
                       <th className="px-5 py-4">Contact Info</th>
-                      <th className="px-5 py-4">Payout Mode</th>
+                      <th className="px-5 py-4">Dispute Risk & Status</th>
                       <th className="px-5 py-4">Payment Links</th>
                       <th className="px-5 py-4">Completed GMV</th>
                       <th className="px-5 py-4">Wallet Balance</th>
+                      <th className="px-5 py-4">Account Action</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-800/60">
                     {sellersLoading ? (
-                      <tr><td colSpan={6} className="text-center py-12 text-slate-500">Loading sellers directory…</td></tr>
+                      <tr><td colSpan={7} className="text-center py-12 text-slate-500">Loading sellers directory…</td></tr>
                     ) : sellers?.length === 0 ? (
-                      <tr><td colSpan={6} className="text-center py-12 text-slate-500">No sellers found.</td></tr>
+                      <tr><td colSpan={7} className="text-center py-12 text-slate-500">No sellers found.</td></tr>
                     ) : (
                       sellers?.map(s => (
                         <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                          <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">@{s.username}</td>
+                          <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">
+                            @{s.username}
+                            {s.is_suspended && (
+                              <span className="block text-[10px] font-mono font-bold text-red-600 dark:text-red-400">🚨 SUSPENDED</span>
+                            )}
+                          </td>
                           <td className="px-5 py-4">
                             <p className="text-xs text-slate-700 dark:text-slate-200">{s.email || 'No Email'}</p>
                             {s.phone_number ? (
@@ -1533,13 +1564,44 @@ export const AdminDashboardView: React.FC = () => {
                             )}
                           </td>
                           <td className="px-5 py-4">
-                            <span className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-mono text-xs rounded-md border border-slate-300 dark:border-slate-700">
-                              {s.payout_mode}
-                            </span>
+                            {s.is_suspended ? (
+                              <span className="px-2.5 py-1 bg-red-500/20 text-red-700 dark:text-red-300 font-mono text-xs rounded-full border border-red-500/40 font-bold">
+                                SUSPENDED
+                              </span>
+                            ) : s.dispute_health ? (
+                              <span className={`px-2.5 py-1 font-mono text-xs rounded-full border font-bold ${
+                                s.dispute_health.dispute_level === 'WARNING'
+                                  ? 'bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-500/40'
+                                  : s.dispute_health.dispute_level === 'ALERT'
+                                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                                  : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                              }`}>
+                                {s.dispute_health.dispute_rate_pct}% ({s.dispute_health.dispute_level})
+                              </span>
+                            ) : (
+                              <span className="text-xs text-slate-500 font-mono">Normal</span>
+                            )}
                           </td>
                           <td className="px-5 py-4 font-bold text-slate-900 dark:text-slate-200">{s.payment_links_count} links</td>
                           <td className="px-5 py-4 font-extrabold text-emerald-600 dark:text-emerald-400">GHS {s.completed_gmv_ghs.toFixed(2)}</td>
                           <td className="px-5 py-4 font-extrabold text-blue-600 dark:text-blue-400">GHS {s.wallet_balance_ghs.toFixed(2)}</td>
+                          <td className="px-5 py-4">
+                            {s.is_suspended ? (
+                              <button
+                                onClick={() => handleReinstateSeller(s.id, s.username)}
+                                className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-extrabold transition cursor-pointer"
+                              >
+                                Reinstate
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleSuspendSeller(s.id, s.username)}
+                                className="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-700 dark:text-rose-300 border border-rose-500/40 rounded-xl text-xs font-extrabold transition cursor-pointer"
+                              >
+                                Suspend
+                              </button>
+                            )}
+                          </td>
                         </tr>
                       ))
                     )}
@@ -2065,6 +2127,28 @@ export const AdminDashboardView: React.FC = () => {
                     <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Days</span>
                   </div>
                 </div>
+
+                {/* 1b. Unpaid Transaction Auto-Archive Limit */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    Unpaid Transaction Auto-Archive Limit (Days)
+                  </label>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Background polling checks gateway status during this window. After this limit, unpaid transactions auto-archive from active seller view.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="30"
+                      value={platformSettings.unpaid_auto_archive_days ?? 3}
+                      onChange={(e) => handleUpdateSettings({ unpaid_auto_archive_days: parseInt(e.target.value) || 3 })}
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Days</span>
+                  </div>
+                </div>
+
 
                 {/* 2. Informal Bus Auto-Delivery Hours */}
                 <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">

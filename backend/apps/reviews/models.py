@@ -37,14 +37,19 @@ class SellerReview(models.Model):
     
     is_active = models.BooleanField(
         default=True,
+        db_index=True,
         help_text="Automatically set to False if a dispute is raised for this transaction."
     )
     
-    created_at = models.DateTimeField(auto_now_add=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ['-created_at']
+        indexes = [
+            models.Index(fields=['seller', 'is_active']),
+        ]
+
 
     def __str__(self):
         return f"Review for {self.seller.username} by {self.buyer_name} ({self.rating_overall}★)"
