@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Search, Store, Star, Zap, Shield, ShieldCheck, Loader2, Award, ArrowUpRight, X, CheckCircle2 } from 'lucide-react';
+import { Search, Store, Star, Zap, Shield, ShieldCheck, Loader2, Award, ArrowUpRight, X, CheckCircle2, FileText, Wallet, CreditCard } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.webp';
@@ -76,6 +76,9 @@ export default function ShopsDirectoryView() {
   const [isPromoting, setIsPromoting] = useState(false);
   const [promoteError, setPromoteError] = useState('');
   const [promoteSuccess, setPromoteSuccess] = useState('');
+  const [showApprovalStep, setShowApprovalStep] = useState(false);
+  const [approvalData, setApprovalData] = useState<{ fee: number; remaining: number } | null>(null);
+  const [createdInvoiceUrl, setCreatedInvoiceUrl] = useState<string | null>(null);
 
   const fetchShops = async () => {
     try {
@@ -101,18 +104,41 @@ export default function ShopsDirectoryView() {
     return () => clearTimeout(timer);
   }, [query, selectedCategory]);
 
-  const handlePromoteSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handlePromoteSubmit = async (
+    e?: React.FormEvent,
+    payViaGatewayOverride: boolean = false,
+    isApprovedWallet: boolean = false
+  ) => {
+    if (e) e.preventDefault();
     setPromoteError('');
     setPromoteSuccess('');
     setIsPromoting(true);
     try {
-      const res = await apiClient.post('/reviews/shop/promote', { duration_days: promoteDuration });
+      const res = await apiClient.post('/reviews/shop/promote', {
+        duration_days: promoteDuration,
+        pay_via_gateway: payViaGatewayOverride,
+        approved_wallet_deduction: isApprovedWallet
+      });
+
+      if (res.data.requires_approval) {
+        setApprovalData({
+          fee: res.data.fee_amount_ghs,
+          remaining: res.data.remaining_balance_ghs
+        });
+        setShowApprovalStep(true);
+        setIsPromoting(false);
+        return;
+      }
+
       if (res.data.requires_paystack && res.data.checkout_url) {
         setPromoteSuccess('Redirecting to Paystack for ad payment...');
         window.location.href = res.data.checkout_url;
       } else {
         setPromoteSuccess(res.data.message);
+        if (res.data.invoice_url) {
+          setCreatedInvoiceUrl(res.data.invoice_url);
+        }
+        setShowApprovalStep(false);
         fetchShops();
       }
     } catch (err: any) {
@@ -446,12 +472,95 @@ export default function ShopsDirectoryView() {
                   <CheckCircle2 className="h-12 w-12 text-green-600 mx-auto" />
                   <h4 className="text-lg font-bold text-gray-900 dark:text-slate-100">Shop Promoted!</h4>
                   <p className="text-xs text-gray-500 dark:text-slate-400">{promoteSuccess}</p>
+                  
+                  {createdInvoiceUrl && (
+                    <Link
+                      to={createdInvoiceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center justify-center gap-2 w-full py-2.5 bg-slate-900 dark:bg-slate-700 text-white font-bold rounded-xl text-xs hover:bg-slate-800 transition"
+                    >
+                      <FileText className="h-4 w-4" />
+                      View & Download Invoice Receipt
+                    </Link>
+                  )}
+
                   <button
-                    onClick={() => { setShowPromoteModal(false); setPromoteSuccess(''); }}
+                    onClick={() => {
+                      setShowPromoteModal(false);
+                      setPromoteSuccess('');
+                      setShowApprovalStep(false);
+                      setApprovalData(null);
+                      setCreatedInvoiceUrl(null);
+                    }}
                     className="w-full py-2.5 bg-blue-600 text-white font-bold rounded-xl text-sm hover:bg-blue-700 transition"
                   >
                     Done
                   </button>
+                </div>
+              ) : showApprovalStep && approvalData ? (
+                <div className="space-y-4">
+                  {promoteError && (
+                    <div className="bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-xl text-xs font-medium border border-red-100 dark:border-red-800 text-center">
+                      {promoteError}
+                    </div>
+                  )}
+
+                  <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/50 p-4 rounded-2xl space-y-3">
+                    <div className="flex items-center gap-2 text-amber-900 dark:text-amber-300 font-bold text-sm">
+                      <Wallet className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                      <span>Wallet Balance Deduction Consent</span>
+                    </div>
+
+                    <p className="text-xs text-gray-600 dark:text-slate-300 leading-relaxed">
+                      You are about to feature your shop for <strong className="text-gray-900 dark:text-white">{promoteDuration} Days</strong>. 
+                      Please confirm that you authorize deducting the ad fee from your available wallet balance.
+                    </p>
+
+                    <div className="bg-white dark:bg-slate-900 rounded-xl p-3.5 border border-amber-100 dark:border-amber-900/40 space-y-2 text-xs">
+                      <div className="flex justify-between items-center text-gray-600 dark:text-slate-400">
+                        <span>Ad Package ({promoteDuration} Days):</span>
+                        <span className="font-semibold text-gray-900 dark:text-slate-200">GHS {approvalData.fee.toFixed(2)}</span>
+                      </div>
+                      <div className="flex justify-between items-center text-gray-600 dark:text-slate-400 border-t border-gray-100 dark:border-slate-800 pt-2">
+                        <span>Wallet Balance After Deduction:</span>
+                        <span className="font-bold text-green-600 dark:text-green-400">GHS {approvalData.remaining.toFixed(2)}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex flex-col gap-2 pt-1">
+                    <button
+                      type="button"
+                      disabled={isPromoting}
+                      onClick={() => handlePromoteSubmit(undefined, false, true)}
+                      className="w-full py-3 bg-green-600 hover:bg-green-700 text-white font-bold rounded-xl text-sm transition shadow-lg shadow-green-600/20 disabled:opacity-70 flex justify-center items-center gap-2"
+                    >
+                      {isPromoting ? <Loader2 className="h-5 w-5 animate-spin" /> : `✓ Approve & Deduct GHS ${approvalData.fee.toFixed(2)}`}
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isPromoting}
+                      onClick={() => handlePromoteSubmit(undefined, true, false)}
+                      className="w-full py-2.5 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 font-semibold rounded-xl text-xs transition flex justify-center items-center gap-2"
+                    >
+                      <CreditCard className="h-4 w-4" />
+                      Pay via Paystack Instead
+                    </button>
+
+                    <button
+                      type="button"
+                      disabled={isPromoting}
+                      onClick={() => {
+                        setShowApprovalStep(false);
+                        setApprovalData(null);
+                      }}
+                      className="w-full py-2 text-xs text-gray-500 hover:text-gray-700 dark:hover:text-slate-300 font-medium text-center"
+                    >
+                      Back to Selection
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <form onSubmit={handlePromoteSubmit} className="space-y-5">

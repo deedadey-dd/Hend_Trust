@@ -46,7 +46,7 @@ if raw_allowed_hosts:
 else:
     ALLOWED_HOSTS = ['*'] if DEBUG else ['trust.hendaxis.com', 'pay.hendaxis.com', 'api.hendaxis.com', 'hendaxis.com']
 
-FRONTEND_URL = env('FRONTEND_URL', default='http://localhost:5173' if DEBUG else 'https://trust.hendaxis.com').rstrip('/')
+FRONTEND_URL = env('FRONTEND_URL', default='https://localhost:5173' if DEBUG else 'https://trust.hendaxis.com').rstrip('/')
 ENABLE_PUBLIC_DOCS = env.bool('ENABLE_PUBLIC_DOCS', default=DEBUG)
 
 

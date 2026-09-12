@@ -2279,3 +2279,69 @@ def advance_transaction_status(request, transaction_id: uuid.UUID, data: Advance
     return {"message": f"Transaction state successfully advanced from {old_status} to {target}."}
 
 
+@admin_router.get("/ad-invoices", response=dict)
+def list_admin_ad_invoices(request, search: Optional[str] = None, limit: int = 50, offset: int = 0):
+    is_admin_user(request)
+    from apps.reviews.models import ShopAdInvoice
+    from django.db.models import Q
+
+    qs = ShopAdInvoice.objects.select_related('seller').all().order_by('-created_at')
+
+    if search and search.strip():
+        q_str = search.strip()
+        qs = qs.filter(
+            Q(invoice_number__icontains=q_str) |
+            Q(reference_code__icontains=q_str) |
+            Q(seller__username__icontains=q_str) |
+            Q(seller__email__icontains=q_str) |
+            Q(seller__phone_number__icontains=q_str)
+        )
+
+    total_count = qs.count()
+    invoices_page = list(qs[offset:offset + limit])
+
+    items = [
+        {
+            "id": str(inv.id),
+            "invoice_number": inv.invoice_number,
+            "seller_id": str(inv.seller.id),
+            "seller_username": inv.seller.username,
+            "seller_email": inv.seller.email or "",
+            "seller_phone": inv.seller.phone_number or "",
+            "duration_days": inv.duration_days,
+            "amount_ghs": float(inv.amount_ghs),
+            "payment_method": inv.payment_method,
+            "reference_code": inv.reference_code,
+            "advertised_from": inv.advertised_from.isoformat(),
+            "advertised_until": inv.advertised_until.isoformat(),
+            "created_at": inv.created_at.isoformat()
+        } for inv in invoices_page
+    ]
+
+    return {
+        "total_count": total_count,
+        "items": items
+    }
+
+
+@admin_router.post("/ad-invoices/{invoice_id}/resend-email", response=dict)
+def admin_resend_ad_invoice_email(request, invoice_id: uuid.UUID):
+    is_admin_user(request)
+    from apps.reviews.models import ShopAdInvoice
+    from apps.reviews.services import send_ad_invoice_email
+
+    invoice = get_object_or_404(ShopAdInvoice.objects.select_related('seller'), id=invoice_id)
+    
+    if not invoice.seller or not invoice.seller.email:
+        raise HttpError(400, "Seller associated with this invoice does not have a valid email address.")
+
+    sent = send_ad_invoice_email(invoice)
+    if not sent:
+        raise HttpError(400, "Failed to send invoice email.")
+
+    return {
+        "message": f"Official invoice receipt #{invoice.invoice_number} has been resent to {invoice.seller.email}."
+    }
+
+
+

@@ -205,3 +205,28 @@ def test_submit_review_status_restriction(reviews_client, link, db):
     res2 = reviews_client.post("/submit", json=payload)
     assert res2.status_code == 200
 
+@pytest.mark.django_db
+def test_shop_ad_invoice_creation(seller, db):
+    from datetime import timedelta
+    from django.utils import timezone
+    from apps.reviews.models import ShopAdInvoice
+    from apps.reviews.services import create_and_send_ad_invoice
+
+    now = timezone.now()
+    invoice = create_and_send_ad_invoice(
+        seller=seller,
+        duration_days=7,
+        fee_amount=Decimal('50.00'),
+        payment_method="WALLET",
+        reference_code="TEST_WALLET_REF_123",
+        advertised_from=now,
+        advertised_until=now + timedelta(days=7)
+    )
+    assert invoice is not None
+    assert invoice.seller == seller
+    assert invoice.amount_ghs == Decimal('50.00')
+    assert invoice.payment_method == "WALLET"
+    assert invoice.invoice_number.startswith("INV-AD-")
+
+
+

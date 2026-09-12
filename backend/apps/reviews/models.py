@@ -83,3 +83,26 @@ class ReviewVote(models.Model):
     def __str__(self):
         return f"{self.user.username} voted {self.vote_type} on review {self.review.id}"
 
+
+class ShopAdInvoice(models.Model):
+    id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
+    invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
+    seller = models.ForeignKey(
+        settings.AUTH_USER_MODEL,
+        on_delete=models.CASCADE,
+        related_name='ad_invoices'
+    )
+    duration_days = models.PositiveIntegerField(default=7)
+    amount_ghs = models.DecimalField(max_digits=10, decimal_places=2)
+    payment_method = models.CharField(max_length=30, default='WALLET')  # 'WALLET' or 'PAYSTACK'
+    reference_code = models.CharField(max_length=100, blank=True)
+    advertised_from = models.DateTimeField()
+    advertised_until = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Invoice {self.invoice_number} | {self.seller.username} | GHS {self.amount_ghs}"
+

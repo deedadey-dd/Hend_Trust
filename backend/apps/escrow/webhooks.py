@@ -59,12 +59,25 @@ def paystack_webhook(request):
                 seller = User.objects.filter(email=customer_email).first()
                 if seller:
                     fee = Decimal("50.00") if days == 7 else Decimal("150.00")
-                    record_ad_promotion_fee(reference_id=uuid6.uuid7(), seller_user_id=seller.id, fee_amount=fee)
+                    ref_id = uuid6.uuid7()
+                    record_ad_promotion_fee(reference_id=ref_id, seller_user_id=seller.id, fee_amount=fee)
                     
                     now = timezone.now()
                     current_expiry = seller.advertised_until if (seller.advertised_until and seller.advertised_until > now) else now
-                    seller.advertised_until = current_expiry + timedelta(days=days)
+                    new_expiry = current_expiry + timedelta(days=days)
+                    seller.advertised_until = new_expiry
                     seller.save(update_fields=['advertised_until'])
+
+                    from apps.reviews.services import create_and_send_ad_invoice
+                    create_and_send_ad_invoice(
+                        seller=seller,
+                        duration_days=days,
+                        fee_amount=fee,
+                        payment_method='PAYSTACK',
+                        reference_code=reference,
+                        advertised_from=current_expiry,
+                        advertised_until=new_expiry
+                    )
             except Exception as e:
                 print(f"Error processing AD payment webhook: {e}")
         elif reference:

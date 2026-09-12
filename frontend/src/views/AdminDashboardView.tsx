@@ -102,7 +102,37 @@ const buyerExportHeaders: ExportColumn[] = [
   { label: 'Last Order Date', key: 'last_order_at' },
 ];
 
-type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'SETTINGS';
+const adInvoicesExportHeaders: ExportColumn[] = [
+  { label: 'Invoice Number', key: 'invoice_number' },
+  { label: 'Date Created', key: 'created_at' },
+  { label: 'Seller Username', key: 'seller_username' },
+  { label: 'Seller Email', key: 'seller_email' },
+  { label: 'Seller Phone', key: 'seller_phone' },
+  { label: 'Duration (Days)', key: 'duration_days' },
+  { label: 'Amount Paid (GHS)', key: 'amount_ghs' },
+  { label: 'Payment Method', key: 'payment_method' },
+  { label: 'Reference Code', key: 'reference_code' },
+  { label: 'Active From', key: 'advertised_from' },
+  { label: 'Active Until', key: 'advertised_until' },
+];
+
+type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'AD_INVOICES' | 'SETTINGS';
+
+interface ShopAdInvoiceAdminRecord {
+  id: string;
+  invoice_number: string;
+  seller_id: string;
+  seller_username: string;
+  seller_email: string;
+  seller_phone: string;
+  duration_days: number;
+  amount_ghs: number;
+  payment_method: string;
+  reference_code: string;
+  advertised_from: string;
+  advertised_until: string;
+  created_at: string;
+}
 
 interface SellerVerificationRecord {
   id: string;
@@ -276,6 +306,52 @@ export const AdminDashboardView: React.FC = () => {
       console.error("Failed to fetch verifications");
     } finally {
       setLoadingVerifs(false);
+    }
+  };
+
+  // Ad Invoices State
+  const [adInvoices, setAdInvoices] = useState<ShopAdInvoiceAdminRecord[]>([]);
+  const [adInvoicesCount, setAdInvoicesCount] = useState(0);
+  const [adInvoicesSearch, setAdInvoicesSearch] = useState('');
+  const [loadingAdInvoices, setLoadingAdInvoices] = useState(false);
+  const [resendingEmailId, setResendingEmailId] = useState<string | null>(null);
+  const [resendEmailMsg, setResendEmailMsg] = useState<{ id: string; text: string; error?: boolean } | null>(null);
+
+  const fetchAdInvoices = async () => {
+    try {
+      setLoadingAdInvoices(true);
+      const params = new URLSearchParams();
+      if (adInvoicesSearch.trim()) params.append('search', adInvoicesSearch.trim());
+      const res = await apiClient.get(`/admin/ad-invoices?${params.toString()}`);
+      setAdInvoices(res.data.items || []);
+      setAdInvoicesCount(res.data.total_count || 0);
+    } catch {
+      console.error('Failed to load ad invoices');
+    } finally {
+      setLoadingAdInvoices(false);
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'AD_INVOICES') {
+      fetchAdInvoices();
+    }
+  }, [activeTab, adInvoicesSearch]);
+
+  const handleResendAdInvoiceEmail = async (invoiceId: string) => {
+    setResendingEmailId(invoiceId);
+    setResendEmailMsg(null);
+    try {
+      const res = await apiClient.post(`/admin/ad-invoices/${invoiceId}/resend-email`);
+      setResendEmailMsg({ id: invoiceId, text: res.data.message || 'Invoice email resent successfully.' });
+    } catch (err: any) {
+      setResendEmailMsg({
+        id: invoiceId,
+        text: err.response?.data?.message || err.response?.data?.detail || 'Failed to resend invoice email.',
+        error: true
+      });
+    } finally {
+      setResendingEmailId(null);
     }
   };
 
@@ -612,6 +688,7 @@ export const AdminDashboardView: React.FC = () => {
             { id: 'SELLERS', label: 'Sellers Directory', icon: Users },
             { id: 'BUYERS', label: 'Buyer Phone Registry', icon: PhoneCall },
             { id: 'BROADCAST', label: 'Broadcast Messaging Studio', icon: Send },
+            { id: 'AD_INVOICES', label: 'Ad Invoices & Receipts', icon: Zap, badge: adInvoicesCount || undefined },
             { id: 'SETTINGS', label: '⚙️ Gateway & Logistics Settings', icon: Layers, superuserOnly: true },
           ].filter(tab => !tab.superuserOnly || isSuperUser).map(tab => {
             const Icon = tab.icon;
@@ -1917,7 +1994,167 @@ export const AdminDashboardView: React.FC = () => {
           </div>
         )}
 
-        {/* ─── TAB 7: GATEWAY & LOGISTICS SYSTEM SETTINGS ───────────────────── */}
+        {/* ─── TAB 7: AD INVOICES & RECEIPT MANAGEMENT ──────────────────────── */}
+        {activeTab === 'AD_INVOICES' && (
+          <div className="space-y-6">
+            {/* Header Card */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-4">
+              <div>
+                <h3 className="text-xl font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <Zap className="h-5 w-5 text-amber-500 fill-amber-500" />
+                  Marketplace Directory Ad Invoices & Receipts
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 mt-1">
+                  View official store promotion tax invoices, track ad revenue receipts, and manually resend receipt emails to sellers.
+                </p>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <ExportButton
+                  data={adInvoices}
+                  headers={adInvoicesExportHeaders}
+                  title="Marketplace Directory Ad Invoices"
+                  filename={`hendaxis_ad_invoices_${new Date().toISOString().slice(0, 10)}`}
+                />
+              </div>
+            </div>
+
+            {/* Filter Search Bar */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 shadow-md flex items-center gap-3">
+              <div className="relative flex-1">
+                <Search className="absolute left-3.5 top-3 h-4 w-4 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search invoice number, seller name, email, phone, or payment reference..."
+                  value={adInvoicesSearch}
+                  onChange={e => setAdInvoicesSearch(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-200 text-xs rounded-xl pl-10 pr-4 py-2.5 focus:outline-none focus:border-blue-500"
+                />
+              </div>
+              <button
+                onClick={fetchAdInvoices}
+                className="px-4 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition flex items-center gap-1.5 cursor-pointer"
+              >
+                <RefreshCw className={`h-3.5 w-3.5 ${loadingAdInvoices ? 'animate-spin' : ''}`} />
+                Refresh
+              </button>
+            </div>
+
+            {/* Invoices Table */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xl overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-left border-collapse">
+                  <thead>
+                    <tr className="bg-slate-50 dark:bg-slate-800/80 border-b border-slate-200 dark:border-slate-800 text-[11px] font-mono uppercase text-slate-500 dark:text-slate-400">
+                      <th className="py-3.5 px-4 font-bold">Invoice # & Date</th>
+                      <th className="py-3.5 px-4 font-bold">Billed Seller</th>
+                      <th className="py-3.5 px-4 font-bold">Ad Plan & Active Window</th>
+                      <th className="py-3.5 px-4 font-bold">Payment Method & Ref</th>
+                      <th className="py-3.5 px-4 font-bold text-right">Amount Paid</th>
+                      <th className="py-3.5 px-4 font-bold text-center">Actions / Manual Email</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-200 dark:divide-slate-800 text-xs">
+                    {loadingAdInvoices ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-slate-500">
+                          <RefreshCw className="h-6 w-6 animate-spin mx-auto mb-2 text-blue-600" />
+                          Loading advertisement invoices...
+                        </td>
+                      </tr>
+                    ) : adInvoices.length === 0 ? (
+                      <tr>
+                        <td colSpan={6} className="py-12 text-center text-slate-500">
+                          No advertisement invoices found.
+                        </td>
+                      </tr>
+                    ) : (
+                      adInvoices.map((inv) => (
+                        <tr key={inv.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40 transition">
+                          <td className="py-4 px-4">
+                            <span className="block font-mono font-bold text-slate-900 dark:text-white">
+                              {inv.invoice_number}
+                            </span>
+                            <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              {new Date(inv.created_at).toLocaleDateString([], { month: 'short', day: 'numeric', year: 'numeric' })}
+                            </span>
+                          </td>
+
+                          <td className="py-4 px-4">
+                            <span className="block font-semibold text-slate-900 dark:text-slate-100">
+                              @{inv.seller_username}
+                            </span>
+                            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                              {inv.seller_email || 'No email provided'}
+                            </span>
+                          </td>
+
+                          <td className="py-4 px-4">
+                            <span className="inline-block bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 font-bold px-2 py-0.5 rounded text-[11px] mb-1">
+                              {inv.duration_days} Days Ad
+                            </span>
+                            <span className="block text-[11px] text-slate-500 dark:text-slate-400">
+                              {new Date(inv.advertised_from).toLocaleDateString()} - {new Date(inv.advertised_until).toLocaleDateString()}
+                            </span>
+                          </td>
+
+                          <td className="py-4 px-4">
+                            <span className="block font-semibold text-slate-800 dark:text-slate-200">
+                              {inv.payment_method === 'WALLET' ? 'Wallet Balance' : 'Paystack Gateway'}
+                            </span>
+                            <span className="block font-mono text-[10px] text-slate-500 dark:text-slate-400 truncate max-w-[140px]">
+                              {inv.reference_code}
+                            </span>
+                          </td>
+
+                          <td className="py-4 px-4 text-right">
+                            <span className="font-extrabold text-emerald-600 dark:text-emerald-400 text-sm">
+                              GHS {inv.amount_ghs.toFixed(2)}
+                            </span>
+                          </td>
+
+                          <td className="py-4 px-4 text-center">
+                            <div className="flex items-center justify-center gap-2">
+                              <a
+                                href={`/ad-invoice/${inv.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-3 py-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-lg text-xs transition cursor-pointer"
+                              >
+                                View Invoice
+                              </a>
+
+                              <button
+                                onClick={() => handleResendAdInvoiceEmail(inv.id)}
+                                disabled={resendingEmailId === inv.id}
+                                className="px-3 py-1.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-lg text-xs transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+                              >
+                                {resendingEmailId === inv.id ? (
+                                  <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                ) : (
+                                  <Send className="h-3.5 w-3.5" />
+                                )}
+                                Resend Email
+                              </button>
+                            </div>
+
+                            {resendEmailMsg?.id === inv.id && (
+                              <div className={`mt-1.5 text-[11px] font-semibold ${resendEmailMsg.error ? 'text-rose-600' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                {resendEmailMsg.text}
+                              </div>
+                            )}
+                          </td>
+                        </tr>
+                      ))
+                    )}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB 8: GATEWAY & LOGISTICS SYSTEM SETTINGS ───────────────────── */}
         {activeTab === 'SETTINGS' && (
           <div className="max-w-4xl mx-auto space-y-8">
             {/* Header & Status Alert */}

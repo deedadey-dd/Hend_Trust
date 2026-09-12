@@ -34,6 +34,7 @@ const HelpView = lazy(() => import('./views/HelpView').then(m => ({ default: m.H
 const ContactView = lazy(() => import('./views/ContactView').then(m => ({ default: m.ContactView })));
 const DeveloperView = lazy(() => import('./views/DeveloperView'));
 const DeveloperKeysView = lazy(() => import('./views/DeveloperKeysView'));
+const AdInvoiceView = lazy(() => import('./views/AdInvoiceView').then(m => ({ default: m.AdInvoiceView })));
 
 function PageLoader() {
   return (
@@ -45,11 +46,13 @@ function PageLoader() {
 }
 
 function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const { isAuthenticated, user, isHydrated, login } = useAuthStore();
-  const [checking, setChecking] = useState(!isAuthenticated);
+  const { isAuthenticated, user, isHydrated, login, logout } = useAuthStore();
+  const [checking, setChecking] = useState(!isAuthenticated || !user);
 
   useEffect(() => {
-    if (isHydrated && !isAuthenticated) {
+    if (!isHydrated) return;
+
+    if (!isAuthenticated || !user) {
       setChecking(true);
       apiClient.get('/profile/')
         .then((res: any) => {
@@ -65,15 +68,15 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
           });
         })
         .catch(() => {
-          /* Session cookie invalid or expired */
+          logout();
         })
         .finally(() => {
           setChecking(false);
         });
-    } else if (isAuthenticated) {
+    } else {
       setChecking(false);
     }
-  }, [isHydrated, isAuthenticated]);
+  }, [isHydrated, isAuthenticated, user]);
 
   if (!isHydrated || checking) {
     return (
@@ -115,6 +118,7 @@ function App() {
             <Route path="/contact" element={<ContactView />} />
             <Route path="/developers" element={<DeveloperView />} />
             <Route path="/docs/api" element={<DeveloperView />} />
+            <Route path="/ad-invoice/:invoice_id" element={<AdInvoiceView />} />
 
             {/* Public Checkout (no navbar shown) */}
             <Route path="/l/:linkId" element={<PublicCheckoutView />} />

@@ -139,3 +139,43 @@ def test_resolve_dispute_partial_refund(admin_client, disputed_transaction, admi
         
         disputed_transaction.refresh_from_db()
         assert disputed_transaction.status == TransactionStatus.REFUNDED
+
+@pytest.mark.django_db
+def test_admin_list_ad_invoices_and_resend_email(admin_client, admin_user, seller_user):
+    from decimal import Decimal
+    from datetime import timedelta
+    from django.utils import timezone
+    from apps.reviews.services import create_and_send_ad_invoice
+
+    seller_user.email = "seller@example.com"
+    seller_user.save()
+
+    now = timezone.now()
+    inv = create_and_send_ad_invoice(
+        seller=seller_user,
+        duration_days=7,
+        fee_amount=Decimal('50.00'),
+        payment_method='WALLET',
+        reference_code='ADMIN_TEST_REF',
+        advertised_from=now,
+        advertised_until=now + timedelta(days=7)
+    )
+
+    with patch('apps.escrow.api.is_admin_user') as mock_is_admin, \
+         patch('ninja_jwt.authentication.JWTAuth.__call__') as mock_auth, \
+         patch('apps.reviews.services.dispatch_email_task.delay') as mock_email:
+        mock_is_admin.return_value = True
+        mock_auth.return_value = admin_user
+
+        # 1. List Ad Invoices
+        res = admin_client.get("/ad-invoices")
+        assert res.status_code == 200
+        assert res.json()['total_count'] >= 1
+        assert res.json()['items'][0]['invoice_number'] == inv.invoice_number
+
+        # 2. Resend Invoice Email
+        res2 = admin_client.post(f"/ad-invoices/{inv.id}/resend-email")
+        assert res2.status_code == 200
+        assert "resent to" in res2.json()['message']
+        mock_email.assert_called()
+

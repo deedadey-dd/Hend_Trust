@@ -183,7 +183,7 @@ def request_review_edit_link(request, data: RequestEditLinkSchema):
     if not transaction.buyer_email:
         raise HttpError(400, "No buyer email address was provided during checkout for this transaction.")
 
-    frontend_url = getattr(settings, 'FRONTEND_URL', 'http://localhost:5173')
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'https://localhost:5173')
     magic_link = f"{frontend_url}/reviews?ref={transaction.paystack_reference}&token={transaction.buyer_review_token}"
 
     try:
@@ -305,6 +305,23 @@ class UpdateShopProfileSchema(Schema):
 
 class PromoteShopSchema(Schema):
     duration_days: int # 7 or 30
+    pay_via_gateway: Optional[bool] = False
+    approved_wallet_deduction: Optional[bool] = False
+
+class ShopAdInvoiceSchema(Schema):
+    id: uuid.UUID
+    invoice_number: str
+    seller_name: str
+    seller_username: str
+    seller_email: str
+    seller_phone: str
+    duration_days: int
+    amount_ghs: float
+    payment_method: str
+    reference_code: str
+    advertised_from: str
+    advertised_until: str
+    created_at: str
 
 class ShopProductSchema(Schema):
     link_id: str
@@ -495,6 +512,7 @@ def promote_shop_ad(request, data: PromoteShopSchema):
     from apps.wallet.models import SellerWallet
     from apps.ledger.services import record_ad_promotion_fee
     from apps.checkout.services import PaystackAdapter
+    from apps.reviews.services import create_and_send_ad_invoice
     import uuid6
 
     if data.duration_days not in [7, 30]:
@@ -503,45 +521,103 @@ def promote_shop_ad(request, data: PromoteShopSchema):
     fee = Decimal("50.00") if data.duration_days == 7 else Decimal("150.00")
     wallet, _ = SellerWallet.objects.get_or_create(user=request.user)
 
-    # Option 1: Pay using Wallet Balance if sufficient funds
-    if wallet.available_balance_ghs >= fee:
-        ref_id = uuid6.uuid7()
-        record_ad_promotion_fee(reference_id=ref_id, seller_user_id=request.user.id, fee_amount=fee)
+    payout_mode = getattr(request.user, 'payout_mode', 'INSTANT')
+    has_sufficient_wallet = (wallet.available_balance_ghs >= fee and payout_mode != 'INSTANT')
 
-        now = timezone.now()
-        current_expiry = request.user.advertised_until if (request.user.advertised_until and request.user.advertised_until > now) else now
-        new_expiry = current_expiry + timedelta(days=data.duration_days)
+    # Option A: Pay via Gateway (if explicitly requested OR if wallet balance is insufficient / seller is on INSTANT payout mode)
+    if data.pay_via_gateway or not has_sufficient_wallet:
+        default_url = 'https://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+        frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+        callback_url = f"{frontend_url}/shops?ad_success=true"
+        reference = f"AD_{data.duration_days}D_{request.user.id}_{int(timezone.now().timestamp())}"
 
-        request.user.advertised_until = new_expiry
-        request.user.save(update_fields=['advertised_until'])
+        try:
+            paystack_data = PaystackAdapter.initialize_transaction(
+                email=request.user.email or f"{request.user.username}@hendaxis.com",
+                amount_ghs=float(fee),
+                reference=reference,
+                callback_url=callback_url
+            )
+            return {
+                "message": "Redirecting to Paystack for store promotion payment...",
+                "requires_paystack": True,
+                "requires_approval": False,
+                "checkout_url": paystack_data['authorization_url'],
+                "reference": reference
+            }
+        except Exception as e:
+            raise HttpError(400, f"Failed to initialize Paystack ad payment: {str(e)}")
 
+    # Option B: Wallet Balance Available - Prompt for Explicit Approval
+    if not data.approved_wallet_deduction:
+        rem_balance = wallet.available_balance_ghs - fee
         return {
-            "message": f"Success! Your shop is now featured at the top of the Marketplace Directory for {data.duration_days} days.",
+            "message": f"Deduction of GHS {fee:.2f} from your wallet balance requires your confirmation.",
+            "requires_approval": True,
             "requires_paystack": False,
-            "advertised_until": new_expiry.isoformat(),
-            "fee_paid_ghs": float(fee)
+            "available_balance_ghs": float(wallet.available_balance_ghs),
+            "fee_amount_ghs": float(fee),
+            "remaining_balance_ghs": float(rem_balance),
+            "duration_days": data.duration_days
         }
 
-    # Option 2: Pay directly via Paystack Checkout if insufficient wallet balance
+    # Approved Wallet Deduction: Execute transaction & dispatch downloadable invoice receipt
+    ref_id = uuid6.uuid7()
+    record_ad_promotion_fee(reference_id=ref_id, seller_user_id=request.user.id, fee_amount=fee)
+
+    now = timezone.now()
+    current_expiry = request.user.advertised_until if (request.user.advertised_until and request.user.advertised_until > now) else now
+    new_expiry = current_expiry + timedelta(days=data.duration_days)
+
+    request.user.advertised_until = new_expiry
+    request.user.save(update_fields=['advertised_until'])
+
+    # Create & Send Invoice Email Receipt
+    invoice = create_and_send_ad_invoice(
+        seller=request.user,
+        duration_days=data.duration_days,
+        fee_amount=fee,
+        payment_method='WALLET',
+        reference_code=str(ref_id),
+        advertised_from=current_expiry,
+        advertised_until=new_expiry
+    )
+
     default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
     frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
-    callback_url = f"{frontend_url}/shops?ad_success=true"
+    invoice_url = f"{frontend_url}/ad-invoice/{invoice.id}"
 
-    try:
-        paystack_data = PaystackAdapter.initialize_transaction(
-            email=request.user.email or f"{request.user.username}@hendaxis.com",
-            amount_ghs=float(fee),
-            reference=reference,
-            callback_url=callback_url
-        )
-        return {
-            "message": "Redirecting to Paystack for store promotion payment...",
-            "requires_paystack": True,
-            "checkout_url": paystack_data['authorization_url'],
-            "reference": reference
-        }
-    except Exception as e:
-        raise HttpError(400, f"Failed to initialize Paystack ad payment: {str(e)}")
+    return {
+        "message": f"Success! GHS {fee:.2f} deducted from your wallet balance. Your shop is featured for {data.duration_days} days.",
+        "requires_paystack": False,
+        "requires_approval": False,
+        "advertised_until": new_expiry.isoformat(),
+        "fee_paid_ghs": float(fee),
+        "invoice_id": str(invoice.id),
+        "invoice_number": invoice.invoice_number,
+        "invoice_url": invoice_url
+    }
+
+
+@reviews_router.get("/shop/ad-invoice/{invoice_id}", response=ShopAdInvoiceSchema, auth=None)
+def get_shop_ad_invoice(request, invoice_id: uuid.UUID):
+    from apps.reviews.models import ShopAdInvoice
+    invoice = get_object_or_404(ShopAdInvoice.objects.select_related('seller'), id=invoice_id)
+    return {
+        "id": invoice.id,
+        "invoice_number": invoice.invoice_number,
+        "seller_name": invoice.seller.first_name or invoice.seller.username,
+        "seller_username": invoice.seller.username,
+        "seller_email": invoice.seller.email or "",
+        "seller_phone": invoice.seller.phone_number or "",
+        "duration_days": invoice.duration_days,
+        "amount_ghs": float(invoice.amount_ghs),
+        "payment_method": invoice.payment_method,
+        "reference_code": invoice.reference_code,
+        "advertised_from": invoice.advertised_from.isoformat(),
+        "advertised_until": invoice.advertised_until.isoformat(),
+        "created_at": invoice.created_at.isoformat()
+    }
 
 
 @reviews_router.get("/recent", response=List[RecentReviewItemSchema], auth=None)
