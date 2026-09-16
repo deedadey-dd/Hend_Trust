@@ -13,7 +13,7 @@ def test_get_platform_settings_defaults():
     assert settings['active_payment_gateway'] == 'PAYSTACK'
     assert 'COURIER_API' in settings['enabled_delivery_methods']
     assert 'SPEEDAF' in settings['enabled_carriers']
-    assert settings['return_dispatch_days'] == 3
+    assert settings['return_dispatch_days'] == 2
     assert settings['return_auto_refund_hours'] == 48
 
 @pytest.mark.django_db

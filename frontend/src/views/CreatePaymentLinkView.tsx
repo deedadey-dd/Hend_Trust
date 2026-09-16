@@ -1,10 +1,12 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2 } from 'lucide-react';
+import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2, ShieldAlert, Send } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
 
 export default function CreatePaymentLinkView() {
+  const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('0');
@@ -15,6 +17,13 @@ export default function CreatePaymentLinkView() {
   const [createdUrl, setCreatedUrl] = useState('');
   const [copied, setCopied] = useState(false);
   const [showModal, setShowModal] = useState(false);
+
+  // Suspension & Appeal handling
+  const [suspensionError, setSuspensionError] = useState<{ isSuspended: boolean; message: string } | null>(null);
+  const [appealReason, setAppealReason] = useState('');
+  const [isSubmittingAppeal, setIsSubmittingAppeal] = useState(false);
+  const [appealSuccess, setAppealSuccess] = useState('');
+  const [appealError, setAppealError] = useState('');
 
   // Past products autosuggestion & quick fill
   const [pastLinks, setPastLinks] = useState<any[]>([]);
@@ -40,42 +49,43 @@ export default function CreatePaymentLinkView() {
     if (!linkItem) return;
     setTitle(linkItem.title || '');
     setDescription(linkItem.description || '');
-    setPrice(linkItem.price_ghs ? String(linkItem.price_ghs) : '0');
-    setShipping(linkItem.shipping_fee_ghs ? String(linkItem.shipping_fee_ghs) : '0');
+    setPrice(String(linkItem.price_ghs || '0'));
+    setShipping(String(linkItem.shipping_fee_ghs || '0'));
     setFeeHandling(linkItem.fee_handling || 'PASS_TO_BUYER');
-    if (linkItem.image_url) setImageUrl(linkItem.image_url);
-    setAutofillNotice(`⚡ Autofilled details from previous product: "${linkItem.title}"`);
-    setTimeout(() => setAutofillNotice(''), 4000);
+    setImageUrl(linkItem.image_url || '');
+    setAutofillNotice(`Autofilled from "${linkItem.title}"`);
+    setTimeout(() => setAutofillNotice(''), 3000);
   };
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    setIsCompressingImage(true);
+
     try {
-      const webp = await compressImageToWebP(file);
-      setImageUrl(webp);
+      setIsCompressingImage(true);
+      const webpDataUrl = await compressImageToWebP(file, 1024, 0.8);
+      setImageUrl(webpDataUrl);
     } catch (err) {
-      console.error('Failed to compress product image:', err);
-      alert('Failed to process selected image.');
+      console.error("Image compression failed:", err);
+      alert("Failed to process image. Please try a different photo.");
     } finally {
       setIsCompressingImage(false);
     }
   };
 
-  const handleCopy = (url: string) => {
-    navigator.clipboard.writeText(url);
+  const handleCopy = (text: string) => {
+    navigator.clipboard.writeText(text);
     setCopied(true);
-    setTimeout(() => setCopied(false), 2500);
+    setTimeout(() => setCopied(false), 2000);
   };
 
   const handleShare = async (url: string) => {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `Payment Link for ${title}`,
-          text: `Pay for ${title} securely via HendAxis Trust Escrow`,
-          url: url,
+          title: `HendAxis Escrow - ${title}`,
+          text: `Pay securely for "${title}" via HendAxis Trust Escrow:`,
+          url: url
         });
       } catch (error) {
         console.log('Error sharing', error);
@@ -105,9 +115,40 @@ export default function CreatePaymentLinkView() {
       const url = response.data.url.replace('https://pay.hendaxis.com', window.location.origin);
       setCreatedUrl(url);
       setShowModal(true);
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Failed to create link');
+      const status = err.response?.status;
+      const detail = err.response?.data?.detail || err.response?.data?.message || 'Failed to create link';
+      if (status === 403 || detail.toLowerCase().includes('suspended')) {
+        setSuspensionError({
+          isSuspended: true,
+          message: detail
+        });
+      } else {
+        alert(detail);
+      }
+    }
+  };
+
+  const handleSendAppeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (appealReason.trim().length < 20) {
+      setAppealError("Please provide at least 20 characters explaining your appeal.");
+      return;
+    }
+    try {
+      setIsSubmittingAppeal(true);
+      setAppealError('');
+      const res = await apiClient.post('/profile/submit-appeal', { reason: appealReason.trim() });
+      setAppealSuccess(res.data?.message || "Appeal submitted successfully! Management will review your request.");
+      setTimeout(() => {
+        setSuspensionError(null);
+        navigate('/dashboard');
+      }, 2500);
+    } catch (err: any) {
+      setAppealError(err.response?.data?.detail || err.response?.data?.message || "Failed to submit appeal. Please try again.");
+    } finally {
+      setIsSubmittingAppeal(false);
     }
   };
 
@@ -382,6 +423,82 @@ export default function CreatePaymentLinkView() {
                   Share Link
                 </button>
               </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: ACCOUNT SUSPENDED & APPEAL ─────────────────────────────── */}
+      {suspensionError && (
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full border border-red-200 dark:border-red-900/60 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
+            <div className="p-6 text-center border-b border-red-100 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/30">
+              <div className="w-16 h-16 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-3 shadow-inner">
+                <ShieldAlert className="h-8 w-8" />
+              </div>
+              <h3 className="text-xl font-bold text-red-900 dark:text-red-200">Seller Account Suspended</h3>
+              <p className="text-xs text-red-700 dark:text-red-300/80 mt-1">
+                You cannot generate new payment links while your account is under suspension.
+              </p>
+            </div>
+
+            <div className="p-6 space-y-4 text-xs">
+              <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 leading-relaxed font-mono">
+                {suspensionError.message}
+              </div>
+
+              {appealSuccess ? (
+                <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 font-semibold text-center">
+                  ✅ {appealSuccess}
+                </div>
+              ) : (
+                <form onSubmit={handleSendAppeal} className="space-y-3">
+                  <div>
+                    <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
+                      Submit Suspension Appeal to Management
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={appealReason}
+                      onChange={(e) => setAppealReason(e.target.value)}
+                      placeholder="Explain the situation or steps taken to resolve unfulfilled orders/disputes (min 20 characters)..."
+                      className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      required
+                    />
+                  </div>
+
+                  {appealError && (
+                    <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/50 border border-rose-300 dark:border-rose-800 text-rose-700 dark:text-rose-300 font-semibold">
+                      {appealError}
+                    </div>
+                  )}
+
+                  <div className="flex gap-3 pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSuspensionError(null)}
+                      className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl transition"
+                    >
+                      Close
+                    </button>
+                    <button
+                      type="submit"
+                      disabled={isSubmittingAppeal || appealReason.trim().length < 20}
+                      className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white font-bold rounded-xl transition shadow flex items-center justify-center gap-2"
+                    >
+                      {isSubmittingAppeal ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" /> Submitting...
+                        </>
+                      ) : (
+                        <>
+                          <Send className="h-4 w-4" /> Submit Appeal
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </form>
+              )}
             </div>
           </div>
         </div>

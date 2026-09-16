@@ -72,6 +72,7 @@ class User(AbstractUser):
     is_suspended = models.BooleanField(default=False, db_index=True)
     suspension_reason = models.TextField(blank=True)
     suspended_at = models.DateTimeField(null=True, blank=True)
+    reinstated_at = models.DateTimeField(null=True, blank=True)
 
     def save(self, *args, **kwargs):
         if (self.is_superuser or self.is_staff) and self.role == Role.BUYER:
@@ -80,3 +81,41 @@ class User(AbstractUser):
 
     def __str__(self):
         return f"{self.username} ({self.get_role_display()})"
+
+
+class AppealStatus(models.TextChoices):
+    PENDING  = 'PENDING',  'Pending Review'
+    APPROVED = 'APPROVED', 'Approved & Reinstated'
+    REJECTED = 'REJECTED', 'Appeal Rejected'
+
+
+class SuspensionAppeal(models.Model):
+    id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
+    user = models.ForeignKey(
+        User,
+        on_delete=models.CASCADE,
+        related_name='suspension_appeals'
+    )
+    reason = models.TextField(help_text="User explanation and appeal justification")
+    status = models.CharField(
+        max_length=20,
+        choices=AppealStatus.choices,
+        default=AppealStatus.PENDING,
+        db_index=True
+    )
+    admin_notes = models.TextField(blank=True, help_text="Notes/reasoning provided by admin upon review")
+    reviewed_by = models.ForeignKey(
+        User,
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='reviewed_suspension_appeals'
+    )
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+    reviewed_at = models.DateTimeField(null=True, blank=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Appeal by {self.user.username} — {self.status}"

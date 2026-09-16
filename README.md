@@ -18,14 +18,17 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Manual Identity & License Verification**: Sellers submit their Ghana Card / National ID number, Ghana Card photo, and optional Business Registration license.
 - **Strict Verification Rule**: The `🛡️ Verified Seller` badge is **NEVER** granted automatically based on completed transactions alone. Management MUST manually inspect and approve submitted identity documents in the Manager Portal before the badge is displayed. Unverified stores are labeled as `🆕 New Shop`.
 
-### 2. 4-Day Seller Dispatch Deadline & Default Penalty Policy
-- **Strict 4-Day (96-Hour) Dispatch Window**: Once payment is confirmed (`PAYMENT_RECEIVED`), the seller has exactly **4 days** to dispatch the order and attach tracking or bus delivery details.
-- **Automated Non-Dispatch Cancellation**: If a seller fails to dispatch within 4 days, Celery Beat automatically cancels the order.
-- **Buyer 100% Refund Guarantee**: The buyer receives a **100% full refund** (including all gateway charges) returned via their original payment medium so they suffer zero loss.
-- **Seller Default Penalty**: The defaulting seller's internal account is charged a **Non-Dispatch Default Penalty** equal to the **Platform Fee + 1.95% Paystack processing charges**.
+### 2. Seller Dispatch Deadline, Progressive Pre-Expiry Warnings & Default Penalty Policy
+- **Configurable Dispatch Window**: Once payment is confirmed (`PAYMENT_RECEIVED`), the seller must dispatch the order within the platform-configured timeframe (default: **4 days / 96 hours**).
+- **Progressive Pre-Expiry Reminders**:
+  - **24-Hour Reminder**: Celery sends an SMS & Email alerting the seller of the approaching deadline with the exact itemized penalty (Platform Fee + 1.95% Gateway Fee).
+  - **6-Hour Final Warning**: High-priority alert sent 6 hours before expiry.
+- **Automated Non-Dispatch Cancellation**: If a seller fails to dispatch within the window, Celery automatically cancels the order (`auto_cancelled_non_dispatch = True`).
+- **Buyer 100% Refund Guarantee**: The buyer receives a **100% full refund** (including all fees) returned via their original payment medium.
+- **Seller Default Penalty**: The defaulting seller is charged a **Non-Dispatch Default Penalty** equal to the **Platform Fee + 1.95% gateway processing fee**.
 
 ### 3. Payment Link Generation & Dynamic Fee Handling
-- **Link Creation**: Sellers create payment links specifying price, shipping fee, description, and fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`).
+- **Link Creation**: Sellers create payment links specifying price, shipping fee, description, and fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`). Blocked with an interactive appeal modal if seller is suspended.
 - **Dynamic Fee Transparency**: Platform fees are calculated transparently in GHS and displayed in real-time.
 
 ### 4. Dual Logistics Verification Engine
@@ -65,16 +68,22 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 ### 8. Public Marketplace Directory & Paid Advertised Shops (`/shops`)
 - Marketplace directory with category filtering and paid shop promotion options (GHS 50 for 7 Days / GHS 150 for 30 Days).
 
-### 9. Superuser Platform Funds & Double-Entry Ledger Audit (`/admin/dashboard`)
-- Real-time double-entry account balances (System Bank Assets, Buyer Escrow Deposits, Platform Fee Revenue, Paystack Fee Expenses, Seller Wallet Liabilities).
+### 9. Superuser Platform Funds & Double-Entry Ledger Audit (`/admin-portal`)
+- Real-time double-entry account balances (System Bank Assets, Buyer Escrow Deposits, Platform Fee Revenue, Gateway Fee Expenses, Seller Wallet Liabilities).
 - Comprehensive ledger filtering, date range queries, and audit trail sorting.
 
-### 10. Superuser Dynamic Platform Settings (`⚙️ Gateway & Logistics Settings`)
-- **Dynamic Timeline Configuration**: Configurable parameters (`shipping_timeout_days`, `auto_delivery_hours`, `return_dispatch_days`, `return_auto_refund_hours`, and tiered inspection hours) editable via `GET/POST /api/v1/escrow/admin/settings`.
-- **Strict Superuser Authorization**: Endpoint and frontend tab access strictly restricted to `is_superuser == True`.
+### 10. Superuser Dynamic Platform & Governance Settings (`⚙️ Settings`)
+- **Dynamic Configuration**: Configurable parameters (`shipping_timeout_days`, `auto_delivery_hours`, `return_dispatch_days`, `return_auto_refund_hours`, tiered inspection hours, `dispute_min_sample_size`, `dispute_warning_threshold`, `dispute_suspension_threshold`, `dispatch_expiry_warning_threshold`, `dispatch_expiry_suspension_threshold`) editable live in the Admin Portal.
+- **Strict Superuser Authorization**: Settings tab access strictly restricted to `is_superuser == True`.
 
 ### 11. Multi-Channel Event Notification Suite
-- Automated SMS & Email notifications for payment receipts, dispatch tracking, 6-hour pre-dispatch warnings, delivery reminders, dispute alerts, return pickup OTPs, return refund confirmations, and payout completions.
+- Automated SMS & Email notifications for payment receipts, dispatch tracking, 24h & 6h pre-dispatch warnings, delivery reminders, dispute alerts, return pickup OTPs, return refund confirmations, and payout completions.
+
+### 12. Seller Health Governance, Appeals Desk & Clean Slate Reinstatement
+- **Dispute & Non-Dispatch Governance**: Multi-window calculations evaluating dispute rates and dispatch expiry rates (warn at 20%, auto-suspend at 35% expiry / 40% disputes with min sample size >= 5).
+- **In-Flight Order Continuity**: In-progress paid transactions follow through to delivery and payout without interruption.
+- **Suspension Appeals Desk**: Administrators review seller justification and remediation appeals in the Admin Portal.
+- **Clean Slate Reinstatement**: Reinstating a seller records `reinstated_at = timezone.now()`. Subsequent health checks evaluate only post-reinstatement transactions, preventing immediate re-suspension loops.
 
 ---
 

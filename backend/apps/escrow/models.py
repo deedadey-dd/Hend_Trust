@@ -51,11 +51,13 @@ class Transaction(models.Model):
     return_waybill_photo_url = models.TextField(blank=True)
     
     # Reminder tracking
+    reminder_24h_dispatch_sent = models.BooleanField(default=False)
     reminder_6h_dispatch_sent = models.BooleanField(default=False)
     reminder_30h_sent = models.BooleanField(default=False)
     reminder_36h_sent = models.BooleanField(default=False)
     reminder_42h_sent = models.BooleanField(default=False)
     reminder_6h_inspection_sent = models.BooleanField(default=False)
+    auto_cancelled_non_dispatch = models.BooleanField(default=False, db_index=True)
     # Dispute Evidence & Resolution Photos (Max 5 photos per party)
     buyer_dispute_reason = models.TextField(blank=True)
     buyer_dispute_photos = models.JSONField(default=list, blank=True)

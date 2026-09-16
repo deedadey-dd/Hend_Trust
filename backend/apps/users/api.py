@@ -918,3 +918,97 @@ def disable_2fa(request, data: Disable2FASchema):
     user.save(update_fields=['is_2fa_enabled', 'totp_secret'])
     return {"message": "Two-Factor Authentication (2FA) has been disabled."}
 
+
+# ─── Suspension Appeal Endpoints ───────────────────────────────────────────────
+
+class SubmitAppealSchema(Schema):
+    reason: str
+
+
+class AppealStatusResponseSchema(Schema):
+    has_appeal: bool
+    appeal_id: Optional[str] = None
+    status: Optional[str] = None
+    admin_notes: Optional[str] = None
+    created_at: Optional[str] = None
+    reviewed_at: Optional[str] = None
+
+
+@profile_router.post("/appeal-suspension", response=dict)
+@rate_limit('appeal_suspension', max_calls=3, window_seconds=3600)
+def submit_suspension_appeal(request, data: SubmitAppealSchema):
+    """
+    Allows a currently suspended seller to submit an appeal for manual admin review.
+    Only one pending appeal is allowed at a time.
+    """
+    user = request.user
+    if not user.is_suspended:
+        raise HttpError(400, "Your account is not currently suspended. No appeal is needed.")
+
+    reason = (data.reason or "").strip()
+    if len(reason) < 20:
+        raise HttpError(400, "Please provide a detailed explanation (at least 20 characters) for your appeal.")
+
+    from apps.users.models import SuspensionAppeal, AppealStatus
+    # Check if user already has a pending appeal
+    pending_appeal = SuspensionAppeal.objects.filter(user=user, status=AppealStatus.PENDING).first()
+    if pending_appeal:
+        raise HttpError(400, "You already have a pending appeal under review. Please wait for the admin team to respond.")
+
+    appeal = SuspensionAppeal.objects.create(user=user, reason=reason)
+
+    # Notify admins by email (optional, non-blocking)
+    try:
+        from django.core.mail import send_mail
+        admin_emails = list(
+            User.objects.filter(is_superuser=True).exclude(email="").values_list('email', flat=True)
+        )
+        if admin_emails:
+            send_mail(
+                subject=f"[Action Required] Suspension Appeal from Seller @{user.username}",
+                message=(
+                    f"Seller @{user.username} ({user.email}) has submitted a suspension appeal.\n\n"
+                    f"Appeal ID: {appeal.id}\n"
+                    f"Submitted: {appeal.created_at.strftime('%Y-%m-%d %H:%M UTC')}\n\n"
+                    f"Seller's Justification:\n{reason}\n\n"
+                    f"Please log in to the Admin Portal and review this appeal."
+                ),
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                recipient_list=admin_emails,
+                fail_silently=True
+            )
+    except Exception:
+        pass
+
+    return {
+        "message": "Your appeal has been submitted successfully. Our team will review it and respond as soon as possible.",
+        "appeal_id": str(appeal.id),
+        "status": appeal.status,
+    }
+
+
+@profile_router.get("/appeal-status", response=AppealStatusResponseSchema)
+def get_appeal_status(request):
+    """
+    Returns the status of the current user's most recent suspension appeal.
+    """
+    from apps.users.models import SuspensionAppeal, AppealStatus
+    appeal = SuspensionAppeal.objects.filter(user=request.user).order_by('-created_at').first()
+    if not appeal:
+        return {"has_appeal": False}
+
+    # If the seller was newly suspended AFTER this past appeal was created/reviewed and it is not pending,
+    # treat it as no active appeal so the seller can submit a fresh appeal for the new suspension cycle.
+    if request.user.suspended_at and appeal.created_at < request.user.suspended_at and appeal.status != AppealStatus.PENDING:
+        return {"has_appeal": False}
+
+    return {
+        "has_appeal": True,
+        "appeal_id": str(appeal.id),
+        "status": appeal.status,
+        "admin_notes": appeal.admin_notes or "",
+        "created_at": appeal.created_at.isoformat(),
+        "reviewed_at": appeal.reviewed_at.isoformat() if appeal.reviewed_at else None,
+    }
+
+

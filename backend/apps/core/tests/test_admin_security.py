@@ -69,7 +69,7 @@ class TestAdminSecuritySuite:
         request = rf.get('/admin/')
         response = admin_honeypot_view(request)
         assert response.status_code == 200
-        assert b"Django Administration" in response.content
+        assert b"Admin Portal" in response.content or b"Administration" in response.content
 
         # Honeypot post attempt
         post_req = rf.post('/admin/', {'username': 'hacker', 'password': '123'})

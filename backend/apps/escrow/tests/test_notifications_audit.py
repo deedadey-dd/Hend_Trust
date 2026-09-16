@@ -85,6 +85,9 @@ def test_notify_seller_delivery_confirmed(sample_transaction):
 
 @pytest.mark.django_db
 def test_notify_dispute_resolution(sample_transaction):
+    sample_transaction.link.seller.first_name = "Kwame"
+    sample_transaction.link.seller.save()
+
     with patch('apps.core.tasks.dispatch_sms_task.delay') as mock_sms, \
          patch('apps.core.tasks.dispatch_email_task.delay') as mock_email:
         notify_dispute_resolution_task(
@@ -94,6 +97,52 @@ def test_notify_dispute_resolution(sample_transaction):
         )
         assert mock_email.call_count == 2
         assert mock_sms.call_count == 2
+
+        # Verify Buyer SMS addresses by first name and includes Reference ID
+        buyer_sms_call = [call for call in mock_sms.call_args_list if call[0][0] == sample_transaction.buyer_phone][0]
+        buyer_sms_text = buyer_sms_call[0][1]
+        assert "Hello Jane," in buyer_sms_text
+        assert sample_transaction.paystack_reference in buyer_sms_text
+        assert "Item confirmed in good condition" in buyer_sms_text
+
+        # Verify Seller SMS addresses by first name and includes Reference ID
+        seller_sms_call = [call for call in mock_sms.call_args_list if call[0][0] == sample_transaction.link.seller.phone_number][0]
+        seller_sms_text = seller_sms_call[0][1]
+        assert "Hello Kwame," in seller_sms_text
+        assert sample_transaction.paystack_reference in seller_sms_text
+
+
+@pytest.mark.django_db
+def test_notify_dispute_resolution_seller_shop_name(sample_transaction):
+    """When seller has a shop name, dispute notifications address seller by shop name instead of first name."""
+    seller = sample_transaction.link.seller
+    seller.first_name = "Kwame"
+    seller.shop_name = "Kwame Tech Store"
+    seller.save()
+
+    with patch('apps.core.tasks.dispatch_sms_task.delay') as mock_sms, \
+         patch('apps.core.tasks.dispatch_email_task.delay') as mock_email:
+        notify_dispute_resolution_task(
+            sample_transaction.id,
+            action="FULL_REFUND_TO_BUYER",
+            admin_notes="Defective item confirmed"
+        )
+        assert mock_email.call_count == 2
+        assert mock_sms.call_count == 2
+
+        # Verify Seller message uses shop name
+        seller_sms_call = [call for call in mock_sms.call_args_list if call[0][0] == seller.phone_number][0]
+        seller_sms_text = seller_sms_call[0][1]
+        assert "Hello Kwame Tech Store," in seller_sms_text
+        assert sample_transaction.paystack_reference in seller_sms_text
+        assert "full refund" in seller_sms_text.lower()
+
+        # Verify Buyer message uses first name
+        buyer_sms_call = [call for call in mock_sms.call_args_list if call[0][0] == sample_transaction.buyer_phone][0]
+        buyer_sms_text = buyer_sms_call[0][1]
+        assert "Hello Jane," in buyer_sms_text
+        assert sample_transaction.paystack_reference in buyer_sms_text
+        assert "full refund" in buyer_sms_text.lower()
 
 
 @pytest.mark.django_db

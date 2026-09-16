@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X, AlertTriangle } from 'lucide-react';
+import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X, AlertTriangle, ZoomIn } from 'lucide-react';
 import axios from 'axios';
 import { apiClient, getErrorMessage } from '../api/client';
 import { STATUS_CONFIG } from '../constants/statusConfig';
 import RateSellerModal from './RateSellerModal';
+import ImageLightboxModal from './ImageLightboxModal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
 
@@ -57,6 +58,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
   const [isCompressingBuyerPhotos, setIsCompressingBuyerPhotos] = useState(false);
   const [disputeError, setDisputeError] = useState('');
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   // Single Order Submit
   const handleSingleSubmit = async (e: React.FormEvent) => {
@@ -518,14 +520,30 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
                         {txn.waybill_photo_url && (
                           <div className="mt-2 bg-gray-50 dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl p-2.5 flex items-center gap-3">
-                            <img
-                              src={txn.waybill_photo_url}
-                              alt="Dispatch proof"
-                              className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700"
-                            />
-                            <div>
+                            <div 
+                              className="relative group cursor-pointer flex-shrink-0"
+                              onClick={() => setLightboxImage(txn.waybill_photo_url)}
+                              title="Click to enlarge dispatch proof"
+                            >
+                              <img
+                                src={txn.waybill_photo_url}
+                                alt="Dispatch proof"
+                                className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 transition-transform group-hover:scale-105"
+                              />
+                              <div className="absolute inset-0 bg-black/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                <ZoomIn className="w-4 h-4 text-white drop-shadow" />
+                              </div>
+                            </div>
+                            <div className="flex-1 min-w-0">
                               <span className="text-xs font-bold text-gray-800 dark:text-slate-200 block">Dispatch / Package Proof</span>
                               <span className="text-[11px] text-gray-500 dark:text-slate-400 block">Uploaded by seller at dispatch</span>
+                              <button
+                                type="button"
+                                onClick={() => setLightboxImage(txn.waybill_photo_url)}
+                                className="text-[11px] font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline mt-0.5 flex items-center gap-1 cursor-pointer transition-colors"
+                              >
+                                <ZoomIn className="w-3 h-3" /> Enlarge Photo
+                              </button>
                             </div>
                           </div>
                         )}
@@ -556,7 +574,17 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                                 {txn.manager_dispute_photos && txn.manager_dispute_photos.length > 0 && (
                                   <div className="flex flex-wrap gap-1 pt-1">
                                     {txn.manager_dispute_photos.map((url: string, idx: number) => (
-                                      <img key={idx} src={url} alt="Manager ruling" className="w-10 h-10 object-cover rounded border border-gray-200 dark:border-slate-700" />
+                                      <div 
+                                        key={idx} 
+                                        className="relative group cursor-pointer"
+                                        onClick={() => setLightboxImage(url)}
+                                        title="Click to enlarge"
+                                      >
+                                        <img src={url} alt="Manager ruling" className="w-10 h-10 object-cover rounded border border-gray-200 dark:border-slate-700 transition-transform group-hover:scale-105" />
+                                        <div className="absolute inset-0 bg-black/30 rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                                          <ZoomIn className="w-3 h-3 text-white drop-shadow" />
+                                        </div>
+                                      </div>
                                     ))}
                                   </div>
                                 )}
@@ -756,6 +784,13 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
           onClose={() => setRateTxn(null)}
         />
       )}
+
+      {/* Lightbox Modal */}
+      <ImageLightboxModal
+        src={lightboxImage || ''}
+        isOpen={Boolean(lightboxImage)}
+        onClose={() => setLightboxImage(null)}
+      />
 
     </div>
   );
