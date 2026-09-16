@@ -71,6 +71,7 @@ class TransactionStatusSchema(Schema):
     seller_dispute_response: Optional[str] = None
     seller_dispute_photos: Optional[list[str]] = []
     shipping_timeout_days: Optional[int] = 4
+    inspection_hours_allowed: Optional[int] = 24
     buyer_review_token: Optional[str] = ""
 
 class InitializeResponse(Schema):
@@ -121,9 +122,10 @@ def _build_txn_status_dict(t):
     seller_uname = seller.username if seller else (seller.email.split('@')[0] if (seller and seller.email) else 'seller')
     shop_n = seller.shop_name if (seller and seller.shop_name) else (f"@{seller_uname}'s Store" if seller_uname else 'Seller Store')
 
-    from apps.escrow.api import get_platform_settings
+    from apps.escrow.api import get_platform_settings, get_inspection_hours_for_amount
     cfg = get_platform_settings()
     timeout_days = int(cfg.get("shipping_timeout_days", 4))
+    inspection_hours = get_inspection_hours_for_amount(t.total_amount_ghs)
 
     return {
         "id": str(t.id),
@@ -145,6 +147,7 @@ def _build_txn_status_dict(t):
         "seller_profile_picture_url": getattr(seller, 'profile_picture_url', '') if seller else '',
         "delivery_method": log.delivery_method if log else None,
         "shipping_timeout_days": timeout_days,
+        "inspection_hours_allowed": inspection_hours,
         "courier_name": log.courier_name if log else None,
         "carrier_code": getattr(log, 'carrier_code', None) if log else None,
         "tracking_number": log.tracking_number if log else None,
@@ -191,30 +194,30 @@ def track_order_by_id(request, data: TrackByIdSchema):
 
 @checkout_router.get("/transaction/{reference}", response=TransactionStatusSchema)
 def get_transaction_status(request, reference: str):
-    txn = get_object_or_404(Transaction.objects.select_related('link', 'link__seller').prefetch_related('delivery_logs'), paystack_reference=reference)
-    
-    # Actively verify with Paystack if still awaiting payment (in case webhook was missed/delayed)
+    txn = Transaction.objects.filter(
+        paystack_reference=reference
+    ).select_related('link', 'link__seller').prefetch_related('delivery_logs').first()
+
+    if not txn:
+        try:
+            txn = Transaction.objects.filter(
+                id=reference
+            ).select_related('link', 'link__seller').prefetch_related('delivery_logs').first()
+        except Exception:
+            txn = None
+
+    if not txn:
+        raise HttpError(404, "Transaction not found.")
+
+    # Actively verify with Payment Gateway if still awaiting payment (in case webhook was missed/delayed)
     if txn.status == TransactionStatus.AWAITING_PAYMENT:
         try:
-            paystack_data = PaystackAdapter.verify_transaction(reference)
-            if paystack_data.get('status') == 'success':
-                txn.status = TransactionStatus.PAYMENT_RECEIVED
-                txn.save(update_fields=['status', 'updated_at'])
-                
-                from apps.ledger.services import record_buyer_deposit
-                try:
-                    raw_fee = paystack_data.get('fees')
-                    fee_val = Decimal(str(raw_fee / 100)) if raw_fee else (txn.total_amount_ghs * Decimal('0.0195')).quantize(Decimal('0.01'))
-                    record_buyer_deposit(reference_id=str(txn.id), gross_amount=txn.total_amount_ghs, gateway_fee=fee_val)
-                except Exception as e:
-                    print(f"Ledger record_buyer_deposit error: {e}")
-
-                from apps.core.tasks import notify_buyer_payment_received_task, notify_seller_payment_received_task
-                notify_buyer_payment_received_task.delay(txn.id)
-                notify_seller_payment_received_task.delay(txn.id)
-                
+            from apps.escrow.services import verify_payment_gateway_status
+            verify_payment_gateway_status(txn)
+            txn.refresh_from_db()
         except Exception as e:
-            print(f"Error verifying transaction with Paystack: {e}")
+            import logging
+            logging.getLogger(__name__).error(f"Error verifying transaction payment status: {e}")
 
     return _build_txn_status_dict(txn)
 

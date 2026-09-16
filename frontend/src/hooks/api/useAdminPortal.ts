@@ -226,3 +226,51 @@ export const useCancelBroadcastCampaignMutation = () => {
     },
   });
 };
+
+export interface SuspensionAppealItem {
+  id: string;
+  user_id: string;
+  username: string;
+  shop_name: string;
+  email: string;
+  phone_number: string;
+  is_suspended: boolean;
+  suspension_reason: string;
+  suspended_at?: string | null;
+  reason: string;
+  status: 'PENDING' | 'APPROVED' | 'REJECTED';
+  admin_notes?: string;
+  reviewed_by_name?: string | null;
+  created_at: string;
+  reviewed_at?: string | null;
+}
+
+export const useAdminAppealsQuery = (status?: string) => {
+  return useQuery<SuspensionAppealItem[]>({
+    queryKey: ['admin-appeals', status],
+    queryFn: async () => {
+      const params: any = {};
+      if (status && status !== 'ALL') params.status = status;
+      const { data } = await apiClient.get('/admin/appeals', { params });
+      return data;
+    },
+  });
+};
+
+export const useReviewAppealMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ appealId, decision, admin_notes }: { appealId: string; decision: 'APPROVE' | 'REJECT'; admin_notes?: string }) => {
+      const { data } = await apiClient.post(`/admin/appeals/${appealId}/review`, {
+        decision,
+        admin_notes: admin_notes || '',
+      });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-appeals'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-sellers'] });
+    },
+  });
+};
+

@@ -3,7 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   ShieldCheck, Truck, ArrowRight, Loader2,
-  CheckCircle, Clock, AlertTriangle, X, KeyRound, Store
+  CheckCircle, Clock, AlertTriangle, X, KeyRound, Store, ZoomIn
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -47,6 +47,7 @@ interface TxnDetail {
   seller_profile_picture_url?: string;
   waybill_photo_url?: string;
   shipping_timeout_days?: number;
+  inspection_hours_allowed?: number;
   buyer_review_token?: string;
 }
 
@@ -67,9 +68,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     const start = new Date(txn.inspection_starts_at).getTime();
     const now = new Date().getTime();
     
-    let hoursAllowed = 24;
-    if (txn.total_amount_ghs >= 2000 && txn.total_amount_ghs < 10000) hoursAllowed = 48;
-    else if (txn.total_amount_ghs >= 10000) hoursAllowed = 72;
+    const hoursAllowed = txn.inspection_hours_allowed || 24;
     
     const end = start + (hoursAllowed * 60 * 60 * 1000);
     const diff = end - now;
@@ -100,6 +99,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
   const [isCompressingBuyerPhotos, setIsCompressingBuyerPhotos] = useState(false);
   const [disputeError, setDisputeError] = useState('');
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
   // OTP Resend Cooldown (60 seconds)
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -198,8 +198,15 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 overflow-hidden">
           <div className={`p-8 text-center ${cfg.bg}`}>
             {txn.image_url && (
-              <div className="mb-4 mx-auto max-w-xs rounded-xl overflow-hidden shadow-sm border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-                <img src={txn.image_url} alt={txn.title} className="w-full h-44 object-cover" />
+              <div 
+                className="mb-4 mx-auto max-w-xs rounded-xl overflow-hidden shadow-sm border border-gray-200 dark:border-slate-700 bg-white dark:bg-slate-800 relative group cursor-pointer"
+                onClick={() => setLightboxImage(txn.image_url || null)}
+                title="Click to enlarge product photo"
+              >
+                <img src={txn.image_url} alt={txn.title} className="w-full h-44 object-cover transition-transform duration-200 group-hover:scale-105" />
+                <div className="absolute inset-0 bg-black/25 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                  <ZoomIn className="w-6 h-6 text-white drop-shadow" />
+                </div>
               </div>
             )}
             <div className={`mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-white/60 dark:bg-slate-800/80 mb-4 ${cfg.color}`}>
@@ -257,14 +264,30 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
 
         {txn.waybill_photo_url && (
           <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-2xl p-4 flex items-center gap-4">
-            <img
-              src={txn.waybill_photo_url}
-              alt="Package waybill proof"
-              className="w-16 h-16 object-cover rounded-xl border border-blue-200 dark:border-blue-800/60"
-            />
-            <div>
+            <div 
+              className="relative group cursor-pointer flex-shrink-0"
+              onClick={() => setLightboxImage(txn.waybill_photo_url!)}
+              title="Click to enlarge dispatch proof"
+            >
+              <img
+                src={txn.waybill_photo_url}
+                alt="Package waybill proof"
+                className="w-16 h-16 object-cover rounded-xl border border-blue-200 dark:border-blue-800/60 transition-transform duration-200 group-hover:scale-105"
+              />
+              <div className="absolute inset-0 bg-black/30 rounded-xl opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                <ZoomIn className="w-5 h-5 text-white drop-shadow" />
+              </div>
+            </div>
+            <div className="flex-1 min-w-0">
               <span className="text-xs font-bold text-blue-900 dark:text-blue-300 block">Dispatch / Package Proof</span>
               <span className="text-xs text-blue-700 dark:text-blue-400 block mt-0.5">Uploaded by seller during dispatch</span>
+              <button
+                type="button"
+                onClick={() => setLightboxImage(txn.waybill_photo_url!)}
+                className="text-xs font-semibold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline mt-1 flex items-center gap-1 cursor-pointer transition-colors"
+              >
+                <ZoomIn className="w-3.5 h-3.5" /> Enlarge Photo
+              </button>
             </div>
           </div>
         )}
@@ -305,7 +328,17 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                 {(txn as any).manager_dispute_photos && (txn as any).manager_dispute_photos.length > 0 && (
                   <div className="flex flex-wrap gap-2 pt-2">
                     {(txn as any).manager_dispute_photos.map((url: string, idx: number) => (
-                      <img key={idx} src={url} alt="Manager ruling proof" className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700" />
+                      <div 
+                        key={idx} 
+                        className="relative group cursor-pointer"
+                        onClick={() => setLightboxImage(url)}
+                        title="Click to enlarge"
+                      >
+                        <img src={url} alt="Manager ruling proof" className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 transition-transform group-hover:scale-105" />
+                        <div className="absolute inset-0 bg-black/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                          <ZoomIn className="w-4 h-4 text-white drop-shadow" />
+                        </div>
+                      </div>
                     ))}
                   </div>
                 )}
@@ -566,6 +599,13 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
           onClose={() => { setShowRatingModal(false); window.location.reload(); }}
         />
       )}
+
+      {/* Image Lightbox Modal */}
+      <ImageLightboxModal
+        src={lightboxImage || ''}
+        isOpen={Boolean(lightboxImage)}
+        onClose={() => setLightboxImage(null)}
+      />
     </div>
   );
 }
@@ -577,7 +617,7 @@ export default function PublicCheckoutView() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const [searchParams] = useSearchParams();
-  const txRef = searchParams.get('tx_ref');
+  const txRef = searchParams.get('reference') || searchParams.get('trxref') || searchParams.get('tx_ref') || searchParams.get('paystack_reference') || searchParams.get('ref');
   const [txnDetail, setTxnDetail] = useState<TxnDetail | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 

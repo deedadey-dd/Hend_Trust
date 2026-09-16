@@ -63,12 +63,14 @@ Sellers bear **sole and absolute responsibility** for packaging items in a secur
 - Items must be packed with adequate cushioning (bubble wrap, box reinforcement, moisture protection) suitable for rough road transport or handling.
 - Damage, breakage, or leakage caused by inadequate packaging is the **exclusive fault of the Seller**. HendAxis Trust will rule in favor of a full refund to the Buyer if item damage is attributable to poor packaging.
 
-### 5.2 Mandatory Seller Dispatch Timeframe & Default Penalties
+### 5.2 Mandatory Seller Dispatch Timeframe, Pre-Expiry Warnings & Default Penalties
 Once a Buyer completes payment into escrow, the Seller must dispatch the item within the platform-configured dispatch window (typically **4 days / 96 hours**):
-1. **Timely Dispatch**: The Seller must attach a clear WebP photo of the packaged parcel and provide valid tracking details (Courier Waybill or Station Bus Driver details).
-2. **Automatic Cancellation on Non-Dispatch**: If the Seller fails to log dispatch within the stipulated window, the transaction is **automatically cancelled by the system**.
-3. **Buyer Full Refund**: The Buyer is immediately issued a **100% full refund** (including all item costs, shipping fees, and platform charges).
-4. **Seller Non-Dispatch Penalty**: The defaulting Seller agrees and authorizes HendAxis Trust to levy a **Non-Dispatch Default Penalty** equal to the total platform transaction fees + gateway processing fees. This fee will be debited from the Seller’s Wallet balance or future transaction payouts.
+1. **Timely Dispatch & Package Evidence**: The Seller must attach a clear WebP photo of the packaged parcel and provide valid tracking details (Courier Waybill or Station Bus Driver details).
+2. **Progressive Pre-Expiry Warning Disclosures**: Sellers receive progressive automated warnings (via SMS & Email) at **24 hours** and **6 hours** prior to expiration, explicitly detailing the calculated non-dispatch default penalty (Platform Fee + 1.95% Gateway Processing Fee) chargeable upon expiration.
+3. **Automatic Cancellation on Non-Dispatch**: If the Seller fails to log dispatch within the stipulated window, the transaction is **automatically cancelled by the system** (`auto_cancelled_non_dispatch = True`).
+4. **Buyer Full Refund Guarantee**: The Buyer is immediately issued a **100% full refund** (including all item costs, shipping fees, and platform charges) credited back to their original payment medium.
+5. **Seller Non-Dispatch Penalty Authorization**: The defaulting Seller explicitly authorizes HendAxis Trust to levy a **Non-Dispatch Default Penalty** equal to the **Platform Fee + 1.95% payment gateway processing fee**. This penalty will be debited from the Seller’s Wallet balance or deducted from future transaction payouts.
+6. **Dispatch Expiry Governance & Account Suspension**: Sellers who accumulate a non-dispatch expiry rate of $\ge 20\%$ will receive warning notifications; sellers with an expiry rate of $\ge 35\%$ (with at least 5 paid transactions) will be **automatically suspended** from creating new payment links or accepting new orders.
 
 ---
 
@@ -124,12 +126,18 @@ Where a dispute ruling requires the Buyer to return the item to the Seller:
 
 ---
 
-## 9. Merchant Identity Verification & Verified Badges
+## 9. Merchant Identity Verification, Health Governance & Suspension Appeals
 
 ### 9.1 Verification Rules
 - The **Verified Seller 🛡️** badge is granted **exclusively** via manual inspection of Ghana Card / National ID and Business Registration documents by HendAxis Trust administration.
 - Completed transactions do not automatically grant Verified status. Unverified stores will display as `🆕 New Shop`.
 - Submitting fraudulent identity documents will result in immediate account termination, wallet freezing, and referral to law enforcement agencies (Ghana Police Service / Cyber Security Authority).
+
+### 9.2 Account Suspension, In-Flight Orders & Reinstatement Appeals
+- **Suspension Enforcement**: Accounts suspended due to high dispute rates ($\ge 40\%$), low customer ratings ($< 2.0$ stars), or high dispatch expiry rates ($\ge 35\%$) will have active payment links disabled and cannot generate new links.
+- **In-Flight Order Continuity**: In-flight orders paid prior to suspension remain active and proceed to normal delivery, inspection, and settlement.
+- **Suspension Appeals**: Suspended merchants may submit a formal appeal with remediation steps via their dashboard.
+- **Reinstatement & Clean Slate**: When an appeal is approved by platform administrators, the seller is granted a clean slate (`reinstated_at = timezone.now()`). Only subsequent transactions will be evaluated for future health monitoring.
 
 ---
 

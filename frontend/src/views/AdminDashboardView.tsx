@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, Package, ShieldAlert, Users, PhoneCall, Send, Search, Filter, 
-  TrendingUp, DollarSign, Lock, Eye, X, Zap,
+  TrendingUp, DollarSign, Lock, Eye, X, Zap, Clock,
   RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck
 } from 'lucide-react';
 import { 
@@ -14,7 +14,10 @@ import {
   useResolveDisputeMutation, 
   useBroadcastMessageMutation,
   useAdminBroadcastCampaignsQuery,
-  useCancelBroadcastCampaignMutation
+  useCancelBroadcastCampaignMutation,
+  useAdminAppealsQuery,
+  useReviewAppealMutation,
+  type SuspensionAppealItem
 } from '../hooks/api/useAdminPortal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { apiClient, getErrorMessage } from '../api/client';
@@ -116,7 +119,7 @@ const adInvoicesExportHeaders: ExportColumn[] = [
   { label: 'Active Until', key: 'advertised_until' },
 ];
 
-type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'AD_INVOICES' | 'SETTINGS';
+type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'APPEALS' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'AD_INVOICES' | 'SETTINGS';
 
 interface ShopAdInvoiceAdminRecord {
   id: string;
@@ -198,6 +201,14 @@ interface PlatformSettings {
   inspection_tier2_threshold?: number;
   inspection_tier2_hours?: number;
   inspection_tier3_hours?: number;
+  seller_rating_warning_threshold?: number;
+  seller_rating_suspension_threshold?: number;
+  dispute_min_sample_size?: number;
+  dispute_alert_threshold?: number;
+  dispute_warning_threshold?: number;
+  dispute_suspension_threshold?: number;
+  dispatch_expiry_warning_threshold?: number;
+  dispatch_expiry_suspension_threshold?: number;
   unpaid_auto_archive_days?: number;
   django_admin_url?: string;
 }
@@ -246,7 +257,16 @@ export const AdminDashboardView: React.FC = () => {
     inspection_tier2_threshold: 10000,
     inspection_tier2_hours: 48,
     inspection_tier3_hours: 72,
+    seller_rating_warning_threshold: 3.0,
+    seller_rating_suspension_threshold: 2.0,
+    dispute_min_sample_size: 5,
+    dispute_alert_threshold: 20.0,
+    dispute_warning_threshold: 30.0,
+    dispute_suspension_threshold: 40.0,
+    dispatch_expiry_warning_threshold: 20.0,
+    dispatch_expiry_suspension_threshold: 35.0,
   });
+
 
   const backendBaseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
   const adminPath = platformSettings?.django_admin_url ? platformSettings.django_admin_url.replace(/^\/+/, '') : 'admin/';
@@ -289,6 +309,19 @@ export const AdminDashboardView: React.FC = () => {
       setSettingsSaveMsg(err.response?.data?.detail || 'Failed to update settings.');
     }
   };
+
+  // Gateway switch confirmation
+  const [gatewayConfirm, setGatewayConfirm] = useState<{ pending: string } | null>(null);
+  const handleGatewaySwitch = (gwId: string) => {
+    if (gwId === platformSettings.active_payment_gateway) return;
+    setGatewayConfirm({ pending: gwId });
+  };
+  const confirmGatewaySwitch = async () => {
+    if (!gatewayConfirm) return;
+    await handleUpdateSettings({ active_payment_gateway: gatewayConfirm.pending });
+    setGatewayConfirm(null);
+  };
+
 
   // Verifications State
   const [verifications, setVerifications] = useState<SellerVerificationRecord[]>([]);
@@ -532,7 +565,7 @@ export const AdminDashboardView: React.FC = () => {
     const reason = prompt(`Enter reason for suspending seller @${username}:`, "Manual administrative suspension");
     if (reason === null) return;
     try {
-      await apiClient.post(`/escrow/admin/sellers/${sellerId}/suspend`, { reason });
+      await apiClient.post(`/admin/sellers/${sellerId}/suspend`, { reason });
       alert(`Seller @${username} has been suspended successfully.`);
       refetchSellers();
     } catch (err: any) {
@@ -543,7 +576,7 @@ export const AdminDashboardView: React.FC = () => {
   const handleReinstateSeller = async (sellerId: string, username: string) => {
     if (!window.confirm(`Are you sure you want to reinstate seller @${username}? This will restore their ability to create payment links.`)) return;
     try {
-      await apiClient.post(`/escrow/admin/sellers/${sellerId}/reinstate`);
+      await apiClient.post(`/admin/sellers/${sellerId}/reinstate`);
       alert(`Seller @${username} has been reinstated successfully.`);
       refetchSellers();
     } catch (err: any) {
@@ -639,7 +672,40 @@ export const AdminDashboardView: React.FC = () => {
     }
   };
 
+  // Suspension Appeals State & Queries
+  const [appealFilterStatus, setAppealFilterStatus] = useState<string>('ALL');
+  const { data: appealsData, refetch: refetchAppeals, isLoading: loadingAppeals } = useAdminAppealsQuery(appealFilterStatus);
+  const reviewAppealMutation = useReviewAppealMutation();
+  const [reviewingAppeal, setReviewingAppeal] = useState<SuspensionAppealItem | null>(null);
+  const [reviewDecision, setReviewDecision] = useState<'APPROVE' | 'REJECT'>('APPROVE');
+  const [reviewAdminNotes, setReviewAdminNotes] = useState('');
+  const [reviewMsg, setReviewMsg] = useState('');
+
+  const handleReviewAppeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reviewingAppeal) return;
+    setReviewMsg('');
+    try {
+      const res = await reviewAppealMutation.mutateAsync({
+        appealId: reviewingAppeal.id,
+        decision: reviewDecision,
+        admin_notes: reviewAdminNotes.trim(),
+      });
+      setReviewMsg(res.message || 'Appeal decision recorded successfully.');
+      setTimeout(() => {
+        setReviewingAppeal(null);
+        setReviewAdminNotes('');
+        setReviewMsg('');
+        refetchAppeals();
+        refetchMetrics();
+      }, 1500);
+    } catch (err: any) {
+      setReviewMsg(err.response?.data?.detail || 'Failed to review appeal.');
+    }
+  };
+
   return (
+
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16 transition-colors">
       {/* Header Banner */}
       <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-6 shadow-sm transition-colors">
@@ -680,16 +746,17 @@ export const AdminDashboardView: React.FC = () => {
         {/* Tab Navigation */}
         <div className="max-w-7xl mx-auto mt-6 flex overflow-x-auto gap-2 border-b border-slate-200 dark:border-slate-800 scrollbar-none pb-px">
           {[
-            { id: 'OVERVIEW', label: 'Overview & Health', icon: BarChart3 },
-            { id: 'TRANSACTIONS', label: 'All Transactions', icon: Package, badge: txnsData?.total_count },
+            { id: 'OVERVIEW', label: 'Overview', icon: BarChart3 },
+            { id: 'TRANSACTIONS', label: 'Transactions', icon: Package, badge: txnsData?.total_count },
             { id: 'DISPUTES', label: 'Disputes Center', icon: ShieldAlert, badge: metrics?.active_disputes, alert: (metrics?.active_disputes || 0) > 0 },
+            { id: 'APPEALS', label: 'Suspension Appeals', icon: ShieldAlert, badge: appealsData?.filter(a => a.status === 'PENDING').length, alert: (appealsData?.filter(a => a.status === 'PENDING').length || 0) > 0 },
             { id: 'VERIFICATIONS', label: 'Seller Verifications', icon: FileCheck, badge: verifications.filter(v => v.verification_status === 'PENDING').length, alert: verifications.filter(v => v.verification_status === 'PENDING').length > 0 },
             { id: 'FUNDS', label: 'Platform Funds & Ledger', icon: DollarSign, badge: fundsSummary ? `GHS ${fundsSummary.system_bank_asset_ghs.toLocaleString()}` : undefined },
             { id: 'SELLERS', label: 'Sellers Directory', icon: Users },
-            { id: 'BUYERS', label: 'Buyer Phone Registry', icon: PhoneCall },
-            { id: 'BROADCAST', label: 'Broadcast Messaging Studio', icon: Send },
-            { id: 'AD_INVOICES', label: 'Ad Invoices & Receipts', icon: Zap, badge: adInvoicesCount || undefined },
-            { id: 'SETTINGS', label: '⚙️ Gateway & Logistics Settings', icon: Layers, superuserOnly: true },
+            { id: 'BUYERS', label: 'Buyer Registry', icon: PhoneCall },
+            { id: 'BROADCAST', label: 'Broadcast Studio', icon: Send },
+            { id: 'AD_INVOICES', label: 'Ad Invoices', icon: Zap, badge: adInvoicesCount || undefined },
+            { id: 'SETTINGS', label: '⚙️ Settings', icon: Layers, superuserOnly: true },
           ].filter(tab => !tab.superuserOnly || isSuperUser).map(tab => {
             const Icon = tab.icon;
             const isActive = activeTab === tab.id;
@@ -1111,6 +1178,139 @@ export const AdminDashboardView: React.FC = () => {
                         Resolve Dispute
                       </button>
                     </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB: SUSPENSION APPEALS DESK ───────────────────────────────────── */}
+        {activeTab === 'APPEALS' && (
+          <div className="space-y-6">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4 shadow-sm">
+              <div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                  <ShieldAlert className="h-5 w-5 text-red-600 dark:text-red-400" /> Account Suspension Appeals Desk ({appealsData?.length || 0})
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  Review formal reinstatement appeals submitted by suspended sellers. Approving an appeal automatically lifts the suspension lock.
+                </p>
+              </div>
+              <div className="flex items-center gap-3">
+                <select
+                  value={appealFilterStatus}
+                  onChange={(e) => setAppealFilterStatus(e.target.value)}
+                  className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-white text-xs rounded-xl px-3 py-2 font-semibold outline-none focus:ring-2 focus:ring-blue-500"
+                >
+                  <option value="ALL">All Appeals</option>
+                  <option value="PENDING">Pending Review</option>
+                  <option value="APPROVED">Approved & Reinstated</option>
+                  <option value="REJECTED">Rejected</option>
+                </select>
+                <button
+                  onClick={() => refetchAppeals()}
+                  className="px-3.5 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+                >
+                  <RefreshCw className={`h-3.5 w-3.5 ${loadingAppeals ? 'animate-spin' : ''}`} /> Refresh
+                </button>
+              </div>
+            </div>
+
+            <div className="space-y-4">
+              {loadingAppeals ? (
+                <div className="py-12 text-center text-slate-500 flex items-center justify-center gap-2">
+                  <RefreshCw className="h-5 w-5 animate-spin text-blue-500" />
+                  <span>Loading appeals queue...</span>
+                </div>
+              ) : !appealsData || appealsData.length === 0 ? (
+                <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-12 text-center text-slate-500">
+                  <ShieldCheck className="h-10 w-10 text-emerald-500/60 mx-auto mb-2" />
+                  <p className="font-bold text-slate-700 dark:text-slate-300">No suspension appeals found</p>
+                  <p className="text-xs text-slate-400 mt-1">There are currently no seller appeals matching the selected filter.</p>
+                </div>
+              ) : (
+                appealsData.map((appeal) => (
+                  <div key={appeal.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm space-y-4">
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+                      <div>
+                        <div className="flex items-center gap-2.5 flex-wrap mb-1">
+                          <span className="font-bold text-slate-900 dark:text-white text-base">@{appeal.username}</span>
+                          {appeal.shop_name && <span className="text-xs text-slate-500 dark:text-slate-400">({appeal.shop_name})</span>}
+                          <span className={`text-xs px-2.5 py-0.5 rounded-full font-bold uppercase tracking-wider ${
+                            appeal.status === 'APPROVED' ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30' :
+                            appeal.status === 'PENDING' ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border border-amber-500/30 animate-pulse' :
+                            'bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/30'
+                          }`}>
+                            {appeal.status === 'PENDING' ? '⏳ Pending Review' : appeal.status === 'APPROVED' ? '✅ Reinstated' : '❌ Rejected'}
+                          </span>
+                        </div>
+                        <div className="text-xs text-slate-500 dark:text-slate-400 flex items-center gap-3 flex-wrap">
+                          <span>Phone: <strong className="text-slate-700 dark:text-slate-300 font-mono">{appeal.phone_number}</strong></span>
+                          <span>• Email: {appeal.email || 'N/A'}</span>
+                          <span>• Submitted: <strong className="text-slate-700 dark:text-slate-300">{new Date(appeal.created_at).toLocaleString()}</strong></span>
+                        </div>
+                      </div>
+
+                      {appeal.status === 'PENDING' && (
+                        <div className="flex gap-2 flex-wrap sm:flex-nowrap">
+                          <button
+                            onClick={() => { setReviewingAppeal(appeal); setReviewDecision('APPROVE'); setReviewAdminNotes(''); setReviewMsg(''); }}
+                            className="py-2 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer"
+                          >
+                            <CheckCircle2 className="h-4 w-4" /> Approve & Reinstate
+                          </button>
+                          <button
+                            onClick={() => { setReviewingAppeal(appeal); setReviewDecision('REJECT'); setReviewAdminNotes(''); setReviewMsg(''); }}
+                            className="py-2 px-4 bg-rose-50 dark:bg-rose-950/80 hover:bg-rose-100 dark:hover:bg-rose-900 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-700/50 font-bold text-xs rounded-xl transition cursor-pointer"
+                          >
+                            Reject Appeal
+                          </button>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      {/* Left: Suspension Reason */}
+                      <div className="bg-red-50/50 dark:bg-red-950/20 p-4 rounded-xl border border-red-200 dark:border-red-900/40 space-y-2">
+                        <span className="font-bold text-red-900 dark:text-red-300 block border-b border-red-200 dark:border-red-900/40 pb-1">
+                          🚨 Account Suspension Details
+                        </span>
+                        <p className="text-slate-700 dark:text-slate-300 font-mono text-[11px] leading-relaxed">
+                          {appeal.suspension_reason || 'Manual Administrative Risk Lockout'}
+                        </p>
+                        {appeal.suspended_at && (
+                          <p className="text-[10px] text-slate-400">
+                            Suspended on: {new Date(appeal.suspended_at).toLocaleString()}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Right: Seller Justification & Remediation */}
+                      <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                        <span className="font-bold text-slate-800 dark:text-slate-200 block border-b border-slate-200 dark:border-slate-800 pb-1">
+                          📝 Seller Appeal Justification
+                        </span>
+                        <p className="text-slate-800 dark:text-slate-200 leading-relaxed italic">
+                          "{appeal.reason}"
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Reviewer notes if already decided */}
+                    {appeal.reviewed_at && (
+                      <div className="bg-slate-50 dark:bg-slate-950/60 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 text-xs text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                        <span className="font-bold text-slate-800 dark:text-slate-200 shrink-0">Review Decision:</span>
+                        <div>
+                          <span>Reviewed by <strong className="text-slate-800 dark:text-slate-200">@{appeal.reviewed_by_name || 'Admin'}</strong> on {new Date(appeal.reviewed_at).toLocaleString()}.</span>
+                          {appeal.admin_notes && (
+                            <p className="mt-1 font-mono text-[11px] text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-900 p-2 rounded-lg border border-slate-200 dark:border-slate-800">
+                              Feedback: {appeal.admin_notes}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 ))
               )}
@@ -1642,19 +1842,46 @@ export const AdminDashboardView: React.FC = () => {
                           </td>
                           <td className="px-5 py-4">
                             {s.is_suspended ? (
-                              <span className="px-2.5 py-1 bg-red-500/20 text-red-700 dark:text-red-300 font-mono text-xs rounded-full border border-red-500/40 font-bold">
-                                SUSPENDED
-                              </span>
+                              <div className="space-y-1">
+                                <span className="px-2.5 py-1 bg-red-500/20 text-red-700 dark:text-red-300 font-mono text-xs rounded-full border border-red-500/40 font-bold inline-block">
+                                  SUSPENDED
+                                </span>
+                                {s.suspension_reason && (
+                                  <p className="text-[10px] text-red-600 dark:text-red-400 font-medium max-w-[200px] truncate" title={s.suspension_reason}>
+                                    {s.suspension_reason}
+                                  </p>
+                                )}
+                              </div>
                             ) : s.dispute_health ? (
-                              <span className={`px-2.5 py-1 font-mono text-xs rounded-full border font-bold ${
-                                s.dispute_health.dispute_level === 'WARNING'
-                                  ? 'bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-500/40'
-                                  : s.dispute_health.dispute_level === 'ALERT'
-                                  ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
-                                  : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
-                              }`}>
-                                {s.dispute_health.dispute_rate_pct}% ({s.dispute_health.dispute_level})
-                              </span>
+                              <div className="space-y-1.5">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {/* Dispute Rate */}
+                                  <span className={`px-2 py-0.5 font-mono text-[11px] rounded-md border font-bold ${
+                                    s.dispute_health.dispute_level === 'WARNING'
+                                      ? 'bg-orange-500/20 text-orange-700 dark:text-orange-300 border-orange-500/40'
+                                      : s.dispute_health.dispute_level === 'ALERT'
+                                      ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                                      : 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500/40'
+                                  }`} title={`Dispute Rate: ${s.dispute_health.dispute_rate_pct}% (${s.dispute_health.dispute_count}/${s.dispute_health.total_orders})`}>
+                                    Disputes: {s.dispute_health.dispute_rate_pct}%
+                                  </span>
+                                  {/* Dispatch Expiry Rate */}
+                                  <span className={`px-2 py-0.5 font-mono text-[11px] rounded-md border font-bold ${
+                                    s.dispute_health.dispatch_expiry_level === 'SUSPENSION_RISK'
+                                      ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500/40'
+                                      : s.dispute_health.dispatch_expiry_level === 'WARNING'
+                                      ? 'bg-amber-500/20 text-amber-700 dark:text-amber-300 border-amber-500/40'
+                                      : 'bg-slate-500/20 text-slate-700 dark:text-slate-300 border-slate-500/30'
+                                  }`} title={`Dispatch Expiry Rate: ${s.dispute_health.dispatch_expiry_rate_pct ?? 0}% (${s.dispute_health.dispatch_expiry_count ?? 0}/${s.dispute_health.total_orders})`}>
+                                    Expiry: {s.dispute_health.dispatch_expiry_rate_pct ?? 0}%
+                                  </span>
+                                </div>
+                                {s.dispute_health.total_orders !== undefined && (
+                                  <p className="text-[10px] text-slate-400 font-mono">
+                                    {s.dispute_health.total_orders} evaluated orders
+                                  </p>
+                                )}
+                              </div>
                             ) : (
                               <span className="text-xs text-slate-500 font-mono">Normal</span>
                             )}
@@ -2209,7 +2436,7 @@ export const AdminDashboardView: React.FC = () => {
                   return (
                     <div
                       key={gw.id}
-                      onClick={() => handleUpdateSettings({ active_payment_gateway: gw.id })}
+                      onClick={() => handleGatewaySwitch(gw.id)}
                       className={`p-5 rounded-2xl border cursor-pointer transition flex flex-col justify-between ${
                         isActive
                           ? 'bg-blue-50 dark:bg-blue-600/15 border-blue-500 shadow-lg shadow-blue-500/10'
@@ -2408,47 +2635,21 @@ export const AdminDashboardView: React.FC = () => {
                   </div>
                 </div>
 
-                {/* 3. Item Return Dispatch Limit (Days) */}
-                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                    Item Return Dispatch Limit (Days)
-                  </label>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    Maximum days given to a buyer to dispatch an approved return shipment back to the seller.
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="number"
-                      min="1"
-                      max="30"
-                      value={platformSettings.return_dispatch_days ?? 3}
-                      onChange={(e) => handleUpdateSettings({ return_dispatch_days: parseInt(e.target.value) || 3 })}
-                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    />
-                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Days</span>
+                {/* 3 & 4. Return Policy — managed in code, not a runtime dial */}
+                <div className="bg-amber-50 dark:bg-amber-950/30 p-4 rounded-xl border border-amber-200 dark:border-amber-800/50 space-y-2">
+                  <div className="flex items-start gap-2.5">
+                    <div className="mt-0.5 text-amber-600 dark:text-amber-400 shrink-0">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-amber-700 dark:text-amber-400 block">Return Policy Settings — Managed in Code</span>
+                      <p className="text-[11px] text-amber-700/80 dark:text-amber-500/90 mt-0.5">
+                        <strong>Item Return Dispatch Limit</strong> (currently <strong>{platformSettings.return_dispatch_days ?? 2} days</strong>) and <strong>Return Auto-Refund Window</strong> (currently <strong>{platformSettings.return_auto_refund_hours ?? 48} hours</strong>) are intentionally locked from runtime editing. These define your legal return obligation to buyers — changing them on the fly could create unpredictable outcomes for in-flight returns and expose the platform to disputes. To adjust them, update <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded">DEFAULT_SYSTEM_SETTINGS</code> in <code className="font-mono bg-amber-100 dark:bg-amber-900/50 px-1 rounded">escrow/api.py</code> and redeploy.
+                      </p>
+                    </div>
                   </div>
                 </div>
 
-                {/* 4. Item Return Auto-Refund Window (Hours) */}
-                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                    Item Return Auto-Refund Window (Hours)
-                  </label>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    Hours after return dispatch before system auto-confirms return receipt and issues full refund to buyer.
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="number"
-                      min="1"
-                      max="168"
-                      value={platformSettings.return_auto_refund_hours ?? 48}
-                      onChange={(e) => handleUpdateSettings({ return_auto_refund_hours: parseInt(e.target.value) || 48 })}
-                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
-                    />
-                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Hours</span>
-                  </div>
-                </div>
 
                 {/* 5. Delivery OTP Verification Lock Window (Hours) */}
                 <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
@@ -2557,11 +2758,322 @@ export const AdminDashboardView: React.FC = () => {
                   </div>
                 </div>
               </div>
+
+              {/* Section 5: Seller Rating Governance Thresholds */}
+              <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                <div className="border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-amber-500" />
+                    Seller Rating Governance & Automated Account Suspension
+                  </h5>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                    Define thresholds for seller rating health warnings and automated risk lockouts based on aggregated seller reviews.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Rating Warning Threshold */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase font-mono block">
+                        Rating Warning Threshold
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 3.0 ★</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Sellers whose rating drops below this threshold receive an inline caution banner and alert email.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="1.0"
+                        max="5.0"
+                        value={platformSettings.seller_rating_warning_threshold ?? 3.0}
+                        onChange={(e) => handleUpdateSettings({ seller_rating_warning_threshold: parseFloat(e.target.value) || 3.0 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-amber-600 dark:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">Stars (1.0 – 5.0)</span>
+                    </div>
+                  </div>
+
+                  {/* Rating Suspension Threshold */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-rose-300 dark:border-rose-900/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase font-mono block">
+                        Rating Auto-Suspension Threshold
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 2.0 ★</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Sellers whose rating falls below this threshold are automatically locked out and links disabled until an appeal is approved.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.1"
+                        min="1.0"
+                        max="5.0"
+                        value={platformSettings.seller_rating_suspension_threshold ?? 2.0}
+                        onChange={(e) => handleUpdateSettings({ seller_rating_suspension_threshold: parseFloat(e.target.value) || 2.0 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">Stars (&lt; Warning)</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-lg px-2.5 py-1.5 mt-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                      <span className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold">Live impact — changing this immediately affects all sellers currently under review. Notify sellers before lowering this value.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 6: Seller Dispute Rate Governance Thresholds */}
+              <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                <div className="border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <ShieldAlert className="h-4 w-4 text-rose-500" />
+                    Seller Dispute Rate Governance & Automated Risk Controls
+                  </h5>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                    Configure sample size evaluation rules and dispute rate percentage thresholds for seller alert, warning, and automatic account suspension across 30-day, 15-tx, and lifetime windows.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                  {/* Min Sample Size */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase font-mono block">
+                        Min Sample Size
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 5</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Minimum paid transactions required before dispute rate is evaluated.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="100"
+                        value={platformSettings.dispute_min_sample_size ?? 5}
+                        onChange={(e) => handleUpdateSettings({ dispute_min_sample_size: parseInt(e.target.value) || 5 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-blue-600 dark:text-blue-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">Txns</span>
+                    </div>
+                  </div>
+
+                  {/* Alert Threshold % */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-yellow-600 dark:text-yellow-400 uppercase font-mono block">
+                        Alert Threshold
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 20%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Dispute rate (≥) triggering low-level caution notification on seller dashboard.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="1.0"
+                        max="99.0"
+                        value={platformSettings.dispute_alert_threshold ?? 20.0}
+                        onChange={(e) => handleUpdateSettings({ dispute_alert_threshold: parseFloat(e.target.value) || 20.0 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-yellow-600 dark:text-yellow-400 focus:outline-none focus:ring-2 focus:ring-yellow-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">%</span>
+                    </div>
+                  </div>
+
+                  {/* Warning Threshold % */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase font-mono block">
+                        Warning Threshold
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 30%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Dispute rate (≥) triggering elevated warning banner and email warning.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="1.0"
+                        max="99.0"
+                        value={platformSettings.dispute_warning_threshold ?? 30.0}
+                        onChange={(e) => handleUpdateSettings({ dispute_warning_threshold: parseFloat(e.target.value) || 30.0 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-amber-600 dark:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">%</span>
+                    </div>
+                  </div>
+
+                  {/* Auto-Suspension Threshold % */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-rose-300 dark:border-rose-900/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase font-mono block">
+                        Auto-Suspension
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 40%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Dispute rate (≥) triggering instant account suspension and link disabling.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="1.0"
+                        max="99.0"
+                        value={platformSettings.dispute_suspension_threshold ?? 40.0}
+                        onChange={(e) => handleUpdateSettings({ dispute_suspension_threshold: parseFloat(e.target.value) || 40.0 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">%</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-lg px-2.5 py-1.5 mt-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                      <span className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold">Live impact — sellers at this threshold will be auto-suspended immediately upon next health check. Communicate policy changes before adjusting.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Section 7: Dispatch Expiry Governance & Auto-Suspension */}
+              <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-4">
+                <div className="border-b border-slate-200 dark:border-slate-800 pb-2">
+                  <h5 className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider flex items-center gap-2">
+                    <Clock className="h-4 w-4 text-amber-500" />
+                    Dispatch Expiry Governance & Auto-Suspension Thresholds
+                  </h5>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 mt-0.5">
+                    Configure non-dispatch timeout rate percentage thresholds. Sellers who fail to dispatch items before the deadline will be warned or automatically suspended when minimum sample size requirements are met.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  {/* Warning Threshold % */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase font-mono block">
+                        Dispatch Expiry Warning Threshold
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 20%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Non-dispatch rate (≥) triggering warning banner on seller dashboard.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="1.0"
+                        max="99.0"
+                        value={platformSettings.dispatch_expiry_warning_threshold ?? 20.0}
+                        onChange={(e) => handleUpdateSettings({ dispatch_expiry_warning_threshold: parseFloat(e.target.value) || 20.0 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-amber-600 dark:text-amber-400 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">%</span>
+                    </div>
+                  </div>
+
+                  {/* Auto-Suspension Threshold % */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-rose-300 dark:border-rose-900/60 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400 uppercase font-mono block">
+                        Dispatch Expiry Auto-Suspension
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 35%</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      Non-dispatch rate (≥) triggering instant seller account suspension and link disabling.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.5"
+                        min="1.0"
+                        max="99.0"
+                        value={platformSettings.dispatch_expiry_suspension_threshold ?? 35.0}
+                        onChange={(e) => handleUpdateSettings({ dispatch_expiry_suspension_threshold: parseFloat(e.target.value) || 35.0 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-rose-600 dark:text-rose-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">%</span>
+                    </div>
+                    <div className="flex items-center gap-1.5 bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/50 rounded-lg px-2.5 py-1.5 mt-1">
+                      <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                      <span className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold">Live impact — sellers with expiry rate ≥ 35% will be auto-suspended on the next monitoring cycle.</span>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         )}
 
       </div>
+
+      {/* ─── MODAL: GATEWAY SWITCH CONFIRMATION ─────────────────────────────── */}
+      {gatewayConfirm && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full shadow-2xl shadow-amber-500/10 overflow-hidden">
+            {/* Header */}
+            <div className="px-6 py-4 bg-amber-950/30 border-b border-amber-500/20 flex items-center gap-3">
+              <div className="h-9 w-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4.5 w-4.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+              </div>
+              <div>
+                <h3 className="text-sm font-bold text-amber-300">Switch Payment Gateway?</h3>
+                <p className="text-[11px] text-slate-400 font-mono mt-0.5">This change takes effect immediately for all new checkouts</p>
+              </div>
+            </div>
+            {/* Body */}
+            <div className="px-6 py-5 space-y-4">
+              <div className="flex items-center gap-4 text-sm">
+                <div className="flex-1 text-center">
+                  <div className="text-[10px] text-slate-500 uppercase font-mono mb-1">Current</div>
+                  <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 font-mono font-bold text-slate-300">{platformSettings.active_payment_gateway}</div>
+                </div>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <div className="flex-1 text-center">
+                  <div className="text-[10px] text-amber-500/80 uppercase font-mono mb-1">Switching To</div>
+                  <div className="bg-amber-950/40 border border-amber-500/40 rounded-lg px-3 py-2 font-mono font-bold text-amber-300">{gatewayConfirm.pending}</div>
+                </div>
+              </div>
+              <div className="bg-rose-950/30 border border-rose-800/40 rounded-xl p-3 text-[11px] text-rose-300 leading-relaxed space-y-1">
+                <p className="font-bold text-rose-400">⚠ Important before you confirm:</p>
+                <ul className="list-disc list-inside space-y-0.5 text-rose-300/80">
+                  <li>All <strong>new buyer checkout sessions</strong> will immediately route through <strong>{gatewayConfirm.pending}</strong>.</li>
+                  <li>In-progress transactions are not affected — they remain on their original gateway.</li>
+                  <li>Ensure the new gateway credentials are fully configured in the backend environment before switching.</li>
+                </ul>
+              </div>
+            </div>
+            {/* Footer */}
+            <div className="px-6 pb-5 flex gap-3">
+              <button
+                onClick={() => setGatewayConfirm(null)}
+                className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 text-sm font-semibold transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmGatewaySwitch}
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 text-sm font-bold transition shadow-lg shadow-amber-500/20"
+              >
+                Confirm Switch
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ─── MODAL: INSPECT TRANSACTION DETAIL ───────────────────────────────── */}
       {selectedTxnId && (
@@ -2956,6 +3468,108 @@ export const AdminDashboardView: React.FC = () => {
                 >
                   {resolveMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}
                   Confirm Ruling
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── MODAL: REVIEW SUSPENSION APPEAL ─────────────────────────────────── */}
+      {reviewingAppeal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+              <div>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                  {reviewDecision === 'APPROVE' ? 'Approve Appeal & Reinstate Seller' : 'Reject Suspension Appeal'}
+                </h3>
+                <p className="text-xs font-mono text-slate-500">Seller @{reviewingAppeal.username}</p>
+              </div>
+              <button onClick={() => setReviewingAppeal(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition cursor-pointer">
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleReviewAppeal} className="p-6 space-y-4 text-xs">
+              <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
+                <span className="font-bold text-slate-800 dark:text-slate-200 block">Appeal Justification:</span>
+                <p className="text-slate-600 dark:text-slate-400 italic">"{reviewingAppeal.reason}"</p>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">Decision Action</label>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    onClick={() => setReviewDecision('APPROVE')}
+                    className={`py-2.5 px-3 rounded-xl border font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      reviewDecision === 'APPROVE'
+                        ? 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border-emerald-500'
+                        : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    <CheckCircle2 className="h-4 w-4" /> Approve & Reinstate
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setReviewDecision('REJECT')}
+                    className={`py-2.5 px-3 rounded-xl border font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                      reviewDecision === 'REJECT'
+                        ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border-rose-500'
+                        : 'bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 border-slate-200 dark:border-slate-800'
+                    }`}
+                  >
+                    <X className="h-4 w-4" /> Reject Appeal
+                  </button>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
+                  Manager Review Notes / Reason (Optional)
+                </label>
+                <textarea
+                  rows={3}
+                  value={reviewAdminNotes}
+                  onChange={(e) => setReviewAdminNotes(e.target.value)}
+                  placeholder="Record justification or instructions for the seller..."
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                />
+              </div>
+
+              {reviewMsg && (
+                <div className={`p-3 rounded-xl text-xs font-semibold ${
+                  reviewMsg.includes('reinstated') || reviewMsg.includes('approved') || reviewMsg.includes('success')
+                    ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                    : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+                }`}>
+                  {reviewMsg}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReviewingAppeal(null)}
+                  className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={reviewAppealMutation.isPending}
+                  className={`flex-1 py-2.5 text-white font-bold rounded-xl text-xs transition shadow flex items-center justify-center gap-2 cursor-pointer ${
+                    reviewDecision === 'APPROVE' ? 'bg-emerald-600 hover:bg-emerald-500' : 'bg-rose-600 hover:bg-rose-500'
+                  }`}
+                >
+                  {reviewAppealMutation.isPending ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Recording...
+                    </>
+                  ) : (
+                    `Confirm ${reviewDecision === 'APPROVE' ? 'Approval' : 'Rejection'}`
+                  )}
                 </button>
               </div>
             </form>

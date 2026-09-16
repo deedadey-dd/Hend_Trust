@@ -259,9 +259,10 @@ def notify_buyer_payment_received_task(transaction_id):
 
     try:
         txn = Transaction.objects.get(id=transaction_id)
+        buyer_first_name = txn.buyer_name.strip().split()[0] if txn.buyer_name and txn.buyer_name.strip() else "Buyer"
         
         msg = (
-            f"Payment successful for {txn.link.title}! "
+            f"Hello {buyer_first_name}, payment was successful for {txn.link.title}! "
             f"Track your order at {frontend_url}/track using Transaction ID: {txn.paystack_reference} and your phone number."
         )
         
@@ -270,7 +271,7 @@ def notify_buyer_payment_received_task(transaction_id):
         <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee;">
                 <h2 style="color: #3b82f6; margin-top: 0;">Payment Confirmed! 🎉</h2>
-                <p>Hello <strong>{txn.buyer_name}</strong>,</p>
+                <p>Hello <strong>{buyer_first_name}</strong>,</p>
                 <p>Great news! Your payment for <strong>{txn.link.title}</strong> was successful and your funds are now safely held in escrow.</p>
                 
                 <div style="background-color: white; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #3b82f6;">
@@ -339,14 +340,21 @@ def send_seller_payment_notification_task(transaction_id):
         seller_email = getattr(seller, 'email', None)
         seller_phone = getattr(seller, 'phone_number', None)
         
-        msg = f"New order received for {txn.link.title}! Amount: GHS {txn.total_amount_ghs}. Log in to dispatch: {frontend_url}/dashboard"
+        if getattr(seller, 'shop_name', None) and seller.shop_name.strip():
+            seller_greeting = seller.shop_name.strip()
+        elif getattr(seller, 'first_name', None) and seller.first_name.strip():
+            seller_greeting = seller.first_name.strip()
+        else:
+            seller_greeting = getattr(seller, 'username', 'Seller')
+        
+        msg = f"Hello {seller_greeting}, new order received for {txn.link.title}! Amount: GHS {txn.total_amount_ghs}. Log in to dispatch: {frontend_url}/dashboard"
         
         html_msg = f"""
         <html>
         <body style="font-family: Arial, sans-serif; color: #333; line-height: 1.6; max-width: 600px; margin: 0 auto; padding: 20px;">
             <div style="background-color: #f8f9fa; padding: 20px; border-radius: 8px; border: 1px solid #eee;">
                 <h2 style="color: #10b981; margin-top: 0;">New Order Received! 💰</h2>
-                <p>Hello <strong>{seller.username}</strong>,</p>
+                <p>Hello <strong>{seller_greeting}</strong>,</p>
                 <p>You have received a new payment of <strong>GHS {txn.total_amount_ghs}</strong> for <strong>{txn.link.title}</strong>.</p>
                 
                 <div style="background-color: white; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid #10b981;">
@@ -371,7 +379,7 @@ def send_seller_payment_notification_task(transaction_id):
         
         print("\n" + "="*60, flush=True)
         print("🔔 DEV: SELLER PAYMENT RECEIVED NOTIFICATION", flush=True)
-        print(f"To Seller Username: {seller.username} | Phone: {seller_phone} | Email: {seller_email}", flush=True)
+        print(f"To Seller ({seller_greeting}) | Phone: {seller_phone} | Email: {seller_email}", flush=True)
         print(f"Message: {msg}", flush=True)
         print("="*60 + "\n", flush=True)
         
@@ -429,41 +437,100 @@ def notify_seller_delivery_confirmed_task(transaction_id):
 def notify_dispute_resolution_task(transaction_id, action: str, admin_notes: str = None, refund_amount: float = 0.0, seller_amount: float = 0.0):
     """
     Sends SMS & Email notifications to BOTH buyer and seller summarizing the dispute resolution ruling.
-    action: 'RELEASE_TO_SELLER', 'FULL_REFUND_TO_BUYER', 'PARTIAL_REFUND_TO_BUYER'
+    Personalizes greetings: buyer by first name, seller by shop name (if present) or first name.
+    Includes paystack_reference and product title in all messages.
+    action: 'RELEASE_TO_SELLER', 'FULL_REFUND_TO_BUYER', 'PARTIAL_REFUND_TO_BUYER', 'REQUIRE_RETURN_FROM_BUYER'
     """
     from apps.escrow.models import Transaction
     try:
-        txn = Transaction.objects.get(id=transaction_id)
+        txn = Transaction.objects.select_related('link', 'link__seller').get(id=transaction_id)
         seller = getattr(txn.link, 'seller', None)
         s_phone = getattr(seller, 'phone_number', None) if seller else None
         s_email = getattr(seller, 'email', None) if seller else None
-        
-        notes_str = f" Notes: {admin_notes}" if admin_notes else ""
+
+        # Buyer addressing: First name
+        if txn.buyer_name and txn.buyer_name.strip():
+            buyer_greeting_name = txn.buyer_name.strip().split()[0]
+        else:
+            buyer_greeting_name = "Buyer"
+
+        # Seller addressing: Shop name if available, else first name, else username
+        if seller:
+            if getattr(seller, 'shop_name', None) and seller.shop_name.strip():
+                seller_greeting_name = seller.shop_name.strip()
+            elif getattr(seller, 'first_name', None) and seller.first_name.strip():
+                seller_greeting_name = seller.first_name.strip()
+            elif getattr(seller, 'username', None) and seller.username.strip():
+                seller_greeting_name = seller.username.strip()
+            else:
+                seller_greeting_name = "Seller"
+        else:
+            seller_greeting_name = "Seller"
+
+        notes_str = f" Arbitration Notes: {admin_notes}." if admin_notes else ""
+        ref_id = txn.paystack_reference
+        product_title = txn.link.title if txn.link else "Order"
 
         if action == "RELEASE_TO_SELLER":
-            b_msg = f"Dispute Ruling: The dispute for order {txn.paystack_reference} ({txn.link.title}) has been resolved. The funds have been released to the seller.{notes_str}"
-            s_msg = f"Dispute Resolved: The dispute for order {txn.paystack_reference} ({txn.link.title}) has been resolved in your favor and funds have been credited to your account.{notes_str}"
-            
+            b_msg = (
+                f"Hello {buyer_greeting_name}, the dispute for order #{ref_id} ({product_title}) has been resolved. "
+                f"Following arbitration, the escrow funds (GHS {txn.total_amount_ghs:.2f}) have been released to the seller.{notes_str} "
+                f"Thank you for using HendAxis Trust."
+            )
+            s_msg = (
+                f"Hello {seller_greeting_name}, the dispute for order #{ref_id} ({product_title}) has been resolved in your favor. "
+                f"Escrow funds of GHS {txn.total_amount_ghs:.2f} have been released and disbursed to your account.{notes_str} "
+                f"Thank you for selling on HendAxis Trust."
+            )
+
         elif action == "FULL_REFUND_TO_BUYER":
-            b_msg = f"Dispute Ruling: Your dispute for order {txn.paystack_reference} ({txn.link.title}) was approved for a full refund of GHS {txn.total_amount_ghs:.2f}.{notes_str}"
-            s_msg = f"Dispute Resolved: The dispute for order {txn.paystack_reference} ({txn.link.title}) was resolved with a full refund to the buyer.{notes_str}"
+            b_msg = (
+                f"Hello {buyer_greeting_name}, your dispute for order #{ref_id} ({product_title}) has been resolved in your favor. "
+                f"A full refund of GHS {txn.total_amount_ghs:.2f} has been approved and issued to your original payment method.{notes_str} "
+                f"Thank you for using HendAxis Trust."
+            )
+            s_msg = (
+                f"Hello {seller_greeting_name}, the dispute for order #{ref_id} ({product_title}) has been resolved with a full refund of GHS {txn.total_amount_ghs:.2f} issued to the buyer.{notes_str} "
+                f"Thank you for your cooperation."
+            )
 
         elif action in ["PARTIAL_REFUND_TO_BUYER", "PARTIAL_REFUND"]:
-            b_msg = f"Dispute Ruling: A partial refund of GHS {refund_amount:.2f} for order {txn.paystack_reference} ({txn.link.title}) has been approved.{notes_str}"
-            s_msg = f"Dispute Resolved: Order {txn.paystack_reference} ({txn.link.title}) settled. GHS {seller_amount:.2f} allocated to you, GHS {refund_amount:.2f} refunded to buyer.{notes_str}"
+            b_msg = (
+                f"Hello {buyer_greeting_name}, the dispute for order #{ref_id} ({product_title}) has been resolved with a split settlement. "
+                f"A partial refund of GHS {refund_amount:.2f} has been approved and issued to you.{notes_str} "
+                f"Thank you for using HendAxis Trust."
+            )
+            s_msg = (
+                f"Hello {seller_greeting_name}, the dispute for order #{ref_id} ({product_title}) has been settled. "
+                f"GHS {seller_amount:.2f} has been credited to your account and GHS {refund_amount:.2f} has been refunded to the buyer.{notes_str} "
+                f"Thank you for selling on HendAxis Trust."
+            )
+
+        elif action in ["REQUIRE_RETURN_FROM_BUYER", "RETURN_IN_PROGRESS"]:
+            from apps.escrow.api import get_platform_settings
+            return_days = get_platform_settings().get("return_dispatch_days", 3)
+            b_msg = (
+                f"Hello {buyer_greeting_name}, following dispute arbitration for order #{ref_id} ({product_title}), return of the item has been approved. "
+                f"Please dispatch the package back to the seller within {return_days} days and submit your return tracking details on HendAxis Trust.{notes_str}"
+            )
+            s_msg = (
+                f"Hello {seller_greeting_name}, the dispute for order #{ref_id} ({product_title}) has been ruled as Item Return Required. "
+                f"The buyer has been instructed to ship the item back within {return_days} days. Escrow funds will remain held until return receipt is verified.{notes_str}"
+            )
+
         else:
             return
 
         # Send Buyer notifications
         dispatch_sms_task.delay(txn.buyer_phone, b_msg)
         if txn.buyer_email:
-            dispatch_email_task.delay(txn.buyer_email, f"Dispute Resolution Ruling - Order #{txn.paystack_reference}", b_msg)
+            dispatch_email_task.delay(txn.buyer_email, f"Dispute Resolution Ruling - Order #{ref_id}", b_msg)
 
         # Send Seller notifications
         if s_phone:
             dispatch_sms_task.delay(s_phone, s_msg)
         if s_email:
-            dispatch_email_task.delay(s_email, f"Dispute Resolution Ruling - Order #{txn.paystack_reference}", s_msg)
+            dispatch_email_task.delay(s_email, f"Dispute Resolution Ruling - Order #{ref_id}", s_msg)
 
     except Transaction.DoesNotExist:
         pass

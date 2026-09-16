@@ -56,6 +56,7 @@ class SellerTransactionSchema(Schema):
     manager_dispute_notes: Optional[str] = None
     manager_dispute_photos: Optional[list[str]] = []
     shipping_timeout_days: int = 4
+    inspection_hours_allowed: int = 24
     otp_reveal_delay_hours: int = 24
 
 @escrow_router.get("/seller/transactions", response=list[SellerTransactionSchema])
@@ -141,6 +142,8 @@ def get_seller_transactions(request, search: str = None, status: str = None, sta
             "manager_dispute_notes": t.manager_dispute_notes,
             "manager_dispute_photos": t.manager_dispute_photos or [],
             "otp_reveal_delay_hours": otp_delay_hrs,
+            "shipping_timeout_days": timeout_days,
+            "inspection_hours_allowed": get_inspection_hours_for_amount(t.total_amount_ghs),
         })
             
     return items
@@ -172,87 +175,130 @@ def compute_seller_dispute_health(seller_user) -> dict:
     from django.db.models import Q
     from django.core.mail import send_mail
 
-    # All paid transactions belonging to seller
+    # All paid transactions belonging to seller (if reinstated, only evaluate post-reinstatement orders)
     all_paid_txns = Transaction.objects.filter(
         link__seller=seller_user
     ).exclude(
         status__in=[TransactionStatus.AWAITING_PAYMENT, TransactionStatus.CANCELLED]
     )
 
+    reinstated_at = getattr(seller_user, 'reinstated_at', None)
+    if reinstated_at:
+        all_paid_txns = all_paid_txns.filter(created_at__gte=reinstated_at)
+
     total_paid_lifetime = all_paid_txns.count()
 
     def get_disputed_count(qs):
         return qs.filter(Q(status=TransactionStatus.DISPUTED) | ~Q(buyer_dispute_reason='')).count()
+
+    def get_expired_dispatch_count(qs):
+        return qs.filter(auto_cancelled_non_dispatch=True).count()
+
+    # Dynamic platform configuration for dispute & dispatch governance
+    cfg = get_platform_settings()
+    min_sample_size = int(cfg.get("dispute_min_sample_size", 5))
+    alert_threshold = float(cfg.get("dispute_alert_threshold", 20.0))
+    warning_threshold = float(cfg.get("dispute_warning_threshold", 30.0))
+    suspension_threshold = float(cfg.get("dispute_suspension_threshold", 40.0))
+
+    dispatch_expiry_warning_threshold = float(cfg.get("dispatch_expiry_warning_threshold", 20.0))
+    dispatch_expiry_suspension_threshold = float(cfg.get("dispatch_expiry_suspension_threshold", 35.0))
 
     # Set 1: Rolling 30-day window
     thirty_days_ago = timezone.now() - timedelta(days=30)
     paid_30d_qs = all_paid_txns.filter(created_at__gte=thirty_days_ago)
     paid_30d_count = paid_30d_qs.count()
     disputed_30d_count = get_disputed_count(paid_30d_qs)
+    expired_30d_count = get_expired_dispatch_count(paid_30d_qs)
 
     # Set 2: Recent 15 paid transactions
     recent_15_ids = list(all_paid_txns.order_by('-created_at')[:15].values_list('id', flat=True))
     paid_15_qs = Transaction.objects.filter(id__in=recent_15_ids)
     paid_15_count = len(recent_15_ids)
     disputed_15_count = get_disputed_count(paid_15_qs)
+    expired_15_count = get_expired_dispatch_count(paid_15_qs)
 
-    # Set 3: Lifetime paid transactions
+    # Set 3: Lifetime (or post-reinstatement) paid transactions
     disputed_lifetime_count = get_disputed_count(all_paid_txns)
+    expired_lifetime_count = get_expired_dispatch_count(all_paid_txns)
 
-    # Calculate dispute rates for sets where paid_count > 5
+    # Calculate dispute rates & dispatch expiry rates for sets where paid_count >= min_sample_size
     applicable_rates = []
+    applicable_dispatch_rates = []
     
-    if paid_30d_count > 5:
+    if paid_30d_count >= min_sample_size:
         applicable_rates.append({
             'sample_name': '30-Day Window',
             'paid_count': paid_30d_count,
             'disputed_count': disputed_30d_count,
             'rate': round((disputed_30d_count / paid_30d_count) * 100.0, 1)
         })
+        applicable_dispatch_rates.append({
+            'sample_name': '30-Day Window',
+            'paid_count': paid_30d_count,
+            'expired_count': expired_30d_count,
+            'rate': round((expired_30d_count / paid_30d_count) * 100.0, 1)
+        })
 
-    if paid_15_count > 5:
+    if paid_15_count >= min_sample_size:
         applicable_rates.append({
             'sample_name': 'Last 15 Transactions',
             'paid_count': paid_15_count,
             'disputed_count': disputed_15_count,
             'rate': round((disputed_15_count / paid_15_count) * 100.0, 1)
         })
+        applicable_dispatch_rates.append({
+            'sample_name': 'Last 15 Transactions',
+            'paid_count': paid_15_count,
+            'expired_count': expired_15_count,
+            'rate': round((expired_15_count / paid_15_count) * 100.0, 1)
+        })
 
-    if total_paid_lifetime > 5:
+    if total_paid_lifetime >= min_sample_size:
         applicable_rates.append({
-            'sample_name': 'Lifetime',
+            'sample_name': 'Lifetime' if not reinstated_at else 'Post-Reinstatement',
             'paid_count': total_paid_lifetime,
             'disputed_count': disputed_lifetime_count,
             'rate': round((disputed_lifetime_count / total_paid_lifetime) * 100.0, 1)
         })
+        applicable_dispatch_rates.append({
+            'sample_name': 'Lifetime' if not reinstated_at else 'Post-Reinstatement',
+            'paid_count': total_paid_lifetime,
+            'expired_count': expired_lifetime_count,
+            'rate': round((expired_lifetime_count / total_paid_lifetime) * 100.0, 1)
+        })
 
-    # Pick the highest dispute rate among sets with > 5 paid transactions
+    # Pick the highest dispute rate among sets with >= min_sample_size paid transactions
     max_rate = 0.0
     highest_sample = None
     if applicable_rates:
         highest_sample = max(applicable_rates, key=lambda x: x['rate'])
         max_rate = highest_sample['rate']
 
+    # Pick highest dispatch expiry rate
+    max_dispatch_rate = 0.0
+    highest_dispatch_sample = None
+    if applicable_dispatch_rates:
+        highest_dispatch_sample = max(applicable_dispatch_rates, key=lambda x: x['rate'])
+        max_dispatch_rate = highest_dispatch_sample['rate']
+
     dispute_level = "NORMAL"
     if seller_user.is_suspended:
         dispute_level = "SUSPENDED"
-    elif applicable_rates:
-        if max_rate >= 40.0:
+    elif applicable_rates or applicable_dispatch_rates:
+        # 1. Dispute Rate Auto-Suspension Check
+        if applicable_rates and max_rate >= suspension_threshold:
             dispute_level = "SUSPENDED"
-            # Auto-suspend seller
             seller_user.is_suspended = True
-            seller_user.suspension_reason = f"Automated Suspension: Dispute rate reached {max_rate}% (≥40%) in {highest_sample['sample_name']} sample set ({highest_sample['disputed_count']} of {highest_sample['paid_count']} transactions disputed)."
+            seller_user.suspension_reason = f"Automated Suspension: Dispute rate reached {max_rate}% (≥{suspension_threshold}%) in {highest_sample['sample_name']} sample set ({highest_sample['disputed_count']} of {highest_sample['paid_count']} transactions disputed)."
             seller_user.suspended_at = timezone.now()
             seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
-
-            # Deactivate all active payment links for this seller
             PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
 
-            # Send Email Alert
             try:
                 send_mail(
                     subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended",
-                    message=f"Hi {seller_user.username},\n\nYour seller account has been suspended because your dispute rate reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nYour payment links have been disabled and you are currently blocked from creating new payment links.\n\nPlease contact HendAxis Trust support/management to request an account review and manual reinstatement.",
+                    message=f"Hi {seller_user.username},\n\nYour seller account has been suspended because your dispute rate reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nYour payment links have been disabled and you are currently blocked from creating new payment links.\n\nPlease log in to your dashboard to submit an appeal for manual review by our administration team.",
                     from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
                     recipient_list=[seller_user.email] if seller_user.email else [],
                     fail_silently=True
@@ -260,20 +306,107 @@ def compute_seller_dispute_health(seller_user) -> dict:
             except Exception as mail_err:
                 print(f"Error sending suspension email: {mail_err}")
 
-        elif max_rate >= 30.0:
+        # 2. Dispatch Expiry Rate Auto-Suspension Check
+        elif applicable_dispatch_rates and max_dispatch_rate >= dispatch_expiry_suspension_threshold:
+            dispute_level = "SUSPENDED"
+            seller_user.is_suspended = True
+            seller_user.suspension_reason = f"Automated Suspension: Dispatch expiry rate reached {max_dispatch_rate}% (≥{dispatch_expiry_suspension_threshold}%) with {highest_dispatch_sample['expired_count']} of {highest_dispatch_sample['paid_count']} paid orders unfulfilled in {highest_dispatch_sample['sample_name']}."
+            seller_user.suspended_at = timezone.now()
+            seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
+            PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
+
+            try:
+                send_mail(
+                    subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended (Dispatch Defaults)",
+                    message=f"Hi {seller_user.username},\n\nYour seller account has been suspended because your dispatch expiry rate reached {max_dispatch_rate}% ({highest_dispatch_sample['expired_count']} of {highest_dispatch_sample['paid_count']} paid orders expired undispatched) in {highest_dispatch_sample['sample_name']}.\n\nYour active payment links have been deactivated.\n\nPlease log in to your dashboard to submit an appeal for manual review by our administration team.",
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending dispatch suspension email: {mail_err}")
+
+        # Warnings
+        elif applicable_rates and max_rate >= warning_threshold:
             dispute_level = "WARNING"
             try:
                 send_mail(
                     subject="WARNING: Elevated Dispute Rate on Your HendAxis Trust Account",
-                    message=f"Hi {seller_user.username},\n\nYour dispute rate has reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nPlease ensure high product quality and prompt customer support. Reaching 40% will cause automatic account suspension.",
+                    message=f"Hi {seller_user.username},\n\nYour dispute rate has reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nPlease ensure high product quality and prompt customer support. Reaching {suspension_threshold}% will cause automatic account suspension.",
                     from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
                     recipient_list=[seller_user.email] if seller_user.email else [],
                     fail_silently=True
                 )
             except Exception as mail_err:
                 print(f"Error sending warning email: {mail_err}")
-        elif max_rate >= 20.0:
+
+        elif applicable_dispatch_rates and max_dispatch_rate >= dispatch_expiry_warning_threshold:
+            if dispute_level == "NORMAL":
+                dispute_level = "DISPATCH_WARNING"
+            try:
+                send_mail(
+                    subject="WARNING: High Dispatch Expiry Rate on Your HendAxis Trust Account",
+                    message=f"Hi {seller_user.username},\n\nYour dispatch expiry rate has reached {max_dispatch_rate}% ({highest_dispatch_sample['expired_count']} of {highest_dispatch_sample['paid_count']} paid orders unfulfilled) in {highest_dispatch_sample['sample_name']}.\n\nPlease ensure you dispatch all orders within the shipping timeout window. Reaching {dispatch_expiry_suspension_threshold}% will cause automatic account suspension.",
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending dispatch warning email: {mail_err}")
+
+        elif applicable_rates and max_rate >= alert_threshold:
             dispute_level = "ALERT"
+
+    # ─── Rating-Based Governance ─────────────────────────────────────────────
+    from apps.reviews.models import SellerReview
+    from django.db.models import Avg
+
+    rating_warning_threshold = float(cfg.get("seller_rating_warning_threshold", 3.0))
+    rating_suspension_threshold = float(cfg.get("seller_rating_suspension_threshold", 2.0))
+
+    active_reviews_qs = SellerReview.objects.filter(seller=seller_user, is_active=True)
+    if reinstated_at:
+        active_reviews_qs = active_reviews_qs.filter(created_at__gte=reinstated_at)
+
+    total_reviews_count = active_reviews_qs.count()
+    avg_rating = None
+    rating_warning = False
+
+    if total_reviews_count >= 3:  # Only evaluate once seller has meaningful review volume
+        agg = active_reviews_qs.aggregate(avg=Avg('rating_overall'))
+        avg_rating = round(float(agg['avg']), 2) if agg['avg'] is not None else None
+
+        if avg_rating is not None and not seller_user.is_suspended:
+            if avg_rating < rating_suspension_threshold:
+                dispute_level = "SUSPENDED"
+                suspension_msg = f"Automated Suspension: Aggregated seller rating fell to {avg_rating:.1f} ★ (below suspension threshold of {rating_suspension_threshold} ★)."
+                seller_user.is_suspended = True
+                seller_user.suspension_reason = suspension_msg
+                seller_user.suspended_at = timezone.now()
+                seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
+                PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
+                try:
+                    send_mail(
+                        subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended",
+                        message=(
+                            f"Hi {seller_user.username},\n\n"
+                            f"Your seller account has been automatically suspended because your aggregated "
+                            f"seller rating fell to {avg_rating:.1f} stars — below our minimum threshold of "
+                            f"{rating_suspension_threshold} stars across {total_reviews_count} reviews.\n\n"
+                            f"Your payment links have been deactivated. Please log in to your dashboard to "
+                            f"submit an appeal for manual review by our administration team."
+                        ),
+                        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                        recipient_list=[seller_user.email] if seller_user.email else [],
+                        fail_silently=True
+                    )
+                except Exception as mail_err:
+                    print(f"Error sending rating suspension email: {mail_err}")
+
+            elif avg_rating < rating_warning_threshold:
+                if dispute_level == "NORMAL":
+                    dispute_level = "RATING_WARNING"
+                rating_warning = True
 
     return {
         "total_paid_transactions": total_paid_lifetime,
@@ -282,10 +415,29 @@ def compute_seller_dispute_health(seller_user) -> dict:
         "dispute_level": dispute_level,
         "is_suspended": seller_user.is_suspended,
         "suspension_reason": seller_user.suspension_reason or "",
-        "sample_evaluated": highest_sample['sample_name'] if highest_sample else "Insufficient volume (≤5 txns)",
+        "sample_evaluated": highest_sample['sample_name'] if highest_sample else f"Insufficient volume (<{min_sample_size} txns)",
         "sample_paid_count": highest_sample['paid_count'] if highest_sample else total_paid_lifetime,
-        "sample_disputed_count": highest_sample['disputed_count'] if highest_sample else disputed_lifetime_count
+        "sample_disputed_count": highest_sample['disputed_count'] if highest_sample else disputed_lifetime_count,
+        # Dispute rate thresholds
+        "dispute_alert_threshold": alert_threshold,
+        "dispute_warning_threshold": warning_threshold,
+        "dispute_suspension_threshold": suspension_threshold,
+        "dispute_min_sample_size": min_sample_size,
+        # Dispatch Expiry Governance Metrics
+        "dispatch_expiry_rate_pct": max_dispatch_rate,
+        "total_expired_dispatches": expired_lifetime_count,
+        "dispatch_expiry_warning_threshold": dispatch_expiry_warning_threshold,
+        "dispatch_expiry_suspension_threshold": dispatch_expiry_suspension_threshold,
+        "reinstated_at": seller_user.reinstated_at.isoformat() if getattr(seller_user, 'reinstated_at', None) else None,
+        # Rating metrics
+        "avg_rating": avg_rating,
+        "total_reviews_count": total_reviews_count,
+        "rating_warning": rating_warning,
+        "rating_warning_threshold": rating_warning_threshold,
+        "rating_suspension_threshold": rating_suspension_threshold,
     }
+
+
 
 
 @escrow_router.get("/seller/summary-metrics", response=SellerSummaryMetricsSchema)
@@ -1233,10 +1385,11 @@ def seller_confirm_return(request, transaction_id: uuid.UUID, data: ConfirmRetur
     )
 
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
-    b_msg = f"Return Confirmed & Refunded! The seller has received the returned item for order {transaction.paystack_reference} ({transaction.link.title}). A full refund of GHS {transaction.total_amount_ghs:.2f} has been processed back to your original payment method."
+    buyer_greeting_name = transaction.buyer_name.strip().split()[0] if transaction.buyer_name and transaction.buyer_name.strip() else "Buyer"
+    b_msg = f"Hello {buyer_greeting_name}, your return for order #{transaction.paystack_reference} ({transaction.link.title}) has been confirmed by the seller. A full refund of GHS {transaction.total_amount_ghs:.2f} has been processed back to your original payment method. Thank you for using HendAxis Trust."
     dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
     if transaction.buyer_email:
-        dispatch_email_task.delay(transaction.buyer_email, "Item Return Confirmed & Refund Issued", b_msg)
+        dispatch_email_task.delay(transaction.buyer_email, f"Item Return Confirmed & Refund Issued - Order #{transaction.paystack_reference}", b_msg)
 
     return {"message": "Return confirmed. Escrow refund issued to buyer."}
 
@@ -1404,19 +1557,7 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
         cfg = get_platform_settings()
         return_days = cfg.get("return_dispatch_days", 3)
 
-        from apps.core.tasks import dispatch_sms_task, dispatch_email_task
-        notes_str = f" Notes: {data.admin_notes}" if data.admin_notes else ""
-        b_msg = f"Dispute Ruling: Return Approved. Please dispatch order {transaction.paystack_reference} ({transaction.link.title}) back to the seller within {return_days} days and submit return tracking details.{notes_str}"
-        dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
-        if transaction.buyer_email:
-            dispatch_email_task.delay(transaction.buyer_email, "Dispute Ruling: Return Approved", b_msg)
-
-        s_msg = f"Dispute Ruling: Return Required. The buyer has been instructed to ship order {transaction.paystack_reference} back within {return_days} days. Escrow funds will remain held until return receipt is verified.{notes_str}"
-        seller = transaction.link.seller
-        s_phone = getattr(seller, 'phone_number', None)
-        s_email = getattr(seller, 'email', None)
-        if s_phone: dispatch_sms_task.delay(s_phone, s_msg)
-        if s_email: dispatch_email_task.delay(s_email, "Dispute Ruling: Item Return Required", s_msg)
+        notify_dispute_resolution_task.delay(transaction.id, "REQUIRE_RETURN_FROM_BUYER", data.admin_notes)
 
         compress_dispute_images_total_1mb(transaction)
         return {"message": f"Dispute marked as Return Required ({return_days}-day limit). Buyer notified to dispatch return shipment."}
@@ -1597,6 +1738,7 @@ class AdminSuspendSellerSchema(Schema):
     reason: Optional[str] = "Manual administrative suspension by management."
 
 @admin_router.post("/sellers/{seller_id}/suspend", response=dict)
+@escrow_router.post("/admin/sellers/{seller_id}/suspend", response=dict)
 def admin_suspend_seller(request, seller_id: uuid.UUID, data: AdminSuspendSellerSchema):
     is_admin_user(request)
     from apps.users.models import User
@@ -1621,6 +1763,7 @@ def admin_suspend_seller(request, seller_id: uuid.UUID, data: AdminSuspendSeller
     }
 
 @admin_router.post("/sellers/{seller_id}/reinstate", response=dict)
+@escrow_router.post("/admin/sellers/{seller_id}/reinstate", response=dict)
 def admin_reinstate_seller(request, seller_id: uuid.UUID):
     is_admin_user(request)
     from apps.users.models import User
@@ -1629,13 +1772,86 @@ def admin_reinstate_seller(request, seller_id: uuid.UUID):
     seller.is_suspended = False
     seller.suspension_reason = ""
     seller.suspended_at = None
-    seller.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
+    seller.reinstated_at = timezone.now()
+    seller.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at', 'reinstated_at'])
 
     return {
         "message": f"Seller @{seller.username} has been reinstated successfully.",
         "seller_id": str(seller.id),
         "is_suspended": False
     }
+
+
+# ─── Admin: Suspension Appeals Review ─────────────────────────────────────────
+
+class ReviewSuspensionAppealSchema(Schema):
+    decision: str
+    admin_notes: Optional[str] = ""
+
+
+@admin_router.get("/appeals", response=List[dict])
+def list_suspension_appeals(request, status: Optional[str] = None):
+    is_admin_user(request)
+    from apps.users.models import SuspensionAppeal
+    qs = SuspensionAppeal.objects.select_related('user', 'reviewed_by').all().order_by('-created_at')
+    if status and status.upper() in ['PENDING', 'APPROVED', 'REJECTED']:
+        qs = qs.filter(status=status.upper())
+
+    return [
+        {
+            "id": str(appeal.id),
+            "user_id": str(appeal.user.id),
+            "username": appeal.user.username,
+            "shop_name": appeal.user.shop_name or "",
+            "email": appeal.user.email or "",
+            "phone_number": appeal.user.phone_number or "",
+            "is_suspended": appeal.user.is_suspended,
+            "suspension_reason": appeal.user.suspension_reason or "",
+            "suspended_at": appeal.user.suspended_at.isoformat() if appeal.user.suspended_at else None,
+            "reason": appeal.reason,
+            "status": appeal.status,
+            "admin_notes": appeal.admin_notes or "",
+            "reviewed_by_name": appeal.reviewed_by.username if appeal.reviewed_by else None,
+            "created_at": appeal.created_at.isoformat(),
+            "reviewed_at": appeal.reviewed_at.isoformat() if appeal.reviewed_at else None,
+        }
+        for appeal in qs
+    ]
+
+
+@admin_router.post("/appeals/{appeal_id}/review", response=dict)
+def review_suspension_appeal(request, appeal_id: uuid.UUID, data: ReviewSuspensionAppealSchema):
+    is_admin_user(request)
+    from apps.users.models import SuspensionAppeal, AppealStatus
+    appeal = get_object_or_404(SuspensionAppeal.objects.select_related('user'), id=appeal_id)
+
+    decision = data.decision.upper().strip()
+    if decision not in ["APPROVE", "REJECT"]:
+        raise HttpError(400, "Decision must be either 'APPROVE' or 'REJECT'.")
+
+    user = appeal.user
+    if decision == "APPROVE":
+        appeal.status = AppealStatus.APPROVED
+        user.is_suspended = False
+        user.suspension_reason = ""
+        user.suspended_at = None
+        user.reinstated_at = timezone.now()
+        user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at', 'reinstated_at'])
+    else:
+        appeal.status = AppealStatus.REJECTED
+
+    appeal.admin_notes = (data.admin_notes or "").strip()
+    appeal.reviewed_by = request.user
+    appeal.reviewed_at = timezone.now()
+    appeal.save(update_fields=['status', 'admin_notes', 'reviewed_by', 'reviewed_at'])
+
+    return {
+        "message": f"Appeal has been {'approved and user reinstated' if decision == 'APPROVE' else 'rejected'}.",
+        "appeal_id": str(appeal.id),
+        "status": appeal.status,
+        "is_suspended": user.is_suspended
+    }
+
 
 @admin_router.get("/buyers")
 def get_buyers_admin(request, search: Optional[str] = None):
@@ -2033,7 +2249,7 @@ DEFAULT_SYSTEM_SETTINGS = {
     "shipping_timeout_days": 4,
     "auto_delivery_hours": 48,
     "otp_reveal_delay_hours": 24,
-    "return_dispatch_days": 3,
+    "return_dispatch_days": 2,
     "return_auto_refund_hours": 48,
     "unpaid_auto_archive_days": 3,
     "inspection_tier1_threshold": 2000.0,
@@ -2041,6 +2257,17 @@ DEFAULT_SYSTEM_SETTINGS = {
     "inspection_tier2_threshold": 10000.0,
     "inspection_tier2_hours": 48,
     "inspection_tier3_hours": 72,
+    # Seller Rating Governance Thresholds
+    "seller_rating_warning_threshold": 3.0,
+    "seller_rating_suspension_threshold": 2.0,
+    # Seller Dispute Rate Governance Thresholds
+    "dispute_min_sample_size": 5,
+    "dispute_alert_threshold": 20.0,
+    "dispute_warning_threshold": 30.0,
+    "dispute_suspension_threshold": 40.0,
+    # Seller Dispatch Expiry Governance Thresholds
+    "dispatch_expiry_warning_threshold": 20.0,
+    "dispatch_expiry_suspension_threshold": 35.0,
 }
 
 
@@ -2085,7 +2312,7 @@ class PublicPlatformSettingsSchema(Schema):
     shipping_timeout_days: int = 4
     auto_delivery_hours: int = 48
     otp_reveal_delay_hours: int = 24
-    return_dispatch_days: int = 3
+    return_dispatch_days: int = 2
     return_auto_refund_hours: int = 48
     unpaid_auto_archive_days: int = 3
     inspection_tier1_threshold: float = 2000.0
@@ -2093,6 +2320,14 @@ class PublicPlatformSettingsSchema(Schema):
     inspection_tier2_threshold: float = 10000.0
     inspection_tier2_hours: int = 48
     inspection_tier3_hours: int = 72
+    seller_rating_warning_threshold: float = 3.0
+    seller_rating_suspension_threshold: float = 2.0
+    dispute_min_sample_size: int = 5
+    dispute_alert_threshold: float = 20.0
+    dispute_warning_threshold: float = 30.0
+    dispute_suspension_threshold: float = 40.0
+    dispatch_expiry_warning_threshold: float = 20.0
+    dispatch_expiry_suspension_threshold: float = 35.0
 
 
 class PlatformSettingsSchema(Schema):
@@ -2102,7 +2337,7 @@ class PlatformSettingsSchema(Schema):
     shipping_timeout_days: int = 4
     auto_delivery_hours: int = 48
     otp_reveal_delay_hours: int = 24
-    return_dispatch_days: int = 3
+    return_dispatch_days: int = 2
     return_auto_refund_hours: int = 48
     unpaid_auto_archive_days: int = 3
     inspection_tier1_threshold: float = 2000.0
@@ -2110,6 +2345,14 @@ class PlatformSettingsSchema(Schema):
     inspection_tier2_threshold: float = 10000.0
     inspection_tier2_hours: int = 48
     inspection_tier3_hours: int = 72
+    seller_rating_warning_threshold: float = 3.0
+    seller_rating_suspension_threshold: float = 2.0
+    dispute_min_sample_size: int = 5
+    dispute_alert_threshold: float = 20.0
+    dispute_warning_threshold: float = 30.0
+    dispute_suspension_threshold: float = 40.0
+    dispatch_expiry_warning_threshold: float = 20.0
+    dispatch_expiry_suspension_threshold: float = 35.0
     django_admin_url: Optional[str] = 'admin/'
 
 
@@ -2128,6 +2371,14 @@ class UpdatePlatformSettingsSchema(Schema):
     inspection_tier2_threshold: Optional[float] = None
     inspection_tier2_hours: Optional[int] = None
     inspection_tier3_hours: Optional[int] = None
+    seller_rating_warning_threshold: Optional[float] = None
+    seller_rating_suspension_threshold: Optional[float] = None
+    dispute_min_sample_size: Optional[int] = None
+    dispute_alert_threshold: Optional[float] = None
+    dispute_warning_threshold: Optional[float] = None
+    dispute_suspension_threshold: Optional[float] = None
+    dispatch_expiry_warning_threshold: Optional[float] = None
+    dispatch_expiry_suspension_threshold: Optional[float] = None
 
 
 
@@ -2197,6 +2448,67 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
 
     if data.inspection_tier3_hours is not None:
         current["inspection_tier3_hours"] = max(1, data.inspection_tier3_hours)
+
+    if data.seller_rating_warning_threshold is not None:
+        warn_thresh = float(data.seller_rating_warning_threshold)
+        if warn_thresh < 1.0 or warn_thresh > 5.0:
+            raise HttpError(400, "seller_rating_warning_threshold must be between 1.0 and 5.0 stars.")
+        current["seller_rating_warning_threshold"] = warn_thresh
+
+    if data.seller_rating_suspension_threshold is not None:
+        susp_thresh = float(data.seller_rating_suspension_threshold)
+        if susp_thresh < 1.0 or susp_thresh > 5.0:
+            raise HttpError(400, "seller_rating_suspension_threshold must be between 1.0 and 5.0 stars.")
+        current["seller_rating_suspension_threshold"] = susp_thresh
+
+    # Validate ordering: suspension threshold must be lower than warning threshold
+    if float(current.get("seller_rating_suspension_threshold", 2.0)) >= float(current.get("seller_rating_warning_threshold", 3.0)):
+        raise HttpError(400, "seller_rating_suspension_threshold must be strictly less than seller_rating_warning_threshold.")
+
+    if data.dispute_min_sample_size is not None:
+        current["dispute_min_sample_size"] = max(1, int(data.dispute_min_sample_size))
+
+    if data.dispute_alert_threshold is not None:
+        alert_val = float(data.dispute_alert_threshold)
+        if alert_val < 1.0 or alert_val > 100.0:
+            raise HttpError(400, "dispute_alert_threshold must be between 1.0% and 100.0%.")
+        current["dispute_alert_threshold"] = alert_val
+
+    if data.dispute_warning_threshold is not None:
+        warn_val = float(data.dispute_warning_threshold)
+        if warn_val < 1.0 or warn_val > 100.0:
+            raise HttpError(400, "dispute_warning_threshold must be between 1.0% and 100.0%.")
+        current["dispute_warning_threshold"] = warn_val
+
+    if data.dispute_suspension_threshold is not None:
+        susp_val = float(data.dispute_suspension_threshold)
+        if susp_val < 1.0 or susp_val > 100.0:
+            raise HttpError(400, "dispute_suspension_threshold must be between 1.0% and 100.0%.")
+        current["dispute_suspension_threshold"] = susp_val
+
+    # Validate dispute thresholds ordering: alert < warning < suspension
+    cur_alert = float(current.get("dispute_alert_threshold", 20.0))
+    cur_warn = float(current.get("dispute_warning_threshold", 30.0))
+    cur_susp = float(current.get("dispute_suspension_threshold", 40.0))
+    if not (cur_alert < cur_warn < cur_susp):
+        raise HttpError(400, "Dispute thresholds must strictly satisfy: Alert Rate < Warning Rate < Auto-Suspension Rate.")
+
+    if data.dispatch_expiry_warning_threshold is not None:
+        d_warn = float(data.dispatch_expiry_warning_threshold)
+        if d_warn < 1.0 or d_warn > 100.0:
+            raise HttpError(400, "dispatch_expiry_warning_threshold must be between 1.0% and 100.0%.")
+        current["dispatch_expiry_warning_threshold"] = d_warn
+
+    if data.dispatch_expiry_suspension_threshold is not None:
+        d_susp = float(data.dispatch_expiry_suspension_threshold)
+        if d_susp < 1.0 or d_susp > 100.0:
+            raise HttpError(400, "dispatch_expiry_suspension_threshold must be between 1.0% and 100.0%.")
+        current["dispatch_expiry_suspension_threshold"] = d_susp
+
+    cur_d_warn = float(current.get("dispatch_expiry_warning_threshold", 20.0))
+    cur_d_susp = float(current.get("dispatch_expiry_suspension_threshold", 35.0))
+    if cur_d_warn >= cur_d_susp:
+        raise HttpError(400, "dispatch_expiry_warning_threshold must be strictly less than dispatch_expiry_suspension_threshold.")
 
     setting, _ = PlatformSetting.objects.get_or_create(key="system_config")
     setting.value = current

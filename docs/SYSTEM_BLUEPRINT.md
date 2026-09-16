@@ -174,17 +174,27 @@ stateDiagram-v2
    - **Reverse Pickup OTP**: Generates a 6-digit Reverse OTP for informal bus returns to guarantee safe arrival back to seller.
    - **Seller Verification & Auto-Refund**: Once seller confirms receipt intact (or return auto-refund window expires), transaction transitions to `RETURNED` / `REFUNDED` and funds are disbursed to the buyer.
 
-5. **MoMo & Bank Payout Validation**:
+5. **Seller Dispatch Deadline, Pre-Expiry Progressive Reminders & Penalties**:
+   - **Configurable Dispatch Window**: Once payment is confirmed (`PAYMENT_RECEIVED`), the seller must dispatch the order within the platform-configured timeframe (`shipping_timeout_days`, default: 4 days / 96 hours).
+   - **Progressive Pre-Expiry Alerts**: Celery tasks run periodically (`check_dispatch_expiry_reminders`):
+     - **24-Hour Reminder**: Dispatched via SMS & Email when $\le 24\text{ hours}$ remain, warning the seller of the approaching deadline and detailing the exact non-dispatch penalty (Platform Fee + 1.95% Gateway Fee).
+     - **6-Hour Final Warning**: High-priority alert dispatched when $\le 6\text{ hours}$ remain, advising immediate dispatch or order cancellation penalty execution.
+   - **Automated Non-Dispatch Cancellation & Debit**: If the seller fails to dispatch before expiry (`check_expired_dispatches`):
+     - The transaction is automatically marked `auto_cancelled_non_dispatch = True` and transitioned to `CANCELLED`.
+     - The buyer receives an immediate 100% full refund (including all fees).
+     - The defaulting seller is charged the itemized penalty (Platform Fee + 1.95% Gateway Processing Fee) debited against their wallet balance or future payouts.
+
+6. **MoMo & Bank Payout Validation**:
    - Payout destination options: Mobile Money (MoMo) or Bank Account.
    - Automated name-matching validation using gateway lookup (Paystack / Hubtel Bank Resolve API).
    - Verification records (account name, account number, bank/network name) are recorded permanently against every withdrawal transaction in the ledger for future auditability.
 
 #### Database Models (`backend/apps/escrow/models.py`)
-- `EscrowTransaction`: Holds `transaction_ref`, `buyer`, `seller`, `payment_link`, `amount`, `delivery_fee`, `platform_fee`, `status`, `delivery_pin`, `return_confirmation_code`, `return_waybill_photo_url`, `auto_release_at`, `created_at`, `updated_at`.
+- `EscrowTransaction`: Holds `transaction_ref`, `buyer`, `seller`, `payment_link`, `amount`, `delivery_fee`, `platform_fee`, `status`, `delivery_pin`, `return_confirmation_code`, `return_waybill_photo_url`, `reminder_24h_dispatch_sent`, `auto_cancelled_non_dispatch`, `auto_release_at`, `created_at`, `updated_at`.
 
 ---
 
-### Module E: Dispute Resolution & Seller Dispute Health Governance
+### Module E: Dispute Resolution & Seller Health Governance Subsystem
 
 #### Key Features & Workflows
 1. **Dispute Initiation (`/dashboard`)**:
@@ -193,27 +203,46 @@ stateDiagram-v2
    - Supports uploading up to 5 evidence files (photos, receipts, delivery slips, chat screenshots).
 
 2. **Automated Seller Dispute Health Monitoring & Account Suspension**:
-   - **Multi-Window Calculation**: System computes seller dispute percentage across (1) Last 30 Days, (2) Last 15 Sales, and (3) Lifetime Sales, selecting the highest dispute rate among sets with `paid_transactions > 5` to prevent low-volume sample distortion.
-   - **Tiered Dashboard Banners & Notifications**:
-     - **Yellow Alert Banner (20% – 29.9% Dispute Rate)**: Displays inline caution on seller dashboard.
-     - **Orange Warning Banner (30% – 39.9% Dispute Rate)**: Displays high-priority warning banner and sends an email notification to seller.
-     - **Red Suspension Banner (≥ 40% Dispute Rate or Admin Action)**: Sets seller account status to `is_suspended = True`.
+   - **Multi-Window Calculation**: System computes seller dispute percentage across (1) Last 30 Days, (2) Last 15 Sales, and (3) Lifetime Sales, selecting the highest dispute rate among sets with `paid_transactions >= dispute_min_sample_size` (default: 5) to prevent low-volume sample distortion.
+   - **Configurable Platform Thresholds (`/admin/settings`)**:
+     - **Dispute Minimum Sample Size (Default: 5 Txns)**: Number of paid transactions required before dispute rate evaluation begins.
+     - **Yellow Alert Banner (Default: ≥ 20% Dispute Rate)**: Displays inline caution on seller dashboard.
+     - **Orange Warning Banner (Default: ≥ 30% Dispute Rate)**: Displays high-priority warning banner and sends an email notification to seller.
+     - **Red Suspension Banner (Default: ≥ 40% Dispute Rate or Admin Action)**: Sets seller account status to `is_suspended = True`.
    - **Suspension Enforcement**: Deactivates all active payment links, blocks payment link creation, and returns HTTP 403 Forbidden on public checkout for suspended seller links.
-   - **Manual Admin Controls**: Administrators can manually suspend (`POST /admin/sellers/{id}/suspend`) or reinstate (`POST /admin/sellers/{id}/reinstate`) sellers at any time.
+   - **In-Flight Order Continuity**: In-flight orders that were already paid prior to suspension remain active and proceed through the full fulfillment, delivery, inspection, dispute, and payout lifecycle.
 
-3. **Admin Mediation Desk (`/admin-portal`)**:
+3. **Automated Seller Rating Governance & Thresholds**:
+   - **Aggregated Rating Calculation**: Computes average star rating from active customer reviews (`SellerReview.objects.filter(seller=seller_user, is_active=True)`).
+   - **Rating Warning Banner (Default < 3.0 Stars)**: Triggers an inline warning notice on seller dashboard and sends a caution email to the seller.
+   - **Rating Auto-Suspension (Default < 2.0 Stars with min 3 reviews)**: Automatically sets `is_suspended = True`, deactivates active payment links, and sends suspension alert email.
+
+4. **Automated Dispatch Expiry Governance & Thresholds**:
+   - **Non-Dispatch Rate Calculation**: Computes the ratio of non-dispatch cancelled orders (`auto_cancelled_non_dispatch = True`) to total paid transactions.
+   - **Dispatch Expiry Warning Banner (Default ≥ 20% Expiry Rate)**: Triggers an amber warning banner on the seller dashboard detailing non-dispatch metrics.
+   - **Dispatch Expiry Auto-Suspension (Default ≥ 35% Expiry Rate with min sample size >= 5)**: Automatically sets `is_suspended = True`, deactivates all active links, records the suspension reason, and alerts the seller.
+
+5. **Post-Reinstatement Clean Slate & Immunity Protection**:
+   - When an administrator manually reinstates a seller or approves an appeal, `seller.reinstated_at = timezone.now()` is recorded.
+   - `compute_seller_dispute_health` filters evaluated transactions strictly to `created_at__gte=seller.reinstated_at`.
+   - This gives reinstated merchants a clean slate and ensures they are not immediately re-suspended by historical transactions during the next Celery health check cycle, requiring 5 new paid transactions before thresholds are evaluated again.
+
+6. **Account Suspension Appeals & Admin Appeals Desk (`/admin-portal`)**:
+   - **Payment Link Creation Modal UX**: Attempting to generate a payment link while suspended renders a dedicated modal explaining the exact suspension cause and offering an inline appeal form.
+   - **Seller Appeal Submission (`POST /api/profile/appeal-suspension`)**: Suspended sellers submit a formal justification with remediation steps.
+   - **Stale Appeal Status Isolation (`GET /api/profile/appeal-status`)**: Only appeals created after the current suspension timestamp are evaluated, preventing old rejected appeals from blocking new appeals.
+   - **Admin Suspension Appeals Desk (`/admin-portal/dashboard` Tab 4)**: Administrators inspect appeals, review seller metrics, and approve (reinstating the account with `reinstated_at` set) or reject with notes.
+
+7. **Admin Mediation Desk & Resolution Notifications (`/admin-portal`)**:
    - Dedicated interface displaying all active and past disputes.
    - Side-by-side comparison of buyer claim vs. seller evidence.
-   - Direct action buttons for Admin Resolution:
-     - **Full Refund to Buyer**: Returns 100% of purchase amount to buyer.
-     - **Release to Seller**: Releases 100% of escrow funds to seller wallet.
-     - **Split Settlement**: Specify custom percentage/amount allocation between buyer and seller.
-     - **Require Item Return**: Places order into `RETURN_IN_PROGRESS` status requiring buyer to ship item back before refund execution.
-   - System automatically generates double-entry ledger adjustments upon resolution.
+   - Direct action buttons for Admin Resolution (Full Refund, Release to Seller, Split Settlement, Require Item Return).
+   - Personalized Email & SMS notifications addressing buyers by First Name and sellers by Shop Name with exact Transaction Reference IDs.
 
 #### Database Models (`backend/apps/escrow/models.py`, `backend/apps/users/models.py`)
 - `EscrowDispute`: Holds `escrow`, `raised_by`, `reason`, `description`, `evidence_urls`, `status`, `resolution_notes`, `resolved_by`, `resolved_at`.
-- `User`: Extended with `is_suspended`, `suspension_reason`, and `suspended_at`.
+- `SuspensionAppeal`: Holds `user`, `reason`, `status` (`PENDING`, `APPROVED`, `REJECTED`), `admin_notes`, `reviewed_by`, `created_at`, `reviewed_at`.
+- `User`: Extended with `is_suspended`, `suspension_reason`, `suspended_at`, and `reinstated_at`.
 
 ---
 
@@ -332,8 +361,17 @@ stateDiagram-v2
 4. **User & Identity Verification Desk**:
    - Review pending Ghana Card submissions, view documents, approve/reject identity verification.
 
-5. **Seller Directory & Phone Registry**:
-   - Full list of all registered sellers and buyer phone directory with verified transaction metrics.
+5. **Seller Directory & Dual Health Risk Status**:
+   - Full list of all registered sellers displaying verified transaction metrics and dual risk badges (`Disputes: X.X%` and `Expiry: X.X%`).
+   - Manual admin actions to Suspend or Reinstate seller accounts.
+
+6. **Suspension Appeals Desk (Tab 4)**:
+   - Centralized interface displaying all seller account suspension appeals with real-time status (`PENDING`, `APPROVED`, `REJECTED`).
+   - Side-by-side view of seller justification and remediation proposal.
+   - Administrative review actions to Approve (with automatic clean-slate reinstatement `seller.reinstated_at = timezone.now()`) or Reject with notes.
+
+7. **Dynamic Platform & Governance Settings (Tab 7)**:
+   - Superuser live configuration for Payment Gateway, Carrier providers, Shipping Timelines, Return Windows, Dispute Governance Thresholds (Min Sample, Alert, Warning, Suspension), and Dispatch Expiry Governance Thresholds (`dispatch_expiry_warning_threshold`, `dispatch_expiry_suspension_threshold`).
 
 #### Frontend Component
 - [`AdminDashboardView.tsx`](file:///d:/PROJECTS/Hend_Trust/frontend/src/views/AdminDashboardView.tsx)
@@ -344,8 +382,8 @@ stateDiagram-v2
 
 #### Key Features & Workflows
 1. **Notification Hub**:
-   - **SMS Notifications** (Hubtel / Arkesel): Transmits payment confirmation, tracking links, delivery OTPs, and escrow release alerts directly to mobile phones.
-   - **Email Notifications** (SMTP / SendGrid): Sends HTML transactional receipts and dispute updates.
+   - **SMS Notifications** (Hubtel / Arkesel): Transmits payment confirmation, tracking links, delivery OTPs, pre-dispatch progressive warnings (24h and 6h with itemized fee penalties), and escrow release alerts directly to mobile phones.
+   - **Email Notifications** (SMTP / SendGrid): Sends HTML transactional receipts, dispute updates, pre-dispatch penalty warnings, and account suspension notifications.
    - **In-App Notifications**: Real-time bell icon dropdown for active users.
 
 2. **Help & Support Center (`/help`, `/contact`)**:
@@ -390,12 +428,12 @@ stateDiagram-v2
 | `/activate` | `ActivateAccountView.tsx` | Public | Email OTP activation page. |
 | `/dashboard` | `DashboardView.tsx` | Authenticated | Buyer & Seller main dashboard for managing orders, payment links, and disputes. |
 | `/links` | `LinksView.tsx` | Authenticated (Seller) | Payment link creation and management interface. |
-| `/links/create` | `CreatePaymentLinkView.tsx` | Authenticated (Seller) | Form for building dynamic or fixed price payment links. |
+| `/links/create` | `CreatePaymentLinkView.tsx` | Authenticated (Seller) | Form for building dynamic or fixed price payment links with Account Suspended modal appeal integration. |
 | `/ledger` | `LedgerView.tsx` | Authenticated (Seller) | Financial wallet, balance breakdown, and withdrawal requests. |
 | `/profile` | `ProfileView.tsx` | Authenticated | User profile management, security settings, and Ghana Card KYC upload. |
 | `/developer` | `DeveloperView.tsx` | Authenticated (Seller) | Developer documentation, API overview, and webhook configuration. |
 | `/developer/keys` | `DeveloperKeysView.tsx` | Authenticated (Seller) | API Key management portal (Live vs Sandbox keys). |
-| `/admin-portal` | `AdminDashboardView.tsx` | Admin Only | Master operations dashboard, disputes desk, KYC approvals, ledger audits, and PDF/Excel exports. |
+| `/admin-portal` | `AdminDashboardView.tsx` | Admin Only | Master operations dashboard, disputes desk, KYC approvals, suspension appeals desk, ledger audits, and platform settings. |
 
 ---
 
@@ -410,10 +448,12 @@ stateDiagram-v2
 - `GET /api/users/me`: Fetch authenticated user profile details.
 - `PUT /api/users/profile`: Update bio, logo, banner, and store settings.
 - `POST /api/users/verify-bank-account`: Validate MoMo/Bank account details against Paystack/Hubtel lookup API.
+- `POST /api/profile/appeal-suspension`: Submit account suspension appeal with detailed remediation justification.
+- `GET /api/profile/appeal-status`: Check current active appeal status and admin ruling notes.
 
 ### Payment Links Endpoints (`/api/links/`)
 - `GET /api/links`: List all payment links created by seller.
-- `POST /api/links`: Create new fixed or dynamic payment link.
+- `POST /api/links`: Create new fixed or dynamic payment link (blocked if seller is suspended).
 - `GET /api/links/public/{slug}`: Fetch payment link public details for checkout.
 - `PUT /api/links/{id}/archive`: Archive a payment link.
 
@@ -426,6 +466,10 @@ stateDiagram-v2
 - `POST /api/escrow/{id}/release`: Buyer approves and releases escrow funds to seller.
 - `POST /api/escrow/{id}/dispute`: Raise dispute on an escrow transaction.
 - `POST /api/escrow/admin/resolve-dispute`: Admin action to resolve dispute (Refund, Release, Split).
+- `GET /api/escrow/admin/settings`: Fetch dynamic platform and governance settings.
+- `POST /api/escrow/admin/settings`: Update platform settings and governance thresholds.
+- `GET /api/admin/appeals`: List all seller suspension appeals.
+- `POST /api/admin/appeals/{id}/review`: Approve or reject suspension appeal.
 
 ### Customer Reviews Endpoints (`/api/reviews/`)
 - `GET /api/reviews/feed`: Fetch recent verified reviews feed for carousels & `/reviews` page.
@@ -454,14 +498,26 @@ The system utilizes **Celery** and **Celery Beat** backed by **Redis** to execut
    - Scans all `DELIVERED` escrows whose `auto_release_at` timestamp has passed.
    - Automatically releases funds to seller wallet if no dispute has been raised.
 
-2. **`apps.ledger.tasks.audit_ledger_integrity`** (Runs daily at midnight):
+2. **`apps.escrow.tasks.check_dispatch_expiry_reminders`** (Runs every 15 minutes):
+   - Scans paid orders awaiting seller dispatch.
+   - Sends progressive SMS & Email warnings at $\le 24\text{ hours}$ and $\le 6\text{ hours}$ before expiry with itemized penalty calculations (Platform Fee + 1.95% Gateway Fee).
+
+3. **`apps.escrow.tasks.check_expired_dispatches`** (Runs every 15 minutes):
+   - Identifies paid transactions where seller dispatch deadline has expired without fulfillment.
+   - Flags `auto_cancelled_non_dispatch = True`, issues 100% full refund to the buyer, and debits non-dispatch default penalty against defaulting seller.
+
+4. **`apps.escrow.tasks.check_dispute_monitoring_health`** (Runs hourly):
+   - Evaluates multi-window seller dispute rates, customer review star ratings, and non-dispatch expiry rates across all active merchants.
+   - Automatically suspends accounts breaching governance thresholds and sends alert notifications.
+
+5. **`apps.ledger.tasks.audit_ledger_integrity`** (Runs daily at midnight):
    - Calculates global debits vs. credits across all double-entry ledger accounts.
    - Verifies system balance equation: `Total Debits == Total Credits`.
 
-3. **`apps.developer.tasks.dispatch_webhook_retry`** (Triggered on event failure):
+6. **`apps.developer.tasks.dispatch_webhook_retry`** (Triggered on event failure):
    - Retries failed merchant webhook notifications up to 5 times using exponential backoff.
 
-4. **`apps.notifications.tasks.send_sms_batch`** (Async execution):
+7. **`apps.notifications.tasks.send_sms_batch`** (Async execution):
    - Queues and dispatches outgoing SMS notifications via Hubtel/Arkesel API to avoid blocking HTTP request threads.
 
 ---
@@ -471,12 +527,12 @@ The system utilizes **Celery** and **Celery Beat** backed by **Redis** to execut
 To maintain production stability, all updates must pass automated backend test suites and frontend static build checks:
 
 ### 1. Automated Backend Unit & Integration Testing
-Run the full test suite covering Auth, Escrow State Machine, Ledger Integrity, Reviews, Bank Verification, and Developer Webhooks:
+Run the full test suite covering Auth, Escrow State Machine, Dispatch Expiry Governance, Ledger Integrity, Reviews, Bank Verification, Reinstatement Protection, and Developer Webhooks:
 ```bash
 cd backend
-python -m pytest
+python -m pytest -q
 ```
-*Expected Result: 90+ tests passing with 0 failures.*
+*Expected Result: 130+ tests passing with 0 failures.*
 
 ### 2. Frontend Production Build Compilation
 Verify TypeScript types, JSX components, and Vite bundling:

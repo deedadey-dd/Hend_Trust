@@ -62,13 +62,13 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Search & Date Filters**: Filter orders by status (*Pending*, *Dispatched*, *Completed*, *Disputed*).
 - [x] **Export Report**: Download transaction reports in PDF (`.pdf`) and Excel (`.xlsx`) formats (available on `/dashboard` and `/admin-portal` tabs).
 - [x] **Stale Transaction Verification**: Click **"Check Payment"** on `AWAITING_PAYMENT` orders to manually poll payment status before auto-archiving. Confirm payment auto-restores transaction.
-- [x] **Dispute Health Banners**: Verify Yellow Alert Banner (20-29.9% dispute rate), Orange Warning Banner (30-39.9%), and Red Lock Banner (≥40% dispute rate or suspended state).
+- [x] **Dispute Health & Risk Banners**: Verify Dispute Banners (Yellow Alert ≥20%, Orange Warning ≥30%, Red Suspension ≥40%), Rating Caution (<3.0★), and Non-Dispatch Expiry Warning (≥20% non-dispatch rate).
 
 ### 3.2 Payment Link Creation (`/create-link`)
 - [ ] **Create Link**: Fill in Item Title, Amount (GHS), Description, and Delivery Fee settings.
 - [ ] **Fee Calculator**: Confirm real-time platform fee vs. seller payout calculation.
 - [ ] **QR Code Generator**: Click **"Generate QR Poster"**. Download PNG poster.
-- [x] **Suspension Enforcement**: Confirm suspended sellers are blocked from creating new payment links (HTTP 403).
+- [x] **Suspension Modal & Inline Appeal**: Confirm suspended sellers attempting to create links receive the dedicated **Account Suspended Modal** with exact suspension reason and inline justification appeal submission form.
 
 ### 3.3 My Payment Links (`/links`)
 - [ ] **Link Management**: Copy payment link URL. Verify status toggle (Active / Deactivated).
@@ -108,11 +108,11 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 
 ---
 
-## 🛡️ Phase 5: Support Agent Persona (Mediation & Verification)
+## 🛡️ Phase 5: Support Agent Persona (Mediation & Appeals)
 
 ### 5.1 Manager Portal Login (`/admin-portal/dashboard`)
 - [ ] **Support Login**: Sign in as a user with `SUPPORT_AGENT` role.
-- [ ] **Dashboard Overview**: Access open disputes, pending merchant KYC verifications, and logistics logs.
+- [ ] **Dashboard Overview**: Access open disputes, pending merchant KYC verifications, suspension appeals, and logistics logs.
 
 ### 5.2 Dispute Mediation
 - [ ] **Review Evidence**: Inspect buyer dispute submission, seller dispatch proof images, and message history.
@@ -121,6 +121,11 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 ### 5.3 Merchant KYC Approval Queue
 - [ ] **Document Review**: Inspect submitted Ghana Card / National ID photos.
 - [ ] **Approve / Reject**: Click **Approve**. Confirm seller account status updates to **Verified & Approved** with verified badge.
+
+### 5.4 Suspension Appeals Desk (Tab 4)
+- [x] **Review Appeal Submissions**: Inspect seller remediation justifications and order history.
+- [x] **Approve Appeal & Clean Slate Reinstatement**: Approve appeal. Verify seller account reinstates (`is_suspended = False`), `reinstated_at = timezone.now()` is set, and seller can create payment links again.
+- [x] **Reject Appeal**: Provide administrative feedback notes. Verify seller dashboard reflects rejection notes and allows re-submission.
 
 ---
 
@@ -134,7 +139,7 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 ### 6.2 Platform System Audits & Seller Dispute Governance
 - [ ] **Financial Balance Audit**: Inspect Platform Escrow Account, Fee Ledger, and Courier Settlement Account balances.
 - [ ] **User Role Governance**: Promote or adjust staff roles (`ADMIN`, `SUPPORT_AGENT`, `SELLER`).
-- [x] **Manual Admin Suspend & Reinstate**: Locate seller in Admin Portal directory. Click **"Suspend Seller"** (confirm links deactivate and user status locks to suspended) and **"Reinstate"** (confirm account unlocks).
-- [x] **Gateway & Logistics Settings**: Test updating `unpaid_auto_archive_days` and active payment gateway engine settings in `/admin`.
+- [x] **Manual Admin Suspend & Clean Slate Reinstate**: Locate seller in Admin Portal directory. Click **"Suspend Seller"** (confirm links deactivate and user status locks to suspended) and **"Reinstate"** (confirm account unlocks and `reinstated_at` timestamp is updated).
+- [x] **Dispatch Expiry & Dispute Governance Settings**: In Settings Tab, test adjusting `shipping_timeout_days`, `dispatch_expiry_warning_threshold` (20%), and `dispatch_expiry_suspension_threshold` (35%).
 - [ ] **Security Lockout Audit**: Verify failed login attempts counter (`django-axes` / cache) and unlock blocked IPs if required.
 - [ ] **Developer Webhook Logs**: Audit outbound HMAC webhook delivery logs and retry statuses.

@@ -38,6 +38,7 @@ interface SellerTxn {
   platform_fee_ghs?: number;
   shipping_fee_ghs?: number;
   shipping_timeout_days?: number;
+  inspection_hours_allowed?: number;
   otp_reveal_delay_hours?: number;
   buyer_name: string;
   buyer_phone: string;
@@ -946,6 +947,16 @@ interface SellerMetrics {
     sample_evaluated: string;
     sample_paid_count: number;
     sample_disputed_count: number;
+    avg_rating?: number | null;
+    total_reviews_count?: number;
+    rating_warning?: boolean;
+    rating_warning_threshold?: number;
+    rating_suspension_threshold?: number;
+    dispatch_expiry_count?: number;
+    dispatch_expiry_rate_pct?: number;
+    dispatch_expiry_level?: string;
+    dispatch_expiry_warning_threshold?: number;
+    dispatch_expiry_suspension_threshold?: number;
   };
 }
 
@@ -957,6 +968,14 @@ export default function DashboardView() {
   
   // Summary Metrics State
   const [metrics, setMetrics] = useState<SellerMetrics | null>(null);
+
+  // Suspension Appeal State
+  const [appealData, setAppealData] = useState<{ has_appeal: boolean; appeal: any } | null>(null);
+  const [isAppealModalOpen, setIsAppealModalOpen] = useState(false);
+  const [appealReason, setAppealReason] = useState('');
+  const [submittingAppeal, setSubmittingAppeal] = useState(false);
+  const [appealSuccessMsg, setAppealSuccessMsg] = useState('');
+  const [appealErrorMsg, setAppealErrorMsg] = useState('');
 
   // Filters
   const [search, setSearch] = useState(searchParams.get('search') || '');
@@ -978,6 +997,7 @@ export default function DashboardView() {
   // Payment Verification & Archive Loading States
   const [verifyingPaymentId, setVerifyingPaymentId] = useState<string | null>(null);
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
 
   // Dispatch modal
   const [dispatchTxn, setDispatchTxn] = useState<SellerTxn | null>(null);
@@ -1036,8 +1056,47 @@ export default function DashboardView() {
     try {
       const res = await apiClient.get('/escrow/seller/summary-metrics');
       setMetrics(res.data);
+      if (res.data?.dispute_health?.is_suspended || res.data?.dispute_health?.dispute_level === 'SUSPENDED') {
+        fetchAppealStatus();
+      }
     } catch (err) {
       console.error('Failed to fetch seller summary metrics', err);
+    }
+  };
+
+  const fetchAppealStatus = async () => {
+    try {
+      const res = await apiClient.get('/profile/appeal-status');
+      setAppealData(res.data);
+    } catch (err) {
+      console.error('Failed to fetch appeal status', err);
+    }
+  };
+
+  const handleSubmitAppeal = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!appealReason.trim() || appealReason.trim().length < 10) {
+      setAppealErrorMsg('Please provide a detailed explanation (at least 10 characters).');
+      return;
+    }
+    setSubmittingAppeal(true);
+    setAppealErrorMsg('');
+    setAppealSuccessMsg('');
+    try {
+      const res = await apiClient.post('/profile/appeal-suspension', {
+        reason: appealReason.trim()
+      });
+      setAppealSuccessMsg(res.data.message || 'Appeal submitted successfully.');
+      setAppealReason('');
+      await fetchAppealStatus();
+      setTimeout(() => {
+        setIsAppealModalOpen(false);
+        setAppealSuccessMsg('');
+      }, 2500);
+    } catch (err: any) {
+      setAppealErrorMsg(err.response?.data?.detail || 'Failed to submit suspension appeal.');
+    } finally {
+      setSubmittingAppeal(false);
     }
   };
 
@@ -1091,8 +1150,10 @@ export default function DashboardView() {
   useEffect(() => {
     fetchTransactions();
     fetchMetrics();
+    fetchAppealStatus();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [searchParams]);
+
 
   const applyFilters = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1159,10 +1220,10 @@ export default function DashboardView() {
         <div className="mb-6 print:hidden">
           {/* Level 3: Suspended */}
           {(metrics.dispute_health.dispute_level === 'SUSPENDED' || metrics.dispute_health.is_suspended) && (
-            <div className="bg-red-50 dark:bg-red-950/60 border-2 border-red-500 rounded-2xl p-5 shadow-lg flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="bg-red-50 dark:bg-red-950/60 border-2 border-red-500 rounded-2xl p-5 shadow-lg flex flex-col gap-4">
               <div className="flex items-start gap-3">
                 <ShieldAlert className="h-7 w-7 text-red-600 dark:text-red-400 shrink-0 mt-0.5" />
-                <div>
+                <div className="flex-1">
                   <h3 className="text-base font-bold text-red-900 dark:text-red-200 flex items-center gap-2">
                     🚨 Account Suspended
                   </h3>
@@ -1176,16 +1237,98 @@ export default function DashboardView() {
                   )}
                 </div>
               </div>
-              <a
-                href="/contact"
-                className="py-2.5 px-4 bg-red-600 hover:bg-red-700 text-white text-xs font-bold rounded-xl transition shrink-0 text-center shadow-md shadow-red-500/20"
-              >
-                Contact Management Support
-              </a>
+
+              {/* Appeal Status or Appeal Button */}
+              {appealData?.has_appeal ? (
+                <div className={`rounded-xl p-4 border text-xs font-semibold flex items-start gap-3 ${
+                  appealData.appeal?.status === 'PENDING'
+                    ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-400 text-amber-900 dark:text-amber-200'
+                    : appealData.appeal?.status === 'APPROVED'
+                      ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 text-emerald-900 dark:text-emerald-200'
+                      : 'bg-slate-50 dark:bg-slate-900/60 border-slate-400 text-slate-700 dark:text-slate-300'
+                }`}>
+                  <span className="text-lg shrink-0">
+                    {appealData.appeal?.status === 'PENDING' ? '⏳' : appealData.appeal?.status === 'APPROVED' ? '✅' : '❌'}
+                  </span>
+                  <div>
+                    <span className="font-bold block">
+                      Appeal {appealData.appeal?.status === 'PENDING' ? 'Submitted — Pending Admin Review' : appealData.appeal?.status === 'APPROVED' ? 'Approved — Account Reinstated' : 'Rejected by Admin'}
+                    </span>
+                    {appealData.appeal?.reason && (
+                      <span className="block mt-1 text-[11px] opacity-90 italic">"{appealData.appeal.reason}"</span>
+                    )}
+                    {appealData.appeal?.admin_notes && (
+                      <span className="block mt-1 opacity-80">Admin notes: {appealData.appeal.admin_notes}</span>
+                    )}
+                    {appealData.appeal?.status === 'REJECTED' && (
+                      <button
+                        onClick={() => { setIsAppealModalOpen(true); setAppealErrorMsg(''); setAppealSuccessMsg(''); }}
+                        className="mt-2 underline text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-red-600 dark:hover:text-red-400 transition"
+                      >
+                        Submit a new appeal
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <button
+                  id="appeal-suspension-btn"
+                  onClick={() => { setIsAppealModalOpen(true); setAppealErrorMsg(''); setAppealSuccessMsg(''); }}
+                  className="self-start py-2.5 px-5 bg-red-600 hover:bg-red-700 active:scale-95 text-white text-xs font-bold rounded-xl transition shadow-md shadow-red-500/25 flex items-center gap-2"
+                >
+                  <ShieldAlert className="h-4 w-4" />
+                  Appeal Account Suspension
+                </button>
+              )}
             </div>
           )}
 
-          {/* Level 2: Warning */}
+          {/* Rating Warning Banner */}
+          {metrics.dispute_health.dispute_level === 'RATING_WARNING' && !metrics.dispute_health.is_suspended && (
+            <div className="bg-yellow-50 dark:bg-yellow-950/50 border border-yellow-400 rounded-2xl p-5 shadow-md flex items-start gap-3 mb-3">
+              <AlertTriangle className="h-6 w-6 text-yellow-600 dark:text-yellow-400 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-bold text-yellow-900 dark:text-yellow-200">
+                  ⭐ Low Seller Rating Warning
+                </h3>
+                <p className="text-xs text-yellow-800 dark:text-yellow-300 mt-1 leading-relaxed">
+                  Your aggregated seller rating is currently{' '}
+                  <strong className="font-mono font-black text-yellow-950 dark:text-white">
+                    {metrics.dispute_health.avg_rating?.toFixed(1)} ★
+                  </strong>{' '}
+                  across {metrics.dispute_health.total_reviews_count} review{metrics.dispute_health.total_reviews_count !== 1 ? 's' : ''} — below the warning threshold of{' '}
+                  <strong>{metrics.dispute_health.rating_warning_threshold} ★</strong>.
+                  If your rating drops below{' '}
+                  <strong>{metrics.dispute_health.rating_suspension_threshold} ★</strong>,
+                  your account will be automatically suspended. Please focus on improving product quality, accurate descriptions, and responsive communication.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Dispatch Expiry Warning Banner */}
+          {metrics.dispute_health.dispute_level === 'DISPATCH_WARNING' && !metrics.dispute_health.is_suspended && (
+            <div className="bg-amber-50 dark:bg-amber-950/60 border border-amber-400 rounded-2xl p-5 shadow-md flex items-start gap-3 mb-3">
+              <AlertTriangle className="h-6 w-6 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+              <div>
+                <h3 className="text-sm font-bold text-amber-900 dark:text-amber-200">
+                  📦 High Dispatch Expiry Rate Warning ({metrics.dispute_health.dispatch_expiry_rate_pct}%)
+                </h3>
+                <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                  Your unfulfilled dispatch default rate has reached{' '}
+                  <strong className="font-mono text-amber-950 dark:text-white font-black">
+                    {metrics.dispute_health.dispatch_expiry_rate_pct}%
+                  </strong>{' '}
+                  (above the warning threshold of {metrics.dispute_health.dispatch_expiry_warning_threshold ?? 20}%).
+                  If your dispatch default rate reaches{' '}
+                  <strong>{metrics.dispute_health.dispatch_expiry_suspension_threshold ?? 35}%</strong>,
+                  your seller account will be automatically suspended. Please fulfill and dispatch orders promptly within your dispatch window.
+                </p>
+              </div>
+            </div>
+          )}
+
+          {/* Level 2: Dispute Warning */}
           {metrics.dispute_health.dispute_level === 'WARNING' && !metrics.dispute_health.is_suspended && (
             <div className="bg-orange-50 dark:bg-orange-950/60 border border-orange-400 rounded-2xl p-5 shadow-md flex items-start gap-3">
               <AlertTriangle className="h-6 w-6 text-orange-600 dark:text-orange-400 shrink-0 mt-0.5" />
@@ -1507,9 +1650,7 @@ export default function DashboardView() {
                         {txn.status === 'INSPECTION_PERIOD' && txn.inspection_starts_at && (
                           (() => {
                             const start = new Date(txn.inspection_starts_at!).getTime();
-                            let hoursAllowed = 24;
-                            if (txn.total_amount_ghs >= 2000 && txn.total_amount_ghs < 10000) hoursAllowed = 48;
-                            else if (txn.total_amount_ghs >= 10000) hoursAllowed = 72;
+                            const hoursAllowed = txn.inspection_hours_allowed || 24;
                             const end = start + hoursAllowed * 60 * 60 * 1000;
                             const diff = end - Date.now();
                             if (diff <= 0) {
@@ -2013,6 +2154,86 @@ export default function DashboardView() {
           imageUrl={lightboxImage}
           onClose={() => setLightboxImage(null)}
         />
+      )}
+
+      {/* Account Suspension Appeal Modal */}
+      {isAppealModalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-red-600 dark:text-red-400" />
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Appeal Account Suspension</h3>
+              </div>
+              <button 
+                onClick={() => { setIsAppealModalOpen(false); setAppealErrorMsg(''); setAppealSuccessMsg(''); }}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleSubmitAppeal} className="p-6 space-y-4">
+              <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                Provide a clear justification for why your account should be reinstated. Detail any remediation steps you have taken regarding order fulfillment, product quality, or dispute resolutions.
+              </p>
+
+              <div>
+                <div className="flex justify-between items-center mb-1.5">
+                  <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                    Appeal Explanation & Justification
+                  </label>
+                  <span className="text-[11px] font-mono text-slate-400">
+                    {appealReason.length} chars (min 10)
+                  </span>
+                </div>
+                <textarea
+                  rows={5}
+                  required
+                  value={appealReason}
+                  onChange={(e) => setAppealReason(e.target.value)}
+                  placeholder="Explain the circumstances and actions taken to prevent future issues..."
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 transition"
+                />
+              </div>
+
+              {appealErrorMsg && (
+                <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-800 rounded-xl text-xs font-semibold text-red-700 dark:text-red-300">
+                  {appealErrorMsg}
+                </div>
+              )}
+
+              {appealSuccessMsg && (
+                <div className="p-3 bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs font-semibold text-emerald-700 dark:text-emerald-300">
+                  {appealSuccessMsg}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setIsAppealModalOpen(false); setAppealErrorMsg(''); setAppealSuccessMsg(''); }}
+                  className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingAppeal || appealReason.trim().length < 10}
+                  className="flex-1 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-red-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {submittingAppeal ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Submitting...
+                    </>
+                  ) : (
+                    'Submit Appeal'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );

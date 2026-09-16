@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess as _sp
 from pathlib import Path
 import environ
@@ -131,12 +132,13 @@ if not DEBUG and env('DATABASE_URL', default=''):
 else:
     # Development: SQLite — one database per git branch
     try:
-        _branch = _sp.check_output(
+        _raw_branch = _sp.check_output(
             ['git', 'rev-parse', '--abbrev-ref', 'HEAD'],
             cwd=BASE_DIR,
             stderr=_sp.DEVNULL,
             text=True
         ).strip() or 'main'
+        _branch = re.sub(r'[^a-zA-Z0-9_-]', '_', _raw_branch)
     except Exception:
         _branch = 'main'
 

@@ -23,10 +23,14 @@ Sellers can create secure Payment Links to send to their buyers.
 3. **Choose Fee Handling**:
    - **Absorb Fee**: Seller pays the platform fee. The buyer pays only the exact item price.
    - **Pass to Buyer**: The buyer pays the item price + platform fee. Seller receives 100% of their item price.
-4. **Configurable Seller Dispatch Guarantee**: Once the buyer pays, the seller must dispatch the package within the platform-configured dispatch window (default: **4 days / 96 hours**, managed via **Gateway & Logistics Settings** in the Admin Portal).
-   - If the seller fails to dispatch within the configured timeframe, the order is automatically cancelled.
-   - The buyer gets a **100% full refund** (including all fees).
-   - The defaulting seller is charged a **Non-Dispatch Default Penalty** (Platform Fee + gateway charges).
+4. **Configurable Seller Dispatch Guarantee & Progressive Reminders**: Once the buyer pays, the seller must dispatch the package within the platform-configured dispatch window (default: **4 days / 96 hours**, managed via **Gateway & Logistics Settings** in the Admin Portal).
+   - **Progressive Pre-Expiry Reminders**:
+     - At **24 Hours Remaining**: Seller receives an SMS & Email reminder outlining the exact itemized penalty (Platform Fee + 1.95% Gateway Processing Fee) charged if they default.
+     - At **6 Hours Remaining**: Seller receives an urgent final warning alert.
+   - **Default Cancellation & Non-Dispatch Penalty**: If the seller fails to dispatch within the configured timeframe:
+     - The order is automatically cancelled (`auto_cancelled_non_dispatch = True`).
+     - The buyer gets an immediate **100% full refund** (including all fees).
+     - The defaulting seller is charged the itemized **Non-Dispatch Default Penalty** (Platform Fee + 1.95% gateway charges).
 5. **Stale Transaction Management & Manual Payment Check**: Unpaid transaction entries auto-archive after the platform's configured duration (`unpaid_auto_archive_days`, default: 3 days). Sellers can click the **Check Payment** button to manually query gateway completion before archiving. If payment is confirmed, the transaction auto-unarchives (`is_archived = False`).
 
 ---
@@ -147,7 +151,9 @@ HendAxis Trust incorporates an event-triggered notification suite powered by Cel
 
 - **Payment Received**: Instant SMS & Email sent to both seller (to dispatch item) and buyer (with order tracking receipt).
 - **Package Dispatched**: Sent to buyer with live courier tracking links or informal bus details + Secret Delivery OTP.
-- **6-Hour Pre-Dispatch Expiry Warning**: Sent to seller 6 hours before the 4-day dispatch deadline to prevent order cancellation.
+- **Progressive Pre-Dispatch Expiry Warnings**:
+  - **24 Hours Before Expiry**: Sent to seller detailing exact itemized non-dispatch penalty (Platform Fee + 1.95% Gateway Fee).
+  - **6 Hours Before Expiry**: Sent to seller as high-priority final warning to prevent automated cancellation.
 - **Delivery Reminders & Auto-Confirm**: Automated SMS & Email reminders sent to buyer before auto-confirming delivery.
 - **Dispute Notifications**: Instant alert sent to seller when a dispute is opened, and resolution outcome sent to both parties once arbitrated.
 - **Return Dispatch & Receipt**: Sent to seller with return courier/bus tracking details + Reverse OTP, and confirmation sent to buyer upon refund completion.
@@ -155,17 +161,32 @@ HendAxis Trust incorporates an event-triggered notification suite powered by Cel
 
 ---
 
-## 13. Seller Dispute Health Monitoring & Account Suspension
-To protect buyers and platform integrity, HendAxis Trust dynamically monitors seller dispute metrics:
+## 13. Seller Health Governance, Rating Rules, Dispatch Expiry & Suspension Appeals
+To protect buyers and ensure high merchant reliability, HendAxis Trust actively monitors seller performance metrics:
 
-- **Multi-Window Dispute Rate Calculation**: Evaluates dispute percentages across (1) Last 30 Days, (2) Last 15 Sales, and (3) Lifetime Sales. System applies the window with the highest rate among sets with `paid_transactions > 5` to prevent low-volume sample distortion.
-- **Tiered Dashboard Banners & Notifications**:
-  - **Yellow Alert Banner (20% – 29.9% Dispute Rate)**: Displays an inline caution banner on the seller dashboard.
-  - **Orange Warning Banner (30% – 39.9% Dispute Rate)**: Displays a high-priority warning banner and sends an email notification to the seller.
-  - **Red Suspension Banner (≥ 40% Dispute Rate or Manual Action)**: Account is suspended (`is_suspended = True`).
-- **Enforcement & Admin Controls**:
-  - **Link Deactivation**: Active payment links are automatically disabled.
-  - **Creation & Checkout Block**: Link creation and checkout access are blocked with HTTP 403.
-  - **Manual Admin Controls**: Administrators can manually suspend or reinstate sellers anytime in `/admin-portal`.
+1. **Dispute Rate Governance (Multi-Window)**:
+   - Evaluates dispute percentages across (1) Last 30 Days, (2) Last 15 Sales, and (3) Lifetime Sales, applying the highest rate among sets with `paid_transactions >= 5`.
+   - **Yellow Alert Banner (≥ 20% Dispute Rate)**: Inline caution banner on seller dashboard.
+   - **Orange Warning Banner (≥ 30% Dispute Rate)**: High-priority dashboard banner and email warning.
+   - **Red Suspension Banner (≥ 40% Dispute Rate)**: Account suspension (`is_suspended = True`).
+
+2. **Customer Rating Governance**:
+   - **Rating Warning Banner (< 3.0 Stars)**: Caution alert on seller dashboard.
+   - **Rating Auto-Suspension (< 2.0 Stars with ≥ 3 Reviews)**: Automatically suspends account and disables active payment links.
+
+3. **Dispatch Expiry Governance**:
+   - **Dispatch Expiry Warning Banner (≥ 20% Non-Dispatch Rate)**: Amber caution banner on seller dashboard.
+   - **Dispatch Expiry Auto-Suspension (≥ 35% Non-Dispatch Rate with ≥ 5 Txns)**: Account suspension and link deactivation.
+
+4. **In-Flight Order Continuity**:
+   - Suspended sellers retain the ability to fulfill, dispatch, and complete all orders that were already paid prior to suspension.
+
+5. **Payment Link Creation Suspension UX & Appeals**:
+   - Attempting to generate a payment link while suspended opens an **Account Suspended Modal** explaining the exact reason and providing an inline appeal submission form.
+   - Appeals are routed to **Tab 4 (Suspension Appeals Desk)** in the Admin Portal for management review.
+
+6. **Post-Reinstatement Clean Slate & Immunity Protection**:
+   - When an administrator reinstates a seller or approves an appeal, `reinstated_at = timezone.now()` is set.
+   - Subsequent health checks only evaluate orders created **after** reinstatement, protecting reinstated merchants from immediate re-suspension and requiring 5 new transactions before threshold evaluation restarts.
 
 

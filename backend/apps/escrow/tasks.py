@@ -132,48 +132,74 @@ def process_auto_deliveries():
 @shared_task
 def check_dispatch_expiry_reminders():
     """
-    Sends SMS & Email reminder to the seller 6 hours before the pending dispatch timeout expires.
-    Warns that the order will be auto-cancelled and a penalty will be charged if not shipped.
+    Sends SMS & Email reminders to the seller at 24 hours and 6 hours before the pending dispatch timeout expires.
+    Clearly specifies the exact Platform Fee + Gateway Processing Fee penalty that will be charged if unfulfilled.
     """
     from apps.escrow.api import get_platform_settings
     now = timezone.now()
     cfg = get_platform_settings()
     timeout_days = cfg.get("shipping_timeout_days", 4)
-    
-    reminder_threshold_hours = (timeout_days * 24.0) - 6.0
-    cutoff = now - timedelta(hours=reminder_threshold_hours)
-    
+    timeout_hours = timeout_days * 24.0
+
     transactions = Transaction.objects.filter(
-        status=TransactionStatus.PAYMENT_RECEIVED,
-        created_at__lte=cutoff,
-        reminder_6h_dispatch_sent=False
-    )
-    
+        status=TransactionStatus.PAYMENT_RECEIVED
+    ).select_related('link', 'link__seller')
+
     reminders_sent = 0
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
-    
+
     for tx in transactions:
         seller = getattr(tx.link, 'seller', None)
         if not seller:
             continue
 
-        msg = (
-            f"DISPATCH REMINDER: Order {tx.paystack_reference} ({tx.link.title}) will be auto-cancelled in 6 hours if not dispatched. "
-            f"Please log in to your dashboard and dispatch the order to avoid auto-refund and non-dispatch penalty fees."
-        )
-        
+        hours_elapsed = (now - tx.created_at).total_seconds() / 3600.0
+        hours_remaining = max(0.0, timeout_hours - hours_elapsed)
+
+        # Calculate exact penalty breakdown
+        platform_fee = float(tx.platform_fee_ghs or 0)
+        gateway_fee = round(float(tx.total_amount_ghs or 0) * 0.0195, 2)
+        total_penalty = round(platform_fee + gateway_fee, 2)
+
         s_phone = getattr(seller, 'phone_number', None)
         s_email = getattr(seller, 'email', None)
-        if s_phone:
-            dispatch_sms_task.delay(s_phone, msg)
-        if s_email:
-            dispatch_email_task.delay(s_email, f"URGENT: 6 Hours Left to Dispatch Order #{tx.paystack_reference}", msg)
-            
-        tx.reminder_6h_dispatch_sent = True
-        tx.save(update_fields=['reminder_6h_dispatch_sent'])
-        reminders_sent += 1
-        
-    return f"Sent {reminders_sent} 6-hour dispatch pre-expiry reminders."
+        ref_id = tx.paystack_reference
+        product_title = tx.link.title if tx.link else "Order"
+
+        # 1. 6-Hour Final Warning (highest priority when <= 6 hours remain)
+        if hours_remaining <= 6.0 and not tx.reminder_6h_dispatch_sent:
+            msg = (
+                f"FINAL WARNING: Order #{ref_id} ({product_title}) will be auto-cancelled in {max(1, int(hours_remaining))} hours if not dispatched. "
+                f"A non-dispatch penalty of GHS {total_penalty:.2f} (GHS {platform_fee:.2f} platform fee + GHS {gateway_fee:.2f} gateway fee) "
+                f"will be deducted from your wallet balance. Repeated non-dispatch defaults will result in account suspension."
+            )
+            if s_phone:
+                dispatch_sms_task.delay(s_phone, msg)
+            if s_email:
+                dispatch_email_task.delay(s_email, f"URGENT: Final {max(1, int(hours_remaining))} Hours to Dispatch Order #{ref_id}", msg)
+
+            tx.reminder_6h_dispatch_sent = True
+            tx.reminder_24h_dispatch_sent = True
+            tx.save(update_fields=['reminder_6h_dispatch_sent', 'reminder_24h_dispatch_sent'])
+            reminders_sent += 1
+
+        # 2. 24-Hour Progressive Reminder (when timeout >= 36 hours and <= 24 hours remain)
+        elif timeout_hours >= 36.0 and hours_remaining <= 24.0 and not tx.reminder_24h_dispatch_sent:
+            msg = (
+                f"DISPATCH REMINDER: Order #{ref_id} ({product_title}) must be dispatched within {int(hours_remaining)} hours. "
+                f"If not shipped, the order will be auto-cancelled, the buyer refunded, and a non-dispatch penalty of GHS {total_penalty:.2f} "
+                f"(GHS {platform_fee:.2f} platform fee + GHS {gateway_fee:.2f} gateway fee) will be charged to your wallet balance."
+            )
+            if s_phone:
+                dispatch_sms_task.delay(s_phone, msg)
+            if s_email:
+                dispatch_email_task.delay(s_email, f"Action Required: 24h Left to Dispatch Order #{ref_id}", msg)
+
+            tx.reminder_24h_dispatch_sent = True
+            tx.save(update_fields=['reminder_24h_dispatch_sent'])
+            reminders_sent += 1
+
+    return f"Sent {reminders_sent} dispatch pre-expiry reminders."
 
 @shared_task
 def check_inspection_expiry_reminders():
@@ -218,6 +244,7 @@ def check_expired_dispatches():
     Periodic task: Auto-cancels and refunds orders in PAYMENT_RECEIVED status 
     if the seller fails to dispatch within the configured shipping timeout limit.
     Refunds 100% to buyer and charges non-dispatch penalty to seller.
+    Marks transaction as auto_cancelled_non_dispatch for seller reliability scoring.
     """
     from apps.escrow.api import get_platform_settings
     now = timezone.now()
@@ -236,7 +263,8 @@ def check_expired_dispatches():
     
     for tx in transactions:
         tx.status = TransactionStatus.REFUNDED
-        tx.save(update_fields=['status', 'updated_at'])
+        tx.auto_cancelled_non_dispatch = True
+        tx.save(update_fields=['status', 'auto_cancelled_non_dispatch', 'updated_at'])
         
         execute_non_dispatch_auto_refund(
             reference_id=str(tx.id),
@@ -256,14 +284,18 @@ def check_expired_dispatches():
             
         # Notify seller
         seller = tx.link.seller
+        platform_fee = float(tx.platform_fee_ghs or 0)
+        gateway_fee = round(float(tx.total_amount_ghs or 0) * 0.0195, 2)
+        total_penalty = round(platform_fee + gateway_fee, 2)
         s_msg = (
-            f"Order Auto-Cancelled (Default Penalty): Order {tx.paystack_reference} ({tx.link.title}) was not dispatched within {timeout_days} days. "
-            f"The buyer has been refunded 100%. A non-dispatch penalty (Platform fee + Paystack fees) has been charged to your account."
+            f"Order Auto-Cancelled (Non-Dispatch Default): Order {tx.paystack_reference} ({tx.link.title}) was not dispatched within {timeout_days} days. "
+            f"The buyer has been refunded 100%. A default penalty of GHS {total_penalty:.2f} (GHS {platform_fee:.2f} platform fee + GHS {gateway_fee:.2f} gateway fee) has been deducted from your account. "
+            f"High dispatch expiry rates result in automatic account suspension."
         )
         s_phone = getattr(seller, 'phone_number', None)
         s_email = getattr(seller, 'email', None)
         if s_phone: dispatch_sms_task.delay(s_phone, s_msg)
-        if s_email: dispatch_email_task.delay(s_email, "Order Cancelled - Non-Dispatch Penalty", s_msg)
+        if s_email: dispatch_email_task.delay(s_email, "Order Cancelled - Non-Dispatch Penalty Charged", s_msg)
         
         expired_count += 1
         
