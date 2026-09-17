@@ -33,7 +33,7 @@ cd "$PROJECT_ROOT"
 # Auto-clear runtime schedule file changes that cause git pull conflicts
 git checkout -- backend/celerybeat-schedule* 2>/dev/null || true
 git rm --cached backend/celerybeat-schedule* 2>/dev/null || true
-git pull origin main
+git pull origin alpha
 echo -e "${GREEN}✓ Git pull completed successfully.${NC}\n"
 
 # 2. BACKEND DEPENDENCIES, MIGRATIONS & STATIC ASSETS
