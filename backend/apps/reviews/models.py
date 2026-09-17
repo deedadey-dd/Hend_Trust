@@ -7,6 +7,7 @@ def generate_uuid7():
     return uuid6.uuid7()
 
 class SellerReview(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     transaction = models.OneToOneField(
         Transaction,
@@ -64,6 +65,7 @@ class ReviewVote(models.Model):
     ]
 
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
+    objects = models.Manager()
     review = models.ForeignKey(
         SellerReview,
         on_delete=models.CASCADE,
@@ -85,6 +87,7 @@ class ReviewVote(models.Model):
 
 
 class ShopAdInvoice(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     invoice_number = models.CharField(max_length=50, unique=True, db_index=True)
     seller = models.ForeignKey(

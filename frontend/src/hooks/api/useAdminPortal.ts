@@ -48,11 +48,103 @@ export interface AdminSellerItem {
   created_at?: string;
   payment_links_count: number;
   total_transactions_count: number;
+  total_reviews_count?: number;
   completed_gmv_ghs: number;
   wallet_balance_ghs: number;
+  shop_name?: string;
+  shop_description?: string;
+  shop_category?: string;
+  profile_picture_url?: string;
+  banner_url?: string;
+  verification_status?: string;
   is_suspended?: boolean;
   suspension_reason?: string;
   dispute_health?: any;
+}
+
+export interface AdminSellerDetails {
+  seller: {
+    id: string;
+    username: string;
+    email: string;
+    phone_number: string;
+    role: string;
+    payout_mode: string;
+    shop_name?: string;
+    shop_description?: string;
+    shop_category?: string;
+    shop_categories?: string[];
+    advertised_until?: string | null;
+    profile_picture_url?: string;
+    banner_url?: string;
+    verification_status: string;
+    verified_at?: string | null;
+    is_suspended: boolean;
+    suspension_reason?: string;
+    suspended_at?: string | null;
+    reinstated_at?: string | null;
+    is_email_verified?: boolean;
+    is_phone_verified?: boolean;
+    date_joined?: string;
+  };
+  dispute_health: any;
+  wallet: {
+    available_balance_ghs: number;
+    preferred_payout_type: string;
+    momo_number: string;
+    bank_account_number: string;
+    bank_name: string;
+    bank_code: string;
+    bank_account_name: string;
+    total_paystack_fees_ghs: number;
+  };
+  links_summary: {
+    total_links: number;
+    active_links: number;
+    archived_links: number;
+    top_links: Array<{
+      id: string;
+      title: string;
+      description: string;
+      price_ghs: number;
+      shipping_fee_ghs: number;
+      image_url: string;
+      is_active: boolean;
+      is_archived: boolean;
+      created_at: string;
+      total_transactions: number;
+      completed_transactions: number;
+      completed_revenue_ghs: number;
+      disputed_transactions: number;
+    }>;
+  };
+  transactions_summary: {
+    total_orders: number;
+    completed_orders: number;
+    disputed_orders: number;
+    cancelled_orders: number;
+    refunded_orders: number;
+    completed_gmv_ghs: number;
+  };
+  reviews_summary: {
+    total_reviews_count: number;
+    avg_rating_overall: number | null;
+    avg_rating_speed: number | null;
+    avg_rating_communication: number | null;
+    reviews: Array<{
+      id: string;
+      buyer_name: string;
+      rating_overall: number;
+      rating_speed: number;
+      rating_communication: number;
+      comment: string;
+      image_url?: string;
+      seller_reply?: string;
+      seller_replied_at?: string | null;
+      is_active: boolean;
+      created_at: string;
+    }>;
+  };
 }
 
 export interface AdminBuyerItem {
@@ -126,6 +218,18 @@ export const useAdminSellersQuery = (search?: string) => {
       const { data } = await apiClient.get('/admin/sellers', { params });
       return data;
     },
+  });
+};
+
+export const useAdminSellerDetailsQuery = (sellerId?: string | null) => {
+  return useQuery<AdminSellerDetails>({
+    queryKey: ['admin-seller-details', sellerId],
+    queryFn: async () => {
+      if (!sellerId) throw new Error('Seller ID is required');
+      const { data } = await apiClient.get(`/admin/sellers/${sellerId}/details`);
+      return data;
+    },
+    enabled: !!sellerId,
   });
 };
 

@@ -11,6 +11,7 @@ class PayoutDestinationType(models.TextChoices):
     BANK = 'BANK', 'Bank Account'
 
 class SellerWallet(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     user = models.OneToOneField(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='wallet')
     ledger_account = models.ForeignKey(LedgerAccount, on_delete=models.PROTECT, related_name='linked_wallets')

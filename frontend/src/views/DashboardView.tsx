@@ -957,6 +957,9 @@ interface SellerMetrics {
     dispatch_expiry_level?: string;
     dispatch_expiry_warning_threshold?: number;
     dispatch_expiry_suspension_threshold?: number;
+    is_flagged_for_compliance_review?: boolean;
+    compliance_review_reasons?: string[];
+    compound_warning_count?: number;
   };
 }
 
@@ -1283,6 +1286,42 @@ export default function DashboardView() {
             </div>
           )}
 
+          {/* Compound Risk / Compliance Review Banner */}
+          {metrics.dispute_health.dispute_level === 'COMPLIANCE_REVIEW' && !metrics.dispute_health.is_suspended && (
+            <div className="bg-gradient-to-r from-indigo-50 via-purple-50 to-indigo-50 dark:from-indigo-950/60 dark:via-purple-950/40 dark:to-indigo-950/60 border-2 border-indigo-400 dark:border-indigo-600 rounded-2xl p-5 shadow-lg flex items-start gap-3.5 mb-3">
+              <ShieldAlert className="h-6 w-6 text-indigo-600 dark:text-indigo-400 shrink-0 mt-0.5" />
+              <div className="flex-1">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h3 className="text-sm font-black text-indigo-950 dark:text-indigo-100 uppercase tracking-wide">
+                    🛡️ Account Flagged for Compliance Review (Compound Risk)
+                  </h3>
+                  <span className="bg-indigo-200 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 text-[10px] font-black px-2.5 py-0.5 rounded-full">
+                    HYBRID RISK ALERT
+                  </span>
+                </div>
+                <p className="text-xs text-indigo-900 dark:text-indigo-200 mt-1.5 leading-relaxed font-medium">
+                  Your seller account has been flagged for prioritized administrative compliance review because multiple risk indicators have reached warning thresholds concurrently:
+                </p>
+                {metrics.dispute_health.compliance_review_reasons && metrics.dispute_health.compliance_review_reasons.length > 0 && (
+                  <ul className="mt-2 space-y-1 bg-white/80 dark:bg-slate-900/80 rounded-xl p-3 border border-indigo-200 dark:border-indigo-800 text-xs text-indigo-950 dark:text-indigo-200 font-mono">
+                    {metrics.dispute_health.compliance_review_reasons.map((reason: string, idx: number) => (
+                      <li key={idx} className="flex items-center gap-2">
+                        <span className="text-amber-500 font-bold">•</span>
+                        <span>{reason}</span>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+                <div className="mt-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 rounded-xl p-3 text-[11px] text-amber-900 dark:text-amber-300 flex items-start gap-2">
+                  <Package className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                  <div>
+                    <strong>📦 Ready-to-Ship Action Plan:</strong> Fulfill all pending orders immediately, pause links for out-of-stock inventory, and only create new payment links for items ready for immediate dispatch to protect your seller account.
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Rating Warning Banner */}
           {metrics.dispute_health.dispute_level === 'RATING_WARNING' && !metrics.dispute_health.is_suspended && (
             <div className="bg-yellow-50 dark:bg-yellow-950/50 border border-yellow-400 rounded-2xl p-5 shadow-md flex items-start gap-3 mb-3">
@@ -1322,8 +1361,11 @@ export default function DashboardView() {
                   (above the warning threshold of {metrics.dispute_health.dispatch_expiry_warning_threshold ?? 20}%).
                   If your dispatch default rate reaches{' '}
                   <strong>{metrics.dispute_health.dispatch_expiry_suspension_threshold ?? 35}%</strong>,
-                  your seller account will be automatically suspended. Please fulfill and dispatch orders promptly within your dispatch window.
+                  your seller account will be automatically suspended.
                 </p>
+                <div className="mt-2 text-[11px] bg-amber-100/70 dark:bg-amber-900/40 p-2.5 rounded-lg text-amber-900 dark:text-amber-200 font-medium">
+                  💡 <strong>Ready-to-Ship Advisory:</strong> Never generate payment links for pre-orders or items you do not have in hand. Deactivate inactive links to prevent buyer payments on unstocked goods.
+                </div>
               </div>
             </div>
           )}

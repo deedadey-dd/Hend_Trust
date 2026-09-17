@@ -31,7 +31,7 @@ def _get_or_create_fee_account(name: str, account_type: str) -> LedgerAccount:
     )
     return account
 
-@transaction.atomic
+@transaction.atomic()
 def execute_instant_payout(wallet: SellerWallet, net_payout_amount: Decimal, reference_id: str):
     """
     Execute an instant payout for a COMPLETED transaction.
@@ -74,7 +74,7 @@ def execute_instant_payout(wallet: SellerWallet, net_payout_amount: Decimal, ref
     )
     return True
 
-@transaction.atomic
+@transaction.atomic()
 def execute_withdrawal(wallet: SellerWallet, amount: Decimal, destination_type: str, destination_account: str):
     sync_wallet_balance(wallet)
     
@@ -140,7 +140,7 @@ def execute_withdrawal(wallet: SellerWallet, amount: Decimal, destination_type: 
     
     return True
 
-@transaction.atomic
+@transaction.atomic()
 def execute_refund_payout(buyer_phone: str, buyer_email: str, refund_amount: Decimal, reference_id: str):
     """
     Execute a refund transfer back to a buyer.

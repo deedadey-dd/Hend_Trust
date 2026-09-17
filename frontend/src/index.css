@@ -55,8 +55,9 @@
     font-size: 1.5rem !important; /* ~24px */
     line-height: 1.9rem !important;
   }
+}
 
-  /* Hero Light-Blur Glassmorphic Search Bar */
+/* Hero Light-Blur Glassmorphic Search Bar */
   .hero-search-input {
     background-color: rgba(15, 23, 42, 0.45) !important;
     color: #ffffff !important;
@@ -81,31 +82,20 @@
     border-color: rgba(255, 255, 255, 0.4) !important;
   }
 
-  /* Keep pure white text on gradient banners, primary blue/indigo CTA buttons, hero search, and explicit white text in all modes */
-  [class*="bg-gradient"] h1,
-  [class*="bg-gradient"] h2,
-  [class*="bg-gradient"] h3,
-  [class*="bg-gradient"] h4,
-  [class*="bg-gradient"] .text-white,
-  [class*="bg-gradient"] a:not(.bg-white),
-  [class*="bg-gradient"] button:not(.bg-white),
+  /* Explicit white text on primary blue/indigo CTA buttons, hero search, and explicit white text in all modes */
   button.bg-blue-600,
   button.bg-indigo-600,
   a.bg-blue-600,
   a.bg-indigo-600,
+  button.bg-blue-700,
+  button.bg-indigo-700,
+  a.bg-blue-700,
+  a.bg-indigo-700,
   .hero-search-input,
   .hero-glass-btn,
-  .\!text-white {
+  .\!text-white,
+  .text-white {
     color: #ffffff !important;
-  }
-
-
-  [class*="bg-gradient"] .text-blue-200 {
-    color: #bfdbfe !important;
-  }
-
-  [class*="bg-gradient"] .text-slate-300 {
-    color: #cbd5e1 !important;
   }
 
   /* When Light Mode is active, adapt dark container background sections gracefully */
@@ -128,29 +118,39 @@
   }
 
   /* High-contrast Light Mode Text Legibility Fixes for headings and body text */
-  html.light .text-slate-100:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input):not(.hero-glass-btn *),
-  html.light .text-slate-200:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input):not(.hero-glass-btn *) {
+  html.light .text-slate-100:not(.text-white):not(.\!text-white),
+  html.light .text-slate-200:not(.text-white):not(.\!text-white) {
     color: #0f172a !important;
   }
 
-  html.light .text-slate-400:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *),
-  html.light .text-gray-400:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *) {
+  html.light .text-slate-400:not(.text-white):not(.\!text-white),
+  html.light .text-gray-400:not(.text-white):not(.\!text-white) {
     color: #475569 !important;
   }
 
-  html.light .text-slate-500:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *),
-  html.light .text-gray-500:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *) {
+  html.light .text-slate-500:not(.text-white):not(.\!text-white),
+  html.light .text-gray-500:not(.text-white):not(.\!text-white) {
     color: #334155 !important;
   }
 
-  html.light .text-slate-600:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *),
-  html.light .text-gray-600:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *) {
+  html.light .text-slate-600:not(.text-white):not(.\!text-white),
+  html.light .text-gray-600:not(.text-white):not(.\!text-white) {
     color: #1e293b !important;
   }
 
-  html.light .text-slate-300:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *),
-  html.light .text-gray-300:not([class*="bg-gradient"] *):not(a):not(button):not(.hero-search-input *):not(.hero-glass-btn *) {
+  html.light .text-slate-300:not(.text-white):not(.\!text-white),
+  html.light .text-gray-300:not(.text-white):not(.\!text-white) {
     color: #475569 !important;
+  }
+
+  /* Explicit white text for solid buttons and hero elements in light mode */
+  html.light button.bg-blue-600,
+  html.light button.bg-blue-600 *,
+  html.light a.bg-blue-600,
+  html.light a.bg-blue-600 *,
+  html.light .hero-glass-btn,
+  html.light .hero-glass-btn * {
+    color: #ffffff !important;
   }
 
   html.light input:not(.hero-search-input)::placeholder,
@@ -276,4 +276,3 @@
   html.dark textarea::placeholder {
     color: #64748b !important;
   }
-}

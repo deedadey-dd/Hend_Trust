@@ -31,7 +31,7 @@ def _apply_entry_to_balances(debit_account, credit_account, amount):
         credit_account.balance = F('balance') - amount
     credit_account.save(update_fields=['balance'])
 
-@transaction.atomic
+@transaction.atomic()
 def record_buyer_deposit(reference_id: str, gross_amount: Decimal, gateway_fee: Decimal):
     """
     Debit SYSTEM_BANK_ASSET (gross_amount - gateway_fee)
@@ -72,7 +72,7 @@ def record_buyer_deposit(reference_id: str, gross_amount: Decimal, gateway_fee: 
         _apply_entry_to_balances(fee_expense, escrow, gateway_fee)
 
 
-@transaction.atomic
+@transaction.atomic()
 def release_escrow_to_seller_wallet(reference_id: str, seller_user_id, gross_amount: Decimal, platform_fee: Decimal):
     """
     Debit BUYER_ESCROW_DEPOSIT (gross_amount)
@@ -118,7 +118,7 @@ def release_escrow_to_seller_wallet(reference_id: str, seller_user_id, gross_amo
     )
     _apply_entry_to_balances(escrow, seller_wallet, net_amount)
 
-@transaction.atomic
+@transaction.atomic()
 def execute_full_refund(reference_id: str, seller_user_id, gross_amount: Decimal, platform_fee: Decimal):
     """
     Debit BUYER_ESCROW_DEPOSIT (gross_amount)
@@ -167,7 +167,7 @@ def execute_full_refund(reference_id: str, seller_user_id, gross_amount: Decimal
         wallet.available_balance_ghs = seller_wallet.balance
         wallet.save(update_fields=['available_balance_ghs', 'updated_at'])
 
-@transaction.atomic
+@transaction.atomic()
 def execute_partial_refund(
     reference_id: str, 
     seller_user_id, 
@@ -234,7 +234,7 @@ def execute_partial_refund(
         )
         _apply_entry_to_balances(escrow, revenue, platform_retained_fee_ghs)
 
-@transaction.atomic
+@transaction.atomic()
 def record_ad_promotion_fee(reference_id, seller_user_id, fee_amount: Decimal):
     """
     Debits SELLER_INTERNAL_WALLET and Credits PLATFORM_FEE_REVENUE for paid shop promotion advertising.
@@ -265,7 +265,7 @@ def record_ad_promotion_fee(reference_id, seller_user_id, fee_amount: Decimal):
         wallet.available_balance_ghs = seller_wallet.balance
         wallet.save(update_fields=['available_balance_ghs', 'updated_at'])
 
-@transaction.atomic
+@transaction.atomic()
 def execute_non_dispatch_auto_refund(reference_id: str, seller_user_id, gross_amount: Decimal, platform_fee: Decimal):
     """
     Called when a seller fails to dispatch an order within 4 days (96 hours).

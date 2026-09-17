@@ -11,6 +11,7 @@ class NotificationType(models.TextChoices):
     IN_APP = 'IN_APP', 'In-App'
 
 class NotificationLog(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='notifications')
     title = models.CharField(max_length=255)
@@ -23,6 +24,7 @@ class NotificationLog(models.Model):
         return f"{self.user.username} - {self.title} ({self.notification_type})"
 
 class WebhookEventLog(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     provider = models.CharField(max_length=100) # e.g., 'PAYSTACK', 'COURIER_API'
     event_type = models.CharField(max_length=100)
@@ -42,6 +44,7 @@ class BroadcastCampaignStatus(models.TextChoices):
     FAILED = 'FAILED', 'Failed'
 
 class BroadcastCampaign(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     subject = models.CharField(max_length=255)
     message = models.TextField()
