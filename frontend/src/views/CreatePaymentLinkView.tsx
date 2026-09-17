@@ -1,12 +1,10 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2, ShieldAlert, Send } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2, ShieldAlert, Send, Package } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
 
 export default function CreatePaymentLinkView() {
-  const navigate = useNavigate();
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('0');
@@ -118,35 +116,36 @@ export default function CreatePaymentLinkView() {
     } catch (err: any) {
       console.error(err);
       const status = err.response?.status;
-      const detail = err.response?.data?.detail || err.response?.data?.message || 'Failed to create link';
-      if (status === 403 || detail.toLowerCase().includes('suspended')) {
+      const detail = err.response?.data?.detail;
+      const isSuspendedMsg = typeof detail === 'string' && (detail.includes('suspended') || detail.includes('Suspension'));
+
+      if (status === 403 || isSuspendedMsg) {
         setSuspensionError({
           isSuspended: true,
-          message: detail
+          message: typeof detail === 'string' ? detail : "Your account has been suspended by administration and cannot create new payment links."
         });
       } else {
-        alert(detail);
+        alert(detail || 'Failed to create payment link. Please try again.');
       }
     }
   };
 
-  const handleSendAppeal = async (e: React.FormEvent) => {
+  const handleAppealSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (appealReason.trim().length < 20) {
-      setAppealError("Please provide at least 20 characters explaining your appeal.");
-      return;
-    }
+    if (!appealReason.trim()) return;
+
+    setIsSubmittingAppeal(true);
+    setAppealError('');
+    setAppealSuccess('');
+
     try {
-      setIsSubmittingAppeal(true);
-      setAppealError('');
-      const res = await apiClient.post('/profile/submit-appeal', { reason: appealReason.trim() });
-      setAppealSuccess(res.data?.message || "Appeal submitted successfully! Management will review your request.");
-      setTimeout(() => {
-        setSuspensionError(null);
-        navigate('/dashboard');
-      }, 2500);
+      await apiClient.post('/escrow/appeals/submit', {
+        reason: appealReason.trim()
+      });
+      setAppealSuccess('Your suspension appeal has been submitted to management. You will be notified via email & SMS once reviewed.');
+      setAppealReason('');
     } catch (err: any) {
-      setAppealError(err.response?.data?.detail || err.response?.data?.message || "Failed to submit appeal. Please try again.");
+      setAppealError(err.response?.data?.detail || 'Failed to submit appeal. Please contact support.');
     } finally {
       setIsSubmittingAppeal(false);
     }
@@ -156,8 +155,32 @@ export default function CreatePaymentLinkView() {
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8 transition-colors">
       <div className="max-w-3xl mx-auto space-y-8">
         <div>
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Create Payment Link</h2>
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-slate-100 flex items-center gap-2">
+            <LinkIcon className="h-8 w-8 text-blue-600 dark:text-blue-400" />
+            Create Escrow Payment Link
+          </h2>
           <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">Generate a single-use escrow link for your buyer.</p>
+        </div>
+
+        {/* Ready to Ship Advisory Banner */}
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/40 border border-amber-300 dark:border-amber-700/60 rounded-2xl p-4 flex items-start gap-3 shadow-sm">
+          <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/60 text-amber-700 dark:text-amber-300 shrink-0 mt-0.5">
+            <Package className="h-5 w-5" />
+          </div>
+          <div className="flex-1">
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">
+                📦 Ready-to-Ship Advisory
+              </h4>
+              <span className="bg-amber-200/90 dark:bg-amber-800 text-amber-900 dark:text-amber-100 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
+                Policy Reminder
+              </span>
+            </div>
+            <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed font-medium">
+              Only create payment links for items <strong>physically in stock and ready to ship</strong>. 
+              Orders not dispatched within your <strong>4-day shipping window</strong> are automatically cancelled, 100% refunded to the buyer, and incur gateway fee deductions plus dispatch default penalties against your seller account standing.
+            </p>
+          </div>
         </div>
 
         {/* Quick Autofill Selector from Past Products */}
@@ -202,7 +225,12 @@ export default function CreatePaymentLinkView() {
           <form onSubmit={handleSubmit} className="p-8 space-y-6">
             <div className="space-y-4">
               <div>
-                <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Product Title</label>
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Product Title *</label>
+                  <span className="text-[11px] text-amber-600 dark:text-amber-400 font-semibold flex items-center gap-1">
+                    <Check className="h-3 w-3" /> Item must be in stock
+                  </span>
+                </div>
                 <input
                   required
                   type="text"
@@ -452,7 +480,7 @@ export default function CreatePaymentLinkView() {
                   ✅ {appealSuccess}
                 </div>
               ) : (
-                <form onSubmit={handleSendAppeal} className="space-y-3">
+                <form onSubmit={handleAppealSubmit} className="space-y-3">
                   <div>
                     <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1">
                       Submit Suspension Appeal to Management

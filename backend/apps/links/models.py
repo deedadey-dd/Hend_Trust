@@ -10,6 +10,7 @@ class FeeHandling(models.TextChoices):
     PASS_TO_BUYER = 'PASS_TO_BUYER', 'Pass to Buyer (Buyer pays)'
 
 class PaymentLink(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     seller = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='payment_links')
     title = models.CharField(max_length=255)

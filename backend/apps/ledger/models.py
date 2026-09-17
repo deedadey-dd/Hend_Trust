@@ -12,6 +12,7 @@ def generate_uuid7():
     return uuid6.uuid7()
 
 class LedgerAccount(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, 
@@ -28,6 +29,7 @@ class LedgerAccount(models.Model):
         return f"{self.name} ({self.account_type}) - Balance: {self.balance}"
 
 class LedgerEntry(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     reference_id = models.UUIDField(db_index=True)
     debit_account = models.ForeignKey(
@@ -54,4 +56,5 @@ class LedgerEntry(models.Model):
     payout_gateway = models.CharField(max_length=50, blank=True, default='')
 
     def __str__(self):
-        return f"{self.entry_type} | {self.amount_ghs} GHS | {self.timestamp.date()}"
+        ts = self.timestamp.strftime('%Y-%m-%d') if hasattr(self.timestamp, 'strftime') else str(self.timestamp)
+        return f"{self.entry_type} | {self.amount_ghs} GHS | {ts}"

@@ -24,6 +24,7 @@ import { apiClient, getErrorMessage } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { ExportButton } from '../components/ExportButton';
 import type { ExportColumn } from '../utils/exportUtils';
+import { AdminSellerDetailsModal } from '../components/AdminSellerDetailsModal';
 
 const adminTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -82,6 +83,7 @@ const ledgerExportHeaders: ExportColumn[] = [
 
 const sellerExportHeaders: ExportColumn[] = [
   { label: 'Seller ID', key: 'id' },
+  { label: 'Shop Name', key: 'shop_name' },
   { label: 'Username', key: 'username' },
   { label: 'Email', key: 'email' },
   { label: 'Phone Number', key: 'phone_number' },
@@ -559,6 +561,7 @@ export const AdminDashboardView: React.FC = () => {
 
   // Sellers State & Query
   const [sellerSearch, setSellerSearch] = useState<string>('');
+  const [selectedSellerIdModal, setSelectedSellerIdModal] = useState<string | null>(null);
   const { data: sellers, isLoading: sellersLoading, refetch: refetchSellers } = useAdminSellersQuery(sellerSearch);
 
   const handleSuspendSeller = async (sellerId: string, username: string) => {
@@ -1776,15 +1779,15 @@ export const AdminDashboardView: React.FC = () => {
         {/* ─── TAB 4: SELLERS DIRECTORY ───────────────────────────────────────── */}
         {activeTab === 'SELLERS' && (
           <div className="space-y-6">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-lg">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-sm">
               <div className="relative flex-1 max-w-md w-full">
-                <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-500" />
+                <Search className="absolute left-3.5 top-3.5 h-4 w-4 text-slate-400" />
                 <input
                   type="text"
                   placeholder="Search sellers by username, email, or phone..."
                   value={sellerSearch}
                   onChange={e => setSellerSearch(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 text-slate-100 placeholder-slate-500 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 placeholder-slate-400 dark:placeholder-slate-500 rounded-xl pl-10 pr-4 py-2.5 text-sm focus:outline-none focus:border-blue-500"
                 />
               </div>
               <ExportButton
@@ -1797,12 +1800,12 @@ export const AdminDashboardView: React.FC = () => {
               />
             </div>
 
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl overflow-hidden shadow-xl">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl overflow-hidden shadow-sm">
               <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-slate-300">
-                  <thead className="bg-slate-950 text-slate-400 font-mono uppercase text-xs border-b border-slate-800">
+                <table className="w-full text-left text-sm text-slate-700 dark:text-slate-300">
+                  <thead className="bg-slate-50 dark:bg-slate-950 text-slate-600 dark:text-slate-400 font-mono uppercase text-xs border-b border-slate-200 dark:border-slate-800">
                     <tr>
-                      <th className="px-5 py-4">Seller Username</th>
+                      <th className="px-5 py-4">Seller & Shop</th>
                       <th className="px-5 py-4">Contact Info</th>
                       <th className="px-5 py-4">Dispute Risk & Status</th>
                       <th className="px-5 py-4">Payment Links</th>
@@ -1811,7 +1814,7 @@ export const AdminDashboardView: React.FC = () => {
                       <th className="px-5 py-4">Account Action</th>
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-slate-800/60">
+                  <tbody className="divide-y divide-slate-100 dark:divide-slate-800/60">
                     {sellersLoading ? (
                       <tr><td colSpan={7} className="text-center py-12 text-slate-500">Loading sellers directory…</td></tr>
                     ) : sellers?.length === 0 ? (
@@ -1819,10 +1822,43 @@ export const AdminDashboardView: React.FC = () => {
                     ) : (
                       sellers?.map(s => (
                         <tr key={s.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                          <td className="px-5 py-4 font-bold text-slate-900 dark:text-white">
-                            @{s.username}
+                          <td className="px-5 py-4">
+                            <div 
+                              onClick={() => setSelectedSellerIdModal(s.id)}
+                              className="group cursor-pointer inline-block text-left"
+                              title="Click to view seller intelligence details"
+                            >
+                              {s.shop_name ? (
+                                <div>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-extrabold text-sm text-slate-900 dark:text-white group-hover:text-blue-500 dark:group-hover:text-blue-400 transition underline-offset-2 group-hover:underline">
+                                      {s.shop_name}
+                                    </span>
+                                    {s.verification_status === 'VERIFIED' && (
+                                      <span title="Verified Seller" className="inline-flex items-center">
+                                        <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                                      </span>
+                                    )}
+                                  </div>
+                                  <span className="text-xs text-slate-500 dark:text-slate-400 font-mono group-hover:text-blue-400 transition block mt-0.5">
+                                    @{s.username}
+                                  </span>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="font-bold text-slate-900 dark:text-white group-hover:text-blue-500 dark:group-hover:text-blue-400 transition underline-offset-2 group-hover:underline">
+                                    @{s.username}
+                                  </span>
+                                  {s.verification_status === 'VERIFIED' && (
+                                    <span title="Verified Seller" className="inline-flex items-center">
+                                      <ShieldCheck className="h-3.5 w-3.5 text-emerald-500 flex-shrink-0" />
+                                    </span>
+                                  )}
+                                </div>
+                              )}
+                            </div>
                             {s.is_suspended && (
-                              <span className="block text-[10px] font-mono font-bold text-red-600 dark:text-red-400">🚨 SUSPENDED</span>
+                              <span className="block text-[10px] font-mono font-bold text-red-600 dark:text-red-400 mt-1">🚨 SUSPENDED</span>
                             )}
                           </td>
                           <td className="px-5 py-4">
@@ -1854,6 +1890,16 @@ export const AdminDashboardView: React.FC = () => {
                               </div>
                             ) : s.dispute_health ? (
                               <div className="space-y-1.5">
+                                {s.dispute_health.dispute_level === 'COMPLIANCE_REVIEW' && (
+                                  <div>
+                                    <span 
+                                      className="px-2 py-0.5 bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 font-mono text-[10px] rounded-md border border-indigo-500/40 font-black uppercase inline-flex items-center gap-1 shadow-sm cursor-help"
+                                      title={s.dispute_health.compliance_review_reasons?.join(' \n• ') || 'Multiple risk indicators in warning zone'}
+                                    >
+                                      <ShieldAlert className="h-3 w-3" /> Compliance Review
+                                    </span>
+                                  </div>
+                                )}
                                 <div className="flex items-center gap-1.5 flex-wrap">
                                   {/* Dispute Rate */}
                                   <span className={`px-2 py-0.5 font-mono text-[11px] rounded-md border font-bold ${
@@ -1875,6 +1921,16 @@ export const AdminDashboardView: React.FC = () => {
                                   }`} title={`Dispatch Expiry Rate: ${s.dispute_health.dispatch_expiry_rate_pct ?? 0}% (${s.dispute_health.dispatch_expiry_count ?? 0}/${s.dispute_health.total_orders})`}>
                                     Expiry: {s.dispute_health.dispatch_expiry_rate_pct ?? 0}%
                                   </span>
+                                  {/* Average Rating if present */}
+                                  {s.dispute_health.avg_rating !== undefined && s.dispute_health.avg_rating !== null && (
+                                    <span className={`px-2 py-0.5 font-mono text-[11px] rounded-md border font-bold ${
+                                      s.dispute_health.avg_rating < 3.0
+                                        ? 'bg-yellow-500/20 text-yellow-700 dark:text-yellow-300 border-yellow-500/40'
+                                        : 'bg-blue-500/20 text-blue-700 dark:text-blue-300 border-blue-500/40'
+                                    }`} title={`Seller Rating: ${s.dispute_health.avg_rating} ★ across ${s.dispute_health.total_reviews_count || 0} reviews`}>
+                                      ★ {s.dispute_health.avg_rating}
+                                    </span>
+                                  )}
                                 </div>
                                 {s.dispute_health.total_orders !== undefined && (
                                   <p className="text-[10px] text-slate-400 font-mono">
@@ -1890,21 +1946,30 @@ export const AdminDashboardView: React.FC = () => {
                           <td className="px-5 py-4 font-extrabold text-emerald-600 dark:text-emerald-400">GHS {s.completed_gmv_ghs.toFixed(2)}</td>
                           <td className="px-5 py-4 font-extrabold text-blue-600 dark:text-blue-400">GHS {s.wallet_balance_ghs.toFixed(2)}</td>
                           <td className="px-5 py-4">
-                            {s.is_suspended ? (
+                            <div className="flex items-center gap-2">
                               <button
-                                onClick={() => handleReinstateSeller(s.id, s.username)}
-                                className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-extrabold transition cursor-pointer"
+                                onClick={() => setSelectedSellerIdModal(s.id)}
+                                className="px-2.5 py-1.5 bg-blue-600/20 hover:bg-blue-600/30 text-blue-700 dark:text-blue-300 border border-blue-500/40 rounded-xl text-xs font-bold transition cursor-pointer"
+                                title="Open Seller Intelligence Details"
                               >
-                                Reinstate
+                                Details
                               </button>
-                            ) : (
-                              <button
-                                onClick={() => handleSuspendSeller(s.id, s.username)}
-                                className="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-700 dark:text-rose-300 border border-rose-500/40 rounded-xl text-xs font-extrabold transition cursor-pointer"
-                              >
-                                Suspend
-                              </button>
-                            )}
+                              {s.is_suspended ? (
+                                <button
+                                  onClick={() => handleReinstateSeller(s.id, s.username)}
+                                  className="px-3 py-1.5 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-700 dark:text-emerald-300 border border-emerald-500/40 rounded-xl text-xs font-extrabold transition cursor-pointer"
+                                >
+                                  Reinstate
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => handleSuspendSeller(s.id, s.username)}
+                                  className="px-3 py-1.5 bg-rose-600/20 hover:bg-rose-600/30 text-rose-700 dark:text-rose-300 border border-rose-500/40 rounded-xl text-xs font-extrabold transition cursor-pointer"
+                                >
+                                  Suspend
+                                </button>
+                              )}
+                            </div>
                           </td>
                         </tr>
                       ))
@@ -3023,15 +3088,15 @@ export const AdminDashboardView: React.FC = () => {
       {/* ─── MODAL: GATEWAY SWITCH CONFIRMATION ─────────────────────────────── */}
       {gatewayConfirm && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full shadow-2xl shadow-amber-500/10 overflow-hidden">
+          <div className="bg-white dark:bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100">
             {/* Header */}
-            <div className="px-6 py-4 bg-amber-950/30 border-b border-amber-500/20 flex items-center gap-3">
+            <div className="px-6 py-4 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-500/20 flex items-center gap-3">
               <div className="h-9 w-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4.5 w-4.5 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4.5 w-4.5 text-amber-600 dark:text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
               </div>
               <div>
-                <h3 className="text-sm font-bold text-amber-300">Switch Payment Gateway?</h3>
-                <p className="text-[11px] text-slate-400 font-mono mt-0.5">This change takes effect immediately for all new checkouts</p>
+                <h3 className="text-sm font-bold text-amber-800 dark:text-amber-300">Switch Payment Gateway?</h3>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">This change takes effect immediately for all new checkouts</p>
               </div>
             </div>
             {/* Body */}
@@ -3039,17 +3104,17 @@ export const AdminDashboardView: React.FC = () => {
               <div className="flex items-center gap-4 text-sm">
                 <div className="flex-1 text-center">
                   <div className="text-[10px] text-slate-500 uppercase font-mono mb-1">Current</div>
-                  <div className="bg-slate-800 border border-slate-700 rounded-lg px-3 py-2 font-mono font-bold text-slate-300">{platformSettings.active_payment_gateway}</div>
+                  <div className="bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-300">{platformSettings.active_payment_gateway}</div>
                 </div>
-                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-400 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4 text-amber-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
                 <div className="flex-1 text-center">
-                  <div className="text-[10px] text-amber-500/80 uppercase font-mono mb-1">Switching To</div>
-                  <div className="bg-amber-950/40 border border-amber-500/40 rounded-lg px-3 py-2 font-mono font-bold text-amber-300">{gatewayConfirm.pending}</div>
+                  <div className="text-[10px] text-amber-600 dark:text-amber-500/80 uppercase font-mono mb-1">Switching To</div>
+                  <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-500/40 rounded-lg px-3 py-2 font-mono font-bold text-amber-800 dark:text-amber-300">{gatewayConfirm.pending}</div>
                 </div>
               </div>
-              <div className="bg-rose-950/30 border border-rose-800/40 rounded-xl p-3 text-[11px] text-rose-300 leading-relaxed space-y-1">
-                <p className="font-bold text-rose-400">⚠ Important before you confirm:</p>
-                <ul className="list-disc list-inside space-y-0.5 text-rose-300/80">
+              <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 rounded-xl p-3 text-[11px] text-rose-800 dark:text-rose-300 leading-relaxed space-y-1">
+                <p className="font-bold text-rose-700 dark:text-rose-400">⚠ Important before you confirm:</p>
+                <ul className="list-disc list-inside space-y-0.5 text-rose-700/90 dark:text-rose-300/80">
                   <li>All <strong>new buyer checkout sessions</strong> will immediately route through <strong>{gatewayConfirm.pending}</strong>.</li>
                   <li>In-progress transactions are not affected — they remain on their original gateway.</li>
                   <li>Ensure the new gateway credentials are fully configured in the backend environment before switching.</li>
@@ -3060,13 +3125,13 @@ export const AdminDashboardView: React.FC = () => {
             <div className="px-6 pb-5 flex gap-3">
               <button
                 onClick={() => setGatewayConfirm(null)}
-                className="flex-1 py-2.5 rounded-xl border border-slate-700 text-slate-300 hover:bg-slate-800 text-sm font-semibold transition"
+                className="flex-1 py-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 text-sm font-semibold transition cursor-pointer"
               >
                 Cancel
               </button>
               <button
                 onClick={confirmGatewaySwitch}
-                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-900 text-sm font-bold transition shadow-lg shadow-amber-500/20"
+                className="flex-1 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-slate-950 text-sm font-bold transition shadow-lg shadow-amber-500/20 cursor-pointer"
               >
                 Confirm Switch
               </button>
@@ -3078,79 +3143,79 @@ export const AdminDashboardView: React.FC = () => {
       {/* ─── MODAL: INSPECT TRANSACTION DETAIL ───────────────────────────────── */}
       {selectedTxnId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl text-slate-900 dark:text-slate-100">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
               <div>
-                <h3 className="text-base font-bold text-white">Transaction Deep Inspection</h3>
-                <p className="text-xs font-mono text-blue-400">{txnDetail?.paystack_reference}</p>
+                <h3 className="text-base font-bold text-slate-900 dark:text-white">Transaction Deep Inspection</h3>
+                <p className="text-xs font-mono text-blue-600 dark:text-blue-400">{txnDetail?.paystack_reference}</p>
               </div>
-              <button onClick={() => setSelectedTxnId(null)} className="text-slate-400 hover:text-white transition">
+              <button onClick={() => setSelectedTxnId(null)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white transition cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-300">
+            <div className="p-6 overflow-y-auto space-y-6 text-xs text-slate-700 dark:text-slate-300">
               {detailLoading || !txnDetail ? (
                 <div className="py-12 text-center text-slate-400 flex flex-col items-center justify-center gap-2">
-                  <RefreshCw className="h-6 w-6 animate-spin text-blue-400" />
+                  <RefreshCw className="h-6 w-6 animate-spin text-blue-500" />
                   <span>Fetching transaction audit trail…</span>
                 </div>
               ) : (
                 <>
                   {/* Summary Header */}
-                  <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 grid grid-cols-3 gap-4">
+                  <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 grid grid-cols-3 gap-4 shadow-sm">
                     <div>
                       <span className="text-slate-500 font-mono text-[10px]">PRODUCT TITLE</span>
-                      <p className="font-bold text-white text-xs mt-0.5">{txnDetail?.title || 'N/A'}</p>
-                      <p className="text-[10px] text-slate-400 font-mono mt-0.5">Status: <span className="text-amber-400 font-bold">{txnDetail?.status}</span></p>
+                      <p className="font-bold text-slate-900 dark:text-white text-xs mt-0.5">{txnDetail?.title || 'N/A'}</p>
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400 font-mono mt-0.5">Status: <span className="text-amber-600 dark:text-amber-400 font-bold">{txnDetail?.status}</span></p>
                     </div>
                     <div>
                       <span className="text-slate-500 font-mono text-[10px]">TOTAL AMOUNT PAID</span>
-                      <p className="font-black text-emerald-400 text-sm mt-0.5">GHS {Number(txnDetail?.total_amount_ghs || 0).toFixed(2)}</p>
+                      <p className="font-black text-emerald-600 dark:text-emerald-400 text-sm mt-0.5">GHS {Number(txnDetail?.total_amount_ghs || 0).toFixed(2)}</p>
                       {txnDetail?.shipping_fee_ghs > 0 && (
-                        <p className="text-[10px] text-slate-400">Shipping: GHS {Number(txnDetail.shipping_fee_ghs).toFixed(2)}</p>
+                        <p className="text-[10px] text-slate-500 dark:text-slate-400">Shipping: GHS {Number(txnDetail.shipping_fee_ghs).toFixed(2)}</p>
                       )}
                     </div>
                     <div>
                       <span className="text-slate-500 font-mono text-[10px]">PLATFORM FEE</span>
-                      <p className="font-bold text-blue-400 text-xs mt-0.5">GHS {Number(txnDetail?.platform_fee_ghs || 0).toFixed(2)}</p>
+                      <p className="font-bold text-blue-600 dark:text-blue-400 text-xs mt-0.5">GHS {Number(txnDetail?.platform_fee_ghs || 0).toFixed(2)}</p>
                     </div>
                   </div>
 
                   {/* Buyer & Seller */}
-                  <div className="grid grid-cols-2 gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
+                  <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <div>
                       <span className="text-slate-500 font-mono">SELLER ACCOUNT</span>
-                      <p className="font-bold text-slate-200 mt-1">@{txnDetail?.seller?.username || 'seller'}</p>
-                      <p className="text-slate-400">{txnDetail?.seller?.phone_number || 'No phone'}</p>
+                      <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">@{txnDetail?.seller?.username || 'seller'}</p>
+                      <p className="text-slate-600 dark:text-slate-400">{txnDetail?.seller?.phone_number || 'No phone'}</p>
                       <p className="text-slate-500 text-[10px]">{txnDetail?.seller?.email || 'No email'}</p>
                     </div>
                     <div>
                       <span className="text-slate-500 font-mono">BUYER DETAILS</span>
-                      <p className="font-bold text-slate-200 mt-1">{txnDetail?.buyer?.name || 'Guest Buyer'}</p>
-                      <p className="text-slate-400 font-mono">{txnDetail?.buyer?.phone}</p>
-                      <p className="text-slate-400 mt-0.5">{txnDetail?.buyer?.shipping_address || 'No shipping address'}</p>
+                      <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">{txnDetail?.buyer?.name || 'Guest Buyer'}</p>
+                      <p className="text-slate-600 dark:text-slate-400 font-mono">{txnDetail?.buyer?.phone}</p>
+                      <p className="text-slate-600 dark:text-slate-400 mt-0.5">{txnDetail?.buyer?.shipping_address || 'No shipping address'}</p>
                     </div>
                   </div>
 
                   {/* Waybill / Package Proof if present */}
                   {txnDetail?.waybill_photo_url && (
-                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800">
-                      <span className="font-mono text-emerald-400 font-bold uppercase block mb-1">DISPATCH / WAYBILL PHOTO:</span>
+                    <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
+                      <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold uppercase block mb-1">DISPATCH / WAYBILL PHOTO:</span>
                       <img
                         src={txnDetail.waybill_photo_url}
                         alt="Dispatch proof"
                         onClick={() => setPreviewImage(txnDetail.waybill_photo_url)}
-                        className="w-24 h-24 object-cover rounded-lg border border-slate-700 hover:border-emerald-400 transition cursor-pointer"
+                        className="w-24 h-24 object-cover rounded-lg border border-slate-200 dark:border-slate-700 hover:border-emerald-500 transition cursor-pointer"
                       />
                     </div>
                   )}
 
                   {/* Dispute Evidence if present */}
                   {txnDetail?.buyer_dispute_reason && (
-                    <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-2">
-                      <span className="font-mono text-rose-400 font-bold uppercase block">BUYER CLAIM REASON:</span>
-                      <p className="text-slate-200 bg-slate-900 p-2.5 rounded-lg border border-slate-800">{txnDetail.buyer_dispute_reason}</p>
+                    <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 shadow-sm">
+                      <span className="font-mono text-rose-600 dark:text-rose-400 font-bold uppercase block">BUYER CLAIM REASON:</span>
+                      <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">{txnDetail.buyer_dispute_reason}</p>
                       {txnDetail.buyer_dispute_photos?.length > 0 && (
                         <div className="flex flex-wrap gap-2 pt-1">
                           {txnDetail.buyer_dispute_photos.map((url: string, idx: number) => (
@@ -3159,7 +3224,7 @@ export const AdminDashboardView: React.FC = () => {
                               src={url}
                               alt="Buyer evidence"
                               onClick={() => setPreviewImage(url)}
-                              className="w-16 h-16 object-cover rounded-lg border border-slate-700 hover:border-rose-500 transition cursor-pointer"
+                              className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700 hover:border-rose-500 transition cursor-pointer"
                             />
                           ))}
                         </div>
@@ -3169,21 +3234,21 @@ export const AdminDashboardView: React.FC = () => {
 
                   {/* Delivery Logs */}
                   <div>
-                    <h4 className="font-bold text-slate-200 mb-2 flex items-center gap-1.5">
-                      <Package className="h-4 w-4 text-blue-400" />
+                    <h4 className="font-bold text-slate-900 dark:text-slate-200 mb-2 flex items-center gap-1.5">
+                      <Package className="h-4 w-4 text-blue-500 dark:text-blue-400" />
                       Delivery Logs & Status
                     </h4>
                     {!txnDetail?.delivery_logs || txnDetail.delivery_logs.length === 0 ? (
-                      <p className="text-slate-500 italic bg-slate-950 p-3 rounded-lg border border-slate-800">No delivery log recorded yet.</p>
+                      <p className="text-slate-500 italic bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800">No delivery log recorded yet.</p>
                     ) : (
                       txnDetail.delivery_logs.map((l: any) => (
-                        <div key={l.id} className="bg-slate-950 p-3 rounded-lg border border-slate-800 space-y-1 mb-2">
-                          <div className="flex justify-between font-bold text-slate-200">
+                        <div key={l.id} className="bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800 space-y-1 mb-2">
+                          <div className="flex justify-between font-bold text-slate-900 dark:text-slate-200">
                             <span>Method: {l.delivery_method}</span>
                             <span className="text-slate-500 text-[10px]">{new Date(l.created_at).toLocaleString()}</span>
                           </div>
-                          {l.courier_name && <p className="text-slate-400">Courier: {l.courier_name} (#{l.tracking_number})</p>}
-                          {l.driver_phone && <p className="text-slate-400">Driver: {l.driver_phone} | Vehicle: {l.driver_car_number || 'N/A'} | Station: {l.destination_station}</p>}
+                          {l.courier_name && <p className="text-slate-600 dark:text-slate-400">Courier: {l.courier_name} (#{l.tracking_number})</p>}
+                          {l.driver_phone && <p className="text-slate-600 dark:text-slate-400">Driver: {l.driver_phone} | Vehicle: {l.driver_car_number || 'N/A'} | Station: {l.destination_station}</p>}
                         </div>
                       ))
                     )}
@@ -3191,21 +3256,21 @@ export const AdminDashboardView: React.FC = () => {
 
                   {/* Ledger Entries Audit */}
                   <div>
-                    <h4 className="font-bold text-slate-200 mb-2 flex items-center gap-1.5">
-                      <Layers className="h-4 w-4 text-indigo-400" />
+                    <h4 className="font-bold text-slate-900 dark:text-slate-200 mb-2 flex items-center gap-1.5">
+                      <Layers className="h-4 w-4 text-indigo-500 dark:text-indigo-400" />
                       Double-Entry Ledger Audit Trail
                     </h4>
                     {!txnDetail?.ledger_entries || txnDetail.ledger_entries.length === 0 ? (
-                      <p className="text-slate-500 italic bg-slate-950 p-3 rounded-lg border border-slate-800">No double-entry ledger records found for this transaction.</p>
+                      <p className="text-slate-500 italic bg-slate-50 dark:bg-slate-950 p-3 rounded-lg border border-slate-200 dark:border-slate-800">No double-entry ledger records found for this transaction.</p>
                     ) : (
                       <div className="space-y-1.5">
                         {txnDetail.ledger_entries.map((e: any) => (
-                          <div key={e.id} className="bg-slate-950 p-2.5 rounded-lg border border-slate-800 flex justify-between items-center font-mono">
+                          <div key={e.id} className="bg-slate-50 dark:bg-slate-950 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 flex justify-between items-center font-mono">
                             <div>
-                              <span className="text-blue-400 font-bold">{e.entry_type}</span>
+                              <span className="text-blue-600 dark:text-blue-400 font-bold">{e.entry_type}</span>
                               <p className="text-[10px] text-slate-500">{e.debit_account} → {e.credit_account}</p>
                             </div>
-                            <span className="font-bold text-emerald-400">GHS {Number(e.amount_ghs || 0).toFixed(2)}</span>
+                            <span className="font-bold text-emerald-600 dark:text-emerald-400">GHS {Number(e.amount_ghs || 0).toFixed(2)}</span>
                           </div>
                         ))}
                       </div>
@@ -3215,13 +3280,13 @@ export const AdminDashboardView: React.FC = () => {
                   {/* Dev Sandbox Status Advance Tools */}
                   <div className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl space-y-2">
                     <div className="flex items-center justify-between">
-                      <span className="font-extrabold text-amber-400 text-xs uppercase flex items-center gap-1.5">
+                      <span className="font-extrabold text-amber-700 dark:text-amber-400 text-xs uppercase flex items-center gap-1.5">
                         <Zap className="h-4 w-4" />
                         Dev & Testing Mode: Override / Advance Status
                       </span>
-                      <span className="text-[10px] text-amber-300 font-mono">Current: {txnDetail?.status}</span>
+                      <span className="text-[10px] text-amber-700 dark:text-amber-300 font-mono">Current: {txnDetail?.status}</span>
                     </div>
-                    <p className="text-[11px] text-slate-400">
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
                       Instantly simulate state transitions without waiting for webhooks or manual buyer actions during dev testing:
                     </p>
                     <div className="flex flex-wrap gap-2 pt-1">
@@ -3236,10 +3301,10 @@ export const AdminDashboardView: React.FC = () => {
                           type="button"
                           disabled={txnDetail?.status === st.id}
                           onClick={() => handleAdvanceStatus(st.id)}
-                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border ${
+                          className={`px-3 py-1.5 rounded-lg text-xs font-bold transition border cursor-pointer ${
                             txnDetail?.status === st.id
                               ? 'bg-amber-500 text-slate-950 border-amber-400 opacity-60 cursor-default'
-                              : 'bg-slate-900 hover:bg-slate-800 text-amber-200 border-amber-500/40'
+                              : 'bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-amber-800 dark:text-amber-200 border-amber-500/40'
                           }`}
                         >
                           {st.label}
@@ -3251,10 +3316,10 @@ export const AdminDashboardView: React.FC = () => {
               )}
             </div>
 
-            <div className="px-6 py-3 bg-slate-950 border-t border-slate-800 flex justify-end">
+            <div className="px-6 py-3 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 flex justify-end">
               <button
                 onClick={() => setSelectedTxnId(null)}
-                className="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold rounded-lg transition"
+                className="px-4 py-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold rounded-lg border border-slate-200 dark:border-slate-700 transition cursor-pointer"
               >
                 Close Inspection
               </button>
@@ -3266,24 +3331,24 @@ export const AdminDashboardView: React.FC = () => {
       {/* ─── MODAL: RESOLVE DISPUTE ──────────────────────────────────────────── */}
       {resolvingTxnId && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-slate-900 border border-slate-800 rounded-2xl max-w-md w-full shadow-2xl flex flex-col max-h-[90vh] overflow-hidden">
-            <div className="px-6 py-4 border-b border-slate-800 flex items-center justify-between bg-slate-950 flex-shrink-0">
-              <h3 className="text-base font-bold text-rose-400 flex items-center gap-2">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-900 dark:text-slate-100">
+            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 flex-shrink-0">
+              <h3 className="text-base font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5" />
                 Arbitrate Dispute Claim
               </h3>
-              <button onClick={() => setResolvingTxnId(null)} className="text-slate-400 hover:text-white transition">
+              <button onClick={() => setResolvingTxnId(null)} className="text-slate-400 hover:text-slate-700 dark:hover:text-white transition cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
             <form onSubmit={handleResolveDispute} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
               <div>
-                <label className="block text-slate-400 font-mono uppercase mb-1">Arbitration Resolution Action *</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-mono uppercase mb-1">Arbitration Resolution Action *</label>
                 <select
                   value={resolveAction}
                   onChange={e => setResolveAction(e.target.value)}
-                  className="w-full bg-slate-950 border border-slate-800 text-slate-200 font-bold rounded-xl p-3 text-sm focus:outline-none focus:border-rose-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-200 font-bold rounded-xl p-3 text-sm focus:outline-none focus:border-rose-500"
                 >
                   <option value="RELEASE_TO_SELLER">RELEASE_TO_SELLER — Mark Completed & Release Escrow to Seller</option>
                   <option value="FULL_REFUND_TO_BUYER">FULL_REFUND_TO_BUYER — 100% Refund Buyer & Charge Seller Penalty</option>
@@ -3293,30 +3358,30 @@ export const AdminDashboardView: React.FC = () => {
               </div>
 
               {resolveAction === 'PARTIAL_REFUND_TO_BUYER' && (
-                <div className="bg-slate-950 p-4 rounded-xl border border-slate-800 space-y-3">
-                  <div className="space-y-1 text-xs text-slate-400 font-mono border-b border-slate-800 pb-2">
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-3 shadow-sm">
+                  <div className="space-y-1 text-xs text-slate-600 dark:text-slate-400 font-mono border-b border-slate-200 dark:border-slate-800 pb-2">
                     <div className="flex justify-between items-center">
                       <span>TOTAL PAID BY BUYER:</span>
-                      <span className="font-bold text-slate-200">GHS {totalPaidByBuyer.toFixed(2)}</span>
+                      <span className="font-bold text-slate-900 dark:text-slate-200">GHS {totalPaidByBuyer.toFixed(2)}</span>
                     </div>
-                    <div className="flex justify-between items-center text-[11px] text-slate-400">
+                    <div className="flex justify-between items-center text-[11px] text-slate-500 dark:text-slate-400">
                       <span>LESS PLATFORM FEE:</span>
                       <span>- GHS {platformFeeGhsConst.toFixed(2)}</span>
                     </div>
                     {incurredShippingGhs > 0 && (
-                      <div className="flex justify-between items-center text-[11px] text-amber-400">
+                      <div className="flex justify-between items-center text-[11px] text-amber-600 dark:text-amber-400">
                         <span>LESS INCURRED SHIPPING:</span>
                         <span>- GHS {incurredShippingGhs.toFixed(2)}</span>
                       </div>
                     )}
-                    <div className="flex justify-between items-center pt-1 text-xs font-bold text-emerald-400 border-t border-slate-800/60">
+                    <div className="flex justify-between items-center pt-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 border-t border-slate-200 dark:border-slate-800/60">
                       <span>MAX NET ALLOCATABLE POOL:</span>
                       <span>GHS {maxNetPool.toFixed(2)}</span>
                     </div>
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 font-mono uppercase mb-1">1. Buyer Refund Amount (GHS)</label>
+                    <label className="block text-slate-600 dark:text-slate-400 font-mono uppercase mb-1">1. Buyer Refund Amount (GHS)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -3331,12 +3396,12 @@ export const AdminDashboardView: React.FC = () => {
                         const p = Math.round((Math.max(0, totalPaidByBuyer - r - s) + Number.EPSILON) * 100) / 100;
                         setPlatformFeeGhs(p);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-blue-500"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
                   <div>
-                    <label className="block text-slate-400 font-mono uppercase mb-1">2. Seller Payout Amount (GHS)</label>
+                    <label className="block text-slate-600 dark:text-slate-400 font-mono uppercase mb-1">2. Seller Payout Amount (GHS)</label>
                     <input
                       type="number"
                       step="0.01"
@@ -3349,14 +3414,14 @@ export const AdminDashboardView: React.FC = () => {
                         const p = Math.round((Math.max(0, totalPaidByBuyer - (Number(refundAmountGhs) || 0) - s) + Number.EPSILON) * 100) / 100;
                         setPlatformFeeGhs(p);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-blue-500"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-blue-500"
                     />
                   </div>
 
                   <div>
                     <div className="flex justify-between items-center mb-1">
-                      <label className="block text-slate-400 font-mono uppercase">3. Platform Retained Fee / Extra Fee (GHS)</label>
-                      <span className="text-[10px] text-slate-400 font-mono">Base GHS {platformFeeGhsConst.toFixed(2)} + Shipping GHS {incurredShippingGhs.toFixed(2)}</span>
+                      <label className="block text-slate-600 dark:text-slate-400 font-mono uppercase">3. Platform Retained Fee / Extra Fee (GHS)</label>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400 font-mono">Base GHS {platformFeeGhsConst.toFixed(2)} + Shipping GHS {incurredShippingGhs.toFixed(2)}</span>
                     </div>
                     <input
                       type="number"
@@ -3368,31 +3433,31 @@ export const AdminDashboardView: React.FC = () => {
                         const p = Math.round(((parseFloat(e.target.value) || 0) + Number.EPSILON) * 100) / 100;
                         setPlatformFeeGhs(p);
                       }}
-                      className="w-full bg-slate-900 border border-slate-700 text-slate-100 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-blue-500"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-100 rounded-lg p-2.5 text-sm font-mono focus:outline-none focus:border-blue-500"
                     />
-                    <p className="text-[10px] text-slate-400 mt-1 font-mono">
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1 font-mono">
                       Managers can adjust extra platform fees / penalties here. Unallocated split funds accrue to platform fee.
                     </p>
                   </div>
 
                   <div className={`p-2.5 rounded-lg text-xs font-mono flex justify-between items-center ${
                     isPartialOverLimit 
-                      ? 'bg-rose-500/20 text-rose-300 border border-rose-500/40' 
-                      : 'bg-slate-900 text-slate-300 border border-slate-800'
+                      ? 'bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-500/40' 
+                      : 'bg-white dark:bg-slate-900 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-800'
                   }`}>
                     <span>TOTAL SPLIT: GHS {totalSplitSum.toFixed(2)} / {totalPaidByBuyer.toFixed(2)}</span>
                     <span>{totalPaidByBuyer > 0 ? ((totalSplitSum / totalPaidByBuyer) * 100).toFixed(1) : 0}%</span>
                   </div>
                   {isPartialOverLimit && (
-                    <p className="text-rose-400 text-[11px] font-bold">
+                    <p className="text-rose-600 dark:text-rose-400 text-[11px] font-bold">
                       ⚠ Total split (GHS {totalSplitSum.toFixed(2)}) exceeds total paid by buyer (GHS {totalPaidByBuyer.toFixed(2)}).
                     </p>
                   )}
                 </div>
               )}
 
-              <div className="bg-blue-950/40 border border-blue-900/50 rounded-xl p-3 text-[11px] text-blue-300 space-y-1 font-sans">
-                <span className="font-bold block text-blue-200">⏱ 24-Hour Settlement Policy:</span>
+              <div className="bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900/50 rounded-xl p-3 text-[11px] text-blue-800 dark:text-blue-300 space-y-1 font-sans">
+                <span className="font-bold block text-blue-900 dark:text-blue-200">⏱ 24-Hour Settlement Policy:</span>
                 <p>
                   • Buyer refund (if &gt; 0) is returned via the <strong>same payment medium</strong> (Paystack MoMo/Card) within 24 hours.
                 </p>
@@ -3402,20 +3467,20 @@ export const AdminDashboardView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-slate-400 font-mono uppercase mb-1">Manager Arbitration Notes / Reason</label>
+                <label className="block text-slate-600 dark:text-slate-400 font-mono uppercase mb-1">Manager Arbitration Notes / Reason</label>
                 <textarea
                   rows={3}
                   value={adminNotes}
                   onChange={e => setAdminNotes(e.target.value)}
                   placeholder="Record formal arbitration ruling notes..."
-                  className="w-full bg-slate-950 border border-slate-800 text-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:border-rose-500"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-200 rounded-xl p-3 text-xs focus:outline-none focus:border-rose-500"
                 />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-slate-400 font-mono uppercase">Upload Manager Evidence Photos</label>
-                  <span className="text-[11px] font-mono text-amber-400 font-bold">{managerPhotos.length}/5 photos</span>
+                  <label className="block text-slate-600 dark:text-slate-400 font-mono uppercase">Upload Manager Evidence Photos</label>
+                  <span className="text-[11px] font-mono text-amber-600 dark:text-amber-400 font-bold">{managerPhotos.length}/5 photos</span>
                 </div>
                 <input
                   type="file"
@@ -3423,13 +3488,13 @@ export const AdminDashboardView: React.FC = () => {
                   multiple
                   disabled={managerPhotos.length >= 5}
                   onChange={handleManagerPhotoUpload}
-                  className="w-full bg-slate-950 border border-slate-800 text-slate-300 text-xs rounded-xl p-2.5 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-amber-500/20 file:text-amber-300 hover:file:bg-amber-500/30 cursor-pointer disabled:opacity-50"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs rounded-xl p-2.5 file:mr-3 file:py-1 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-semibold file:bg-amber-500/20 file:text-amber-700 dark:file:text-amber-300 hover:file:bg-amber-500/30 cursor-pointer disabled:opacity-50"
                 />
                 {managerPhotos.length > 0 && (
                   <div className="flex flex-wrap gap-2 mt-2">
                     {managerPhotos.map((img, idx) => (
                       <div key={idx} className="relative group">
-                        <img src={img} alt={`Manager ${idx + 1}`} className="w-14 h-14 object-cover rounded-lg border border-slate-700" />
+                        <img src={img} alt={`Manager ${idx + 1}`} className="w-14 h-14 object-cover rounded-lg border border-slate-200 dark:border-slate-700" />
                         <button
                           type="button"
                           onClick={() => setManagerPhotos(prev => prev.filter((_, i) => i !== idx))}
@@ -3446,8 +3511,8 @@ export const AdminDashboardView: React.FC = () => {
               {resolveMsg && (
                 <div className={`p-3 rounded-lg text-xs font-semibold ${
                   resolveMsg.includes('released') || resolveMsg.includes('refund') 
-                    ? 'bg-emerald-500/10 text-emerald-300 border border-emerald-500/30' 
-                    : 'bg-rose-500/10 text-rose-300 border border-rose-500/30'
+                    ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30' 
+                    : 'bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30'
                 }`}>
                   {resolveMsg}
                 </div>
@@ -3457,14 +3522,14 @@ export const AdminDashboardView: React.FC = () => {
                 <button
                   type="button"
                   onClick={() => { setResolvingTxnId(null); setManagerPhotos([]); }}
-                  className="flex-1 py-2.5 bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold rounded-xl transition"
+                  className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   disabled={resolveMutation.isPending}
-                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-500/20 disabled:opacity-50"
+                  className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-500/20 disabled:opacity-50 cursor-pointer"
                 >
                   {resolveMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <ShieldAlert className="h-4 w-4" />}
                   Confirm Ruling
@@ -3593,6 +3658,22 @@ export const AdminDashboardView: React.FC = () => {
             </button>
           </div>
         </div>
+      )}
+
+      {/* ─── MODAL: SELLER DETAILS INTELLIGENCE ────────────────────────────────── */}
+      {selectedSellerIdModal && (
+        <AdminSellerDetailsModal
+          sellerId={selectedSellerIdModal}
+          onClose={() => setSelectedSellerIdModal(null)}
+          onSuspend={async (id, uname) => {
+            await handleSuspendSeller(id, uname);
+            setSelectedSellerIdModal(null);
+          }}
+          onReinstate={async (id, uname) => {
+            await handleReinstateSeller(id, uname);
+            setSelectedSellerIdModal(null);
+          }}
+        />
       )}
     </div>
   );

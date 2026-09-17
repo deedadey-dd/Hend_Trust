@@ -1,6 +1,6 @@
 import uuid6
 from django.db import models
-from django.contrib.auth.models import AbstractUser
+from django.contrib.auth.models import AbstractUser, UserManager
 
 class Role(models.TextChoices):
     SELLER = 'SELLER', 'Seller'
@@ -22,6 +22,7 @@ def generate_uuid7():
     return uuid6.uuid7()
 
 class User(AbstractUser):
+    objects = UserManager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     role = models.CharField(max_length=20, choices=Role.choices, default=Role.BUYER, db_index=True)
     phone_number = models.CharField(max_length=20, unique=True, db_index=True)
@@ -90,6 +91,7 @@ class AppealStatus(models.TextChoices):
 
 
 class SuspensionAppeal(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     user = models.ForeignKey(
         User,

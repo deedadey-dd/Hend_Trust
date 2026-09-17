@@ -154,25 +154,37 @@ export default function ShopsDirectoryView() {
       className={`bg-white dark:bg-slate-900 rounded-3xl border transition-all duration-300 hover:shadow-xl flex flex-col justify-between ${
         isAd 
           ? 'border-amber-400/80 dark:border-amber-500/70 shadow-md ring-1 ring-amber-400/30' 
-          : 'border-gray-200/80 dark:border-slate-800 shadow-sm hover:border-blue-300 dark:hover:border-blue-500/50'
+          : 'border-slate-200 dark:border-slate-800 shadow-sm hover:border-blue-300 dark:hover:border-blue-500/50'
       }`}
     >
-      {/* 1. Cover Banner Strip (Height: 80px mobile / 96px desktop) */}
+      {/* 1. Cover Banner Strip */}
       <div className="h-20 sm:h-24 w-full relative bg-slate-900 rounded-t-3xl overflow-hidden">
         {shop.banner_url ? (
-          <img src={shop.banner_url} alt={shop.shop_name} className="w-full h-full object-cover opacity-100" />
+          <>
+            <img src={shop.banner_url} alt={shop.shop_name} className="w-full h-full object-cover" />
+            <div className="absolute inset-0 bg-gradient-to-t from-slate-950/75 via-slate-950/25 to-slate-950/40" />
+          </>
         ) : (
           <div className={`w-full h-full ${
             isAd ? 'bg-gradient-to-r from-amber-600 via-orange-600 to-amber-700 opacity-90' : 'bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 opacity-90'
           }`} />
+        )}
+
+        {/* Featured / Promoted Pill */}
+        {isAd && (
+          <div className="absolute top-2.5 right-3 z-10">
+            <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-slate-950/85 backdrop-blur-md text-amber-400 shadow-md border border-amber-400/70">
+              <Zap className="h-3 w-3 fill-amber-400" /> Promoted
+            </span>
+          </div>
         )}
       </div>
 
       {/* Card Content Body */}
       <div className="p-4 sm:p-5 pt-0 flex-1 flex flex-col justify-between">
         <div>
-          {/* Header Row: Overlapping Logo (50% banner overlap) + Shop Details */}
-          <div className="flex items-start gap-3.5 mb-2">
+          {/* Header Row: Overlapping Logo + Shop Name & Readily Visible Username */}
+          <div className="flex items-start gap-3.5 mb-2.5">
             {/* Logo: -mt-7 (28px) on mobile / -mt-8 (32px) on desktop for exact 50% overlap */}
             <Link to={`/store/${shop.seller_username}`} className="-mt-7 sm:-mt-8 shrink-0 relative z-20 group block">
               {shop.profile_picture_url ? (
@@ -193,93 +205,87 @@ export default function ShopsDirectoryView() {
             {/* Shop Details: Positioned cleanly next to lower half of logo */}
             <div className="min-w-0 flex-1 pt-1">
               <Link to={`/store/${shop.seller_username}`} className="group block">
-                {/* Line 1: Shop Name + Tooltip Icons (Always 1 Single Line) */}
-                <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 flex-nowrap">
-                  <h3 className="font-bold text-gray-900 dark:text-slate-100 text-sm sm:text-base group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate leading-tight shrink min-w-0">
+                {/* Row 1: Shop Name + Badges */}
+                <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                  <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm sm:text-base group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate leading-tight">
                     {shop.shop_name}
                   </h3>
                   
                   {/* Verified Escrow Merchant Tooltip Icon */}
                   <IconTooltip text="Verified Escrow Merchant">
-                    <ShieldCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-600 dark:text-blue-400 fill-blue-50 dark:fill-blue-900/40 shrink-0" />
+                    <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400 fill-blue-50 dark:fill-blue-900/40 shrink-0" />
                   </IconTooltip>
-
-                  {/* Featured Sponsored Merchant Tooltip Icon */}
-                  {isAd && (
-                    <IconTooltip text="Featured Sponsored Merchant">
-                      <Zap className="h-3.5 w-3.5 sm:h-4 sm:w-4 fill-amber-400 text-amber-500 shrink-0 animate-pulse" />
-                    </IconTooltip>
-                  )}
 
                   {/* Custom Merchant Award Badge Tooltip Icon */}
                   {shop.badge_title && (
                     <IconTooltip text={shop.badge_title}>
-                      <Award className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-600 dark:text-emerald-400 fill-emerald-50 dark:fill-emerald-900/40 shrink-0" />
+                      <Award className="h-4 w-4 text-emerald-600 dark:text-emerald-400 fill-emerald-50 dark:fill-emerald-900/40 shrink-0" />
                     </IconTooltip>
                   )}
                 </div>
 
-                {/* Line 2: Username + Number of Transactions + Rating Stars (Always 1 Single Line) */}
-                <div className="flex items-center gap-1.5 text-xs text-gray-500 dark:text-slate-400 mt-0.5 sm:mt-1 flex-nowrap min-w-0 overflow-hidden">
-                  <span className="font-medium text-gray-600 dark:text-slate-400 truncate max-w-[85px] sm:max-w-[120px] shrink">@{shop.seller_username}</span>
-                  <span className="text-gray-300 dark:text-slate-700 shrink-0">•</span>
-                  <span className="font-semibold text-blue-700 dark:text-blue-300 bg-blue-50/80 dark:bg-blue-950/60 px-1.5 py-0.5 rounded whitespace-nowrap shrink-0 text-[11px]">
-                    {shop.total_completed_escrows} Escrows
-                  </span>
-                  <span className="text-gray-300 dark:text-slate-700 shrink-0">•</span>
-                  <span className="inline-flex items-center gap-1 font-bold text-gray-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 hover:bg-amber-100 border border-amber-200/60 dark:border-amber-800/40 px-1.5 py-0.5 rounded transition shrink-0 whitespace-nowrap">
-                    <Star className="h-3 w-3 fill-amber-400 text-amber-400 shrink-0" />
-                    {shop.avg_overall > 0 ? (
-                      <span className="text-[11px] font-bold text-amber-900 dark:text-amber-300 flex items-center gap-0.5">
-                        {shop.avg_overall.toFixed(1)}
-                        {shop.total_reviews_count > 0 && <span className="text-[10px] text-gray-500 dark:text-slate-400 font-normal">({shop.total_reviews_count})</span>}
-                      </span>
-                    ) : (
-                      <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-400">New</span>
-                    )}
-                  </span>
-                </div>
+                {/* Row 2: Readily Visible Username (Dedicated line, clean font-mono styling) */}
+                <p className="font-mono text-xs text-blue-600 dark:text-blue-400 font-semibold group-hover:underline mt-0.5 truncate" title={`@${shop.seller_username}`}>
+                  @{shop.seller_username}
+                </p>
               </Link>
             </div>
           </div>
 
-          {/* Line 3: Categories below logo */}
-          <div className="flex items-center gap-1.5 flex-wrap mt-3">
+          {/* Row 3: Escrows & Ratings Stats + Categories Chips */}
+          <div className="flex items-center gap-1.5 flex-wrap mt-2.5">
+            <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/90 px-2 py-0.5 rounded-lg text-[11px] border border-slate-200/80 dark:border-slate-700/60 shadow-xs">
+              <ShieldCheck className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+              {shop.total_completed_escrows} Escrows
+            </span>
+
+            <span className="inline-flex items-center gap-1 font-bold text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/50 px-2 py-0.5 rounded-lg text-[11px]">
+              <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
+              {shop.avg_overall > 0 ? (
+                <span className="flex items-center gap-0.5">
+                  {shop.avg_overall.toFixed(1)}
+                  {shop.total_reviews_count > 0 && <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">({shop.total_reviews_count})</span>}
+                </span>
+              ) : (
+                <span className="text-[10px] font-semibold text-amber-800 dark:text-amber-400">New</span>
+              )}
+            </span>
+
             {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).map((cat, i) => (
-              <span key={i} className="text-xs font-bold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border border-blue-100/80 dark:border-blue-800/40 px-2.5 py-0.5 rounded-full whitespace-nowrap">
+              <span key={i} className="text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-800/40 px-2 py-0.5 rounded-md whitespace-nowrap">
                 {cat}
               </span>
             ))}
           </div>
 
           {/* Horizontal Dividing Line */}
-          <hr className="border-gray-100 dark:border-slate-800 my-3.5" />
+          <hr className="border-slate-100 dark:border-slate-800 my-3" />
 
           {/* Other Card Details: Description */}
           {shop.shop_description && (
-            <p className="text-xs sm:text-sm text-gray-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
               {shop.shop_description}
             </p>
           )}
         </div>
 
         {/* Featured Products List */}
-        {shop.featured_products.length > 0 && (
-          <div className="pt-3 border-t border-gray-100 dark:border-slate-800 space-y-1.5 mt-3">
-            <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider block">Available Payment Links</span>
+        {shop.featured_products && shop.featured_products.length > 0 && (
+          <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5 mt-3">
+            <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider block">Available Payment Links</span>
             <div className="space-y-1.5">
               {shop.featured_products.map(prod => (
                 <Link
                   key={prod.link_id}
                   to={`/l/${prod.link_id}`}
-                  className="flex items-center justify-between p-2 rounded-xl bg-gray-50 dark:bg-slate-800/60 hover:bg-blue-50/70 dark:hover:bg-blue-950/40 border border-gray-100 dark:border-slate-700/60 transition group text-xs sm:text-sm"
+                  className="flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-slate-200/80 dark:border-slate-700/60 transition group text-xs sm:text-sm"
                 >
-                  <span className="font-medium text-gray-800 dark:text-slate-200 group-hover:text-blue-700 dark:group-hover:text-blue-400 truncate max-w-[200px]">
+                  <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-blue-600 dark:group-hover:text-blue-400 truncate max-w-[200px]">
                     {prod.title}
                   </span>
-                  <span className="font-bold text-gray-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 flex items-center gap-0.5">
+                  <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-blue-600 dark:group-hover:text-blue-400 flex items-center gap-0.5">
                     GHS {prod.price_ghs.toFixed(2)}
-                    <ArrowUpRight className="h-3.5 w-3.5 text-gray-400 dark:text-slate-500 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
+                    <ArrowUpRight className="h-3.5 w-3.5 text-slate-400 group-hover:text-blue-600 dark:group-hover:text-blue-400" />
                   </span>
                 </Link>
               ))}
@@ -299,7 +305,7 @@ export default function ShopsDirectoryView() {
   };
 
   return (
-    <div className="min-h-screen bg-gray-50/60 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 transition-colors">
+    <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 transition-colors">
       <SEOHead
         title="Verified Shops Marketplace Directory — HendAxis Trust"
         description="Browse verified online stores, social media sellers, and active escrow payment links in Ghana. Buy with complete buyer protection."
@@ -308,26 +314,18 @@ export default function ShopsDirectoryView() {
       />
       
       {/* Hero Banner Section */}
-      <div className="bg-slate-950 text-white min-h-[320px] sm:min-h-[380px] px-4 sm:px-6 lg:px-8 pt-6 pb-1 relative overflow-hidden flex flex-col justify-between">
+      <div className="bg-slate-950 text-white min-h-[320px] sm:min-h-[380px] px-4 sm:px-6 lg:px-8 pt-6 pb-4 relative overflow-hidden flex flex-col justify-between">
         <div className="absolute inset-0 z-0">
           <img src={heroBanner} alt="Marketplace Banner" className="w-full h-full object-cover opacity-100" fetchPriority="high" decoding="async" loading="eager" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/60 to-slate-950/30" />
         </div>
         
         <div className="max-w-5xl w-full mx-auto relative z-10 flex flex-col justify-between flex-1">
-          {/* TOP: Escrow Merchant Marketplace Directory label */}
-          {/* <div className="flex items-center justify-between gap-4">
-            <div>
-              <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-200 bg-black/40 px-3.5 py-1.5 rounded-full backdrop-blur-md border border-white/20 shadow-md">
-                <Store className="h-3.5 w-3.5 text-blue-400" /> Escrow Merchant Marketplace Directory
-              </span>
-            </div>
-          </div> */}
-
-          {/* BOTTOM: Search Box & Category Filter Pills */}
-          <div className="space-y-2 mt-auto pt-8">
+          {/* BOTTOM: Search Box & Category Filter Pills with Protective Glassmorphic Container */}
+          <div className="space-y-3 mt-auto pt-6 bg-slate-950/70 dark:bg-slate-950/80 backdrop-blur-md p-3.5 sm:p-5 rounded-2xl sm:rounded-3xl border border-white/15 shadow-2xl">
             {/* Search Box */}
-            <form onSubmit={(e) => { e.preventDefault(); fetchShops(); }} className="relative max-w-sm">
-              <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-500 z-10" />
+            <form onSubmit={(e) => { e.preventDefault(); fetchShops(); }} className="relative max-w-md">
+              <Search className="h-4 w-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400 z-10" />
               <input
                 type="text"
                 value={query}
@@ -337,22 +335,22 @@ export default function ShopsDirectoryView() {
               />
               <button
                 type="submit"
-                className="absolute right-1 top-1 bottom-1 px-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5"
+                className="absolute right-1 top-1 bottom-1 px-3.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer"
               >
                 <Store className="h-3.5 w-3.5" /> Search
               </button>
             </form>
 
             {/* Category Filter Pills */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-0 scrollbar-none">
+            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none">
               {CATEGORIES.map(cat => (
                 <button
                   key={cat}
                   onClick={() => setSelectedCategory(cat)}
-                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition backdrop-blur-sm ${
+                  className={`px-3.5 py-1.5 rounded-xl text-xs font-semibold whitespace-nowrap transition backdrop-blur-sm cursor-pointer ${
                     selectedCategory === cat
-                      ? 'bg-blue-600 text-white shadow-md'
-                      : 'bg-black/30 hover:bg-black/50 text-white border border-white/10'
+                      ? 'bg-blue-600 text-white shadow-md border border-blue-400/40 font-bold'
+                      : 'bg-slate-900/80 hover:bg-slate-800 text-slate-200 border border-white/15 hover:text-white'
                   }`}
                 >
                   {cat}
@@ -376,24 +374,24 @@ export default function ShopsDirectoryView() {
         {loading ? (
           <div className="py-20 text-center space-y-3">
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600 dark:text-blue-400" />
-            <p className="text-xs text-gray-500 dark:text-slate-400 font-medium">Searching marketplace directory...</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Searching marketplace directory...</p>
           </div>
         ) : (
           <>
             {/* ROW 1: FEATURED SPONSORED ADVERTISED SHOPS */}
             {featuredShops.length > 0 && (
-              <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/5 to-amber-500/10 dark:from-amber-950/30 dark:via-orange-950/20 dark:to-amber-950/30 border border-amber-300/80 dark:border-amber-700/60 rounded-3xl p-6 space-y-4 shadow-sm">
+              <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
                 <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2.5">
                     <div className="p-2 bg-amber-500 text-white rounded-xl shadow-sm">
                       <Zap className="h-5 w-5 fill-white" />
                     </div>
                     <div>
-                      <h2 className="text-base font-bold text-gray-900 dark:text-slate-100">Featured Shops</h2>
-                      <p className="text-xs text-gray-500 dark:text-slate-400">Promoted escrow merchants with verified products</p>
+                      <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100">Featured Shops</h2>
+                      <p className="text-xs text-slate-600 dark:text-slate-400">Promoted escrow merchants with verified products</p>
                     </div>
                   </div>
-                  <span className="text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/50 px-3 py-1 rounded-full border border-amber-200 dark:border-amber-800">
+                  <span className="text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-900/50 px-3 py-1 rounded-full border border-amber-300/80 dark:border-amber-800">
                     {featuredShops.length} Sponsored Store(s)
                   </span>
                 </div>

@@ -1,18 +1,24 @@
 from typing import List, Optional
+import logging
 import secrets
+from decimal import Decimal
 from django.conf import settings
+from django.core.mail import send_mail
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from django.shortcuts import get_object_or_404
 from hendaxis_trust.auth import JWTCookieAuth
-from apps.escrow.models import Transaction, TransactionStatus
+from apps.escrow.models import Transaction, TransactionStatus, PlatformSetting
 from apps.escrow.payouts import execute_payout_for_transaction
 from apps.core.ratelimit import rate_limit
+from apps.users.models import User
 import uuid
 from django.db.models import Q
 from datetime import datetime
 from django.utils import timezone
 from ninja.pagination import paginate, LimitOffsetPagination
+
+logger = logging.getLogger(__name__)
 
 escrow_router = Router(tags=["Escrow Transactions"], auth=JWTCookieAuth())
 
@@ -61,7 +67,7 @@ class SellerTransactionSchema(Schema):
 
 @escrow_router.get("/seller/transactions", response=list[SellerTransactionSchema])
 @paginate(LimitOffsetPagination)
-def get_seller_transactions(request, search: str = None, status: str = None, start_date: str = None, end_date: str = None, include_archived: bool = False):
+def get_seller_transactions(request, search: Optional[str] = None, status: Optional[str] = None, start_date: Optional[str] = None, end_date: Optional[str] = None, include_archived: bool = False):
     """Get paginated, filtered, and searchable transactions for the logged-in seller."""
     from django.db.models import Prefetch
     from apps.delivery.models import DeliveryLog
@@ -283,81 +289,9 @@ def compute_seller_dispute_health(seller_user) -> dict:
         max_dispatch_rate = highest_dispatch_sample['rate']
 
     dispute_level = "NORMAL"
-    if seller_user.is_suspended:
-        dispute_level = "SUSPENDED"
-    elif applicable_rates or applicable_dispatch_rates:
-        # 1. Dispute Rate Auto-Suspension Check
-        if applicable_rates and max_rate >= suspension_threshold:
-            dispute_level = "SUSPENDED"
-            seller_user.is_suspended = True
-            seller_user.suspension_reason = f"Automated Suspension: Dispute rate reached {max_rate}% (≥{suspension_threshold}%) in {highest_sample['sample_name']} sample set ({highest_sample['disputed_count']} of {highest_sample['paid_count']} transactions disputed)."
-            seller_user.suspended_at = timezone.now()
-            seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
-            PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
+    is_suspended_now = False
 
-            try:
-                send_mail(
-                    subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended",
-                    message=f"Hi {seller_user.username},\n\nYour seller account has been suspended because your dispute rate reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nYour payment links have been disabled and you are currently blocked from creating new payment links.\n\nPlease log in to your dashboard to submit an appeal for manual review by our administration team.",
-                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
-                    recipient_list=[seller_user.email] if seller_user.email else [],
-                    fail_silently=True
-                )
-            except Exception as mail_err:
-                print(f"Error sending suspension email: {mail_err}")
-
-        # 2. Dispatch Expiry Rate Auto-Suspension Check
-        elif applicable_dispatch_rates and max_dispatch_rate >= dispatch_expiry_suspension_threshold:
-            dispute_level = "SUSPENDED"
-            seller_user.is_suspended = True
-            seller_user.suspension_reason = f"Automated Suspension: Dispatch expiry rate reached {max_dispatch_rate}% (≥{dispatch_expiry_suspension_threshold}%) with {highest_dispatch_sample['expired_count']} of {highest_dispatch_sample['paid_count']} paid orders unfulfilled in {highest_dispatch_sample['sample_name']}."
-            seller_user.suspended_at = timezone.now()
-            seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
-            PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
-
-            try:
-                send_mail(
-                    subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended (Dispatch Defaults)",
-                    message=f"Hi {seller_user.username},\n\nYour seller account has been suspended because your dispatch expiry rate reached {max_dispatch_rate}% ({highest_dispatch_sample['expired_count']} of {highest_dispatch_sample['paid_count']} paid orders expired undispatched) in {highest_dispatch_sample['sample_name']}.\n\nYour active payment links have been deactivated.\n\nPlease log in to your dashboard to submit an appeal for manual review by our administration team.",
-                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
-                    recipient_list=[seller_user.email] if seller_user.email else [],
-                    fail_silently=True
-                )
-            except Exception as mail_err:
-                print(f"Error sending dispatch suspension email: {mail_err}")
-
-        # Warnings
-        elif applicable_rates and max_rate >= warning_threshold:
-            dispute_level = "WARNING"
-            try:
-                send_mail(
-                    subject="WARNING: Elevated Dispute Rate on Your HendAxis Trust Account",
-                    message=f"Hi {seller_user.username},\n\nYour dispute rate has reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nPlease ensure high product quality and prompt customer support. Reaching {suspension_threshold}% will cause automatic account suspension.",
-                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
-                    recipient_list=[seller_user.email] if seller_user.email else [],
-                    fail_silently=True
-                )
-            except Exception as mail_err:
-                print(f"Error sending warning email: {mail_err}")
-
-        elif applicable_dispatch_rates and max_dispatch_rate >= dispatch_expiry_warning_threshold:
-            if dispute_level == "NORMAL":
-                dispute_level = "DISPATCH_WARNING"
-            try:
-                send_mail(
-                    subject="WARNING: High Dispatch Expiry Rate on Your HendAxis Trust Account",
-                    message=f"Hi {seller_user.username},\n\nYour dispatch expiry rate has reached {max_dispatch_rate}% ({highest_dispatch_sample['expired_count']} of {highest_dispatch_sample['paid_count']} paid orders unfulfilled) in {highest_dispatch_sample['sample_name']}.\n\nPlease ensure you dispatch all orders within the shipping timeout window. Reaching {dispatch_expiry_suspension_threshold}% will cause automatic account suspension.",
-                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
-                    recipient_list=[seller_user.email] if seller_user.email else [],
-                    fail_silently=True
-                )
-            except Exception as mail_err:
-                print(f"Error sending dispatch warning email: {mail_err}")
-
-        elif applicable_rates and max_rate >= alert_threshold:
-            dispute_level = "ALERT"
-
-    # ─── Rating-Based Governance ─────────────────────────────────────────────
+    # ─── Rating-Based Governance Aggregation ─────────────────────────────────
     from apps.reviews.models import SellerReview
     from django.db.models import Avg
 
@@ -370,43 +304,165 @@ def compute_seller_dispute_health(seller_user) -> dict:
 
     total_reviews_count = active_reviews_qs.count()
     avg_rating = None
-    rating_warning = False
-
-    if total_reviews_count >= 3:  # Only evaluate once seller has meaningful review volume
+    if total_reviews_count >= 3:
         agg = active_reviews_qs.aggregate(avg=Avg('rating_overall'))
         avg_rating = round(float(agg['avg']), 2) if agg['avg'] is not None else None
 
-        if avg_rating is not None and not seller_user.is_suspended:
-            if avg_rating < rating_suspension_threshold:
-                dispute_level = "SUSPENDED"
-                suspension_msg = f"Automated Suspension: Aggregated seller rating fell to {avg_rating:.1f} ★ (below suspension threshold of {rating_suspension_threshold} ★)."
-                seller_user.is_suspended = True
-                seller_user.suspension_reason = suspension_msg
-                seller_user.suspended_at = timezone.now()
-                seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
-                PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
-                try:
-                    send_mail(
-                        subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended",
-                        message=(
-                            f"Hi {seller_user.username},\n\n"
-                            f"Your seller account has been automatically suspended because your aggregated "
-                            f"seller rating fell to {avg_rating:.1f} stars — below our minimum threshold of "
-                            f"{rating_suspension_threshold} stars across {total_reviews_count} reviews.\n\n"
-                            f"Your payment links have been deactivated. Please log in to your dashboard to "
-                            f"submit an appeal for manual review by our administration team."
-                        ),
-                        from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
-                        recipient_list=[seller_user.email] if seller_user.email else [],
-                        fail_silently=True
-                    )
-                except Exception as mail_err:
-                    print(f"Error sending rating suspension email: {mail_err}")
+    # ─── 1. Hard Suspension Checks (Independent Rails) ───────────────────────
+    if seller_user.is_suspended:
+        dispute_level = "SUSPENDED"
+        is_suspended_now = True
+    else:
+        # A. Dispute Rate Auto-Suspension Check
+        if highest_sample and max_rate >= suspension_threshold:
+            dispute_level = "SUSPENDED"
+            seller_user.is_suspended = True
+            seller_user.suspension_reason = f"Automated Suspension: Dispute rate reached {max_rate}% (≥{suspension_threshold}%) in {highest_sample['sample_name']} sample set ({highest_sample['disputed_count']} of {highest_sample['paid_count']} transactions disputed)."
+            seller_user.suspended_at = timezone.now()
+            seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
+            PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
+            is_suspended_now = True
 
-            elif avg_rating < rating_warning_threshold:
-                if dispute_level == "NORMAL":
-                    dispute_level = "RATING_WARNING"
-                rating_warning = True
+            try:
+                send_mail(
+                    subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended",
+                    message=f"Hi {seller_user.username},\n\nYour seller account has been suspended because your dispute rate reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nYour payment links have been disabled and you are currently blocked from creating new payment links.\n\nPlease log in to your dashboard to submit an appeal for manual review by our administration team.",
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending suspension email: {mail_err}")
+
+        # B. Dispatch Expiry Rate Auto-Suspension Check
+        elif highest_dispatch_sample and max_dispatch_rate >= dispatch_expiry_suspension_threshold:
+            dispute_level = "SUSPENDED"
+            seller_user.is_suspended = True
+            seller_user.suspension_reason = f"Automated Suspension: Dispatch expiry rate reached {max_dispatch_rate}% (≥{dispatch_expiry_suspension_threshold}%) with {highest_dispatch_sample['expired_count']} of {highest_dispatch_sample['paid_count']} paid orders unfulfilled in {highest_dispatch_sample['sample_name']}."
+            seller_user.suspended_at = timezone.now()
+            seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
+            PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
+            is_suspended_now = True
+
+            try:
+                send_mail(
+                    subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended (Dispatch Defaults)",
+                    message=f"Hi {seller_user.username},\n\nYour seller account has been suspended because your dispatch expiry rate reached {max_dispatch_rate}% ({highest_dispatch_sample['expired_count']} of {highest_dispatch_sample['paid_count']} paid orders expired undispatched) in {highest_dispatch_sample['sample_name']}.\n\nYour active payment links have been deactivated.\n\nPlease log in to your dashboard to submit an appeal for manual review by our administration team.",
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending dispatch suspension email: {mail_err}")
+
+        # C. Rating Auto-Suspension Check
+        elif avg_rating is not None and total_reviews_count >= 3 and avg_rating < rating_suspension_threshold:
+            dispute_level = "SUSPENDED"
+            suspension_msg = f"Automated Suspension: Aggregated seller rating fell to {avg_rating:.1f} ★ (below suspension threshold of {rating_suspension_threshold} ★ across {total_reviews_count} reviews)."
+            seller_user.is_suspended = True
+            seller_user.suspension_reason = suspension_msg
+            seller_user.suspended_at = timezone.now()
+            seller_user.save(update_fields=['is_suspended', 'suspension_reason', 'suspended_at'])
+            PaymentLink.objects.filter(seller=seller_user, is_active=True).update(is_active=False)
+            is_suspended_now = True
+
+            try:
+                send_mail(
+                    subject="ALERT: Your HendAxis Trust Seller Account Has Been Suspended",
+                    message=(
+                        f"Hi {seller_user.username},\n\n"
+                        f"Your seller account has been automatically suspended because your aggregated "
+                        f"seller rating fell to {avg_rating:.1f} stars — below our minimum threshold of "
+                        f"{rating_suspension_threshold} stars across {total_reviews_count} reviews.\n\n"
+                        f"Your payment links have been deactivated. Please log in to your dashboard to "
+                        f"submit an appeal for manual review by our administration team."
+                    ),
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending rating suspension email: {mail_err}")
+
+    # ─── 2. Hybrid Model: Compound Risk & Compliance Review Flagging ─────────
+    is_flagged_for_compliance_review = False
+    compliance_review_reasons = []
+    rating_warning = False
+
+    if not is_suspended_now and not seller_user.is_suspended:
+        dispute_in_warning = bool(highest_sample and max_rate >= warning_threshold)
+        dispatch_in_warning = bool(highest_dispatch_sample and max_dispatch_rate >= dispatch_expiry_warning_threshold)
+        rating_in_warning = bool(avg_rating is not None and total_reviews_count >= 3 and avg_rating < rating_warning_threshold)
+        rating_warning = rating_in_warning
+
+        if dispute_in_warning and highest_sample:
+            compliance_review_reasons.append(
+                f"Elevated Dispute Rate: {max_rate}% (≥{warning_threshold}%) in {highest_sample['sample_name']}"
+            )
+        if dispatch_in_warning and highest_dispatch_sample:
+            compliance_review_reasons.append(
+                f"High Dispatch Expiry Rate: {max_dispatch_rate}% (≥{dispatch_expiry_warning_threshold}%) in {highest_dispatch_sample['sample_name']}"
+            )
+        if rating_in_warning and avg_rating is not None:
+            compliance_review_reasons.append(
+                f"Low Seller Rating: {avg_rating:.1f} ★ (<{rating_warning_threshold} ★ across {total_reviews_count} reviews)"
+            )
+
+        # Multiple concurrent warnings trigger Compound Risk (Compliance Review)
+        if len(compliance_review_reasons) >= 2:
+            dispute_level = "COMPLIANCE_REVIEW"
+            is_flagged_for_compliance_review = True
+            try:
+                send_mail(
+                    subject="NOTICE: Your HendAxis Trust Account is Flagged for Compliance Review",
+                    message=(
+                        f"Hi {seller_user.username},\n\n"
+                        f"Your seller account has been flagged for proactive compliance review because multiple "
+                        f"risk indicators have reached warning levels simultaneously:\n"
+                        + "\n".join([f"- {r}" for r in compliance_review_reasons]) + "\n\n"
+                        f"To protect your account standing, please ensure you only create payment links for items "
+                        f"physically in stock and ready to ship, dispatch all pending orders promptly, and resolve "
+                        f"any customer issues immediately."
+                    ),
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending compliance review email: {mail_err}")
+
+        # Single Warning Conditions
+        elif dispute_in_warning and highest_sample:
+            dispute_level = "WARNING"
+            try:
+                send_mail(
+                    subject="WARNING: Elevated Dispute Rate on Your HendAxis Trust Account",
+                    message=f"Hi {seller_user.username},\n\nYour dispute rate has reached {max_rate}% ({highest_sample['disputed_count']} of {highest_sample['paid_count']} paid transactions) in {highest_sample['sample_name']}.\n\nPlease ensure high product quality and prompt customer support. Reaching {suspension_threshold}% will cause automatic account suspension.",
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending warning email: {mail_err}")
+
+        elif dispatch_in_warning and highest_dispatch_sample:
+            dispute_level = "DISPATCH_WARNING"
+            try:
+                send_mail(
+                    subject="WARNING: High Dispatch Expiry Rate on Your HendAxis Trust Account",
+                    message=f"Hi {seller_user.username},\n\nYour dispatch expiry rate has reached {max_dispatch_rate}% ({highest_dispatch_sample['expired_count']} of {highest_dispatch_sample['paid_count']} paid orders unfulfilled) in {highest_dispatch_sample['sample_name']}.\n\nPlease ensure you dispatch all orders within the shipping timeout window. Reaching {dispatch_expiry_suspension_threshold}% will cause automatic account suspension.",
+                    from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxis.com'),
+                    recipient_list=[seller_user.email] if seller_user.email else [],
+                    fail_silently=True
+                )
+            except Exception as mail_err:
+                print(f"Error sending dispatch warning email: {mail_err}")
+
+        elif rating_in_warning:
+            dispute_level = "RATING_WARNING"
+
+        elif highest_sample and max_rate >= alert_threshold:
+            dispute_level = "ALERT"
 
     return {
         "total_paid_transactions": total_paid_lifetime,
@@ -435,6 +491,10 @@ def compute_seller_dispute_health(seller_user) -> dict:
         "rating_warning": rating_warning,
         "rating_warning_threshold": rating_warning_threshold,
         "rating_suspension_threshold": rating_suspension_threshold,
+        # Hybrid Suspension Model: Compound Risk
+        "is_flagged_for_compliance_review": is_flagged_for_compliance_review,
+        "compliance_review_reasons": compliance_review_reasons,
+        "compound_warning_count": len(compliance_review_reasons),
     }
 
 
@@ -1692,6 +1752,8 @@ def get_sellers_admin(request, search: Optional[str] = None):
     is_admin_user(request)
     from apps.users.models import User
     from apps.wallet.models import SellerWallet
+    from apps.reviews.models import SellerReview
+    from django.db.models import Avg
     
     sellers = User.objects.filter(Q(role='SELLER') | Q(payment_links__isnull=False)).distinct()
     
@@ -1699,7 +1761,8 @@ def get_sellers_admin(request, search: Optional[str] = None):
         sellers = sellers.filter(
             Q(username__icontains=search) |
             Q(email__icontains=search) |
-            Q(phone_number__icontains=search)
+            Q(phone_number__icontains=search) |
+            Q(shop_name__icontains=search)
         )
         
     res = []
@@ -1715,16 +1778,24 @@ def get_sellers_admin(request, search: Optional[str] = None):
         payout_mode = getattr(s, 'payout_mode', 'INSTANT')
 
         dh = compute_seller_dispute_health(s)
+        reviews_count = SellerReview.objects.filter(seller=s, is_active=True).count()
         
         res.append({
             "id": str(s.id),
             "username": s.username,
             "email": getattr(s, 'email', ''),
             "phone_number": getattr(s, 'phone_number', ''),
+            "shop_name": getattr(s, 'shop_name', ''),
+            "shop_description": getattr(s, 'shop_description', ''),
+            "shop_category": getattr(s, 'shop_category', 'General'),
+            "profile_picture_url": getattr(s, 'profile_picture_url', ''),
+            "banner_url": getattr(s, 'banner_url', ''),
+            "verification_status": getattr(s, 'verification_status', 'UNSUBMITTED'),
             "payout_mode": payout_mode,
-            "created_at": s.created_at.isoformat() if hasattr(s, 'created_at') and s.created_at else None,
+            "created_at": s.created_at.isoformat() if hasattr(s, 'created_at') and s.created_at else (s.date_joined.isoformat() if hasattr(s, 'date_joined') and s.date_joined else None),
             "payment_links_count": links_count,
             "total_transactions_count": total_txns,
+            "total_reviews_count": reviews_count,
             "completed_gmv_ghs": float(completed_gmv),
             "wallet_balance_ghs": wallet_balance,
             "is_suspended": s.is_suspended,
@@ -1733,6 +1804,155 @@ def get_sellers_admin(request, search: Optional[str] = None):
         })
         
     return res
+
+
+@admin_router.get("/sellers/{seller_id}/details", response=dict)
+@escrow_router.get("/admin/sellers/{seller_id}/details", response=dict)
+def get_seller_details_admin(request, seller_id: uuid.UUID):
+    """
+    Comprehensive administrative summary and deep-dive for a single seller.
+    Includes ratings, review comments, active links, top performing links, shop profile, and wallet metrics.
+    """
+    is_admin_user(request)
+    from apps.users.models import User
+    from apps.wallet.models import SellerWallet
+    from apps.reviews.models import SellerReview
+    from apps.links.models import PaymentLink
+    from django.db.models import Avg, Count
+
+    seller = get_object_or_404(User, id=seller_id)
+
+    # 1. Dispute Health
+    dh = compute_seller_dispute_health(seller)
+
+    # 2. Wallet
+    wallet = SellerWallet.objects.filter(user=seller).first()
+    wallet_data = {
+        "available_balance_ghs": float(wallet.available_balance_ghs) if wallet else 0.0,
+        "preferred_payout_type": getattr(wallet, 'preferred_payout_type', 'MOMO') if wallet else 'MOMO',
+        "momo_number": getattr(wallet, 'momo_number', '') if wallet else '',
+        "bank_account_number": getattr(wallet, 'bank_account_number', '') if wallet else '',
+        "bank_name": getattr(wallet, 'bank_name', '') if wallet else '',
+        "bank_code": getattr(wallet, 'bank_code', '') if wallet else '',
+        "bank_account_name": getattr(wallet, 'bank_account_name', '') if wallet else '',
+        "total_paystack_fees_ghs": float(wallet.total_paystack_fees_ghs) if wallet else 0.0,
+    }
+
+    # 3. Links Summary & Top Performing Links
+    links_qs = PaymentLink.objects.filter(seller=seller)
+    total_links = links_qs.count()
+    active_links = links_qs.filter(is_active=True, is_archived=False).count()
+    archived_links = links_qs.filter(is_archived=True).count()
+
+    top_links = []
+    for link in links_qs.annotate(tx_count=Count('transactions')).order_by('-tx_count')[:6]:
+        link_txns = Transaction.objects.filter(link=link)
+        completed_vol = link_txns.filter(status=TransactionStatus.COMPLETED).count()
+        completed_rev = link_txns.filter(status=TransactionStatus.COMPLETED).aggregate(total=Sum('total_amount_ghs'))['total'] or 0
+        disputed_cnt = link_txns.filter(status=TransactionStatus.DISPUTED).count()
+        top_links.append({
+            "id": str(link.id),
+            "title": link.title,
+            "description": link.description or '',
+            "price_ghs": float(link.price_ghs),
+            "shipping_fee_ghs": float(link.shipping_fee_ghs),
+            "image_url": link.image_url or '',
+            "is_active": link.is_active,
+            "is_archived": link.is_archived,
+            "created_at": link.created_at.isoformat(),
+            "total_transactions": link_txns.count(),
+            "completed_transactions": completed_vol,
+            "completed_revenue_ghs": float(completed_rev),
+            "disputed_transactions": disputed_cnt,
+        })
+
+    # 4. Transactions summary
+    seller_txns = Transaction.objects.filter(link__seller=seller)
+    total_txns = seller_txns.count()
+    completed_txns = seller_txns.filter(status=TransactionStatus.COMPLETED).count()
+    disputed_txns = seller_txns.filter(status=TransactionStatus.DISPUTED).count()
+    cancelled_txns = seller_txns.filter(status=TransactionStatus.CANCELLED).count()
+    refunded_txns = seller_txns.filter(status=TransactionStatus.REFUNDED).count()
+    completed_gmv = seller_txns.filter(status=TransactionStatus.COMPLETED).aggregate(total=Sum('total_amount_ghs'))['total'] or 0
+
+    # 5. Reviews & Comments
+    reviews_qs = SellerReview.objects.filter(seller=seller).order_by('-created_at')
+    total_reviews = reviews_qs.count()
+    active_reviews = reviews_qs.filter(is_active=True)
+    reviews_agg = active_reviews.aggregate(
+        avg_overall=Avg('rating_overall'),
+        avg_speed=Avg('rating_speed'),
+        avg_comm=Avg('rating_communication')
+    )
+    avg_overall = round(float(reviews_agg['avg_overall']), 2) if reviews_agg['avg_overall'] is not None else None
+    avg_speed = round(float(reviews_agg['avg_speed']), 2) if reviews_agg['avg_speed'] is not None else None
+    avg_comm = round(float(reviews_agg['avg_comm']), 2) if reviews_agg['avg_comm'] is not None else None
+
+    reviews_list = []
+    for r in reviews_qs[:15]:
+        reviews_list.append({
+            "id": str(r.id),
+            "buyer_name": r.buyer_name,
+            "rating_overall": r.rating_overall,
+            "rating_speed": r.rating_speed,
+            "rating_communication": r.rating_communication,
+            "comment": r.comment or '',
+            "image_url": r.image_url or '',
+            "seller_reply": r.seller_reply or '',
+            "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
+            "is_active": r.is_active,
+            "created_at": r.created_at.isoformat(),
+        })
+
+    return {
+        "seller": {
+            "id": str(seller.id),
+            "username": seller.username,
+            "email": getattr(seller, 'email', ''),
+            "phone_number": getattr(seller, 'phone_number', ''),
+            "role": seller.role,
+            "payout_mode": getattr(seller, 'payout_mode', 'INSTANT'),
+            "shop_name": getattr(seller, 'shop_name', ''),
+            "shop_description": getattr(seller, 'shop_description', ''),
+            "shop_category": getattr(seller, 'shop_category', 'General'),
+            "shop_categories": getattr(seller, 'shop_categories', []),
+            "advertised_until": seller.advertised_until.isoformat() if getattr(seller, 'advertised_until', None) else None,
+            "profile_picture_url": getattr(seller, 'profile_picture_url', ''),
+            "banner_url": getattr(seller, 'banner_url', ''),
+            "verification_status": getattr(seller, 'verification_status', 'UNSUBMITTED'),
+            "verified_at": seller.verified_at.isoformat() if getattr(seller, 'verified_at', None) else None,
+            "is_suspended": seller.is_suspended,
+            "suspension_reason": seller.suspension_reason or "",
+            "suspended_at": seller.suspended_at.isoformat() if getattr(seller, 'suspended_at', None) else None,
+            "reinstated_at": seller.reinstated_at.isoformat() if getattr(seller, 'reinstated_at', None) else None,
+            "is_email_verified": getattr(seller, 'is_email_verified', False),
+            "is_phone_verified": getattr(seller, 'is_phone_verified', False),
+            "date_joined": seller.date_joined.isoformat() if hasattr(seller, 'date_joined') and seller.date_joined else None,
+        },
+        "dispute_health": dh,
+        "wallet": wallet_data,
+        "links_summary": {
+            "total_links": total_links,
+            "active_links": active_links,
+            "archived_links": archived_links,
+            "top_links": top_links,
+        },
+        "transactions_summary": {
+            "total_orders": total_txns,
+            "completed_orders": completed_txns,
+            "disputed_orders": disputed_txns,
+            "cancelled_orders": cancelled_txns,
+            "refunded_orders": refunded_txns,
+            "completed_gmv_ghs": float(completed_gmv),
+        },
+        "reviews_summary": {
+            "total_reviews_count": total_reviews,
+            "avg_rating_overall": avg_overall,
+            "avg_rating_speed": avg_speed,
+            "avg_rating_communication": avg_comm,
+            "reviews": reviews_list,
+        }
+    }
 
 class AdminSuspendSellerSchema(Schema):
     reason: Optional[str] = "Manual administrative suspension by management."

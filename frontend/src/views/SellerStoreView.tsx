@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Shield, Star, Award, CheckCircle2, MessageSquare, Loader2, Calendar, PackageCheck, Send, Zap, ChevronRight } from 'lucide-react';
+import { Shield, ShieldCheck, Star, Award, CheckCircle2, MessageSquare, Loader2, Calendar, PackageCheck, Send, Zap, ChevronRight, Pencil } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import SEOHead from '../components/SEOHead';
@@ -186,143 +186,143 @@ export default function SellerStoreView() {
         ogImage={store.profile_picture_url || 'https://trust.hendaxis.com/og_preview_banner.jpg'}
         jsonLd={storeJsonLd}
       />
-      {/* Sticky Top Shop Header Bar */}
+      {/* Sticky Top Shop Header Bar (Comprehensive Storefront Identity & Trust Bar) */}
       <div className="sticky top-16 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-gray-200/80 dark:border-slate-800 px-4 sm:px-6 lg:px-8 py-3 shadow-xs transition-colors">
-        <div className="max-w-4xl mx-auto flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
+          {/* Left: Shop Logo + Name + Verified Badges + Username + Member Since */}
+          <div className="flex items-center gap-3 min-w-0">
             {store.profile_picture_url ? (
               <img
                 src={store.profile_picture_url}
                 alt={store.shop_name || store.seller_username}
-                className="h-9 w-9 rounded-xl object-cover border border-gray-200 dark:border-slate-700"
+                className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl object-cover border-2 border-gray-200 dark:border-slate-700 shrink-0 bg-white dark:bg-slate-800 shadow-sm"
               />
             ) : (
-              <div className="h-9 w-9 rounded-xl bg-blue-600 text-white font-black text-base flex items-center justify-center">
+              <div className="h-10 w-10 sm:h-12 sm:w-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white font-black text-lg sm:text-xl flex items-center justify-center shrink-0 shadow-sm">
                 {(store.shop_name || store.seller_username).charAt(0).toUpperCase()}
               </div>
             )}
-            <div>
-              <h2 className="font-bold text-gray-900 dark:text-white text-sm sm:text-base leading-tight">
-                {store.shop_name || `@${store.seller_username}'s Store`}
-              </h2>
-              <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">@{store.seller_username}</span>
+            
+            <div className="min-w-0">
+              <div className="flex items-center gap-1.5 flex-wrap">
+                <h1 className="font-extrabold text-gray-900 dark:text-white text-sm sm:text-base leading-tight truncate">
+                  {store.shop_name || `@${store.seller_username}'s Store`}
+                </h1>
+                
+                {/* Verified Seller Badge */}
+                {store.badge_verified_seller && (
+                  <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 text-[11px] font-bold">
+                    <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                    Verified
+                  </span>
+                )}
+
+                {/* Award / Top-Rated Badge */}
+                {store.badge_title && !store.badge_title.toLowerCase().includes('verified seller') && (
+                  <span className="hidden md:inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 text-[11px] font-bold">
+                    <Award className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                    {store.badge_title}
+                  </span>
+                )}
+              </div>
+
+              <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400 mt-0.5 flex-wrap">
+                <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold">@{store.seller_username}</span>
+                <span>•</span>
+                <span className="inline-flex items-center gap-1">
+                  <Calendar className="h-3 w-3 text-gray-400 dark:text-slate-500" /> Member since {new Date(store.joined_at).getFullYear()}
+                </span>
+              </div>
             </div>
           </div>
-          <div className="flex items-center gap-2">
-            <span className="inline-flex items-center gap-1 font-bold text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 py-1 rounded-lg text-xs">
-              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" /> {store.avg_overall}
+
+          {/* Right: Escrows Count & Rating Stats Chips */}
+          <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
+            {/* Completed Escrows Pill */}
+            <span className="inline-flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-2.5 sm:px-3 py-1 rounded-xl text-xs shadow-2xs">
+              <PackageCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span>{store.total_completed_escrows} Escrows</span>
             </span>
-            {store.badge_title && (
-              <span className="hidden sm:inline-flex text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-2.5 py-1 rounded-lg">
-                {store.badge_title}
-              </span>
-            )}
+
+            {/* Overall Rating Pill */}
+            <span className="inline-flex items-center gap-1 font-bold text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 sm:px-3 py-1 rounded-xl text-xs">
+              <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
+              <span>{store.avg_overall.toFixed(1)}</span>
+              {store.total_reviews_count > 0 && (
+                <span className="text-[10px] text-slate-500 dark:text-slate-400 font-normal">({store.total_reviews_count})</span>
+              )}
+            </span>
           </div>
         </div>
       </div>
 
       <div className="max-w-4xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pt-6">
         
-        {/* Seller Hero Profile Header */}
-        <div className={`rounded-3xl p-8 text-white shadow-xl relative overflow-hidden ${
-          store.banner_url ? 'bg-slate-950' : 'bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-900'
-        }`}>
-          {/* Custom Banner Image Background */}
+        {/* 1. SELLER COVER BANNER (Undarkened, Clean Banner Image) */}
+        <div className="rounded-3xl h-44 sm:h-56 md:h-64 w-full relative overflow-hidden shadow-md bg-slate-900 border border-gray-200/60 dark:border-slate-800">
           {store.banner_url ? (
-            <div className="absolute inset-0 z-0">
-              <img src={store.banner_url} alt="Store Cover Banner" className="w-full h-full object-cover opacity-100" />
-            </div>
+            <img 
+              src={store.banner_url} 
+              alt="Store Cover Banner" 
+              className="w-full h-full object-cover" 
+            />
           ) : (
-            <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+            <div className="w-full h-full bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-900 relative">
+              <div className="absolute top-0 right-0 -mt-6 -mr-6 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+            </div>
           )}
-          
-          <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 relative z-10">
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 flex-wrap">
-                {store.profile_picture_url ? (
-                  <img
-                    src={store.profile_picture_url}
-                    alt={store.shop_name || store.seller_username}
-                    className="h-16 w-16 rounded-2xl object-cover border-2 border-white/40 shadow-md bg-white/10"
-                  />
-                ) : (
-                  <div className="h-14 w-14 rounded-2xl bg-white/10 backdrop-blur-md border border-white/20 flex items-center justify-center font-black text-2xl text-white shadow-sm">
-                    {(store.shop_name || store.seller_username).charAt(0).toUpperCase()}
-                  </div>
-                )}
-                <div>
-                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
-                    {store.shop_name || `@${store.seller_username}'s Store`}
-                  </h1>
-                  <p className="text-xs text-blue-200 flex items-center gap-2 mt-0.5">
-                    <span className="font-semibold text-white">@{store.seller_username}</span> • <Calendar className="h-3.5 w-3.5 inline" /> Member since {new Date(store.joined_at).getFullYear()}
-                  </p>
-                </div>
-              </div>
-
-              {/* Earned Badge Pill */}
-              <div className="pt-2">
-                {store.badge_title ? (
-                  <span className="inline-flex items-center gap-1.5 bg-emerald-500/20 text-emerald-300 border border-emerald-400/30 px-3 py-1 rounded-full text-xs font-bold backdrop-blur-sm">
-                    <Award className="h-3.5 w-3.5" /> {store.badge_title}
-                  </span>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 bg-white/10 text-blue-200 border border-white/10 px-3 py-1 rounded-full text-xs font-medium">
-                    🛡️ Building Escrow Reputation History (No Badges Earned Yet)
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Quick Stat Pill */}
-            <div className="bg-white/10 border border-white/10 backdrop-blur-xs rounded-2xl p-5 flex items-center gap-6">
-              <div className="text-center">
-                <span className="text-3xl font-black text-amber-400 flex items-center justify-center gap-1">
-                  {store.avg_overall} <Star className="h-5 w-5 fill-amber-400" />
-                </span>
-                <span className="text-[11px] text-blue-200 font-medium block mt-0.5">
-                  {store.total_reviews_count} Verified Review(s)
-                </span>
-              </div>
-              <div className="w-px h-10 bg-white/20" />
-              <div className="text-center">
-                <span className="text-2xl font-black text-white flex items-center justify-center gap-1">
-                  <PackageCheck className="h-5 w-5 text-blue-400" /> {store.total_completed_escrows}
-                </span>
-                <span className="text-[11px] text-blue-200 font-medium block mt-0.5">
-                  Completed Escrows
-                </span>
-              </div>
-            </div>
-          </div>
         </div>
 
-        {/* 3-Axis Rating Scorecards: 1 Row on Mobile with Star Icons */}
-        <div className="grid grid-cols-3 gap-2 sm:gap-4">
-          <div className="bg-white dark:bg-slate-900 p-3 sm:p-5 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-xs text-center space-y-1 transition-colors">
-            <span className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider block">Overall</span>
-            <div className="flex items-center justify-center gap-0.5 text-amber-400">
-              {[1, 2, 3, 4, 5].map(s => (
-                <Star key={s} className={`h-4 w-4 sm:h-5 sm:w-5 ${s <= Math.round(store.avg_overall) ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
-              ))}
+        {/* 2. COMPACT 3-AXIS RATING SCORECARDS (Reduced vertical height & overlapping banner bottom) */}
+        <div className="-mt-6 sm:-mt-7 relative z-10 grid grid-cols-3 gap-2.5 sm:gap-4 px-3 sm:px-6">
+          {/* Overall Rating Card */}
+          <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md py-1.5 sm:py-2 px-2.5 sm:px-4 rounded-xl sm:rounded-2xl border border-gray-200/90 dark:border-slate-800 shadow-md flex flex-col sm:flex-row items-center justify-between gap-1 sm:gap-2 transition-all hover:shadow-lg">
+            <span className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
+              Overall
+            </span>
+            <div className="flex items-center gap-1 sm:gap-1.5">
+              <div className="flex items-center gap-0.5 text-amber-400">
+                {[1, 2, 3, 4, 5].map(s => (
+                  <Star key={s} className={`h-3 w-3 sm:h-3.5 sm:w-3.5 ${s <= Math.round(store.avg_overall) ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
+                ))}
+              </div>
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                {store.avg_overall.toFixed(1)}
+              </span>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-3 sm:p-5 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-xs text-center space-y-1 transition-colors">
-            <span className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider block">Speed</span>
-            <div className="flex items-center justify-center gap-0.5 text-amber-400">
-              {[1, 2, 3, 4, 5].map(s => (
-                <Star key={s} className={`h-4 w-4 sm:h-5 sm:w-5 ${s <= Math.round(store.avg_speed) ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
-              ))}
+          {/* Speed Rating Card */}
+          <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md py-1.5 sm:py-2 px-2.5 sm:px-4 rounded-xl sm:rounded-2xl border border-gray-200/90 dark:border-slate-800 shadow-md flex flex-col sm:flex-row items-center justify-between gap-1 sm:gap-2 transition-all hover:shadow-lg">
+            <span className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
+              Speed
+            </span>
+            <div className="flex items-center gap-1 sm:gap-1.5">
+              <div className="flex items-center gap-0.5 text-amber-400">
+                {[1, 2, 3, 4, 5].map(s => (
+                  <Star key={s} className={`h-3 w-3 sm:h-3.5 sm:w-3.5 ${s <= Math.round(store.avg_speed) ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
+                ))}
+              </div>
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                {store.avg_speed.toFixed(1)}
+              </span>
             </div>
           </div>
 
-          <div className="bg-white dark:bg-slate-900 p-3 sm:p-5 rounded-2xl border border-gray-200 dark:border-slate-800 shadow-xs text-center space-y-1 transition-colors">
-            <span className="text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider block">Comm</span>
-            <div className="flex items-center justify-center gap-0.5 text-amber-400">
-              {[1, 2, 3, 4, 5].map(s => (
-                <Star key={s} className={`h-4 w-4 sm:h-5 sm:w-5 ${s <= Math.round(store.avg_communication) ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
-              ))}
+          {/* Communication Rating Card */}
+          <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md py-1.5 sm:py-2 px-2.5 sm:px-4 rounded-xl sm:rounded-2xl border border-gray-200/90 dark:border-slate-800 shadow-md flex flex-col sm:flex-row items-center justify-between gap-1 sm:gap-2 transition-all hover:shadow-lg">
+            <span className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
+              Comm
+            </span>
+            <div className="flex items-center gap-1 sm:gap-1.5">
+              <div className="flex items-center gap-0.5 text-amber-400">
+                {[1, 2, 3, 4, 5].map(s => (
+                  <Star key={s} className={`h-3 w-3 sm:h-3.5 sm:w-3.5 ${s <= Math.round(store.avg_communication) ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
+                ))}
+              </div>
+              <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                {store.avg_communication.toFixed(1)}
+              </span>
             </div>
           </div>
         </div>
@@ -385,51 +385,112 @@ export default function SellerStoreView() {
                         onClick={() => openReviewModal(r)}
                         className="bg-gray-50/70 dark:bg-slate-800/70 p-5 rounded-2xl border border-gray-200/90 dark:border-slate-700/80 space-y-3 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition flex flex-col justify-between cursor-pointer group"
                       >
-                        <div className="space-y-2">
-                          <div className="flex items-start justify-between gap-2">
+                        <div className="space-y-3">
+                          {/* Top Row: Buyer Name + Verified Badge (Left) and Vertically Stacked Ratings (Right) */}
+                          <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
                                 <span className="font-bold text-gray-900 dark:text-white text-base group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition">{r.buyer_name}</span>
-                                <span className="inline-flex items-center gap-1 text-xs text-green-700 dark:text-emerald-300 bg-green-50 dark:bg-emerald-950/60 border border-green-200 dark:border-emerald-800 px-2 py-0.5 rounded-full font-semibold">
-                                  <CheckCircle2 className="h-3.5 w-3.5" /> Verified Buyer
+                                <span className="inline-flex items-center gap-1 text-[11px] text-green-700 dark:text-emerald-300 bg-green-50 dark:bg-emerald-950/60 border border-green-200 dark:border-emerald-800 px-2 py-0.5 rounded-full font-semibold">
+                                  <CheckCircle2 className="h-3 w-3" /> Verified Buyer
                                 </span>
                               </div>
-                              <span className="text-xs text-gray-500 dark:text-slate-400 block mt-0.5">Purchased: <strong className="text-gray-700 dark:text-slate-200">{r.item_title}</strong> • {new Date(r.created_at).toLocaleDateString()}</span>
                             </div>
 
-                            <div className="text-right shrink-0">
-                              <div className="flex items-center gap-0.5 text-amber-400">
-                                {[1, 2, 3, 4, 5].map(s => (
-                                  <Star key={s} className={`h-4 w-4 ${s <= r.rating_overall ? 'fill-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
-                                ))}
+                            {/* Vertically Stacked Overall, Speed, and Comm Ratings */}
+                            <div className="flex flex-col items-end gap-0.5 shrink-0 text-right">
+                              {/* Overall Rating */}
+                              <div className="flex items-center gap-1.5">
+                                <span className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Overall:</span>
+                                <div className="flex items-center gap-0.5 text-amber-400">
+                                  {[1, 2, 3, 4, 5].map(s => (
+                                    <Star key={s} className={`h-3.5 w-3.5 ${s <= r.rating_overall ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
+                                  ))}
+                                </div>
+                                <span className="text-xs font-black text-slate-900 dark:text-slate-100">{r.rating_overall.toFixed(1)}</span>
                               </div>
-                              <span className="text-xs text-gray-500 dark:text-slate-400 font-mono block mt-1">Speed: {r.rating_speed}⭐ | Comm: {r.rating_communication}⭐</span>
+
+                              {/* Speed Rating */}
+                              <div className="flex items-center gap-1 text-[11px] sm:text-xs text-gray-600 dark:text-slate-400">
+                                <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">Speed:</span>
+                                <div className="flex items-center gap-0.5 text-amber-400">
+                                  {[1, 2, 3, 4, 5].map(s => (
+                                    <Star key={s} className={`h-3 w-3 ${s <= r.rating_speed ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
+                                  ))}
+                                </div>
+                                <span className="font-bold text-gray-800 dark:text-slate-200">{r.rating_speed.toFixed(1)}</span>
+                              </div>
+
+                              {/* Communication Rating */}
+                              <div className="flex items-center gap-1 text-[11px] sm:text-xs text-gray-600 dark:text-slate-400">
+                                <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">Comm:</span>
+                                <div className="flex items-center gap-0.5 text-amber-400">
+                                  {[1, 2, 3, 4, 5].map(s => (
+                                    <Star key={s} className={`h-3 w-3 ${s <= r.rating_communication ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
+                                  ))}
+                                </div>
+                                <span className="font-bold text-gray-800 dark:text-slate-200">{r.rating_communication.toFixed(1)}</span>
+                              </div>
                             </div>
                           </div>
 
+                          {/* Horizontal Row across the card: Purchased Item Name and Date (in italics) */}
+                          <div className="flex items-center justify-between gap-2 text-xs py-1.5 px-3 bg-white dark:bg-slate-900/90 rounded-xl border border-gray-200/80 dark:border-slate-700/80 shadow-2xs">
+                            <span className="text-gray-600 dark:text-slate-300 truncate">
+                              Purchased: <strong className="font-bold text-gray-900 dark:text-white">{r.item_title}</strong>
+                            </span>
+                            <span className="italic text-gray-500 dark:text-slate-400 shrink-0 text-[11px]">
+                              {new Date(r.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                            </span>
+                          </div>
+
+                          {/* Customer Feedback Comment */}
                           {r.comment && (
                             <p className="text-sm text-gray-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-gray-200/80 dark:border-slate-700 leading-relaxed italic shadow-2xs">
                               "{r.comment}"
                             </p>
                           )}
 
-                          {/* Seller Reply Display */}
-                          {r.seller_reply && (
-                            <div className="border-l-4 border-blue-600 dark:border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 p-3.5 rounded-r-xl space-y-1 mt-2">
+                          {/* Seller Reply Display with Edit Option */}
+                          {r.seller_reply && replyingReviewId !== r.id && (
+                            <div className="border-l-4 border-blue-600 dark:border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 p-3.5 rounded-r-xl space-y-1.5 mt-2">
                               <div className="flex items-center justify-between text-xs font-bold text-blue-900 dark:text-blue-200">
-                                <span>{store.shop_name ? `${store.shop_name} (@${store.seller_username})` : `@${store.seller_username}`} (Seller Reply)</span>
-                                <span className="text-xs text-blue-500 dark:text-blue-400 font-medium">{r.seller_replied_at ? new Date(r.seller_replied_at).toLocaleDateString() : ''}</span>
+                                <span className="text-blue-500">Seller's Reply</span>
+                                <div className="flex items-center gap-2">
+                                  <span className="text-[11px] text-blue-500 dark:text-blue-400 font-medium italic">
+                                    {r.seller_replied_at ? new Date(r.seller_replied_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' }) : ''}
+                                  </span>
+                                  {isOwner && (
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setReplyingReviewId(r.id);
+                                        setReplyText(r.seller_reply || '');
+                                      }}
+                                      className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-bold text-xs hover:underline flex items-center gap-1 cursor-pointer ml-1"
+                                      title="Edit your reply"
+                                    >
+                                      <Pencil className="h-3 w-3" /> Edit
+                                    </button>
+                                  )}
+                                </div>
                               </div>
                               <p className="text-sm text-blue-950 dark:text-blue-100 leading-relaxed">{r.seller_reply}</p>
                             </div>
                           )}
                         </div>
 
-                        {/* Seller Reply Action Form (for owner) */}
-                        {isOwner && !r.seller_reply && (
-                          <div className="pt-2 border-t border-gray-200/60 dark:border-slate-700" onClick={e => e.stopPropagation()}>
+                        {/* Seller Reply Form (For creating new reply OR editing existing reply) */}
+                        {isOwner && (replyingReviewId === r.id || !r.seller_reply) && (
+                          <div className="pt-2 border-t border-gray-200/60 dark:border-slate-700 mt-2" onClick={e => e.stopPropagation()}>
                             {replyingReviewId === r.id ? (
                               <div className="space-y-2">
+                                <div className="flex items-center justify-between">
+                                  <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                                    {r.seller_reply ? 'Edit Your Reply' : 'Reply as Seller'}
+                                  </span>
+                                </div>
                                 <textarea
                                   rows={2}
                                   value={replyText}
@@ -452,18 +513,20 @@ export default function SellerStoreView() {
                                     className="px-3.5 py-1.5 text-xs font-bold text-white bg-blue-600 hover:bg-blue-700 rounded-lg transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
                                   >
                                     {isSubmittingReply ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                                    Publish Reply
+                                    {r.seller_reply ? 'Update Reply' : 'Publish Reply'}
                                   </button>
                                 </div>
                               </div>
                             ) : (
-                              <button
-                                type="button"
-                                onClick={() => { setReplyingReviewId(r.id); setReplyText(''); }}
-                                className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
-                              >
-                                + Reply to this review
-                              </button>
+                              !r.seller_reply && (
+                                <button
+                                  type="button"
+                                  onClick={() => { setReplyingReviewId(r.id); setReplyText(''); }}
+                                  className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                                >
+                                  + Reply to this review
+                                </button>
+                              )
                             )}
                           </div>
                         )}

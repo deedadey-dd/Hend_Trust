@@ -252,3 +252,31 @@ def test_reinstated_seller_clean_slate_protection(seller):
     assert seller.is_suspended is False
 
 
+@pytest.mark.django_db
+def test_compound_risk_compliance_review_flagging(seller):
+    """
+    When a seller has 2 or more metrics in the WARNING zone concurrently (e.g. 30% dispute rate + 20% dispatch expiry),
+    the account should be flagged for COMPLIANCE_REVIEW rather than single warning, while remaining unsuspended.
+    """
+    link = PaymentLink.objects.create(seller=seller, title="Compound Risk Item", price_ghs=Decimal('100.00'), is_active=True)
+
+    # 10 transactions:
+    # 3 disputed (30% dispute rate -> warning threshold)
+    # 2 expired non-dispatch (20% dispatch expiry rate -> warning threshold)
+    # 5 normal completed
+    for i in range(5):
+        Transaction.objects.create(link=link, total_amount_ghs=Decimal('100.00'), platform_fee_ghs=Decimal('5.00'), status=TransactionStatus.COMPLETED, paystack_reference=f"C_COMP_{i}")
+    for i in range(3):
+        Transaction.objects.create(link=link, total_amount_ghs=Decimal('100.00'), platform_fee_ghs=Decimal('5.00'), status=TransactionStatus.DISPUTED, buyer_dispute_reason="Not working", paystack_reference=f"C_DISP_{i}")
+    for i in range(2):
+        Transaction.objects.create(link=link, total_amount_ghs=Decimal('100.00'), platform_fee_ghs=Decimal('5.00'), status=TransactionStatus.REFUNDED, auto_cancelled_non_dispatch=True, paystack_reference=f"C_EXP_{i}")
+
+    health = compute_seller_dispute_health(seller)
+    assert health["is_suspended"] is False
+    assert health["dispute_level"] == "COMPLIANCE_REVIEW"
+    assert health["is_flagged_for_compliance_review"] is True
+    assert health["compound_warning_count"] == 2
+    assert len(health["compliance_review_reasons"]) == 2
+
+
+

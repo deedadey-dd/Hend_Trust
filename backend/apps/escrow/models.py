@@ -18,6 +18,7 @@ class TransactionStatus(models.TextChoices):
     REFUNDED = 'REFUNDED', 'Refunded'
 
 class Transaction(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     link = models.ForeignKey(PaymentLink, on_delete=models.PROTECT, related_name='transactions')
     buyer_name = models.CharField(max_length=255, blank=True)
@@ -28,7 +29,7 @@ class Transaction(models.Model):
     platform_fee_ghs = models.DecimalField(max_digits=12, decimal_places=2)
     status = models.CharField(max_length=30, choices=TransactionStatus.choices, default=TransactionStatus.AWAITING_PAYMENT, db_index=True)
     paystack_reference = models.CharField(max_length=100, unique=True, db_index=True)
-    buyer_review_token = models.CharField(max_length=64, blank=True, db_index=True)
+    buyer_review_token: models.CharField | str = models.CharField(max_length=64, blank=True, db_index=True)
     
     # State tracking timestamps
     dispatched_at = models.DateTimeField(null=True, blank=True)
@@ -87,6 +88,8 @@ class Transaction(models.Model):
 
 
 class PlatformSetting(models.Model):
+    objects = models.Manager()
+
     key = models.CharField(max_length=50, primary_key=True)
     value = models.JSONField(default=dict)
     updated_at = models.DateTimeField(auto_now=True)

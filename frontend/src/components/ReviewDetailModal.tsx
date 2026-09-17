@@ -142,7 +142,7 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
             <div className="text-right">
               {renderStars(currentReview.rating_overall, 'md')}
               <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 block mt-1">
-                {currentReview.rating_overall}.0 out of 5 Stars
+                {currentReview.rating_overall.toFixed(1)} out of 5 Stars
               </span>
             </div>
           </div>
@@ -152,13 +152,13 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
             <div className="inline-flex items-center gap-1.5 font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-gray-200/80 dark:border-slate-700">
               <Zap className="w-3.5 h-3.5 text-amber-500 shrink-0" />
               <span>Delivery Speed:</span>
-              <span className="font-bold text-gray-900 dark:text-slate-100">{currentReview.rating_speed} / 5</span>
+              <span className="font-bold text-gray-900 dark:text-slate-100">{currentReview.rating_speed.toFixed(1)} / 5</span>
             </div>
 
             <div className="inline-flex items-center gap-1.5 font-medium text-gray-700 dark:text-slate-300 bg-white dark:bg-slate-800 px-3 py-1.5 rounded-xl border border-gray-200/80 dark:border-slate-700">
               <MessageCircle className="w-3.5 h-3.5 text-blue-500 shrink-0" />
               <span>Communication:</span>
-              <span className="font-bold text-gray-900 dark:text-slate-100">{currentReview.rating_communication} / 5</span>
+              <span className="font-bold text-gray-900 dark:text-slate-100">{currentReview.rating_communication.toFixed(1)} / 5</span>
             </div>
           </div>
 

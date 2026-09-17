@@ -18,6 +18,7 @@ class CarrierChoice(models.TextChoices):
     OTHERS = 'OTHERS', 'Others'
 
 class DeliveryLog(models.Model):
+    objects = models.Manager()
     id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
     transaction = models.ForeignKey(Transaction, on_delete=models.CASCADE, related_name='delivery_logs')
     delivery_method = models.CharField(max_length=20, choices=DeliveryMethod.choices)
