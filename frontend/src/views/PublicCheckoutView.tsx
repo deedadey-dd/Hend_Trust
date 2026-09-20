@@ -10,6 +10,7 @@ import { compressImageToWebP } from '../utils/imageUtils';
 import SEOHead from '../components/SEOHead';
 import TermsModal from '../components/TermsModal';
 import ImageLightboxModal from '../components/ImageLightboxModal';
+import DisputeChatTimeline from '../components/DisputeChatTimeline';
 import { saveReviewToken } from '../utils/reviewStorage';
 
 
@@ -33,6 +34,7 @@ interface TxnDetail {
   id: string;
   status: string;
   total_amount_ghs: number;
+  buyer_refund_amount_ghs?: number;
   buyer_email: string;
   shipping_address: string;
   title: string;
@@ -40,6 +42,14 @@ interface TxnDetail {
   created_at: string;
   paystack_reference: string;
   inspection_starts_at?: string;
+  dispute_retracted_at?: string;
+  dispute_retraction_release_hours?: number;
+  buyer_dispute_reason?: string;
+  buyer_dispute_photos?: string[];
+  seller_dispute_response?: string;
+  seller_dispute_photos?: string[];
+  manager_dispute_notes?: string;
+  manager_dispute_photos?: string[];
   seller_username?: string;
   shop_name?: string;
   seller_email?: string;
@@ -49,6 +59,16 @@ interface TxnDetail {
   shipping_timeout_days?: number;
   inspection_hours_allowed?: number;
   buyer_review_token?: string;
+  has_reviewed?: boolean;
+  review_overall?: number;
+  review_speed?: number;
+  review_communication?: number;
+  review_comment?: string;
+  review_created_at?: string;
+  review_updated_at?: string;
+  review_edit_count?: number;
+  review_seller_reply?: string;
+  review_seller_replied_at?: string;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -59,12 +79,14 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const Icon = cfg.icon;
 
   const canConfirm = txn.status === 'DELIVERY_IN_PROGRESS';
-  let canDispute = txn.status === 'INSPECTION_PERIOD' || txn.status === 'DELIVERY_IN_PROGRESS';
+  let canDispute = (txn.status === 'INSPECTION_PERIOD' || txn.status === 'DELIVERY_IN_PROGRESS') && !txn.dispute_retracted_at;
   const isInspection = txn.status === 'INSPECTION_PERIOD';
+  const isDisputed = txn.status === 'DISPUTED';
+  const hasDisputeRecord = Boolean(txn.buyer_dispute_reason || txn.dispute_retracted_at || txn.status === 'DISPUTED');
 
   // Calculate inspection remaining time
   let inspectionRemaining = "";
-  if (isInspection && txn.inspection_starts_at) {
+  if (isInspection && txn.inspection_starts_at && !txn.dispute_retracted_at) {
     const start = new Date(txn.inspection_starts_at).getTime();
     const now = new Date().getTime();
     
@@ -80,6 +102,23 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     } else {
       inspectionRemaining = "Expired (processing)";
       canDispute = false;
+    }
+  }
+
+  // Calculate dispute retraction remaining time
+  let retractionRemaining = "";
+  if (txn.dispute_retracted_at) {
+    const start = new Date(txn.dispute_retracted_at).getTime();
+    const now = new Date().getTime();
+    const hoursAllowed = txn.dispute_retraction_release_hours || 24;
+    const end = start + (hoursAllowed * 60 * 60 * 1000);
+    const diff = end - now;
+    if (diff > 0) {
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      retractionRemaining = `${hours}h ${mins}m`;
+    } else {
+      retractionRemaining = "Releasing funds to seller...";
     }
   }
 
@@ -100,6 +139,11 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const [isCompressingBuyerPhotos, setIsCompressingBuyerPhotos] = useState(false);
   const [disputeError, setDisputeError] = useState('');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  // Retract Dispute Modal state
+  const [showRetractModal, setShowRetractModal] = useState(false);
+  const [isRetracting, setIsRetracting] = useState(false);
+  const [retractError, setRetractError] = useState('');
 
   // OTP Resend Cooldown (60 seconds)
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -187,6 +231,21 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
       setDisputeError(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit dispute.');
     } finally {
       setIsSubmittingDispute(false);
+    }
+  };
+
+  const handleRetractDispute = async () => {
+    setRetractError('');
+    setIsRetracting(true);
+    try {
+      const res = await axios.post(`/api/v1/escrow/${txn.id}/retract-dispute`);
+      alert(res.data?.message || 'Dispute retracted successfully. Funds will be released to the seller as scheduled.');
+      setShowRetractModal(false);
+      window.location.reload();
+    } catch (err: any) {
+      setRetractError(err.response?.data?.message || err.response?.data?.detail || 'Failed to retract dispute.');
+    } finally {
+      setIsRetracting(false);
     }
   };
 
@@ -303,12 +362,12 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         )}
 
         {/* Refund & Dispute Settlement Audit Card */}
-        {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED') && (
+        {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED' || txn.buyer_dispute_reason || txn.dispute_retracted_at) && (
           <div className="bg-red-50/80 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-2xl p-5 space-y-3 text-xs">
             <div className="flex justify-between items-center border-b border-red-200/80 dark:border-red-800/50 pb-3">
               <span className="font-bold text-red-700 dark:text-red-300 text-sm flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                {txn.status === 'REFUNDED' ? 'Dispute Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : 'Dispute Under Review'}
+                {txn.status === 'REFUNDED' ? 'Dispute Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : txn.dispute_retracted_at ? 'Dispute Retracted & Settling' : 'Dispute Under Review'}
               </span>
               {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED') && (
                 <span className="font-mono font-black text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-3 py-1 rounded-lg text-sm shadow-sm">
@@ -321,41 +380,69 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
               ⏱ <strong>24-Hour Settlement Guarantee:</strong> All refunds are automatically returned via your original payment channel (Paystack MoMo/Card) within 24 hours.
             </p>
 
-            {(txn as any).manager_dispute_notes && (
-              <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-red-200 dark:border-red-800/60 space-y-1.5 shadow-sm">
-                <span className="font-mono text-red-600 dark:text-red-400 font-bold uppercase text-[10px] block">Manager Resolution Notes:</span>
-                <p className="text-gray-800 dark:text-slate-200 text-xs font-sans leading-relaxed">{(txn as any).manager_dispute_notes}</p>
-                {(txn as any).manager_dispute_photos && (txn as any).manager_dispute_photos.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {(txn as any).manager_dispute_photos.map((url: string, idx: number) => (
-                      <div 
-                        key={idx} 
-                        className="relative group cursor-pointer"
-                        onClick={() => setLightboxImage(url)}
-                        title="Click to enlarge"
-                      >
-                        <img src={url} alt="Manager ruling proof" className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 transition-transform group-hover:scale-105" />
-                        <div className="absolute inset-0 bg-black/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <ZoomIn className="w-4 h-4 text-white drop-shadow" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {(txn as any).buyer_dispute_reason && (
-              <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-red-200 dark:border-red-800/60 space-y-1 shadow-sm">
-                <span className="font-mono text-gray-500 dark:text-slate-400 font-bold uppercase text-[10px] block">Your Dispute Claim:</span>
-                <p className="text-gray-800 dark:text-slate-200 text-xs font-sans">{(txn as any).buyer_dispute_reason}</p>
-              </div>
-            )}
+            <DisputeChatTimeline
+              buyerReason={txn.buyer_dispute_reason}
+              buyerPhotos={txn.buyer_dispute_photos}
+              buyerName="You (Buyer)"
+              sellerResponse={txn.seller_dispute_response}
+              sellerPhotos={txn.seller_dispute_photos}
+              sellerName={txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller')}
+              managerNotes={txn.manager_dispute_notes}
+              managerPhotos={txn.manager_dispute_photos}
+              disputeRetractedAt={txn.dispute_retracted_at}
+            />
           </div>
         )}
 
-        {/* Buyer Actions */}
-        {(canConfirm || canDispute || isInspection) && (
+        {/* Retraction & Settlement Progress Banner */}
+        {txn.dispute_retracted_at && (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 text-xs text-amber-900 dark:text-amber-200 space-y-2 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5 text-sm">
+                <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                Dispute Retracted — Settlement in Progress
+              </span>
+              <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded text-xs">
+                Auto-Release in: {retractionRemaining}
+              </span>
+            </div>
+            <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
+              You retracted this dispute to settle privately with the seller. Funds will be automatically released to the seller once the {txn.dispute_retraction_release_hours || 24}-hour grace window completes.
+            </p>
+          </div>
+        )}
+
+        {/* Active Dispute Actions Card */}
+        {isDisputed && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-rose-200 dark:border-rose-900/60 p-6 space-y-3">
+            <div>
+              <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4" />
+                Active Dispute Under Review
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                You can add more details or evidence photos (up to 5 total), or retract this dispute to settle privately with the seller.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 pt-1">
+              <button
+                onClick={() => { setShowDisputeModal(true); setDisputeReason(''); setBuyerPhotos([]); setDisputeError(''); }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-900/50 transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                + Add More Details / Photos
+              </button>
+              <button
+                onClick={() => { setShowRetractModal(true); setRetractError(''); }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                Retract Dispute & Settle Privately
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Buyer Inspection & Confirmation Actions */}
+        {(canConfirm || canDispute) && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-6">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-200 mb-1">
               {isInspection ? "Inspection Mode" : "Item received?"}
@@ -388,33 +475,128 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         )}
 
         {/* Rating Section */}
-        {txn.status !== 'AWAITING_PAYMENT' && txn.status !== 'CANCELLED' && txn.status !== 'DISPUTED' && (
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
-                ⭐ Seller Experience Rating
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED')
-                  ? "Share your feedback on product quality, shipping speed, and seller communication."
-                  : "Seller rating unlocks once package is delivered and inspection begins."}
-              </p>
-            </div>
-            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') ? (
-              <button
-                onClick={() => setShowRatingModal(true)}
-                className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition whitespace-nowrap shadow-sm cursor-pointer"
-              >
-                ⭐ Rate Seller
-              </button>
+        {txn.status !== 'AWAITING_PAYMENT' && txn.status !== 'CANCELLED' && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-6 space-y-4">
+            {hasDisputeRecord ? (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
+                    ⭐ Seller Experience Rating
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                    Seller rating is permanently disabled because a dispute was initiated for this transaction.
+                  </p>
+                </div>
+                <button
+                  disabled
+                  title="Rating disabled due to dispute history"
+                  className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80 whitespace-nowrap"
+                >
+                  🔒 Rating Voided
+                </button>
+              </div>
+            ) : txn.has_reviewed ? (
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                      ⭐ Your Verified Review
+                    </h3>
+                    {(txn.review_edit_count || 0) > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                        Edited {txn.review_edit_count} time{(txn.review_edit_count || 0) > 1 ? 's' : ''}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                        Published
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setShowRatingModal(true)}
+                    className="self-start sm:self-auto py-1.5 px-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition shadow-sm cursor-pointer flex items-center gap-1"
+                  >
+                    ✏️ Edit Review
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 py-1">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 text-center">
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400 block font-semibold">Overall</span>
+                    <span className="text-amber-500 font-bold text-xs sm:text-sm">{txn.review_overall || 5} / 5 ⭐</span>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 text-center">
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400 block font-semibold">Speed</span>
+                    <span className="text-amber-500 font-bold text-xs sm:text-sm">{txn.review_speed || 5} / 5 ⭐</span>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 text-center">
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400 block font-semibold">Service</span>
+                    <span className="text-amber-500 font-bold text-xs sm:text-sm">{txn.review_communication || 5} / 5 ⭐</span>
+                  </div>
+                </div>
+
+                {txn.review_comment && (
+                  <p className="text-xs text-gray-700 dark:text-slate-300 italic bg-gray-50 dark:bg-slate-800/40 p-3 rounded-xl border border-gray-100 dark:border-slate-800">
+                    "{txn.review_comment}"
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-400 dark:text-slate-500 pt-1">
+                  <span>
+                    Submitted: {txn.review_created_at ? new Date(txn.review_created_at).toLocaleDateString() : 'Recently'}
+                  </span>
+                  {(txn.review_edit_count || 0) > 0 && txn.review_updated_at && (
+                    <span className="text-blue-500 dark:text-blue-400">
+                      Last edited: {new Date(txn.review_updated_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+
+                {txn.review_seller_reply && (
+                  <div className="mt-2 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-900/50 p-3 rounded-xl space-y-1">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
+                      <span>Store Reply ({txn.shop_name || `@${txn.seller_username}`}):</span>
+                      {txn.review_seller_replied_at && (
+                        <span className="font-normal text-emerald-600 dark:text-emerald-400">
+                          {new Date(txn.review_seller_replied_at).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-emerald-900 dark:text-emerald-200 leading-relaxed">
+                      "{txn.review_seller_reply}"
+                    </p>
+                  </div>
+                )}
+              </div>
             ) : (
-              <button
-                disabled
-                title="Unlocks after delivery"
-                className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80 whitespace-nowrap"
-              >
-                🔒 Rate Seller
-              </button>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
+                    ⭐ Seller Experience Rating
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                    {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED')
+                      ? "Share your feedback on product quality, shipping speed, and seller communication."
+                      : "Seller rating unlocks once package is delivered and inspection begins."}
+                  </p>
+                </div>
+                {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') ? (
+                  <button
+                    onClick={() => setShowRatingModal(true)}
+                    className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition whitespace-nowrap shadow-sm cursor-pointer"
+                  >
+                    ⭐ Rate Seller
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    title="Unlocks after delivery"
+                    className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80 whitespace-nowrap"
+                  >
+                    🔒 Rate Seller
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -449,8 +631,8 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
 
       {/* Confirm Receipt Modal */}
       {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden p-6 relative border border-gray-100 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 sm:p-6 relative border border-gray-100 dark:border-slate-800 my-auto">
             <button 
               onClick={() => setShowConfirmModal(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 transition"
@@ -462,13 +644,13 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                 <CheckCircle className="h-6 w-6 text-green-600 dark:text-emerald-400" />
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Delivery</h3>
-              <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400 mt-2">
                 We've sent a 6-digit code to your phone (and email if provided). Enter it below to release payment to the seller.
               </p>
             </div>
 
             {confirmError && (
-              <div className="mb-4 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm font-medium border border-red-100 dark:border-red-900/50 text-center">
+              <div className="mb-4 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-lg text-xs sm:text-sm font-medium border border-red-100 dark:border-red-900/50 text-center">
                 {confirmError}
               </div>
             )}
@@ -503,7 +685,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                   if (resendCooldown === 0) handleOpenConfirmModal();
                 }}
                 disabled={isSendingCode || resendCooldown > 0}
-                className="w-full text-sm font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full text-xs sm:text-sm font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSendingCode 
                   ? 'Sending...' 
@@ -516,33 +698,39 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         </div>
       )}
 
-      {/* Raise Dispute Sub-Modal */}
+      {/* Raise / Add Dispute Sub-Modal */}
       {showDisputeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-5 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl relative space-y-4 my-auto">
             <button onClick={() => setShowDisputeModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
               <X className="h-5 w-5" />
             </button>
-            <h4 className="text-base font-bold text-gray-900 dark:text-white">Raise Transaction Dispute</h4>
+            <h4 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
+              {isDisputed ? "Add More Details & Evidence Photos" : "Raise Transaction Dispute"}
+            </h4>
             {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-100 dark:border-red-900/50">{disputeError}</p>}
             <form onSubmit={handleRaiseDisputeSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Reason for Dispute *</label>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
+                  {isDisputed ? "Additional Details / Clarification *" : "Reason for Dispute *"}
+                </label>
                 <textarea
                   required
                   rows={3}
                   value={disputeReason}
                   onChange={e => setDisputeReason(e.target.value)}
-                  placeholder="Describe the issue with your item..."
+                  placeholder={isDisputed ? "Provide additional details, respond to seller, or report further defects..." : "Describe the issue with your item..."}
                   className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-xl p-3 text-xs focus:ring-2 focus:ring-red-500 outline-none"
                 />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Evidence Photos (Max 5)</label>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">
+                    Evidence Photos (Max 5 total)
+                  </label>
                   <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
-                    {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length}/5 photos`}
+                    {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length + (txn.buyer_dispute_photos?.length || 0)}/5 photos`}
                   </span>
                 </div>
                 <input
@@ -550,7 +738,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                   accept="image/*"
                   multiple
                   onChange={handleBuyerPhotoUpload}
-                  disabled={buyerPhotos.length >= 5 || isCompressingBuyerPhotos}
+                  disabled={(buyerPhotos.length + (txn.buyer_dispute_photos?.length || 0)) >= 5 || isCompressingBuyerPhotos}
                   className="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-gray-100 dark:file:bg-slate-800 file:text-gray-700 dark:file:text-slate-200 hover:file:bg-gray-200 dark:hover:file:bg-slate-700 cursor-pointer disabled:opacity-50"
                 />
                 {isCompressingBuyerPhotos && (
@@ -581,9 +769,50 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                 disabled={isSubmittingDispute || isCompressingBuyerPhotos}
                 className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-red-500/20 disabled:opacity-70 flex justify-center items-center cursor-pointer"
               >
-                {isSubmittingDispute ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Dispute & Evidence"}
+                {isSubmittingDispute ? <Loader2 className="h-4 w-4 animate-spin" /> : (isDisputed ? "Submit Additional Details" : "Submit Dispute & Evidence")}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Retract Dispute Sub-Modal */}
+      {showRetractModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-5 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl relative space-y-4 my-auto">
+            <button onClick={() => setShowRetractModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="flex items-center gap-2.5 text-emerald-600 dark:text-emerald-400 font-bold text-sm sm:text-base">
+              <ShieldCheck className="h-5 w-5" />
+              <h4>Retract Dispute & Settle Privately</h4>
+            </div>
+            {retractError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-100 dark:border-red-900/50">{retractError}</p>}
+            <p className="text-xs text-gray-600 dark:text-slate-300 leading-relaxed">
+              Are you sure you want to retract your dispute? By retracting:
+            </p>
+            <ul className="text-xs text-gray-600 dark:text-slate-300 list-disc list-inside space-y-1 bg-gray-50 dark:bg-slate-800/50 p-3 rounded-xl border border-gray-200 dark:border-slate-700">
+              <li>The order will transition to standard completion mode.</li>
+              <li>Funds will be automatically released to the seller after the platform grace window ({txn.dispute_retraction_release_hours || 24} hours).</li>
+              <li>Seller ratings will remain permanently disabled for this transaction.</li>
+            </ul>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowRetractModal(false)}
+                className="flex-1 py-2.5 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 font-bold rounded-xl text-xs hover:bg-gray-200 dark:hover:bg-slate-700 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRetractDispute}
+                disabled={isRetracting}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 disabled:opacity-70 cursor-pointer"
+              >
+                {isRetracting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Retraction"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -596,6 +825,13 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
           reviewToken={txn.buyer_review_token}
           sellerName={txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller')}
           itemTitle={txn.title}
+          initialOverall={txn.review_overall}
+          initialSpeed={txn.review_speed}
+          initialCommunication={txn.review_communication}
+          initialComment={txn.review_comment}
+          initialEditCount={txn.review_edit_count}
+          initialCreatedAt={txn.review_created_at}
+          initialUpdatedAt={txn.review_updated_at}
           onClose={() => { setShowRatingModal(false); window.location.reload(); }}
         />
       )}
@@ -926,8 +1162,8 @@ export default function PublicCheckoutView() {
 
       {/* OTP Modal */}
       {showOtpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-slate-800 max-h-[90vh] my-auto overflow-y-auto">
             <div className="text-center mb-6">
               <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-950/60 mb-4">
                 <ShieldCheck className="h-6 w-6 text-blue-600 dark:text-blue-400" />

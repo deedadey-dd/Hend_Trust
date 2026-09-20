@@ -3,7 +3,7 @@ import { useSearchParams } from 'react-router-dom';
 import { 
   Search, Filter, Package, CheckCircle, 
   Printer, X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
-  ShieldAlert, MapPin, Copy, Lock, ZoomIn, Archive, ArchiveRestore
+  ShieldAlert, MapPin, Copy, Lock, ZoomIn, Archive, ArchiveRestore, MessageSquare
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -11,6 +11,7 @@ import { useEscapeKey } from '../utils/useEscapeKey';
 import { ExportButton } from '../components/ExportButton';
 import type { ExportColumn } from '../utils/exportUtils';
 import { ImageLightboxModal } from '../components/ImageLightboxModal';
+import DisputeChatTimeline from '../components/DisputeChatTimeline';
 
 const merchantTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -66,6 +67,7 @@ interface SellerTxn {
   seller_dispute_photos?: string[];
   manager_dispute_notes?: string;
   manager_dispute_photos?: string[];
+  dispute_retracted_at?: string;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -184,8 +186,8 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
   const filteredCarriers = ALL_CARRIERS.filter(c => enabledCarriers.includes(c.code));
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] overflow-hidden flex flex-col">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col my-auto">
         <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/50 dark:bg-slate-900/50 shrink-0">
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Dispatch Order</h3>
@@ -481,8 +483,8 @@ function VerifyOtpModal({ txn, onClose, onSuccess }: VerifyOtpModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-sm w-full max-h-[90vh] overflow-y-auto my-auto">
         <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white">Verify Delivery OTP</h3>
@@ -639,9 +641,9 @@ function ForceCourierDeliveredModal({ txn, onClose, onSuccess }: ForceCourierDel
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full overflow-hidden">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden my-auto">
+        <div className="px-5 sm:px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between shrink-0">
           <div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
               <ShieldAlert className="h-5 w-5 text-orange-500" />
@@ -654,7 +656,7 @@ function ForceCourierDeliveredModal({ txn, onClose, onSuccess }: ForceCourierDel
           </button>
         </div>
 
-        <div className="p-6 space-y-4">
+        <div className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
           {/* Step: Checking courier API */}
           {step === 'checking' && (
             <div className="text-center py-6 space-y-3">
@@ -745,7 +747,7 @@ interface SellerDisputeModalProps {
 
 function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerDisputeModalProps) {
   const [response, setResponse] = useState('');
-  const [photos, setPhotos] = useState<string[]>([]);
+  const [photos, setPhotos] = useState<string[]>(txn.seller_dispute_photos || []);
   const [loading, setLoading] = useState(false);
   const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState('');
@@ -753,7 +755,7 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (photos.length + files.length > 5) {
-      alert("You can upload a maximum of 5 evidence photos.");
+      alert("You can upload a maximum of 5 evidence photos in total.");
       return;
     }
     setIsCompressing(true);
@@ -797,8 +799,8 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm">
-      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] overflow-y-auto p-6 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] sm:max-h-[85vh] overflow-y-auto p-5 sm:p-6 relative my-auto">
         <button onClick={onClose} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200">
           <X className="h-5 w-5" />
         </button>
@@ -809,34 +811,20 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
           <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-2">Dispute Evidence & Response</h3>
         </div>
 
-        {/* Buyer Claim */}
-        <div className="bg-gray-50 dark:bg-slate-800/60 border border-gray-200 dark:border-slate-700 rounded-xl p-4 mb-4 text-xs space-y-2">
-          <span className="font-bold text-red-600 dark:text-red-400 block uppercase">Buyer Dispute Claim:</span>
-          <p className="text-gray-800 dark:text-slate-200">{txn.buyer_dispute_reason || 'No detailed claim provided by buyer.'}</p>
-          
-          {txn.buyer_dispute_photos && txn.buyer_dispute_photos.length > 0 && (
-            <div>
-              <span className="text-gray-500 dark:text-slate-400 font-medium block mt-2 mb-1">Buyer Evidence Photos ({txn.buyer_dispute_photos.length}/5):</span>
-              <div className="flex flex-wrap gap-2">
-                {txn.buyer_dispute_photos.map((url: string, idx: number) => (
-                  <div
-                    key={idx}
-                    onClick={() => onOpenLightbox(url)}
-                    className="relative group cursor-pointer"
-                  >
-                    <img
-                      src={url}
-                      alt={`Buyer evidence ${idx + 1}`}
-                      className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 hover:border-red-500 transition"
-                    />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-lg transition">
-                      <ZoomIn className="w-4 h-4 text-white" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
+        {/* WhatsApp-Style Dispute Dialogue Timeline */}
+        <div className="mb-4">
+          <DisputeChatTimeline
+            buyerReason={txn.buyer_dispute_reason}
+            buyerPhotos={txn.buyer_dispute_photos}
+            buyerName={txn.buyer_name || 'Buyer'}
+            sellerResponse={txn.seller_dispute_response}
+            sellerPhotos={txn.seller_dispute_photos}
+            sellerName="You (Seller)"
+            managerNotes={txn.manager_dispute_notes}
+            managerPhotos={txn.manager_dispute_photos}
+            disputeRetractedAt={txn.dispute_retracted_at}
+            waybillPhotoUrl={txn.waybill_photo_url}
+          />
         </div>
 
         {error && (
@@ -845,77 +833,94 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
           </div>
         )}
 
-        <form onSubmit={handleSubmit} className="space-y-4 text-xs">
-          <div>
-            <label className="block text-gray-700 dark:text-slate-300 font-semibold mb-1">Your Counter Response *</label>
-            <textarea
-              rows={3}
-              required
-              value={response}
-              onChange={e => setResponse(e.target.value)}
-              placeholder="Explain your side of the dispute (e.g. proof of shipping condition, waybill receipt, item matches link description)..."
-              className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"
-            />
-          </div>
-
-          <div>
-            <div className="flex justify-between items-center mb-1">
-              <label className="block text-gray-700 dark:text-slate-300 font-semibold">Upload Seller Evidence Photos (Max 5)</label>
-              <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
-                {isCompressing ? 'Compressing WebP...' : `${photos.length}/5 photos`}
-              </span>
+        {txn.status === 'DISPUTED' ? (
+          <form onSubmit={handleSubmit} className="space-y-4 text-xs">
+            <div>
+              <label className="block text-gray-700 dark:text-slate-300 font-semibold mb-1">
+                {txn.seller_dispute_response ? "Add Subsequent Response / Clarification *" : "Your Counter Response *"}
+              </label>
+              <textarea
+                rows={3}
+                required
+                value={response}
+                onChange={e => setResponse(e.target.value)}
+                placeholder="Explain your side of the dispute (e.g. proof of shipping condition, waybill receipt, item matches link description)..."
+                className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 p-3 focus:ring-2 focus:ring-blue-500 focus:outline-none"
+              />
             </div>
-            <input
-              type="file"
-              accept="image/*"
-              multiple
-              disabled={photos.length >= 5 || isCompressing}
-              onChange={handlePhotoUpload}
-              className="w-full bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 text-xs rounded-xl p-2.5 cursor-pointer disabled:opacity-50"
-            />
-            {isCompressing && (
-              <div className="flex items-center gap-2 mt-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
-                <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to lightweight WebP...
-              </div>
-            )}
-            {photos.length > 0 && (
-              <div className="flex flex-wrap gap-2 mt-2">
-                {photos.map((img, idx) => (
-                  <div key={idx} className="relative group cursor-pointer" onClick={() => onOpenLightbox(img)}>
-                    <img src={img} alt={`Seller evidence ${idx + 1}`} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 hover:opacity-90 transition" />
-                    <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-lg transition">
-                      <ZoomIn className="w-4 h-4 text-white" />
-                    </div>
-                    <button
-                      type="button"
-                      onClick={(e) => { e.stopPropagation(); setPhotos(prev => prev.filter((_, i) => i !== idx)); }}
-                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow cursor-pointer z-10"
-                    >
-                      <X className="h-3 w-3" />
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
 
-          <div className="flex gap-3 pt-2">
+            <div>
+              <div className="flex justify-between items-center mb-1">
+                <label className="block text-gray-700 dark:text-slate-300 font-semibold">Upload Seller Evidence Photos (Max 5)</label>
+                <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
+                  {isCompressing ? 'Compressing WebP...' : `${photos.length}/5 photos`}
+                </span>
+              </div>
+              <input
+                type="file"
+                accept="image/*"
+                multiple
+                disabled={photos.length >= 5 || isCompressing}
+                onChange={handlePhotoUpload}
+                className="w-full bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 text-xs rounded-xl p-2.5 cursor-pointer disabled:opacity-50"
+              />
+              {isCompressing && (
+                <div className="flex items-center gap-2 mt-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to lightweight WebP...
+                </div>
+              )}
+              {photos.length > 0 && (
+                <div className="flex flex-wrap gap-2 mt-2">
+                  {photos.map((img, idx) => (
+                    <div key={idx} className="relative group cursor-pointer" onClick={() => onOpenLightbox(img)}>
+                      <img src={img} alt={`Seller evidence ${idx + 1}`} className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 hover:opacity-90 transition" />
+                      <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded-lg transition">
+                        <ZoomIn className="w-4 h-4 text-white" />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setPhotos(prev => prev.filter((_, i) => i !== idx)); }}
+                        className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow cursor-pointer z-10"
+                      >
+                        <X className="h-3 w-3" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-2.5 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 font-semibold rounded-xl transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="submit"
+                disabled={loading || isCompressing}
+                className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50 cursor-pointer"
+              >
+                {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Response"}
+              </button>
+            </div>
+          </form>
+        ) : (
+          <div className="space-y-3 pt-2">
+            <div className="p-3 bg-gray-50 dark:bg-slate-800/80 rounded-xl border border-gray-200 dark:border-slate-700 text-center text-xs text-gray-600 dark:text-slate-400">
+              This dispute is currently closed or settled. The complete historical trail is archived above.
+            </div>
             <button
               type="button"
               onClick={onClose}
-              className="flex-1 py-2.5 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 font-semibold rounded-xl transition cursor-pointer"
+              className="w-full py-2.5 bg-slate-800 hover:bg-slate-700 text-white font-semibold rounded-xl transition cursor-pointer"
             >
-              Cancel
-            </button>
-            <button
-              type="submit"
-              disabled={loading || isCompressing}
-              className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-semibold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20 disabled:opacity-50 cursor-pointer"
-            >
-              {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Response"}
+              Close Window
             </button>
           </div>
-        </form>
+        )}
       </div>
     </div>
   );
@@ -1917,8 +1922,8 @@ export default function DashboardView() {
 
       {/* ─── MODAL: SELLER TRANSACTION INSPECTION & PARCEL TAG ─────────────────── */}
       {selectedTxn && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm print:absolute print:inset-0 print:bg-white print:p-0">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] flex flex-col overflow-hidden border border-gray-100 dark:border-slate-800 print:shadow-none print:max-w-none print:w-[10cm] print:border print:border-black print:rounded-none">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto print:absolute print:inset-0 print:bg-white print:p-0">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-xl w-full max-h-[90vh] sm:max-h-[85vh] flex flex-col overflow-hidden border border-gray-100 dark:border-slate-800 my-auto print:shadow-none print:max-w-none print:w-[10cm] print:border print:border-black print:rounded-none">
             
             {/* Modal Header - Hidden on print */}
             <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50 dark:bg-slate-900/80 flex-shrink-0 print:hidden">
@@ -1999,11 +2004,25 @@ export default function DashboardView() {
                 </div>
 
                 {/* Refund & Dispute Audit Section */}
-                {(selectedTxn.status === 'REFUNDED' || selectedTxn.status === 'CANCELLED' || selectedTxn.status === 'DISPUTED') && (
+                {(selectedTxn.status === 'REFUNDED' || selectedTxn.status === 'CANCELLED' || selectedTxn.status === 'DISPUTED' || selectedTxn.buyer_dispute_reason || selectedTxn.dispute_retracted_at) && (
                   <div className="bg-red-50/70 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 p-4 rounded-xl space-y-3">
-                    <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-bold border-b border-red-200 dark:border-red-900/50 pb-2">
-                      <AlertTriangle className="h-4 w-4" />
-                      <span>Settlement & Refund Audit Details</span>
+                    <div className="flex items-center justify-between border-b border-red-200 dark:border-red-900/50 pb-2 flex-wrap gap-2">
+                      <div className="flex items-center gap-2 text-red-700 dark:text-red-400 font-bold">
+                        <AlertTriangle className="h-4 w-4" />
+                        <span>Settlement & Dispute Audit Trail</span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const current = selectedTxn;
+                          setSelectedTxn(null);
+                          setDisputeTxn(current);
+                        }}
+                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <MessageSquare className="h-3.5 w-3.5" />
+                        <span>Open Dispute Evidence & Response Modal ↗</span>
+                      </button>
                     </div>
 
                     {selectedTxn.status === 'REFUNDED' && (
@@ -2028,45 +2047,27 @@ export default function DashboardView() {
                       </div>
                     )}
 
-                    {/* Manager Ruling Notes */}
-                    {selectedTxn.manager_dispute_notes && (
-                      <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-red-200 dark:border-red-900/50 text-xs space-y-1">
-                        <span className="font-mono text-red-600 dark:text-red-400 font-bold uppercase text-[10px] block">Manager Ruling Notes:</span>
-                        <p className="text-gray-800 dark:text-slate-200">{selectedTxn.manager_dispute_notes}</p>
-                        {selectedTxn.manager_dispute_photos && selectedTxn.manager_dispute_photos.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {selectedTxn.manager_dispute_photos.map((url, idx) => (
-                              <div key={idx} className="relative group cursor-pointer" onClick={() => setLightboxImage(url)}>
-                                <img src={url} alt="Manager ruling proof" className="w-12 h-12 object-cover rounded border border-gray-200 dark:border-slate-700 hover:opacity-90 transition" />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded transition">
-                                  <ZoomIn className="w-4 h-4 text-white" />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
-
-                    {/* Buyer Claim */}
-                    {selectedTxn.buyer_dispute_reason && (
-                      <div className="bg-white dark:bg-slate-900 p-3 rounded-lg border border-red-200 dark:border-red-900/50 text-xs space-y-1">
-                        <span className="font-mono text-red-600 dark:text-red-400 font-bold uppercase text-[10px] block">Buyer Claim:</span>
-                        <p className="text-gray-800 dark:text-slate-200">{selectedTxn.buyer_dispute_reason}</p>
-                        {selectedTxn.buyer_dispute_photos && selectedTxn.buyer_dispute_photos.length > 0 && (
-                          <div className="flex flex-wrap gap-1.5 pt-1">
-                            {selectedTxn.buyer_dispute_photos.map((url, idx) => (
-                              <div key={idx} className="relative group cursor-pointer" onClick={() => setLightboxImage(url)}>
-                                <img src={url} alt="Buyer proof" className="w-12 h-12 object-cover rounded border border-gray-200 dark:border-slate-700 hover:opacity-90 transition" />
-                                <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 flex items-center justify-center rounded transition">
-                                  <ZoomIn className="w-4 h-4 text-white" />
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    )}
+                    {/* Dispute Dialogue & Evidence Trail */}
+                    <div className="pt-2">
+                      <DisputeChatTimeline
+                        buyerReason={selectedTxn.buyer_dispute_reason}
+                        buyerPhotos={selectedTxn.buyer_dispute_photos}
+                        buyerName={selectedTxn.buyer_name || 'Buyer'}
+                        sellerResponse={selectedTxn.seller_dispute_response}
+                        sellerPhotos={selectedTxn.seller_dispute_photos}
+                        sellerName="You (Seller)"
+                        managerNotes={selectedTxn.manager_dispute_notes}
+                        managerPhotos={selectedTxn.manager_dispute_photos}
+                        disputeRetractedAt={selectedTxn.dispute_retracted_at}
+                        waybillPhotoUrl={selectedTxn.waybill_photo_url}
+                        showResponseButton={selectedTxn.status === 'DISPUTED'}
+                        onOpenDisputeModal={() => {
+                          const current = selectedTxn;
+                          setSelectedTxn(null);
+                          setDisputeTxn(current);
+                        }}
+                      />
+                    </div>
                   </div>
                 )}
 
@@ -2200,9 +2201,9 @@ export default function DashboardView() {
 
       {/* Account Suspension Appeal Modal */}
       {isAppealModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 shrink-0">
               <div className="flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5 text-red-600 dark:text-red-400" />
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">Appeal Account Suspension</h3>
@@ -2215,7 +2216,7 @@ export default function DashboardView() {
               </button>
             </div>
 
-            <form onSubmit={handleSubmitAppeal} className="p-6 space-y-4">
+            <form onSubmit={handleSubmitAppeal} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
                 Provide a clear justification for why your account should be reinstated. Detail any remediation steps you have taken regarding order fulfillment, product quality, or dispute resolutions.
               </p>

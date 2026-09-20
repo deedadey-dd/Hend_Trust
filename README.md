@@ -31,7 +31,8 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Link Creation**: Sellers create payment links specifying price, shipping fee, description, and fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`). Blocked with an interactive appeal modal if seller is suspended.
 - **Dynamic Fee Transparency**: Platform fees are calculated transparently in GHS and displayed in real-time.
 
-### 4. Dual Logistics Verification Engine
+### 4. Dual Logistics Verification Engine & Upfront OTP Tracking
+- **Upfront 2-Step OTP Tracking (`/tracking`)**: Both single item tracking ("Track by Order ID") and full order history tracking require upfront 6-digit OTP verification (valid for 2 hours with 60s cooldown). Once verified, the order unlocks completely with zero secondary popups.
 - **WebP Package Evidence**: Sellers attach a WebP-optimized package/waybill photo during dispatch.
 - **Path A (Formal Courier API)**: Tracking number assignment with automated webhook status updates.
 - **Path B (Informal Station / Bus OTP)**: Driver phone, vehicle number, station details, and a 6-digit Secret OTP sent to the buyer. OTP verification confirms handoff.
@@ -44,8 +45,10 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
   - `GHS 2,000 – 9,999.99`: **48 Hours**
   - `>= GHS 10,000`: **72 Hours**
 
-### 6. Dispute Resolution, 24-Hour Settlement & Manager Extra Fees
-- **5-Image Evidence**: Buyers and sellers can upload up to **5 WebP evidence photos** per party.
+### 6. Dispute Resolution, Subsequent Dialogue Appends & Retraction Policy
+- **Subsequent Dialogue & 5-Photo Trail**: Buyers and sellers can append further updates/evidence photos (`--- [Update (Timestamp)] ---`) over time without overwriting past history (up to **5 WebP photos** total per party).
+- **WhatsApp-Style Chat Timeline**: Unifies buyer claims, seller responses, dispatch waybills, and arbitrator rulings in a color-coded chronological chat stream with expandable "Read more..." text and collapsible trail controls.
+- **Dispute Retraction & Private Settlement**: Buyers can retract their raised dispute on `/l/:id` to settle privately with the seller. Upon retraction, escrow funds are scheduled for release to the seller after 24 hours. Any transaction that entered dispute permanently forfeits customer rating permissions.
 - **Automated Review Suppression**: Raising a dispute automatically suppresses and clears any review ratings submitted for that transaction.
 - **24-Hour Settlement Guarantee**: All dispute rulings execute payouts within **24 hours**:
   - **Buyer Refund**: Returned via the **same payment medium** (Paystack MoMo/Card) used during checkout.
@@ -58,12 +61,14 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Dispute Fund Allocation & Manager Extra Penalty**:
   - **Incurred Shipping**: Non-refundable if item was dispatched (shipping cost incurred).
   - **Platform Retained Fee & Manager Extra Fee**: Managers can specify platform retained fees or levy extra penalty fees for damaged/incorrect items. Any unallocated split funds accrue to platform fee revenue.
+- **Arbitration 360° Buyer & Seller Intelligence Dossiers**: Arbiters can inspect deep intelligence dossiers on both parties (querying buyers by phone, email, or user ID to inspect lifetime orders, dispute rate %, serial disputer indicators, and historical claim trails; and inspecting seller storefronts, review ratings, GMV, and dispute health flags).
 - **1MB Image Compression**: Post-resolution evidence images are compressed server-side to $\le 1\text{MB}$ total per transaction.
 
 ### 7. Escrow-Gated Reviews & Trustpilot Rating System
-- **Verified Buyer Reviews**: Reviews can **ONLY** be submitted by buyers who have completed an escrow purchase.
+- **Verified Buyer Reviews & 1 Review Per Transaction**: Reviews can **ONLY** be submitted by buyers who have completed an escrow purchase.
+- **Review Edit Tracking & Timestamps**: Buyers can edit ratings and comments; all updates stamp transparent edit counters (`edit_count`) and audit timestamps.
 - **3-Axis Seller Rating**: Speed, Communication, and Overall Satisfaction (1 to 5 stars).
-- **Public Storefronts (`/store/:username`)**: Shows seller rating breakdown, verified review history, and seller reply responses.
+- **Public Storefronts (`/store/:username`)**: Shows seller rating breakdown, verified review history, edit badges, and seller reply responses.
 
 ### 8. Public Marketplace Directory & Paid Advertised Shops (`/shops`)
 - Marketplace directory with category filtering and paid shop promotion options (GHS 50 for 7 Days / GHS 150 for 30 Days).

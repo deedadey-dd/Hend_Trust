@@ -104,10 +104,10 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/70 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden relative flex flex-col max-h-[90vh]">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/70 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-xl w-full overflow-hidden relative flex flex-col max-h-[90vh] sm:max-h-[85vh] my-auto">
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/80">
+        <div className="px-5 sm:px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/80 shrink-0">
           <div className="flex items-center gap-2">
             <span className="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs px-2.5 py-1 rounded-full border border-emerald-300 dark:border-emerald-800">
               Verified Review
@@ -135,6 +135,11 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
                 </h3>
                 <p className="text-xs text-gray-400 dark:text-slate-500">
                   Published {new Date(currentReview.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                  {(currentReview.edit_count || 0) > 0 && currentReview.updated_at && (
+                    <span className="text-blue-500 dark:text-blue-400 font-medium ml-1.5">
+                      • Edited {currentReview.edit_count} time{(currentReview.edit_count || 0) > 1 ? 's' : ''} ({new Date(currentReview.updated_at).toLocaleDateString()})
+                    </span>
+                  )}
                 </p>
               </div>
             </div>

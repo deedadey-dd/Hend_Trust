@@ -1012,8 +1012,8 @@ export default function ProfileView() {
 
       {/* 2FA Setup Modal */}
       {show2FASetupModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 relative text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-5 relative text-slate-900 dark:text-white max-h-[90vh] sm:max-h-[85vh] overflow-y-auto my-auto">
             <button
               onClick={() => setShow2FASetupModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
@@ -1111,8 +1111,8 @@ export default function ProfileView() {
 
       {/* 2FA Disable Modal */}
       {show2FADisableModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white max-h-[90vh] my-auto overflow-y-auto">
             <button
               onClick={() => setShow2FADisableModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
@@ -1189,8 +1189,8 @@ export default function ProfileView() {
 
       {/* MoMo OTP Verification Modal */}
       {showOtpModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white max-h-[90vh] my-auto overflow-y-auto">
             <button
               onClick={() => setShowOtpModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"

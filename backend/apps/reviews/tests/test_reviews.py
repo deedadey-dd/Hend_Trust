@@ -77,7 +77,7 @@ def test_submit_review_invalid_token_forbidden(reviews_client, completed_transac
 @pytest.mark.django_db
 def test_one_review_per_transaction_update(reviews_client, completed_transaction):
     # First submission
-    reviews_client.post("/submit", json={
+    res1 = reviews_client.post("/submit", json={
         "transaction_id": str(completed_transaction.id),
         "review_token": completed_transaction.buyer_review_token,
         "rating_speed": 3,
@@ -85,11 +85,15 @@ def test_one_review_per_transaction_update(reviews_client, completed_transaction
         "rating_overall": 3,
         "comment": "Initial review - okay experience"
     })
+    assert res1.status_code == 200
+    assert res1.json()['edit_count'] == 0
     
     assert SellerReview.objects.filter(transaction=completed_transaction).count() == 1
+    review = SellerReview.objects.get(transaction=completed_transaction)
+    assert review.edit_count == 0
     
-    # Second submission (edit)
-    res = reviews_client.post("/submit", json={
+    # Second submission (first edit)
+    res2 = reviews_client.post("/submit", json={
         "transaction_id": str(completed_transaction.id),
         "review_token": completed_transaction.buyer_review_token,
         "rating_speed": 5,
@@ -97,14 +101,35 @@ def test_one_review_per_transaction_update(reviews_client, completed_transaction
         "rating_overall": 5,
         "comment": "Updated review - seller resolved my concern perfectly!"
     })
-    assert res.status_code == 200
-    assert "updated" in res.json()['message']
+    assert res2.status_code == 200
+    assert "updated (1 time)" in res2.json()['message']
+    assert res2.json()['edit_count'] == 1
     
     # Verify count is still 1 and values updated
     assert SellerReview.objects.filter(transaction=completed_transaction).count() == 1
-    review = SellerReview.objects.get(transaction=completed_transaction)
+    review.refresh_from_db()
     assert review.rating_overall == 5
     assert review.comment == "Updated review - seller resolved my concern perfectly!"
+    assert review.edit_count == 1
+
+    # Third submission (second edit)
+    res3 = reviews_client.post("/submit", json={
+        "transaction_id": str(completed_transaction.id),
+        "review_token": completed_transaction.buyer_review_token,
+        "rating_speed": 5,
+        "rating_communication": 4,
+        "rating_overall": 5,
+        "comment": "Second update - great long-term quality!"
+    })
+    assert res3.status_code == 200
+    assert "updated (2 times)" in res3.json()['message']
+    assert res3.json()['edit_count'] == 2
+
+    # Verify transaction review detail returns edit_count
+    res_detail = reviews_client.get(f"/transaction-review/{completed_transaction.paystack_reference}?token={completed_transaction.buyer_review_token}")
+    assert res_detail.status_code == 200
+    assert res_detail.json()['edit_count'] == 2
+    assert res_detail.json()['comment'] == "Second update - great long-term quality!"
 
 @pytest.mark.django_db
 def test_get_transaction_review_detail(reviews_client, completed_transaction):

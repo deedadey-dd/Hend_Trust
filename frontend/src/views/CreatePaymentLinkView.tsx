@@ -401,8 +401,8 @@ export default function CreatePaymentLinkView() {
 
       {/* Success Modal Pop-up */}
       {showModal && createdUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-gray-100 dark:border-slate-800 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-gray-100 dark:border-slate-800 max-w-md w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200 my-auto">
             <div className="relative p-6 text-center">
               <button 
                 onClick={() => setShowModal(false)}
@@ -458,9 +458,9 @@ export default function CreatePaymentLinkView() {
 
       {/* ─── MODAL: ACCOUNT SUSPENDED & APPEAL ─────────────────────────────── */}
       {suspensionError && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full border border-red-200 dark:border-red-900/60 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-6 text-center border-b border-red-100 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/30">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col border border-red-200 dark:border-red-900/60 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-auto">
+            <div className="p-5 sm:p-6 text-center border-b border-red-100 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/30 shrink-0">
               <div className="w-16 h-16 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-3 shadow-inner">
                 <ShieldAlert className="h-8 w-8" />
               </div>
@@ -470,7 +470,7 @@ export default function CreatePaymentLinkView() {
               </p>
             </div>
 
-            <div className="p-6 space-y-4 text-xs">
+            <div className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
               <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 leading-relaxed font-mono">
                 {suspensionError.message}
               </div>

@@ -233,6 +233,83 @@ export const useAdminSellerDetailsQuery = (sellerId?: string | null) => {
   });
 };
 
+export interface AdminBuyerIntelligence {
+  buyer_name: string;
+  buyer_phone: string;
+  buyer_email: string;
+  is_registered_user: boolean;
+  user_account?: {
+    id: string;
+    username: string;
+    email: string;
+    phone_number: string;
+    role: string;
+    is_active: boolean;
+    is_suspended: boolean;
+    verification_status: string;
+    is_email_verified: boolean;
+    is_phone_verified: boolean;
+    date_joined?: string | null;
+  } | null;
+  summary: {
+    total_orders: number;
+    completed_orders: number;
+    active_escrow_orders: number;
+    disputed_orders: number;
+    all_disputes_raised_count: number;
+    retracted_disputes_count: number;
+    refunded_orders: number;
+    cancelled_orders: number;
+    dispute_rate_pct: number;
+    total_spent_ghs: number;
+    first_order_at?: string | null;
+    last_order_at?: string | null;
+    known_shipping_addresses: string[];
+  };
+  recent_transactions: Array<{
+    id: string;
+    paystack_reference: string;
+    title: string;
+    seller_id: string;
+    seller_username: string;
+    shop_name: string;
+    amount_ghs: number;
+    status: string;
+    has_dispute: boolean;
+    dispute_retracted: boolean;
+    created_at: string;
+    shipping_address?: string | null;
+    delivery_method?: string | null;
+    courier_name?: string | null;
+  }>;
+  disputes_history: Array<{
+    id: string;
+    paystack_reference: string;
+    title: string;
+    seller_id: string;
+    seller_username: string;
+    shop_name: string;
+    amount_ghs: number;
+    status: string;
+    buyer_dispute_reason?: string | null;
+    seller_dispute_response?: string | null;
+    manager_dispute_notes?: string | null;
+    dispute_retracted_at?: string | null;
+    created_at: string;
+  }>;
+  reviews_given: Array<{
+    id: string;
+    seller_username: string;
+    shop_name: string;
+    rating_overall: number;
+    rating_speed: number;
+    rating_communication: number;
+    comment?: string | null;
+    created_at: string;
+    edit_count: number;
+  }>;
+}
+
 export const useAdminBuyersQuery = (search?: string) => {
   return useQuery<AdminBuyerItem[]>({
     queryKey: ['admin-buyers', search],
@@ -242,6 +319,26 @@ export const useAdminBuyersQuery = (search?: string) => {
       const { data } = await apiClient.get('/admin/buyers', { params });
       return data;
     },
+  });
+};
+
+export const useAdminBuyerIntelligenceQuery = (params?: { phone?: string | null; email?: string | null; userId?: string | null }) => {
+  const phone = params?.phone?.trim();
+  const email = params?.email?.trim();
+  const userId = params?.userId?.trim();
+  const hasParam = !!(phone || email || userId);
+
+  return useQuery<AdminBuyerIntelligence>({
+    queryKey: ['admin-buyer-intelligence', phone, email, userId],
+    queryFn: async () => {
+      const qParams: any = {};
+      if (phone) qParams.phone = phone;
+      if (email) qParams.email = email;
+      if (userId) qParams.user_id = userId;
+      const { data } = await apiClient.get('/admin/buyers/intelligence', { params: qParams });
+      return data;
+    },
+    enabled: hasParam,
   });
 };
 

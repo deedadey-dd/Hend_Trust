@@ -361,11 +361,11 @@ export const LinksView: React.FC = () => {
 
       {/* Link Detail & QR Code Modal */}
       {selectedLink && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200 dark:border-slate-800 max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200 dark:border-slate-800 max-h-[90vh] sm:max-h-[85vh] flex flex-col animate-in zoom-in-95 duration-200 my-auto">
             
             {/* Header */}
-            <div className="p-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/60 dark:bg-slate-900/60">
+            <div className="p-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/60 dark:bg-slate-900/60 shrink-0">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">Payment Link Details</h3>
                 <p className="text-xs text-gray-500 dark:text-slate-400">Created on {new Date(selectedLink.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>

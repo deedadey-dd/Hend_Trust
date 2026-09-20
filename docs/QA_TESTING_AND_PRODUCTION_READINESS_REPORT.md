@@ -17,7 +17,7 @@ Following a rigorous, end-to-end automated testing system operationalization and
 ====================================================================
                MASTER QA AUTOMATED TEST SUITE SUMMARY
 ====================================================================
- 1. Backend Pytest Suite:                  [OK] PASSED (116/116)
+ 1. Backend Pytest Suite:                  [OK] PASSED (140/140)
  2. Backend Django System Integrity Check: [OK] PASSED (0 issues)
  3. Frontend Vitest Component Unit Suite:  [OK] PASSED (6/6)
  4. Frontend TypeScript & Production Build:[OK] PASSED (0 errors)
@@ -37,11 +37,12 @@ Following a rigorous, end-to-end automated testing system operationalization and
 d:\PROJECTS\Hend_Trust/
 ├── backend/
 │   ├── apps/
-│   │   ├── core/tests/          # Security, Middleware & IDOR tests
-│   │   ├── escrow/tests/        # Escrow state machine, payouts, OTPs
+│   │   ├── core/tests/          # Security, Middleware, Admin & IDOR tests
+│   │   ├── checkout/tests/      # Upfront 2-step OTP tracking & public checkout
+│   │   ├── escrow/tests/        # Escrow state machine, dispute append/retract, payouts, OTPs
 │   │   ├── wallet/tests/        # Double-entry ledger invariants
 │   │   ├── delivery/tests/      # Logistics webhooks & courier tracking
-│   │   ├── users/tests/         # Identity, Ghana Card & Phone OTP verification
+│   │   ├── users/tests/         # Identity, Ghana Card, Appeals & Phone OTP verification
 │   │   ├── links/tests/         # Payment link creation & fee absorption
 │   │   └── reviews/tests/       # Escrow-gated 3-axis review ratings
 ├── frontend/
@@ -63,10 +64,10 @@ d:\PROJECTS\Hend_Trust/
 | Target Test Area | Execution Command | Output / Artifact |
 | :--- | :--- | :--- |
 | **Complete Master Suite** | `python run_all_tests.py` | Unified summary table & exit status |
-| **Backend Pytest Suite** | `cd backend && venv\Scripts\python.exe -m pytest` | Terminal pytest report |
+| **Backend Pytest Suite** | `cd backend && venv\Scripts\python.exe -m pytest` | Terminal pytest report (140 tests) |
 | **Django System Check** | `cd backend && venv\Scripts\python.exe manage.py check` | Integrity report |
 | **Frontend Vitest Suite** | `cd frontend && npm test` | Vitest test execution output |
-| **TypeScript & Build** | `cd frontend && npm run build` | `dist/` bundle production assets |
+| **TypeScript & Build** | `cd frontend && cmd /c npm run build` | `dist/` bundle production assets |
 | **Playwright E2E Suite** | `cd e2e && npx playwright test` | `e2e/playwright-report/index.html` |
 | **Pytest Security Tests** | `cd backend && venv\Scripts\python.exe -m pytest apps/core/tests/test_security_idor.py` | Security pass log |
 
@@ -76,10 +77,10 @@ d:\PROJECTS\Hend_Trust/
 
 | Metric | Pre-Audit Baseline | Post-Audit Final State | Growth / Change |
 | :--- | :--- | :--- | :--- |
-| **Backend Pytest Tests** | 109 tests | **116 tests** | +7 critical state/security tests |
-| **Backend Pytest Status** | 109 Passed, 0 Failed | **116 Passed, 0 Failed** | 100% Pass Rate |
+| **Backend Pytest Tests** | 109 tests | **140 tests** | +31 critical state/dispute/tracking/security tests |
+| **Backend Pytest Status** | 109 Passed, 0 Failed | **140 Passed, 0 Failed** | 100% Pass Rate |
 | **Frontend Unit Tests** | 0 tests | **6 tests** | Vitest + RTL introduced |
-| **TypeScript Compilation** | Unverified | **0 Errors (`tsc -b`)** | Clean type safety |
+| **TypeScript Compilation** | Unverified | **0 Errors (`tsc -b`)** | Clean type safety across all views |
 | **Playwright E2E Tests** | 0 tests (Empty `e2e/`) | **6 E2E Browser Specs** | Playwright Chromium suite |
 | **CI/CD Integration** | None | **GitHub Actions Pipeline** | `.github/workflows/test.yml` |
 
@@ -93,11 +94,17 @@ d:\PROJECTS\Hend_Trust/
 | **Seller Registration & KYC** | PASS | PASS | PASS | PASS | **PASS** |
 | **Buyer Link Checkout** | PASS | PASS | PASS | PASS | **PASS** |
 | **Payment Link Creation** | PASS | PASS | PASS | PASS | **PASS** |
+| **Upfront 2-Step OTP Tracking** | PASS | PASS | PASS | PASS | **PASS** |
 | **Escrow State Machine** | PASS | PASS | PASS | PASS | **PASS** |
 | **Double-Entry Ledger Integrity** | PASS | N/A | N/A | PASS | **PASS** |
 | **Courier Logistics & Webhooks** | PASS | N/A | PASS | PASS | **PASS** |
-| **Dispute & Evidence Management** | PASS | PASS | PASS | PASS | **PASS** |
+| **Dispute Append & 5-Photo Trail** | PASS | PASS | PASS | PASS | **PASS** |
+| **Dispute Retraction & 24h Release**| PASS | PASS | PASS | PASS | **PASS** |
+| **WhatsApp-Style Chat Timeline** | PASS | PASS | PASS | PASS | **PASS** |
+| **360° Buyer Intelligence Engine** | PASS | PASS | PASS | PASS | **PASS** |
+| **Seller Storefront Dossier** | PASS | PASS | PASS | PASS | **PASS** |
 | **Reviews & 3-Axis Reputation** | PASS | PASS | PASS | PASS | **PASS** |
+| **Review Edit Counter & Auditing** | PASS | PASS | PASS | PASS | **PASS** |
 | **Staff & Admin Management** | PASS | N/A | PASS | PASS | **PASS** |
 | **RBAC Authorization & IDOR** | PASS | PASS | PASS | PASS | **PASS** |
 

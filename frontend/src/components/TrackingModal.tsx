@@ -1,14 +1,16 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X, AlertTriangle, ZoomIn } from 'lucide-react';
+import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X, AlertTriangle, ZoomIn, ExternalLink } from 'lucide-react';
 import axios from 'axios';
 import { apiClient, getErrorMessage } from '../api/client';
 import { STATUS_CONFIG } from '../constants/statusConfig';
 import RateSellerModal from './RateSellerModal';
 import ImageLightboxModal from './ImageLightboxModal';
+import DisputeChatTimeline from './DisputeChatTimeline';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
 
 type TabMode = 'SINGLE' | 'HISTORY';
+type SingleStep = 'INPUT' | 'OTP';
 type HistoryStep = 'INPUT' | 'OTP';
 
 interface TrackingModalProps {
@@ -22,6 +24,10 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   // Single Tracking State
   const [txnId, setTxnId] = useState('');
   const [phone, setPhone] = useState('');
+  const [singleStep, setSingleStep] = useState<SingleStep>('INPUT');
+  const [singleOtp, setSingleOtp] = useState('');
+  const [loadingSingleOtp, setLoadingSingleOtp] = useState(false);
+  const [singleOtpCooldown, setSingleOtpCooldown] = useState(0);
 
   // Rate Seller State
   const [rateTxn, setRateTxn] = useState<any>(null);
@@ -31,6 +37,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   const [isEmailInput, setIsEmailInput] = useState(false);
   const [historyStep, setHistoryStep] = useState<HistoryStep>('INPUT');
   const [otp, setOtp] = useState('');
+  const [historyOtpCooldown, setHistoryOtpCooldown] = useState(0);
 
   // Results State
   const [loading, setLoading] = useState(false);
@@ -50,6 +57,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState('');
+  const [resendCooldown, setResendCooldown] = useState(0);
 
   // Dispute Modal State
   const [disputeTxnId, setDisputeTxnId] = useState<string | null>(null);
@@ -60,33 +68,82 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   const [disputeError, setDisputeError] = useState('');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
-  // Single Order Submit
-  const handleSingleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  // Cooldown timer effects
+  useEffect(() => {
+    if (resendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setResendCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [resendCooldown]);
+
+  useEffect(() => {
+    if (singleOtpCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setSingleOtpCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [singleOtpCooldown]);
+
+  useEffect(() => {
+    if (historyOtpCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setHistoryOtpCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [historyOtpCooldown]);
+
+  // Step 1 Single Order Submit: Request OTP
+  const handleSingleSendOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setError('');
     if (!txnId.trim() || !phone.trim()) {
       setError('Please enter both Transaction ID and Phone Number.');
       return;
     }
+    setLoadingSingleOtp(true);
+    try {
+      await apiClient.post('/checkout/track/id/request-otp', { 
+        paystack_reference: txnId.trim().toUpperCase(), 
+        phone_number: phone.trim() 
+      });
+      setSingleStep('OTP');
+      setSingleOtpCooldown(60);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Order not found. Please verify your Transaction ID and Phone Number.');
+    } finally {
+      setLoadingSingleOtp(false);
+    }
+  };
+
+  // Step 2 Single Order Verify OTP
+  const handleSingleVerifyOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setError('');
+    if (!singleOtp.trim()) {
+      setError('Please enter the 6-digit OTP code.');
+      return;
+    }
     setLoading(true);
     try {
       const res = await apiClient.post('/checkout/track/id', { 
-        paystack_reference: txnId.trim(), 
-        phone_number: phone.trim() 
+        paystack_reference: txnId.trim().toUpperCase(), 
+        phone_number: phone.trim(),
+        otp_code: singleOtp.trim()
       });
       const dataArr = Array.isArray(res.data) ? res.data : (res.data ? [res.data] : []);
       setTxns(dataArr);
       setShowResults(true);
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Order not found. Please verify details.');
+      setError(err.response?.data?.message || 'Invalid or expired OTP code.');
     } finally {
       setLoading(false);
     }
   };
 
   // Request History OTP (Auto-detect Email vs Phone)
-  const handleSendHistoryOtp = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleSendHistoryOtp = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
     setError('');
     const val = identifier.trim();
     if (!val) {
@@ -105,6 +162,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
         await apiClient.post('/checkout/lookup/request-otp', { phone_number: val });
       }
       setHistoryStep('OTP');
+      setHistoryOtpCooldown(60);
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to send OTP code.');
     } finally {
@@ -138,16 +196,10 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
     }
   };
 
-  // OTP Resend Cooldown (60 seconds)
-  const [resendCooldown, setResendCooldown] = useState(0);
-
-  useEffect(() => {
-    if (resendCooldown <= 0) return;
-    const timer = setInterval(() => {
-      setResendCooldown(prev => Math.max(0, prev - 1));
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [resendCooldown]);
+  const handleOpenFullDetails = (txn: any) => {
+    const targetUrl = `/l/${txn.link_id || txn.id || 'order'}?reference=${txn.paystack_reference}`;
+    window.location.href = targetUrl;
+  };
 
   const handleOpenConfirmModal = async (id: string) => {
     setConfirmTxnId(id);
@@ -245,6 +297,8 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   const resetSearch = () => {
     setTxns([]);
     setShowResults(false);
+    setSingleStep('INPUT');
+    setSingleOtp('');
     setHistoryStep('INPUT');
     setOtp('');
     setError('');
@@ -253,11 +307,11 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col overflow-hidden relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-3xl w-full max-h-[90vh] sm:max-h-[85vh] flex flex-col overflow-hidden relative my-auto">
         
         {/* Header */}
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/80 dark:bg-slate-900/80">
+        <div className="px-5 sm:px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/80 dark:bg-slate-900/80 shrink-0">
           <div className="flex items-center gap-2.5">
             <div className="p-2 bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-xl">
               <Package className="h-5 w-5" />
@@ -269,7 +323,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
           </div>
           <button 
             onClick={onClose}
-            className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors"
+            className="p-1.5 rounded-full text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 hover:bg-gray-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
           >
             <X className="h-5 w-5" />
           </button>
@@ -284,13 +338,13 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
               <div className="grid grid-cols-2 gap-1.5 p-1.5 bg-gray-100 dark:bg-slate-800 rounded-xl text-xs font-bold text-center">
                 <button
                   onClick={() => { setTab('SINGLE'); setError(''); }}
-                  className={`py-2.5 px-3 rounded-lg transition-all ${tab === 'SINGLE' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'}`}
+                  className={`py-2.5 px-3 rounded-lg transition-all cursor-pointer ${tab === 'SINGLE' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'}`}
                 >
                   🔍 Track by Order ID
                 </button>
                 <button
                   onClick={() => { setTab('HISTORY'); setHistoryStep('INPUT'); setError(''); }}
-                  className={`py-2.5 px-3 rounded-lg transition-all ${tab === 'HISTORY' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'}`}
+                  className={`py-2.5 px-3 rounded-lg transition-all cursor-pointer ${tab === 'HISTORY' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'}`}
                 >
                   📜 Full Order History
                 </button>
@@ -302,9 +356,9 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                 </div>
               )}
 
-              {/* TAB 1: SINGLE ORDER */}
-              {tab === 'SINGLE' && (
-                <form onSubmit={handleSingleSubmit} className="space-y-4">
+              {/* TAB 1: SINGLE ORDER - STEP 1: INPUT */}
+              {tab === 'SINGLE' && singleStep === 'INPUT' && (
+                <form onSubmit={handleSingleSendOtp} className="space-y-4">
                   <div>
                     <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Transaction ID / Reference *</label>
                     <div className="relative">
@@ -321,7 +375,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                   </div>
 
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Phone Number *</label>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Buyer Phone Number *</label>
                     <div className="relative">
                       <Phone className="h-4 w-4 absolute left-3 top-3 text-gray-400 dark:text-slate-500" />
                       <input
@@ -333,15 +387,74 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                         className="w-full pl-9 pr-3 py-2.5 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl text-sm focus:ring-2 focus:ring-blue-500 outline-none"
                       />
                     </div>
+                    <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">We'll send a 6-digit OTP code to verify and unlock your order details and actions.</span>
                   </div>
 
                   <button
                     type="submit"
-                    disabled={loading}
-                    className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-md shadow-blue-500/20 disabled:opacity-70 flex justify-center items-center"
+                    disabled={loadingSingleOtp}
+                    className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-md shadow-blue-500/20 disabled:opacity-70 flex justify-center items-center cursor-pointer"
                   >
-                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Track Order Status"}
+                    {loadingSingleOtp ? <Loader2 className="h-5 w-5 animate-spin" /> : "Send Verification OTP Code"}
                   </button>
+                </form>
+              )}
+
+              {/* TAB 1: SINGLE ORDER - STEP 2: OTP */}
+              {tab === 'SINGLE' && singleStep === 'OTP' && (
+                <form onSubmit={handleSingleVerifyOtp} className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Enter 6-Digit OTP Code *</label>
+                    <div className="relative">
+                      <KeyRound className="h-4 w-4 absolute left-3 top-3.5 text-gray-400 dark:text-slate-500" />
+                      <input
+                        type="text"
+                        required
+                        maxLength={6}
+                        value={singleOtp}
+                        onChange={e => setSingleOtp(e.target.value)}
+                        placeholder="000000"
+                        className="w-full pl-9 pr-3 py-2.5 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl text-center font-mono text-xl tracking-widest focus:ring-2 focus:ring-blue-500 outline-none"
+                      />
+                    </div>
+                    <div className="flex items-center justify-between mt-1 text-[11px] text-gray-400 dark:text-slate-500">
+                      <span>Code sent to: {phone}</span>
+                      <span>Valid for 2 hours</span>
+                    </div>
+                  </div>
+
+                  <button
+                    type="submit"
+                    disabled={loading || singleOtp.length < 6}
+                    className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-md shadow-blue-500/20 disabled:opacity-70 flex justify-center items-center cursor-pointer"
+                  >
+                    {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "Verify & Track Order"}
+                  </button>
+
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setSingleStep('INPUT')}
+                      className="text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      ← Change Reference/Phone
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (singleOtpCooldown === 0) handleSingleSendOtp();
+                      }}
+                      disabled={loadingSingleOtp || singleOtpCooldown > 0}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {loadingSingleOtp 
+                        ? 'Sending...' 
+                        : singleOtpCooldown > 0 
+                          ? `Resend OTP (${singleOtpCooldown}s)` 
+                          : "Resend OTP"}
+                    </button>
+                  </div>
                 </form>
               )}
 
@@ -367,7 +480,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                   <button
                     type="submit"
                     disabled={loadingOtp}
-                    className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-md shadow-blue-500/20 disabled:opacity-70 flex justify-center items-center"
+                    className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-md shadow-blue-500/20 disabled:opacity-70 flex justify-center items-center cursor-pointer"
                   >
                     {loadingOtp ? <Loader2 className="h-5 w-5 animate-spin" /> : "Send Verification OTP Code"}
                   </button>
@@ -390,24 +503,44 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                         className="w-full pl-9 pr-3 py-2.5 border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl text-center font-mono text-xl tracking-widest focus:ring-2 focus:ring-blue-500 outline-none"
                       />
                     </div>
-                    <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">Code sent to: {identifier}</span>
+                    <div className="flex items-center justify-between mt-1 text-[11px] text-gray-400 dark:text-slate-500">
+                      <span>Code sent to: {identifier}</span>
+                      <span>Valid for 2 hours</span>
+                    </div>
                   </div>
 
                   <button
                     type="submit"
-                    disabled={loading}
-                    className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-md shadow-blue-500/20 disabled:opacity-70 flex justify-center items-center"
+                    disabled={loading || otp.length < 6}
+                    className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 transition shadow-md shadow-blue-500/20 disabled:opacity-70 flex justify-center items-center cursor-pointer"
                   >
                     {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : "View Full Order History"}
                   </button>
 
-                  <button
-                    type="button"
-                    onClick={() => setHistoryStep('INPUT')}
-                    className="w-full text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 text-center block pt-1"
-                  >
-                    ← Change Phone/Email
-                  </button>
+                  <div className="flex items-center justify-between pt-1">
+                    <button
+                      type="button"
+                      onClick={() => setHistoryStep('INPUT')}
+                      className="text-xs text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 cursor-pointer"
+                    >
+                      ← Change Phone/Email
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (historyOtpCooldown === 0) handleSendHistoryOtp();
+                      }}
+                      disabled={loadingOtp || historyOtpCooldown > 0}
+                      className="text-xs text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 disabled:opacity-50 disabled:cursor-not-allowed cursor-pointer"
+                    >
+                      {loadingOtp 
+                        ? 'Sending...' 
+                        : historyOtpCooldown > 0 
+                          ? `Resend OTP (${historyOtpCooldown}s)` 
+                          : "Resend OTP"}
+                    </button>
+                  </div>
                 </form>
               )}
 
@@ -496,7 +629,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                     return (
                       <div key={txn.id} className="p-4 bg-white dark:bg-slate-950 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm space-y-3">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
-                          <div>
+                          <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2 mb-1 flex-wrap">
                               <span className="font-mono text-xs font-bold text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded">
                                 {txn.paystack_reference}
@@ -512,9 +645,19 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                             <h4 className="text-sm font-bold text-gray-900 dark:text-slate-100">{txn.title}</h4>
                           </div>
 
-                          <div className="sm:text-right">
-                            <span className="text-xs text-gray-400 dark:text-slate-500 block">Total Amount</span>
-                            <span className="text-base font-black text-gray-900 dark:text-slate-100">GHS {Number(txn.total_amount_ghs).toFixed(2)}</span>
+                          <div className="flex sm:flex-col items-center sm:items-end justify-between sm:justify-center gap-2 flex-shrink-0">
+                            <div className="text-left sm:text-right">
+                              <span className="text-xs text-gray-400 dark:text-slate-500 block">Total Amount</span>
+                              <span className="text-base font-black text-gray-900 dark:text-slate-100">GHS {Number(txn.total_amount_ghs).toFixed(2)}</span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFullDetails(txn)}
+                              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-bold transition shadow-xs cursor-pointer"
+                            >
+                              <span>View Full Details & Actions</span>
+                              <ExternalLink className="h-3 w-3" />
+                            </button>
                           </div>
                         </div>
 
@@ -549,12 +692,12 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                         )}
 
                         {/* Refund & Dispute Settlement Audit Card */}
-                        {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED') && (
-                          <div className="bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl p-3.5 space-y-2 text-xs">
+                        {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED' || txn.buyer_dispute_reason || txn.dispute_retracted_at) && (
+                          <div className="bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl p-3.5 space-y-3 text-xs">
                             <div className="flex justify-between items-center border-b border-red-200/80 dark:border-red-900/50 pb-2">
                               <span className="font-bold text-red-700 dark:text-red-400 flex items-center gap-1.5">
                                 <AlertTriangle className="h-4 w-4" />
-                                {txn.status === 'REFUNDED' ? 'Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : 'Dispute Under Review'}
+                                {txn.status === 'REFUNDED' ? 'Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : txn.dispute_retracted_at ? 'Dispute Retracted & Settle Privately' : 'Dispute Under Review'}
                               </span>
                               {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED') && (
                                 <span className="font-mono font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/50 px-2 py-0.5 rounded text-xs">
@@ -567,50 +710,50 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                               ⏱ Refund Policy: Payouts are returned directly to your original payment method (Paystack MoMo/Card) within 24 hours.
                             </p>
 
-                            {txn.manager_dispute_notes && (
-                              <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-red-200 dark:border-red-900/50 space-y-1">
-                                <span className="font-mono text-red-600 dark:text-red-400 font-bold uppercase text-[10px] block">Manager Resolution Notes:</span>
-                                <p className="text-gray-800 dark:text-slate-200">{txn.manager_dispute_notes}</p>
-                                {txn.manager_dispute_photos && txn.manager_dispute_photos.length > 0 && (
-                                  <div className="flex flex-wrap gap-1 pt-1">
-                                    {txn.manager_dispute_photos.map((url: string, idx: number) => (
-                                      <div 
-                                        key={idx} 
-                                        className="relative group cursor-pointer"
-                                        onClick={() => setLightboxImage(url)}
-                                        title="Click to enlarge"
-                                      >
-                                        <img src={url} alt="Manager ruling" className="w-10 h-10 object-cover rounded border border-gray-200 dark:border-slate-700 transition-transform group-hover:scale-105" />
-                                        <div className="absolute inset-0 bg-black/30 rounded opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                                          <ZoomIn className="w-3 h-3 text-white drop-shadow" />
-                                        </div>
-                                      </div>
-                                    ))}
-                                  </div>
-                                )}
-                              </div>
-                            )}
-
-                            {txn.buyer_dispute_reason && (
-                              <div className="bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-red-200 dark:border-red-900/50 space-y-1">
-                                <span className="font-mono text-gray-500 dark:text-slate-400 font-bold uppercase text-[10px] block">Your Dispute Claim:</span>
-                                <p className="text-gray-800 dark:text-slate-200">{txn.buyer_dispute_reason}</p>
-                              </div>
-                            )}
+                            <DisputeChatTimeline
+                              buyerReason={txn.buyer_dispute_reason}
+                              buyerPhotos={txn.buyer_dispute_photos}
+                              buyerName="You (Buyer)"
+                              sellerResponse={txn.seller_dispute_response}
+                              sellerPhotos={txn.seller_dispute_photos}
+                              sellerName={sellerDisplayName}
+                              managerNotes={txn.manager_dispute_notes}
+                              managerPhotos={txn.manager_dispute_photos}
+                              disputeRetractedAt={txn.dispute_retracted_at}
+                            />
                           </div>
                         )}
 
                         {/* Action buttons */}
-                        <div className="flex items-center justify-between gap-2 pt-1">
-                          <span className="text-xs text-gray-400 dark:text-slate-500">Date: {new Date(txn.created_at).toLocaleDateString()}</span>
-                          <div className="flex gap-2 flex-wrap">
-                            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') ? (
-                              <button
-                                onClick={() => setRateTxn(txn)}
-                                className="py-1.5 px-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition"
-                              >
-                                ⭐ Rate Seller
-                              </button>
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-gray-100 dark:border-slate-800/80 flex-wrap">
+                          <div className="flex items-center gap-3">
+                            <span className="text-xs text-gray-400 dark:text-slate-500">Date: {new Date(txn.created_at).toLocaleDateString()}</span>
+                            <button
+                              type="button"
+                              onClick={() => handleOpenFullDetails(txn)}
+                              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:text-blue-800 dark:hover:text-blue-300 hover:underline inline-flex items-center gap-1 transition-colors cursor-pointer"
+                            >
+                              <span>View Full Details & Actions</span>
+                              &rarr;
+                            </button>
+                          </div>
+                          <div className="flex gap-2 flex-wrap items-center">
+                            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') && !txn.buyer_dispute_reason && !txn.dispute_retracted_at ? (
+                              txn.has_reviewed ? (
+                                <button
+                                  onClick={() => setRateTxn(txn)}
+                                  className="py-1.5 px-3 rounded-lg bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition cursor-pointer flex items-center gap-1"
+                                >
+                                  ✏️ Edit Review ({txn.review_overall}★)
+                                </button>
+                              ) : (
+                                <button
+                                  onClick={() => setRateTxn(txn)}
+                                  className="py-1.5 px-3 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition cursor-pointer"
+                                >
+                                  ⭐ Rate Seller
+                                </button>
+                              )
                             ) : (txn.status === 'PAYMENT_RECEIVED' || txn.status === 'DELIVERY_IN_PROGRESS') ? (
                               <button
                                 disabled
@@ -623,7 +766,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                             {txn.status === 'DELIVERY_IN_PROGRESS' && (
                               <button
                                 onClick={() => handleOpenConfirmModal(txn.id)}
-                                className="py-1.5 px-3 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition"
+                                className="py-1.5 px-3 rounded-lg bg-green-600 text-white text-xs font-bold hover:bg-green-700 transition shadow-sm cursor-pointer"
                               >
                                 Confirm Receipt
                               </button>
@@ -631,10 +774,27 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                             {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'DELIVERY_IN_PROGRESS') && (
                               <button
                                 onClick={() => { setDisputeTxnId(txn.id); setDisputeReason(''); setBuyerPhotos([]); }}
-                                className="py-1.5 px-3 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/50 transition"
+                                className="py-1.5 px-3 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/50 transition cursor-pointer"
                               >
                                 Raise Dispute
                               </button>
+                            )}
+                            {txn.status === 'DISPUTED' && (
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => { setDisputeTxnId(txn.id); setDisputeReason(''); setBuyerPhotos([]); }}
+                                  className="py-1.5 px-3 rounded-lg bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-900/50 transition cursor-pointer"
+                                >
+                                  + Add Dispute Details
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => handleOpenFullDetails(txn)}
+                                  className="py-1.5 px-3 rounded-lg bg-slate-800 dark:bg-slate-700 text-white text-xs font-bold hover:bg-slate-700 transition cursor-pointer"
+                                >
+                                  Manage / Retract
+                                </button>
+                              </div>
                             )}
                           </div>
                         </div>
@@ -650,12 +810,12 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
       {/* Confirm Receipt Sub-Modal */}
       {confirmTxnId && !isSendingCode && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-6 max-w-sm w-full shadow-2xl relative space-y-4 text-gray-900 dark:text-slate-100">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-5 sm:p-6 max-w-sm w-full shadow-2xl relative space-y-4 text-gray-900 dark:text-slate-100 max-h-[90vh] my-auto overflow-y-auto">
             <button onClick={() => setConfirmTxnId(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
               <X className="h-5 w-5" />
             </button>
-            <h4 className="text-base font-bold text-gray-900 dark:text-slate-100 text-center">Enter Delivery Confirmation Code</h4>
+            <h4 className="text-base font-bold text-gray-900 dark:text-slate-100 text-center pr-6">Enter Delivery Confirmation Code</h4>
             {confirmError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded text-center">{confirmError}</p>}
             <form onSubmit={handleConfirmReceipt} className="space-y-3">
               <input
@@ -696,79 +856,84 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
       {/* Raise Dispute Sub-Modal */}
       {disputeTxnId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4 text-gray-900 dark:text-slate-100">
-            <button onClick={() => setDisputeTxnId(null)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
-              <X className="h-5 w-5" />
-            </button>
-            <h4 className="text-base font-bold text-gray-900 dark:text-slate-100">Raise Transaction Dispute</h4>
-            {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded">{disputeError}</p>}
-            <form onSubmit={handleRaiseDisputeSubmit} className="space-y-3">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Reason for Dispute *</label>
-                <textarea
-                  required
-                  rows={3}
-                  value={disputeReason}
-                  onChange={e => setDisputeReason(e.target.value)}
-                  placeholder="Describe the issue with your item..."
-                  className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-red-500 outline-none"
-                />
-              </div>
-
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Evidence Photos (Max 5)</label>
-                  <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
-                    {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length}/5 photos`}
-                  </span>
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  multiple
-                  onChange={handleBuyerPhotoUpload}
-                  disabled={buyerPhotos.length >= 5 || isCompressingBuyerPhotos}
-                  className="w-full text-xs text-gray-600 dark:text-slate-300 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl p-2 cursor-pointer disabled:opacity-50"
-                />
-                {isCompressingBuyerPhotos && (
-                  <div className="flex items-center gap-2 mt-2 text-xs text-red-600 dark:text-red-400 font-medium">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to WebP...
-                  </div>
-                )}
-                {buyerPhotos.length > 0 && (
-                  <div className="flex gap-2 mt-2 flex-wrap">
-                    {buyerPhotos.map((img, idx) => (
-                      <div key={idx} className="relative group">
-                        <img src={img} alt={`Evidence ${idx + 1}`} className="w-12 h-12 object-cover rounded-lg border border-gray-200 dark:border-slate-700" />
-                        <button
-                          type="button"
-                          onClick={() => setBuyerPhotos(prev => prev.filter((_, i) => i !== idx))}
-                          className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700"
-                        >
-                          <X className="h-3 w-3" />
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              <button
-                type="submit"
-                disabled={isSubmittingDispute || isCompressingBuyerPhotos}
-                className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition shadow flex justify-center items-center gap-2 disabled:opacity-70"
-              >
-                {isSubmittingDispute ? (
-                  <>
-                    <Loader2 className="h-4 w-4 animate-spin" />
-                    <span>Submitting Dispute & Evidence...</span>
-                  </>
-                ) : (
-                  "Submit Dispute Claim"
-                )}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden relative text-gray-900 dark:text-slate-100 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+              <h4 className="text-base font-bold text-gray-900 dark:text-slate-100">Raise Transaction Dispute</h4>
+              <button onClick={() => setDisputeTxnId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
+                <X className="h-5 w-5" />
               </button>
-            </form>
+            </div>
+            
+            <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
+              {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded">{disputeError}</p>}
+              <form onSubmit={handleRaiseDisputeSubmit} className="space-y-3">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Reason for Dispute *</label>
+                  <textarea
+                    required
+                    rows={3}
+                    value={disputeReason}
+                    onChange={e => setDisputeReason(e.target.value)}
+                    placeholder="Describe the issue with your item..."
+                    className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-red-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Evidence Photos (Max 5)</label>
+                    <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
+                      {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length}/5 photos`}
+                    </span>
+                  </div>
+                  <input
+                    type="file"
+                    accept="image/*"
+                    multiple
+                    onChange={handleBuyerPhotoUpload}
+                    disabled={buyerPhotos.length >= 5 || isCompressingBuyerPhotos}
+                    className="w-full text-xs text-gray-600 dark:text-slate-300 bg-gray-50 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-xl p-2 cursor-pointer disabled:opacity-50"
+                  />
+                  {isCompressingBuyerPhotos && (
+                    <div className="flex items-center gap-2 mt-2 text-xs text-red-600 dark:text-red-400 font-medium">
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to WebP...
+                    </div>
+                  )}
+                  {buyerPhotos.length > 0 && (
+                    <div className="flex gap-2 mt-2 flex-wrap">
+                      {buyerPhotos.map((img, idx) => (
+                        <div key={idx} className="relative group">
+                          <img src={img} alt={`Evidence ${idx + 1}`} className="w-12 h-12 object-cover rounded-lg border border-gray-200 dark:border-slate-700" />
+                          <button
+                            type="button"
+                            onClick={() => setBuyerPhotos(prev => prev.filter((_, i) => i !== idx))}
+                            className="absolute -top-1 -right-1 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700"
+                          >
+                            <X className="h-3 w-3" />
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingDispute || isCompressingBuyerPhotos}
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition shadow flex justify-center items-center gap-2 disabled:opacity-70"
+                >
+                  {isSubmittingDispute ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <span>Submitting Dispute & Evidence...</span>
+                    </>
+                  ) : (
+                    "Submit Dispute Claim"
+                  )}
+                </button>
+              </form>
+            </div>
           </div>
         </div>
       )}
@@ -781,6 +946,13 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
           reviewToken={rateTxn.buyer_review_token}
           sellerName={rateTxn.seller_username || 'Seller'}
           itemTitle={rateTxn.title}
+          initialOverall={rateTxn.review_overall}
+          initialSpeed={rateTxn.review_speed}
+          initialCommunication={rateTxn.review_communication}
+          initialComment={rateTxn.review_comment}
+          initialEditCount={rateTxn.review_edit_count}
+          initialCreatedAt={rateTxn.review_created_at}
+          initialUpdatedAt={rateTxn.review_updated_at}
           onClose={() => setRateTxn(null)}
         />
       )}

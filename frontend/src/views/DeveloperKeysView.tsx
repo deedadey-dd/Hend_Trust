@@ -452,8 +452,8 @@ export default function DeveloperKeysView() {
 
       {/* Modal: Generate API Key */}
       {showKeyModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-gray-200 dark:border-slate-800 relative space-y-5">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-8 max-w-md w-full shadow-2xl border border-gray-200 dark:border-slate-800 relative space-y-5 max-h-[90vh] my-auto overflow-y-auto">
             <button
               onClick={() => setShowKeyModal(false)}
               className="absolute top-5 right-5 text-gray-400 hover:text-gray-600 dark:hover:text-white"
@@ -578,8 +578,8 @@ export default function DeveloperKeysView() {
 
       {/* Modal: Add Webhook Endpoint */}
       {showWebhookModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 max-w-md w-full shadow-2xl border border-gray-200 dark:border-slate-800 relative space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-8 max-w-md w-full shadow-2xl border border-gray-200 dark:border-slate-800 relative space-y-4 max-h-[90vh] my-auto overflow-y-auto">
             <button
               onClick={() => setShowWebhookModal(false)}
               className="absolute top-5 right-5 text-gray-400 hover:text-gray-600 dark:hover:text-white"

@@ -66,6 +66,7 @@ class Transaction(models.Model):
     seller_dispute_photos = models.JSONField(default=list, blank=True)
     manager_dispute_notes = models.TextField(blank=True)
     manager_dispute_photos = models.JSONField(default=list, blank=True)
+    dispute_retracted_at = models.DateTimeField(null=True, blank=True)
 
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)

@@ -64,10 +64,34 @@ def test_track_orders_invalid_email_otp(mock_verify_otp, client, test_transactio
     assert response.status_code == 400
 
 @pytest.mark.django_db
-def test_track_order_by_id(client, test_transaction):
+@patch('apps.checkout.api.generate_and_send_otp')
+def test_track_order_by_id_request_otp(mock_send_otp, client, test_transaction):
     payload = {
         "paystack_reference": "TRACK123",
         "phone_number": "0555555555"
+    }
+    response = client.post("/track/id/request-otp", json=payload)
+    assert response.status_code == 200
+    assert "OTP sent" in response.json()["message"]
+    mock_send_otp.assert_called_once_with("0555555555")
+
+@pytest.mark.django_db
+def test_track_order_by_id_request_otp_invalid(client, test_transaction):
+    payload = {
+        "paystack_reference": "TRACK123",
+        "phone_number": "0999999999" # wrong phone
+    }
+    response = client.post("/track/id/request-otp", json=payload)
+    assert response.status_code == 404
+
+@pytest.mark.django_db
+@patch('apps.checkout.api.verify_otp')
+def test_track_order_by_id_with_otp(mock_verify_otp, client, test_transaction):
+    mock_verify_otp.return_value = True
+    payload = {
+        "paystack_reference": "TRACK123",
+        "phone_number": "0555555555",
+        "otp_code": "123456"
     }
     
     response = client.post("/track/id", json=payload)
@@ -79,11 +103,41 @@ def test_track_order_by_id(client, test_transaction):
     assert data[0]["title"] == "Trackable Item"
 
 @pytest.mark.django_db
-def test_track_order_by_id_invalid(client, test_transaction):
+@patch('apps.checkout.api.verify_otp')
+def test_track_order_by_id_invalid_otp(mock_verify_otp, client, test_transaction):
+    mock_verify_otp.return_value = False
     payload = {
         "paystack_reference": "TRACK123",
-        "phone_number": "0999999999" # wrong phone
+        "phone_number": "0555555555",
+        "otp_code": "000000"
     }
     
     response = client.post("/track/id", json=payload)
-    assert response.status_code == 404
+    assert response.status_code == 400
+
+
+@pytest.mark.django_db
+@patch('apps.checkout.api.generate_and_send_otp')
+def test_send_details_otp(mock_send_otp, client, test_transaction):
+    payload = {
+        "paystack_reference": "TRACK123",
+        "phone_number": "0555555555"
+    }
+    response = client.post("/send-details-otp", json=payload)
+    assert response.status_code == 200
+    assert "OTP sent" in response.json()["message"]
+    mock_send_otp.assert_called_once_with("0555555555")
+
+@pytest.mark.django_db
+@patch('apps.checkout.api.verify_otp')
+def test_verify_details_otp(mock_verify_otp, client, test_transaction):
+    mock_verify_otp.return_value = True
+    payload = {
+        "paystack_reference": "TRACK123",
+        "phone_number": "0555555555",
+        "otp_code": "123456"
+    }
+    response = client.post("/verify-details-otp", json=payload)
+    assert response.status_code == 200
+    assert response.json()["message"] == "OTP verified successfully."
+

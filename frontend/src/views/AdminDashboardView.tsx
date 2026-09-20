@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, Package, ShieldAlert, Users, PhoneCall, Send, Search, Filter, 
   TrendingUp, DollarSign, Lock, Eye, X, Zap, Clock,
-  RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck
+  RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck, Store
 } from 'lucide-react';
 import { 
   useAdminMetricsQuery, 
@@ -25,6 +25,8 @@ import { useAuthStore } from '../store/authStore';
 import { ExportButton } from '../components/ExportButton';
 import type { ExportColumn } from '../utils/exportUtils';
 import { AdminSellerDetailsModal } from '../components/AdminSellerDetailsModal';
+import { AdminBuyerDetailsModal, type AdminBuyerTarget } from '../components/AdminBuyerDetailsModal';
+import DisputeChatTimeline from '../components/DisputeChatTimeline';
 
 const adminTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -209,6 +211,7 @@ interface PlatformSettings {
   dispute_alert_threshold?: number;
   dispute_warning_threshold?: number;
   dispute_suspension_threshold?: number;
+  dispute_retraction_release_hours?: number;
   dispatch_expiry_warning_threshold?: number;
   dispatch_expiry_suspension_threshold?: number;
   unpaid_auto_archive_days?: number;
@@ -265,6 +268,7 @@ export const AdminDashboardView: React.FC = () => {
     dispute_alert_threshold: 20.0,
     dispute_warning_threshold: 30.0,
     dispute_suspension_threshold: 40.0,
+    dispute_retraction_release_hours: 24,
     dispatch_expiry_warning_threshold: 20.0,
     dispatch_expiry_suspension_threshold: 35.0,
   });
@@ -589,6 +593,7 @@ export const AdminDashboardView: React.FC = () => {
 
   // Buyers State & Query
   const [buyerSearch, setBuyerSearch] = useState<string>('');
+  const [selectedBuyerModal, setSelectedBuyerModal] = useState<AdminBuyerTarget | null>(null);
   const { data: buyers, isLoading: buyersLoading } = useAdminBuyersQuery(buyerSearch);
 
   // Broadcast Messaging State
@@ -973,8 +978,26 @@ export const AdminDashboardView: React.FC = () => {
                             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Seller: <strong className="text-slate-900 dark:text-white">{(t as any).shop_name || `@${t.seller_username}`}</strong> {(t as any).shop_name && <span className="text-slate-500 font-normal">(@{t.seller_username})</span>}</p>
                           </td>
                           <td className="px-5 py-4">
-                            <p className="font-semibold text-slate-800 dark:text-slate-200">{t.buyer_name}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{t.buyer_phone}</p>
+                            {(t.buyer_phone || t.buyer_name) ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedBuyerModal({ phone: t.buyer_phone, email: (t as any).buyer_email, name: t.buyer_name })}
+                                className="text-left group cursor-pointer"
+                                title="Inspect buyer intelligence, orders & dispute rate"
+                              >
+                                <p className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-teal-600 dark:group-hover:text-teal-400 group-hover:underline transition">
+                                  {t.buyer_name}
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 font-mono group-hover:text-teal-600 dark:group-hover:text-teal-400 transition">
+                                  {t.buyer_phone}
+                                </p>
+                              </button>
+                            ) : (
+                              <>
+                                <p className="font-semibold text-slate-800 dark:text-slate-200">{t.buyer_name}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{t.buyer_phone}</p>
+                              </>
+                            )}
                           </td>
                           <td className="px-5 py-4 font-extrabold text-slate-900 dark:text-white">
                             GHS {t.total_amount_ghs.toFixed(2)}
@@ -1054,107 +1077,75 @@ export const AdminDashboardView: React.FC = () => {
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
                         <div>
-                          <p className="text-slate-500 font-mono">SELLER DETAILS</p>
-                          <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">{(d as any).shop_name ? `${(d as any).shop_name} (@${d.seller_username})` : `@${d.seller_username}`}</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-slate-500 font-mono">SELLER DETAILS</p>
+                            {d.seller_id && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSellerIdModal(d.seller_id)}
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                                title="View seller summary, storefront, transaction history, ratings & compliance"
+                              >
+                                <Store className="h-3.5 w-3.5" />
+                                <span>Store & History</span>
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => d.seller_id && setSelectedSellerIdModal(d.seller_id)}
+                            className="font-bold text-slate-900 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mt-1 text-left block cursor-pointer group"
+                            title="Open seller summary & intelligence modal"
+                          >
+                            <span className="group-hover:underline">
+                              {(d as any).shop_name ? `${(d as any).shop_name} (@${d.seller_username})` : `@${d.seller_username}`}
+                            </span>
+                          </button>
                           <p className="text-slate-600 dark:text-slate-400">{d.seller_phone || 'No phone'}</p>
                           <p className="text-slate-600 dark:text-slate-400">{d.seller_email || 'No email'}</p>
                         </div>
                         <div>
-                          <p className="text-slate-500 font-mono">BUYER DETAILS</p>
-                          <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">{d.buyer_name}</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-slate-500 font-mono">BUYER DETAILS</p>
+                            {(d.buyer_phone || d.buyer_email) && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedBuyerModal({ phone: d.buyer_phone, email: d.buyer_email, name: d.buyer_name })}
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300 hover:underline cursor-pointer"
+                                title="Inspect buyer orders, total spend, dispute history, registered account & compliance"
+                              >
+                                <UserCheck className="h-3.5 w-3.5" />
+                                <span>Buyer History & Risk</span>
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => (d.buyer_phone || d.buyer_email) && setSelectedBuyerModal({ phone: d.buyer_phone, email: d.buyer_email, name: d.buyer_name })}
+                            className="font-bold text-slate-900 dark:text-slate-200 hover:text-teal-600 dark:hover:text-teal-400 transition-colors mt-1 text-left block cursor-pointer group"
+                            title="Open buyer intelligence modal"
+                          >
+                            <span className="group-hover:underline">{d.buyer_name}</span>
+                          </button>
                           <p className="text-slate-600 dark:text-slate-400 font-mono">{d.buyer_phone}</p>
                           <p className="text-slate-600 dark:text-slate-400">{d.buyer_email || 'No email'}</p>
                         </div>
                       </div>
 
-                      {/* Dispute Evidence Photos & Text */}
-                      <div className="space-y-3 bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-                        {d.buyer_dispute_reason && (
-                          <div>
-                            <span className="font-mono text-rose-600 dark:text-rose-400 font-bold uppercase block mb-1">BUYER CLAIM REASON:</span>
-                            <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">{d.buyer_dispute_reason}</p>
-                          </div>
-                        )}
-
-                        {d.buyer_dispute_photos && d.buyer_dispute_photos.length > 0 && (
-                          <div>
-                            <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] block mb-1.5">BUYER EVIDENCE PHOTOS ({d.buyer_dispute_photos.length}/5):</span>
-                            <div className="flex flex-wrap gap-2">
-                              {d.buyer_dispute_photos.map((url: string, idx: number) => (
-                                <img
-                                  key={idx}
-                                  src={url}
-                                  alt={`Buyer evidence ${idx + 1}`}
-                                  onClick={() => setPreviewImage(url)}
-                                  className="w-16 h-16 object-cover rounded-lg border border-slate-300 dark:border-slate-700 hover:border-rose-500 hover:scale-105 transition cursor-pointer"
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {d.waybill_photo_url && (
-                          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold uppercase block mb-1">DISPATCH / WAYBILL PHOTO (FROM SELLER):</span>
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={d.waybill_photo_url}
-                                alt="Dispatch waybill evidence"
-                                onClick={() => setPreviewImage(d.waybill_photo_url)}
-                                className="w-20 h-20 object-cover rounded-lg border border-emerald-500/40 hover:border-emerald-400 hover:scale-105 transition cursor-pointer"
-                              />
-                              <span className="text-[11px] text-slate-500 dark:text-slate-400">Click photo to zoom. Submitted by seller during dispatch.</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {d.seller_dispute_response && (
-                          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                            <span className="font-mono text-blue-600 dark:text-blue-400 font-bold uppercase block mb-1">SELLER RESPONSE:</span>
-                            <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">{d.seller_dispute_response}</p>
-                          </div>
-                        )}
-
-                        {d.seller_dispute_photos && d.seller_dispute_photos.length > 0 && (
-                          <div>
-                            <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] block mb-1.5">SELLER EVIDENCE PHOTOS ({d.seller_dispute_photos.length}/5):</span>
-                            <div className="flex flex-wrap gap-2">
-                              {d.seller_dispute_photos.map((url: string, idx: number) => (
-                                <img
-                                  key={idx}
-                                  src={url}
-                                  alt={`Seller evidence ${idx + 1}`}
-                                  onClick={() => setPreviewImage(url)}
-                                  className="w-16 h-16 object-cover rounded-lg border border-slate-300 dark:border-slate-700 hover:border-blue-500 hover:scale-105 transition cursor-pointer"
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {d.manager_dispute_notes && (
-                          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                            <span className="font-mono text-amber-600 dark:text-amber-400 font-bold uppercase block mb-1">MANAGER RULING NOTES:</span>
-                            <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">{d.manager_dispute_notes}</p>
-                          </div>
-                        )}
-
-                        {d.manager_dispute_photos && d.manager_dispute_photos.length > 0 && (
-                          <div>
-                            <span className="font-mono text-amber-400 text-[11px] block mb-1.5">MANAGER RULING PHOTOS ({d.manager_dispute_photos.length}/5):</span>
-                            <div className="flex flex-wrap gap-2">
-                              {d.manager_dispute_photos.map((url: string, idx: number) => (
-                                <img
-                                  key={idx}
-                                  src={url}
-                                  alt={`Manager photo ${idx + 1}`}
-                                  onClick={() => setPreviewImage(url)}
-                                  className="w-16 h-16 object-cover rounded-lg border border-slate-700 hover:border-amber-500 hover:scale-105 transition cursor-pointer"
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                      {/* WhatsApp-Style Unified Dispute Dialogue Trail */}
+                      <div className="pt-1">
+                        <DisputeChatTimeline
+                          buyerReason={d.buyer_dispute_reason}
+                          buyerPhotos={d.buyer_dispute_photos}
+                          buyerName={d.buyer_name || 'Buyer'}
+                          sellerResponse={d.seller_dispute_response}
+                          sellerPhotos={d.seller_dispute_photos}
+                          sellerName={d.shop_name ? `${d.shop_name} (@${d.seller_username})` : `@${d.seller_username}`}
+                          managerNotes={d.manager_dispute_notes}
+                          managerPhotos={d.manager_dispute_photos}
+                          disputeRetractedAt={d.dispute_retracted_at}
+                          waybillPhotoUrl={d.waybill_photo_url}
+                        />
                       </div>
 
                       {d.delivery_method && (
@@ -1455,8 +1446,8 @@ export const AdminDashboardView: React.FC = () => {
 
         {/* ─── MODAL: REJECT VERIFICATION ────────────────────────────────────────── */}
         {rejectUserId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 max-w-md w-full shadow-2xl space-y-4 max-h-[90vh] my-auto overflow-y-auto">
               <h4 className="text-base font-bold text-white">Reject Seller Verification</h4>
               <form onSubmit={handleRejectVerification} className="space-y-4">
                 <div>
@@ -2016,33 +2007,44 @@ export const AdminDashboardView: React.FC = () => {
                       <th className="px-5 py-4">Active Escrow Holds</th>
                       <th className="px-5 py-4">Disputed Orders</th>
                       <th className="px-5 py-4">Total Lifetime Spend</th>
+                      <th className="px-5 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60">
                     {buyersLoading ? (
-                      <tr><td colSpan={6} className="text-center py-12 text-slate-500">Loading buyers registry…</td></tr>
+                      <tr><td colSpan={7} className="text-center py-12 text-slate-500">Loading buyers registry…</td></tr>
                     ) : buyers?.length === 0 ? (
-                      <tr><td colSpan={6} className="text-center py-12 text-slate-500">No buyers found matching search.</td></tr>
+                      <tr><td colSpan={7} className="text-center py-12 text-slate-500">No buyers found matching search.</td></tr>
                     ) : (
                       buyers?.map(b => (
                         <tr key={b.buyer_phone} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
                           <td className="px-5 py-4 font-mono font-bold">
                             {b.buyer_phone ? (
-                              <a 
-                                href={`tel:${b.buyer_phone}`}
-                                className="text-blue-600 dark:text-blue-400 hover:underline font-mono font-bold flex items-center gap-1.5"
-                                title={`Click to dial ${b.buyer_phone}`}
+                              <button 
+                                type="button"
+                                onClick={() => setSelectedBuyerModal({ phone: b.buyer_phone, email: b.buyer_email, name: b.buyer_name })}
+                                className="text-blue-600 dark:text-blue-400 hover:underline font-mono font-bold flex items-center gap-1.5 cursor-pointer text-left"
+                                title={`Inspect profile for ${b.buyer_phone}`}
                               >
-                                <PhoneCall className="h-3.5 w-3.5 text-blue-500" />
-                                {b.buyer_phone}
-                              </a>
+                                <PhoneCall className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                                <span>{b.buyer_phone}</span>
+                              </button>
                             ) : (
                               <span className="text-slate-500 dark:text-slate-400 font-mono text-xs">No Phone</span>
                             )}
                           </td>
                           <td className="px-5 py-4">
-                            <p className="font-semibold text-slate-900 dark:text-white">{b.buyer_name}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">{b.buyer_email || 'No email'}</p>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedBuyerModal({ phone: b.buyer_phone, email: b.buyer_email, name: b.buyer_name })}
+                              className="text-left group cursor-pointer"
+                              title="Inspect buyer profile"
+                            >
+                              <p className="font-semibold text-slate-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400 group-hover:underline transition">
+                                {b.buyer_name}
+                              </p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">{b.buyer_email || 'No email'}</p>
+                            </button>
                           </td>
                           <td className="px-5 py-4 font-bold text-slate-900 dark:text-slate-200">{b.total_orders} orders</td>
                           <td className="px-5 py-4">
@@ -2056,7 +2058,7 @@ export const AdminDashboardView: React.FC = () => {
                           </td>
                           <td className="px-5 py-4">
                             {b.disputed_orders > 0 ? (
-                              <span className="px-2.5 py-1 bg-rose-500/20 text-rose-700 dark:text-rose-300 font-bold text-xs rounded-full border border-rose-500/30">
+                              <span className="px-2.5 py-1 bg-rose-500/20 text-rose-700 dark:text-rose-300 font-bold text-xs rounded-full border border-rose-500/30 font-bold">
                                 {b.disputed_orders} Disputed
                               </span>
                             ) : (
@@ -2064,6 +2066,17 @@ export const AdminDashboardView: React.FC = () => {
                             )}
                           </td>
                           <td className="px-5 py-4 font-extrabold text-emerald-600 dark:text-emerald-400">GHS {b.total_spent_ghs.toFixed(2)}</td>
+                          <td className="px-5 py-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedBuyerModal({ phone: b.buyer_phone, email: b.buyer_email, name: b.buyer_name })}
+                              className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                              title="Inspect full buyer order history, dispute rate & intelligence"
+                            >
+                              <UserCheck className="h-3.5 w-3.5" />
+                              <span>Inspect</span>
+                            </button>
+                          </td>
                         </tr>
                       ))
                     )}
@@ -3008,6 +3021,30 @@ export const AdminDashboardView: React.FC = () => {
                       <span className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold">Live impact — sellers at this threshold will be auto-suspended immediately upon next health check. Communicate policy changes before adjusting.</span>
                     </div>
                   </div>
+
+                  {/* Retraction Auto-Release Grace Window */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 md:col-span-2 lg:col-span-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase font-mono block">
+                        Retraction Grace Release Window
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 24 hrs</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      When a buyer retracts an active dispute to settle privately, funds are automatically released to the seller after this window.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="168"
+                        value={platformSettings.dispute_retraction_release_hours ?? 24}
+                        onChange={(e) => handleUpdateSettings({ dispute_retraction_release_hours: parseInt(e.target.value) || 24 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">Hours before payout</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -3087,8 +3124,8 @@ export const AdminDashboardView: React.FC = () => {
 
       {/* ─── MODAL: GATEWAY SWITCH CONFIRMATION ─────────────────────────────── */}
       {gatewayConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white dark:bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full shadow-2xl overflow-y-auto max-h-[90vh] my-auto text-slate-900 dark:text-slate-100">
             {/* Header */}
             <div className="px-6 py-4 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-500/20 flex items-center gap-3">
               <div className="h-9 w-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
@@ -3142,9 +3179,9 @@ export const AdminDashboardView: React.FC = () => {
 
       {/* ─── MODAL: INSPECT TRANSACTION DETAIL ───────────────────────────────── */}
       {selectedTxnId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl text-slate-900 dark:text-slate-100">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">Transaction Deep Inspection</h3>
                 <p className="text-xs font-mono text-blue-600 dark:text-blue-400">{txnDetail?.paystack_reference}</p>
@@ -3185,16 +3222,66 @@ export const AdminDashboardView: React.FC = () => {
                   {/* Buyer & Seller */}
                   <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <div>
-                      <span className="text-slate-500 font-mono">SELLER ACCOUNT</span>
-                      <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">@{txnDetail?.seller?.username || 'seller'}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-mono">SELLER ACCOUNT</span>
+                        {txnDetail?.seller?.id && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSellerIdModal(txnDetail.seller.id)}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                            title="View seller summary, storefront, transaction history & ratings"
+                          >
+                            <Store className="h-3.5 w-3.5" />
+                            <span>Store & History</span>
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => txnDetail?.seller?.id && setSelectedSellerIdModal(txnDetail.seller.id)}
+                        className="font-bold text-slate-900 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mt-1 text-left block cursor-pointer group"
+                        title="Open seller summary modal"
+                      >
+                        <span className="group-hover:underline">
+                          {txnDetail?.seller?.shop_name || `@${txnDetail?.seller?.username || 'seller'}`}
+                        </span>
+                      </button>
                       <p className="text-slate-600 dark:text-slate-400">{txnDetail?.seller?.phone_number || 'No phone'}</p>
                       <p className="text-slate-500 text-[10px]">{txnDetail?.seller?.email || 'No email'}</p>
                     </div>
                     <div>
-                      <span className="text-slate-500 font-mono">BUYER DETAILS</span>
-                      <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">{txnDetail?.buyer?.name || 'Guest Buyer'}</p>
-                      <p className="text-slate-600 dark:text-slate-400 font-mono">{txnDetail?.buyer?.phone}</p>
-                      <p className="text-slate-600 dark:text-slate-400 mt-0.5">{txnDetail?.buyer?.shipping_address || 'No shipping address'}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-mono">BUYER DETAILS</span>
+                        {(txnDetail?.buyer?.phone || txnDetail?.buyer_phone || txnDetail?.buyer_email) && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedBuyerModal({
+                              phone: txnDetail.buyer?.phone || txnDetail.buyer_phone,
+                              email: txnDetail.buyer_email,
+                              name: txnDetail.buyer?.name || txnDetail.buyer_name,
+                            })}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300 hover:underline cursor-pointer"
+                            title="View buyer orders, total spend, dispute history, registered account & compliance"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            <span>Buyer History</span>
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => (txnDetail?.buyer?.phone || txnDetail?.buyer_phone || txnDetail?.buyer_email) && setSelectedBuyerModal({
+                          phone: txnDetail.buyer?.phone || txnDetail.buyer_phone,
+                          email: txnDetail.buyer_email,
+                          name: txnDetail.buyer?.name || txnDetail.buyer_name,
+                        })}
+                        className="font-bold text-slate-900 dark:text-slate-200 hover:text-teal-600 dark:hover:text-teal-400 transition-colors mt-1 text-left block cursor-pointer group"
+                        title="Open buyer intelligence modal"
+                      >
+                        <span className="group-hover:underline">{txnDetail?.buyer?.name || txnDetail?.buyer_name || 'Guest Buyer'}</span>
+                      </button>
+                      <p className="text-slate-600 dark:text-slate-400 font-mono">{txnDetail?.buyer?.phone || txnDetail?.buyer_phone}</p>
+                      <p className="text-slate-600 dark:text-slate-400 mt-0.5">{txnDetail?.buyer?.shipping_address || txnDetail?.shipping_address || 'No shipping address'}</p>
                     </div>
                   </div>
 
@@ -3211,24 +3298,21 @@ export const AdminDashboardView: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Dispute Evidence if present */}
-                  {txnDetail?.buyer_dispute_reason && (
-                    <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 shadow-sm">
-                      <span className="font-mono text-rose-600 dark:text-rose-400 font-bold uppercase block">BUYER CLAIM REASON:</span>
-                      <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">{txnDetail.buyer_dispute_reason}</p>
-                      {txnDetail.buyer_dispute_photos?.length > 0 && (
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {txnDetail.buyer_dispute_photos.map((url: string, idx: number) => (
-                            <img
-                              key={idx}
-                              src={url}
-                              alt="Buyer evidence"
-                              onClick={() => setPreviewImage(url)}
-                              className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700 hover:border-rose-500 transition cursor-pointer"
-                            />
-                          ))}
-                        </div>
-                      )}
+                  {/* Dispute Evidence & Dialogue Trail if present */}
+                  {(txnDetail?.buyer_dispute_reason || txnDetail?.seller_dispute_response || txnDetail?.manager_dispute_notes || txnDetail?.dispute_retracted_at) && (
+                    <div className="pt-2">
+                      <DisputeChatTimeline
+                        buyerReason={txnDetail.buyer_dispute_reason}
+                        buyerPhotos={txnDetail.buyer_dispute_photos}
+                        buyerName={txnDetail.buyer_name || 'Buyer'}
+                        sellerResponse={txnDetail.seller_dispute_response}
+                        sellerPhotos={txnDetail.seller_dispute_photos}
+                        sellerName={txnDetail.shop_name ? `${txnDetail.shop_name} (@${txnDetail.seller_username})` : (txnDetail.seller_username ? `@${txnDetail.seller_username}` : 'Seller')}
+                        managerNotes={txnDetail.manager_dispute_notes}
+                        managerPhotos={txnDetail.manager_dispute_photos}
+                        disputeRetractedAt={txnDetail.dispute_retracted_at}
+                        waybillPhotoUrl={txnDetail.waybill_photo_url}
+                      />
                     </div>
                   )}
 
@@ -3330,9 +3414,9 @@ export const AdminDashboardView: React.FC = () => {
 
       {/* ─── MODAL: RESOLVE DISPUTE ──────────────────────────────────────────── */}
       {resolvingTxnId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-900 dark:text-slate-100">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 flex-shrink-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] overflow-hidden text-slate-900 dark:text-slate-100 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 shrink-0">
               <h3 className="text-base font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5" />
                 Arbitrate Dispute Claim
@@ -3343,6 +3427,53 @@ export const AdminDashboardView: React.FC = () => {
             </div>
 
             <form onSubmit={handleResolveDispute} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+              {activeDisputeTxn && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-sm">
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-slate-500 uppercase font-mono block">Seller Profile</span>
+                      <span className="font-bold text-slate-900 dark:text-white truncate block text-xs">
+                        {activeDisputeTxn.shop_name || `@${activeDisputeTxn.seller_username}`}
+                      </span>
+                    </div>
+                    {activeDisputeTxn.seller_id && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSellerIdModal(activeDisputeTxn.seller_id)}
+                        className="px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+                        title="Inspect seller storefront, transaction history, ratings & compliance"
+                      >
+                        <Store className="h-3.5 w-3.5" />
+                        <span>Seller History</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-sm">
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-slate-500 uppercase font-mono block">Buyer Intelligence</span>
+                      <span className="font-bold text-slate-900 dark:text-white truncate block text-xs">
+                        {activeDisputeTxn.buyer_name || activeDisputeTxn.buyer_phone}
+                      </span>
+                    </div>
+                    {(activeDisputeTxn.buyer_phone || activeDisputeTxn.buyer_email) && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBuyerModal({
+                          phone: activeDisputeTxn.buyer_phone,
+                          email: activeDisputeTxn.buyer_email,
+                          name: activeDisputeTxn.buyer_name,
+                        })}
+                        className="px-2.5 py-1.5 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+                        title="Inspect buyer orders, dispute rate, registered account & spend"
+                      >
+                        <UserCheck className="h-3.5 w-3.5" />
+                        <span>Buyer History</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-slate-600 dark:text-slate-400 font-mono uppercase mb-1">Arbitration Resolution Action *</label>
                 <select
@@ -3542,9 +3673,9 @@ export const AdminDashboardView: React.FC = () => {
 
       {/* ─── MODAL: REVIEW SUSPENSION APPEAL ─────────────────────────────────── */}
       {reviewingAppeal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
                   {reviewDecision === 'APPROVE' ? 'Approve Appeal & Reinstate Seller' : 'Reject Suspension Appeal'}
@@ -3556,7 +3687,7 @@ export const AdminDashboardView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleReviewAppeal} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleReviewAppeal} className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
               <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
                 <span className="font-bold text-slate-800 dark:text-slate-200 block">Appeal Justification:</span>
                 <p className="text-slate-600 dark:text-slate-400 italic">"{reviewingAppeal.reason}"</p>
@@ -3672,6 +3803,20 @@ export const AdminDashboardView: React.FC = () => {
           onReinstate={async (id, uname) => {
             await handleReinstateSeller(id, uname);
             setSelectedSellerIdModal(null);
+          }}
+        />
+      )}
+
+      {/* ─── MODAL: BUYER DETAILS INTELLIGENCE ────────────────────────────────── */}
+      {selectedBuyerModal && (
+        <AdminBuyerDetailsModal
+          target={selectedBuyerModal}
+          onClose={() => setSelectedBuyerModal(null)}
+          onInspectTxn={(txnId) => {
+            setSelectedTxnId(txnId);
+          }}
+          onInspectSeller={(sellerId) => {
+            setSelectedSellerIdModal(sellerId);
           }}
         />
       )}

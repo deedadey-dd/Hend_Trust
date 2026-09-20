@@ -429,20 +429,20 @@ export default function ShopsDirectoryView() {
 
       {/* SHOP PROMOTION MODAL */}
       {showPromoteModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-md w-full overflow-hidden relative space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-3xl shadow-2xl max-w-md w-full max-h-[90vh] sm:max-h-[85vh] flex flex-col overflow-hidden relative my-auto">
             
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-amber-500 to-orange-600 text-white">
+            <div className="px-5 sm:px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-amber-500 to-orange-600 text-white shrink-0">
               <div className="flex items-center gap-2">
                 <Zap className="h-5 w-5 fill-white" />
                 <h3 className="text-base font-bold">Advertise Your Store</h3>
               </div>
-              <button onClick={() => setShowPromoteModal(false)} className="text-white/80 hover:text-white">
+              <button onClick={() => setShowPromoteModal(false)} className="text-white/80 hover:text-white cursor-pointer">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="p-6 space-y-5">
+            <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1">
               {!user ? (
                 <div className="text-center space-y-4 py-4">
                   <Zap className="h-12 w-12 text-amber-500 mx-auto" />

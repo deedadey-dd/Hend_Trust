@@ -110,19 +110,27 @@ Once delivery is verified, the Buyer Inspection Period commences:
 
 ---
 
-## 8. Disputes, 24-Hour Arbitration & Item Returns
+## 8. Disputes, Dialogue Trail, Retraction & Item Returns
 
-### 8.1 Dispute Initiation
-If a Buyer receives a damaged, defective, or incorrect item, they must click **Raise Dispute** on their tracking page **before the Inspection Period expires**. Raising a dispute freezes escrow funds and halts automated payouts.
+### 8.1 Dispute Initiation & Subsequent Evidence Appending
+If a Buyer receives a damaged, defective, or incorrect item, they must click **Raise Dispute** on their tracking page **before the Inspection Period expires**. Raising a dispute immediately freezes escrow funds and halts automated payouts.
+- **Continuous Dialogue & Evidence Trail**: Both Buyers and Sellers can append subsequent statements, clarifications, and photo evidence to active disputes without overwriting existing history.
+- **Evidence Limit**: Parties can accumulate up to **5 WebP photographic evidence files** throughout the dispute lifecycle.
+- **Transparent Audit**: All statements are recorded with chronological timestamps in the unified WhatsApp-style dispute timeline.
 
 ### 8.2 Arbitration & 24-Hour Settlement
-HendAxis Trust support management will review all uploaded evidence (photos, description, dispatch proof) and issue a **final binding ruling within 24 hours**.
+HendAxis Trust support management will review all uploaded evidence (photos, description, dispatch proof, and dialogue history) and issue a **final binding ruling within 24 hours**.
 
 ### 8.3 Buyer Item Return Obligations (`REQUIRE_RETURN_FROM_BUYER`)
 Where a dispute ruling requires the Buyer to return the item to the Seller:
 1. **Return Dispatch**: The Buyer must ship the item back within the specified return window via Courier (with waybill & tracking number) or Bus transport (with driver phone, car registration, and station details).
 2. **Reverse Pickup OTP**: For bus returns, a **Secret 6-Digit Reverse OTP** is generated. The Seller must inspect the returned parcel and verify the Reverse OTP (or confirm receipt in app) to unlock the full refund payout to the Buyer.
 3. **Auto-Refund Window**: If the Seller receives the returned item but fails to object within 48 hours of return delivery, the system will automatically process the Buyer’s refund.
+
+### 8.4 Dispute Retraction & Private Settlement Policy
+If a Buyer and Seller resolve their grievances privately (e.g., replacement sent, direct discount, or technical assistance), the Buyer may elect to **Retract Dispute** directly via their tracking portal.
+1. **24-Hour Delayed Settlement Window**: Upon dispute retraction, the transaction transitions into `RETRACTED_SETTLING` status. Escrow funds are held for **24 hours** (or the administrative configured settlement period) before releasing to the Seller's wallet. This grace period prevents accidental or coerced retractions.
+2. **Rating Permanently Voided**: Once a dispute is raised—even if subsequently retracted—the Buyer forfeits the ability to submit a merchant satisfaction rating (`rating_voided = True`). This prevents coercive settlement deals made under the threat of negative reviews.
 
 ---
 

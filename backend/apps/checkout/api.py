@@ -26,6 +26,18 @@ class TrackRequestSchema(Schema):
 class TrackByIdSchema(Schema):
     paystack_reference: str
     phone_number: str
+    otp_code: Optional[str] = None
+
+class SendDetailsOtpSchema(Schema):
+    paystack_reference: str
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+
+class VerifyDetailsOtpSchema(Schema):
+    paystack_reference: str
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+    otp_code: str
 
 class VerifyInitializeSchema(Schema):
     link_id: uuid.UUID
@@ -73,6 +85,19 @@ class TransactionStatusSchema(Schema):
     shipping_timeout_days: Optional[int] = 4
     inspection_hours_allowed: Optional[int] = 24
     buyer_review_token: Optional[str] = ""
+    link_id: Optional[str] = ""
+    dispute_retracted_at: Optional[str] = None
+    dispute_retraction_release_hours: Optional[int] = 24
+    has_reviewed: Optional[bool] = False
+    review_overall: Optional[int] = None
+    review_speed: Optional[int] = None
+    review_communication: Optional[int] = None
+    review_comment: Optional[str] = None
+    review_created_at: Optional[str] = None
+    review_updated_at: Optional[str] = None
+    review_edit_count: Optional[int] = 0
+    review_seller_reply: Optional[str] = None
+    review_seller_replied_at: Optional[str] = None
 
 class InitializeResponse(Schema):
     authorization_url: str
@@ -86,13 +111,13 @@ class TrackByPhoneSchema(Schema):
 @rate_limit('checkout_send_otp', max_calls=5, window_seconds=300)
 def send_otp(request, data: SendOtpSchema):
     generate_and_send_otp(data.phone_number)
-    return {"message": "OTP sent to your phone number. Valid for 5 minutes."}
+    return {"message": "OTP sent to your phone number. Valid for 2 hours."}
 
 @checkout_router.post("/send-email-otp", response=MessageResponse)
 @rate_limit('checkout_send_email_otp', max_calls=5, window_seconds=300)
 def send_email_otp(request, data: SendEmailOtpSchema):
     generate_and_send_email_otp(data.email)
-    return {"message": "OTP sent to your email address. Valid for 5 minutes."}
+    return {"message": "OTP sent to your email address. Valid for 2 hours."}
 
 def _build_txn_status_dict(t):
     log = None
@@ -102,6 +127,16 @@ def _build_txn_status_dict(t):
     except Exception as ex:
         print(f"Error fetching delivery_logs: {ex}")
     
+    review = None
+    try:
+        if hasattr(t, 'review') and t.review:
+            review = t.review
+        else:
+            from apps.reviews.models import SellerReview
+            review = SellerReview.objects.filter(transaction=t).first()
+    except Exception as ex:
+        print(f"Error resolving review: {ex}")
+
     refund_val = None
     if t.status in ['REFUNDED', 'CANCELLED']:
         if t.status == 'CANCELLED':
@@ -162,6 +197,19 @@ def _build_txn_status_dict(t):
         "seller_dispute_response": t.seller_dispute_response or None,
         "seller_dispute_photos": t.seller_dispute_photos or [],
         "buyer_review_token": getattr(t, 'buyer_review_token', ''),
+        "link_id": str(t.link.id) if t.link else "",
+        "dispute_retracted_at": t.dispute_retracted_at.isoformat() if t.dispute_retracted_at else None,
+        "dispute_retraction_release_hours": int(cfg.get("dispute_retraction_release_hours", 24)),
+        "has_reviewed": bool(review),
+        "review_overall": review.rating_overall if review else None,
+        "review_speed": review.rating_speed if review else None,
+        "review_communication": review.rating_communication if review else None,
+        "review_comment": review.comment if review else None,
+        "review_created_at": review.created_at.isoformat() if (review and review.created_at) else None,
+        "review_updated_at": review.updated_at.isoformat() if (review and review.updated_at) else None,
+        "review_edit_count": review.edit_count if review else 0,
+        "review_seller_reply": review.seller_reply if (review and review.seller_reply) else None,
+        "review_seller_replied_at": review.seller_replied_at.isoformat() if (review and review.seller_replied_at) else None,
     }
 
 @checkout_router.post("/track", response=list[TransactionStatusSchema])
@@ -169,7 +217,7 @@ def track_orders(request, data: TrackRequestSchema):
     if not verify_otp(data.email, data.otp_code):
         raise HttpError(400, "Invalid or expired OTP.")
     
-    txns = Transaction.objects.filter(buyer_email=data.email).select_related('link', 'link__seller').prefetch_related('delivery_logs').order_by('-created_at')
+    txns = Transaction.objects.filter(buyer_email=data.email).select_related('link', 'link__seller', 'review').prefetch_related('delivery_logs').order_by('-created_at')
     return [_build_txn_status_dict(t) for t in txns]
 
 @checkout_router.post("/track/phone", response=list[TransactionStatusSchema])
@@ -177,32 +225,92 @@ def track_orders_by_phone(request, data: TrackByPhoneSchema):
     if not verify_otp(data.phone_number, data.otp_code):
         raise HttpError(400, "Invalid or expired OTP.")
     
-    txns = Transaction.objects.filter(buyer_phone=data.phone_number).select_related('link', 'link__seller').prefetch_related('delivery_logs').order_by('-created_at')
+    txns = Transaction.objects.filter(buyer_phone=data.phone_number).select_related('link', 'link__seller', 'review').prefetch_related('delivery_logs').order_by('-created_at')
     return [_build_txn_status_dict(t) for t in txns]
 
-@checkout_router.post("/track/id", response=list[TransactionStatusSchema])
-def track_order_by_id(request, data: TrackByIdSchema):
+@checkout_router.post("/track/id/request-otp", response=MessageResponse)
+@rate_limit('checkout_track_id_request_otp', max_calls=5, window_seconds=300)
+def request_track_by_id_otp(request, data: TrackByIdSchema):
     txn = Transaction.objects.filter(
         paystack_reference=data.paystack_reference,
         buyer_phone=data.phone_number
-    ).select_related('link', 'link__seller').prefetch_related('delivery_logs').first()
+    ).first()
+    if not txn:
+        raise HttpError(404, "Order not found. Please verify your Transaction ID and Phone Number.")
+
+    generate_and_send_otp(data.phone_number)
+    return {"message": "OTP sent to your phone number. Valid for 2 hours."}
+
+@checkout_router.post("/track/id", response=list[TransactionStatusSchema])
+def track_order_by_id(request, data: TrackByIdSchema):
+    if not data.otp_code or not verify_otp(data.phone_number, data.otp_code):
+        raise HttpError(400, "Invalid or expired OTP code.")
+
+    txn = Transaction.objects.filter(
+        paystack_reference=data.paystack_reference,
+        buyer_phone=data.phone_number
+    ).select_related('link', 'link__seller', 'review').prefetch_related('delivery_logs').first()
     
     if not txn:
         raise HttpError(404, "Order not found. Please check your Transaction ID and Phone Number.")
         
     return [_build_txn_status_dict(txn)]
 
+@checkout_router.post("/send-details-otp", response=MessageResponse)
+@rate_limit('checkout_send_details_otp', max_calls=5, window_seconds=300)
+def send_details_otp(request, data: SendDetailsOtpSchema):
+    """Send OTP to buyer phone or email to authorize accessing full transaction details."""
+    txn = Transaction.objects.filter(paystack_reference=data.paystack_reference).first()
+    if not txn:
+        raise HttpError(404, "Transaction not found.")
+
+    identifier = (data.phone_number or '').strip() or (data.email or '').strip()
+    if not identifier:
+        identifier = txn.buyer_phone or txn.buyer_email
+
+    if not identifier:
+        raise HttpError(400, "No contact details found for this transaction.")
+
+    # Validate identifier against transaction record
+    if data.phone_number and txn.buyer_phone and txn.buyer_phone.strip() != data.phone_number.strip():
+        raise HttpError(400, "Phone number does not match this transaction record.")
+    if data.email and txn.buyer_email and txn.buyer_email.strip().lower() != data.email.strip().lower():
+        raise HttpError(400, "Email does not match this transaction record.")
+
+    if '@' in identifier:
+        generate_and_send_email_otp(identifier)
+        return {"message": "OTP sent to your email. Valid for 2 hours."}
+    else:
+        generate_and_send_otp(identifier)
+        return {"message": "OTP sent to your phone. Valid for 2 hours."}
+
+@checkout_router.post("/verify-details-otp", response=MessageResponse)
+def verify_details_otp(request, data: VerifyDetailsOtpSchema):
+    """Verify OTP before navigating to full details page."""
+    txn = Transaction.objects.filter(paystack_reference=data.paystack_reference).first()
+    if not txn:
+        raise HttpError(404, "Transaction not found.")
+
+    identifier = (data.phone_number or '').strip() or (data.email or '').strip()
+    if not identifier:
+        identifier = txn.buyer_phone or txn.buyer_email
+
+    if not identifier or not verify_otp(identifier, data.otp_code):
+        raise HttpError(400, "Invalid or expired OTP code.")
+
+    return {"message": "OTP verified successfully."}
+
 @checkout_router.get("/transaction/{reference}", response=TransactionStatusSchema)
 def get_transaction_status(request, reference: str):
     txn = Transaction.objects.filter(
         paystack_reference=reference
-    ).select_related('link', 'link__seller').prefetch_related('delivery_logs').first()
+    ).select_related('link', 'link__seller', 'review').prefetch_related('delivery_logs').first()
 
     if not txn:
         try:
             txn = Transaction.objects.filter(
                 id=reference
-            ).select_related('link', 'link__seller').prefetch_related('delivery_logs').first()
+            ).select_related('link', 'link__seller', 'review').prefetch_related('delivery_logs').first()
         except Exception:
             txn = None
 

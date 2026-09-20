@@ -8,10 +8,11 @@ from apps.escrow.payouts import execute_payout_for_transaction
 def check_expired_inspections():
     """
     Periodic task to automatically complete transactions where the 
-    inspection period has expired without a dispute (using dynamic settings tiers).
+    inspection period or dispute retraction grace period has expired without a dispute.
     """
-    from apps.escrow.api import get_inspection_hours_for_amount
+    from apps.escrow.api import get_inspection_hours_for_amount, get_platform_settings
     now = timezone.now()
+    cfg = get_platform_settings()
     
     transactions = Transaction.objects.filter(
         status=TransactionStatus.INSPECTION_PERIOD,
@@ -20,10 +21,16 @@ def check_expired_inspections():
     
     completed_count = 0
     for transaction in transactions:
-        hours = get_inspection_hours_for_amount(transaction.total_amount_ghs)
-        duration = timedelta(hours=hours)
+        if transaction.dispute_retracted_at:
+            retract_hrs = int(cfg.get("dispute_retraction_release_hours", 24))
+            duration = timedelta(hours=retract_hrs)
+            expiry_time = transaction.dispute_retracted_at + duration
+        else:
+            hours = get_inspection_hours_for_amount(transaction.total_amount_ghs)
+            duration = timedelta(hours=hours)
+            expiry_time = transaction.inspection_starts_at + duration
             
-        if (transaction.inspection_starts_at + duration) <= now:
+        if expiry_time <= now:
             # 1. Update status to completed
             transaction.status = TransactionStatus.COMPLETED
             transaction.save(update_fields=['status', 'updated_at'])

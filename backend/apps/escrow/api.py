@@ -1262,15 +1262,31 @@ def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSc
     if transaction.status in [TransactionStatus.COMPLETED, TransactionStatus.REFUNDED, TransactionStatus.CANCELLED]:
         raise HttpError(400, f"Cannot raise dispute when transaction is in {transaction.status} status.")
     
-    photos = data.photos or []
-    if len(photos) > 5:
-        raise HttpError(400, "Maximum of 5 evidence photos allowed.")
+    new_photos = data.photos or []
+    if len(new_photos) > 5:
+        raise HttpError(400, "Maximum of 5 evidence photos allowed per submission.")
         
-    photos = process_and_optimize_dispute_photos(photos[:5])
+    optimized_new_photos = process_and_optimize_dispute_photos(new_photos[:5])
+    is_subsequent_update = (transaction.status == TransactionStatus.DISPUTED)
+    now_ts = timezone.now().strftime("%b %d, %Y %I:%M %p")
 
-    transaction.status = TransactionStatus.DISPUTED
-    transaction.buyer_dispute_reason = data.reason
-    transaction.buyer_dispute_photos = photos
+    if is_subsequent_update:
+        # Append reason with timestamp
+        if transaction.buyer_dispute_reason:
+            transaction.buyer_dispute_reason = f"{transaction.buyer_dispute_reason}\n\n--- [Buyer Update ({now_ts})] ---\n{data.reason}"
+        else:
+            transaction.buyer_dispute_reason = data.reason
+            
+        # Accumulate photos up to max 5 total
+        existing_photos = transaction.buyer_dispute_photos or []
+        combined_photos = existing_photos + [p for p in optimized_new_photos if p not in existing_photos]
+        transaction.buyer_dispute_photos = combined_photos[:5]
+    else:
+        # Initial dispute
+        transaction.status = TransactionStatus.DISPUTED
+        transaction.buyer_dispute_reason = data.reason
+        transaction.buyer_dispute_photos = optimized_new_photos[:5]
+
     transaction.save(update_fields=['status', 'buyer_dispute_reason', 'buyer_dispute_photos', 'updated_at'])
     
     # Auto-clear/Deactivate any review submitted by the buyer for this transaction
@@ -1285,17 +1301,16 @@ def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSc
     frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
     dash_link = f"{frontend_url}/dashboard?search={transaction.paystack_reference}"
     
-    # SMS (no link to avoid multi-page SMS)
+    action_title = "Dispute Update" if is_subsequent_update else "Dispute Raised"
     s_sms = (
-        f"Dispute Raised: A buyer raised a dispute for order {transaction.paystack_reference} ({transaction.link.title}). "
-        f"Reason: {data.reason}. Please log in to your seller dashboard to review the claim and submit counter evidence."
+        f"{action_title}: Buyer submitted {'additional details' if is_subsequent_update else 'a dispute'} for order {transaction.paystack_reference} ({transaction.link.title}). "
+        f"Details: {data.reason}. Log in to seller dashboard to review."
     )
     
-    # Email (with direct link to dashboard & transaction)
     s_email_body = (
-        f"Action Required: A dispute has been raised by the buyer for order {transaction.paystack_reference} ({transaction.link.title}).\n\n"
-        f"Buyer Claim Reason:\n\"{data.reason}\"\n\n"
-        f"Please log in to your seller dashboard to review the dispute claim, view buyer evidence photos, and submit your counter-evidence or photos.\n\n"
+        f"Action Required: {action_title} on order {transaction.paystack_reference} ({transaction.link.title}).\n\n"
+        f"Buyer Details:\n\"{data.reason}\"\n\n"
+        f"Please log in to your seller dashboard to review the dispute claim, view buyer evidence photos, and submit counter-evidence.\n\n"
         f"Review Dispute Now: {dash_link}"
     )
     
@@ -1307,11 +1322,11 @@ def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSc
     if s_email:
         dispatch_email_task.delay(
             s_email, 
-            f"Action Required: Dispute Raised on Order {transaction.paystack_reference}", 
+            f"{action_title} on Order {transaction.paystack_reference}", 
             s_email_body
         )
     
-    return {"message": "Dispute and evidence photos submitted successfully."}
+    return {"message": "Additional dispute details and evidence photos submitted successfully." if is_subsequent_update else "Dispute and evidence photos submitted successfully."}
 
 @escrow_router.post("/{transaction_id}/seller-dispute-response", response=MessageResponse, auth=JWTCookieAuth())
 def seller_dispute_response(request, transaction_id: uuid.UUID, data: SellerDisputeResponseSchema):
@@ -1322,18 +1337,113 @@ def seller_dispute_response(request, transaction_id: uuid.UUID, data: SellerDisp
     if transaction.status != TransactionStatus.DISPUTED:
         raise HttpError(400, "Transaction is not currently in DISPUTED status.")
         
-    photos = data.photos or []
-    if len(photos) > 5:
-        raise HttpError(400, "Maximum of 5 evidence photos allowed.")
+    new_photos = data.photos or []
+    if len(new_photos) > 5:
+        raise HttpError(400, "Maximum of 5 evidence photos allowed per submission.")
         
-    photos = process_and_optimize_dispute_photos(photos[:5])
+    optimized_new_photos = process_and_optimize_dispute_photos(new_photos[:5])
+    now_ts = timezone.now().strftime("%b %d, %Y %I:%M %p")
 
-    transaction.seller_dispute_response = data.response
-    if photos:
-        transaction.seller_dispute_photos = photos
+    # Append response text with timestamp if previous response exists
+    if transaction.seller_dispute_response:
+        transaction.seller_dispute_response = f"{transaction.seller_dispute_response}\n\n--- [Seller Response ({now_ts})] ---\n{data.response}"
+    else:
+        transaction.seller_dispute_response = data.response
+
+    # Accumulate evidence photos up to max 5 total
+    existing_photos = transaction.seller_dispute_photos or []
+    combined_photos = existing_photos + [p for p in optimized_new_photos if p not in existing_photos]
+    transaction.seller_dispute_photos = combined_photos[:5]
+
     transaction.save(update_fields=['seller_dispute_response', 'seller_dispute_photos', 'updated_at'])
     
-    return {"message": "Response and evidence photos saved."}
+    # Notify Buyer
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from django.conf import settings
+    default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+    frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+    track_link = f"{frontend_url}/l/{transaction.link.id}?reference={transaction.paystack_reference}"
+
+    b_sms = f"Dispute Update: Seller submitted a counter-response on order {transaction.paystack_reference}. Track your order online to review details."
+    b_email_body = (
+        f"Dispute Update: The seller has responded to your dispute on order {transaction.paystack_reference} ({transaction.link.title}).\n\n"
+        f"Seller Response:\n\"{data.response}\"\n\n"
+        f"You can view the full counter-evidence photos and order details online:\n{track_link}"
+    )
+
+    if transaction.buyer_phone:
+        dispatch_sms_task.delay(transaction.buyer_phone, b_sms)
+    if transaction.buyer_email:
+        dispatch_email_task.delay(
+            transaction.buyer_email,
+            f"Dispute Response from Seller - Order {transaction.paystack_reference}",
+            b_email_body
+        )
+
+    return {"message": "Dispute response and evidence photos recorded successfully."}
+
+
+@escrow_router.post("/{transaction_id}/retract-dispute", response=MessageResponse, auth=None)
+def retract_dispute_buyer(request, transaction_id: uuid.UUID):
+    """
+    Allows the buyer to retract their dispute and settle privately with the seller.
+    Funds are scheduled to be released to the seller after the platform's configured grace period (default 24h).
+    Ratings remain voided permanently to prevent review coercion.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    if transaction.status != TransactionStatus.DISPUTED:
+        raise HttpError(400, f"Cannot retract dispute when transaction is in {transaction.status} status.")
+
+    cfg = get_platform_settings()
+    retract_hours = int(cfg.get("dispute_retraction_release_hours", 24))
+
+    now = timezone.now()
+    transaction.status = TransactionStatus.INSPECTION_PERIOD
+    transaction.dispute_retracted_at = now
+    transaction.inspection_starts_at = now
+    transaction.save(update_fields=['status', 'dispute_retracted_at', 'inspection_starts_at', 'updated_at'])
+
+    # Permanently void / deactivate any review
+    if hasattr(transaction, 'review') and transaction.review:
+        transaction.review.is_active = False
+        transaction.review.save(update_fields=['is_active'])
+
+    # Notify Seller
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from django.conf import settings
+    default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+    frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+    dash_link = f"{frontend_url}/dashboard?search={transaction.paystack_reference}"
+
+    seller = transaction.link.seller
+    s_phone = getattr(seller, 'phone_number', None)
+    s_email = getattr(seller, 'email', None)
+
+    s_sms = (
+        f"Dispute Retracted: The buyer has retracted the dispute for order {transaction.paystack_reference}. "
+        f"Funds will be automatically released to your wallet in {retract_hours} hours."
+    )
+    s_email_body = (
+        f"Dispute Retracted & Settled: The buyer has retracted their dispute for order {transaction.paystack_reference} ({transaction.link.title}).\n\n"
+        f"As per escrow policy, the funds will be automatically released and settled to your wallet in {retract_hours} hours.\n\n"
+        f"View Transaction: {dash_link}"
+    )
+
+    if s_phone:
+        dispatch_sms_task.delay(s_phone, s_sms)
+    if s_email:
+        dispatch_email_task.delay(
+            s_email,
+            f"Dispute Retracted on Order {transaction.paystack_reference}",
+            s_email_body
+        )
+
+    # Notify Buyer
+    b_sms = f"Dispute Retracted: You retracted your dispute for order {transaction.paystack_reference}. Funds will be released to the seller in {retract_hours} hours."
+    if transaction.buyer_phone:
+        dispatch_sms_task.delay(transaction.buyer_phone, b_sms)
+
+    return {"message": f"Dispute retracted successfully. Funds will be released to the seller in {retract_hours} hours."}
 
 
 @escrow_router.post("/{transaction_id}/dispatch-return", response=MessageResponse, auth=None)
@@ -1504,6 +1614,7 @@ def get_disputes(request):
             "id": str(t.id),
             "paystack_reference": t.paystack_reference,
             "link_title": t.link.title,
+            "seller_id": str(t.link.seller.id),
             "seller_username": t.link.seller.username,
             "shop_name": t.link.seller.shop_name or f"@{t.link.seller.username}'s Store",
             "seller_email": getattr(t.link.seller, 'email', ''),
@@ -2114,6 +2225,177 @@ def get_buyers_admin(request, search: Optional[str] = None):
         
     return res
 
+
+@admin_router.get("/buyers/intelligence", response=dict)
+@escrow_router.get("/admin/buyers/intelligence", response=dict)
+def get_buyer_intelligence_admin(request, phone: Optional[str] = None, email: Optional[str] = None, user_id: Optional[str] = None):
+    is_admin_user(request)
+    from apps.users.models import User
+    from apps.reviews.models import SellerReview
+
+    query_filters = Q()
+    if phone and phone.strip():
+        clean_phone = phone.strip()
+        query_filters |= Q(buyer_phone__iexact=clean_phone) | Q(buyer_phone__icontains=clean_phone)
+    if email and email.strip():
+        clean_email = email.strip()
+        query_filters |= Q(buyer_email__iexact=clean_email)
+    
+    user_account = None
+    if user_id and user_id.strip():
+        try:
+            user_account = User.objects.filter(id=user_id.strip()).first()
+        except Exception:
+            pass
+    if not user_account:
+        if phone and phone.strip():
+            user_account = User.objects.filter(phone_number__iexact=phone.strip()).first()
+        if not user_account and email and email.strip():
+            user_account = User.objects.filter(email__iexact=email.strip()).first()
+            
+    if user_account:
+        query_filters |= Q(buyer_phone__iexact=user_account.phone_number)
+        if user_account.email:
+            query_filters |= Q(buyer_email__iexact=user_account.email)
+
+    if not query_filters:
+        raise HttpError(400, "Please provide at least a phone number, email address, or user ID to query intelligence.")
+
+    txns = Transaction.objects.filter(query_filters).select_related('link', 'link__seller').prefetch_related('delivery_logs').order_by('-created_at')
+    latest_txn = txns.first()
+    
+    total_orders = txns.count()
+    completed_orders = txns.filter(status=TransactionStatus.COMPLETED).count()
+    active_escrow = txns.filter(status__in=[
+        TransactionStatus.PAYMENT_RECEIVED,
+        TransactionStatus.DELIVERY_IN_PROGRESS,
+        TransactionStatus.INSPECTION_PERIOD,
+        TransactionStatus.RETURN_IN_PROGRESS
+    ]).count()
+    disputed_orders = txns.filter(status=TransactionStatus.DISPUTED).count()
+    all_disputes_raised = txns.filter(Q(buyer_dispute_reason__gt='') | Q(status=TransactionStatus.DISPUTED) | Q(dispute_retracted_at__isnull=False)).count()
+    retracted_disputes = txns.filter(dispute_retracted_at__isnull=False).count()
+    refunded_orders = txns.filter(status=TransactionStatus.REFUNDED).count()
+    cancelled_orders = txns.filter(status=TransactionStatus.CANCELLED).count()
+    total_spent = txns.exclude(status__in=[TransactionStatus.AWAITING_PAYMENT, TransactionStatus.CANCELLED, TransactionStatus.REFUNDED]).aggregate(total=Sum('total_amount_ghs'))['total'] or 0
+
+    dispute_rate_pct = round((all_disputes_raised / total_orders * 100), 1) if total_orders > 0 else 0.0
+
+    # Known unique addresses
+    known_addresses = []
+    seen_addresses = set()
+    for t in txns:
+        if t.shipping_address and t.shipping_address.strip():
+            addr = t.shipping_address.strip()
+            if addr.lower() not in seen_addresses:
+                seen_addresses.add(addr.lower())
+                known_addresses.append(addr)
+
+    # Reviews submitted by this buyer
+    review_filters = Q()
+    if phone and phone.strip():
+        review_filters |= Q(buyer_phone__iexact=phone.strip())
+    if user_account and user_account.phone_number:
+        review_filters |= Q(buyer_phone__iexact=user_account.phone_number)
+    
+    reviews_given = []
+    if review_filters:
+        rev_qs = SellerReview.objects.filter(review_filters).select_related('seller').order_by('-created_at')[:20]
+        for r in rev_qs:
+            reviews_given.append({
+                "id": str(r.id),
+                "seller_username": r.seller.username,
+                "shop_name": r.seller.shop_name or f"@{r.seller.username}",
+                "rating_overall": float(r.rating_overall),
+                "rating_speed": float(r.rating_speed),
+                "rating_communication": float(r.rating_communication),
+                "comment": r.comment,
+                "created_at": r.created_at.isoformat(),
+                "edit_count": r.edit_count,
+            })
+
+    # Recent Transactions
+    recent_transactions = []
+    for t in txns[:25]:
+        log = t.delivery_logs.order_by('-created_at').first()
+        recent_transactions.append({
+            "id": str(t.id),
+            "paystack_reference": t.paystack_reference,
+            "title": t.link.title,
+            "seller_id": str(t.link.seller.id),
+            "seller_username": t.link.seller.username,
+            "shop_name": t.link.seller.shop_name or f"@{t.link.seller.username}'s Store",
+            "amount_ghs": float(t.total_amount_ghs),
+            "status": t.status,
+            "has_dispute": bool(t.buyer_dispute_reason or t.status == TransactionStatus.DISPUTED or t.dispute_retracted_at),
+            "dispute_retracted": bool(t.dispute_retracted_at),
+            "created_at": t.created_at.isoformat(),
+            "shipping_address": t.shipping_address,
+            "delivery_method": log.delivery_method if log else None,
+            "courier_name": log.courier_name if log else None,
+        })
+
+    # Dispute History
+    disputes_history = []
+    for t in txns.filter(Q(buyer_dispute_reason__gt='') | Q(status=TransactionStatus.DISPUTED) | Q(dispute_retracted_at__isnull=False)):
+        disputes_history.append({
+            "id": str(t.id),
+            "paystack_reference": t.paystack_reference,
+            "title": t.link.title,
+            "seller_id": str(t.link.seller.id),
+            "seller_username": t.link.seller.username,
+            "shop_name": t.link.seller.shop_name or f"@{t.link.seller.username}",
+            "amount_ghs": float(t.total_amount_ghs),
+            "status": t.status,
+            "buyer_dispute_reason": t.buyer_dispute_reason,
+            "seller_dispute_response": t.seller_dispute_response,
+            "manager_dispute_notes": t.manager_dispute_notes,
+            "dispute_retracted_at": t.dispute_retracted_at.isoformat() if t.dispute_retracted_at else None,
+            "created_at": t.created_at.isoformat(),
+        })
+
+    user_data = None
+    if user_account:
+        user_data = {
+            "id": str(user_account.id),
+            "username": user_account.username,
+            "email": user_account.email,
+            "phone_number": user_account.phone_number,
+            "role": user_account.role,
+            "is_active": user_account.is_active,
+            "is_suspended": getattr(user_account, 'is_suspended', False),
+            "verification_status": getattr(user_account, 'verification_status', 'UNSUBMITTED'),
+            "is_email_verified": getattr(user_account, 'is_email_verified', False),
+            "is_phone_verified": getattr(user_account, 'is_phone_verified', False),
+            "date_joined": user_account.date_joined.isoformat() if user_account.date_joined else None,
+        }
+
+    return {
+        "buyer_name": user_account.get_full_name() if (user_account and user_account.get_full_name()) else (latest_txn.buyer_name if latest_txn else (user_account.username if user_account else 'Verified Buyer')),
+        "buyer_phone": phone or (user_account.phone_number if user_account else (latest_txn.buyer_phone if latest_txn else '')),
+        "buyer_email": email or (user_account.email if user_account else (latest_txn.buyer_email if latest_txn else '')),
+        "is_registered_user": bool(user_account),
+        "user_account": user_data,
+        "summary": {
+            "total_orders": total_orders,
+            "completed_orders": completed_orders,
+            "active_escrow_orders": active_escrow,
+            "disputed_orders": disputed_orders,
+            "all_disputes_raised_count": all_disputes_raised,
+            "retracted_disputes_count": retracted_disputes,
+            "refunded_orders": refunded_orders,
+            "cancelled_orders": cancelled_orders,
+            "dispute_rate_pct": dispute_rate_pct,
+            "total_spent_ghs": float(total_spent),
+            "first_order_at": txns.last().created_at.isoformat() if txns.exists() else None,
+            "last_order_at": latest_txn.created_at.isoformat() if latest_txn else None,
+            "known_shipping_addresses": known_addresses,
+        },
+        "recent_transactions": recent_transactions,
+        "disputes_history": disputes_history,
+        "reviews_given": reviews_given,
+    }
+
 @admin_router.post("/broadcast-message")
 def broadcast_message_admin(request, data: BroadcastMessageSchema):
     is_admin_user(request)
@@ -2485,6 +2767,7 @@ DEFAULT_SYSTEM_SETTINGS = {
     "dispute_alert_threshold": 20.0,
     "dispute_warning_threshold": 30.0,
     "dispute_suspension_threshold": 40.0,
+    "dispute_retraction_release_hours": 24,
     # Seller Dispatch Expiry Governance Thresholds
     "dispatch_expiry_warning_threshold": 20.0,
     "dispatch_expiry_suspension_threshold": 35.0,
@@ -2546,6 +2829,7 @@ class PublicPlatformSettingsSchema(Schema):
     dispute_alert_threshold: float = 20.0
     dispute_warning_threshold: float = 30.0
     dispute_suspension_threshold: float = 40.0
+    dispute_retraction_release_hours: int = 24
     dispatch_expiry_warning_threshold: float = 20.0
     dispatch_expiry_suspension_threshold: float = 35.0
 
@@ -2571,6 +2855,7 @@ class PlatformSettingsSchema(Schema):
     dispute_alert_threshold: float = 20.0
     dispute_warning_threshold: float = 30.0
     dispute_suspension_threshold: float = 40.0
+    dispute_retraction_release_hours: int = 24
     dispatch_expiry_warning_threshold: float = 20.0
     dispatch_expiry_suspension_threshold: float = 35.0
     django_admin_url: Optional[str] = 'admin/'

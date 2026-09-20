@@ -18,6 +18,8 @@ export interface RecentReview {
   seller_reply?: string;
   seller_replied_at?: string;
   created_at: string;
+  updated_at?: string;
+  edit_count?: number;
   item_title: string;
   item_image_url?: string;
   upvotes_count: number;
@@ -72,6 +74,11 @@ export default function TrustpilotReviewCard({ review, onOpenModal }: Trustpilot
             </h3>
             <div className="mt-1 flex items-center gap-2">
               {renderStars(review.rating_overall)}
+              {(review.edit_count || 0) > 0 && (
+                <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-1.5 py-0.2 rounded border border-blue-200 dark:border-blue-800">
+                  Edited {review.edit_count}x
+                </span>
+              )}
             </div>
           </div>
         </div>

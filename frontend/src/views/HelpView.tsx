@@ -104,6 +104,36 @@ const FAQS: FAQItem[] = [
     category: 'LOGISTICS',
     question: 'Why is there a 60-second countdown when requesting a Delivery Confirmation Code?',
     answer: 'To protect users from SMS spam and reduce transaction costs, a 60-second cooldown is enforced between confirmation SMS requests. The initial OTP sent remains valid and active during the cooldown period so you can confirm receipt without waiting for duplicate messages.'
+  },
+  {
+    id: 'faq-16',
+    category: 'LOGISTICS',
+    question: 'How do I track my package using the 2-Step OTP verification?',
+    answer: 'To protect buyer privacy and prevent unauthorized access, parcel tracking (both Single Order ID and Full Order History) requires entering your phone number and verifying a 6-digit OTP. Once verified, your session remains unlocked for 2 hours, granting instant access to package details, live waybills, and all order actions ("View Full Details", "+ Add Dispute Details", "Confirm Receipt", "⭐ Rate Seller") with zero repetitive popups.'
+  },
+  {
+    id: 'faq-17',
+    category: 'DISPUTES',
+    question: 'Can I add more statements or photos after opening a dispute?',
+    answer: 'Yes! Both buyers and sellers can append ongoing follow-up messages and accumulate up to 5 WebP photo evidence files throughout an active dispute. All messages are logged chronologically in a WhatsApp-style chat timeline with color-coded buyer and seller cards visible to all parties and platform arbitrators.'
+  },
+  {
+    id: 'faq-18',
+    category: 'DISPUTES',
+    question: 'What is Dispute Retraction and how does private settlement work?',
+    answer: 'If you resolve your grievance privately with the seller (e.g., they send a replacement item or direct discount), you can click "Retract Dispute / Settle Privately" on your order tracking portal. Escrow funds enter a 24-hour delayed settlement hold before releasing to the seller to ensure safety against accidental clicks. Once a dispute has been opened, customer rating capabilities are permanently voided for that transaction.'
+  },
+  {
+    id: 'faq-19',
+    category: 'BUYERS',
+    question: 'Can I edit my seller review, and are review updates tracked?',
+    answer: 'Yes! Buyers can update their verified review rating and comments at any time. To preserve review integrity and prevent deceptive manipulation, all reviews stamp update counts and timestamps (e.g. "Edited 2 times • Last edited on [Date]"), ensuring transparent auditing for shoppers and store owners.'
+  },
+  {
+    id: 'faq-20',
+    category: 'DISPUTES',
+    question: 'How do Arbiters investigate disputes fairly?',
+    answer: 'Platform arbiters have access to 360° intelligence dossiers on both parties. Arbiters inspect seller storefront history, lifetime GMV, dispute health triggers, and review ratings. Simultaneously, arbiters analyze buyer intelligence (queried by phone or email) including lifetime order volume, dispute rate %, serial disputer indicators, and historical claim trails to issue fair, evidence-based escrow rulings.'
   }
 ];
 

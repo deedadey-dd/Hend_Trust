@@ -39,6 +39,9 @@ class TransactionReviewDetailSchema(Schema):
     rating_overall: int = 5
     comment: str = ""
     review_id: Optional[str] = None
+    edit_count: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 class SellerReplySchema(Schema):
     reply: str
@@ -62,6 +65,8 @@ class RecentReviewItemSchema(Schema):
     seller_reply: Optional[str] = ""
     seller_replied_at: Optional[str] = None
     created_at: str
+    updated_at: Optional[str] = None
+    edit_count: int = 0
     item_title: str
     item_image_url: Optional[str] = ""
     upvotes_count: int
@@ -79,6 +84,8 @@ class ReviewItemSchema(Schema):
     seller_reply: Optional[str] = ""
     seller_replied_at: Optional[str] = None
     created_at: str
+    updated_at: Optional[str] = None
+    edit_count: int = 0
     item_title: str
     item_image_url: Optional[str] = ""
     upvotes_count: int = 0
@@ -113,8 +120,8 @@ def submit_seller_review(request, data: SubmitReviewSchema):
     if transaction.status in [TransactionStatus.CANCELLED, TransactionStatus.REFUNDED]:
         raise HttpError(400, "Cannot review a cancelled or refunded transaction.")
         
-    if transaction.status == TransactionStatus.DISPUTED:
-        raise HttpError(400, "Cannot submit review while transaction is in dispute.")
+    if transaction.status == TransactionStatus.DISPUTED or bool(transaction.buyer_dispute_reason) or transaction.dispute_retracted_at:
+        raise HttpError(400, "Seller reviews are permanently disabled for transactions where a dispute was initiated.")
 
     if transaction.status not in [TransactionStatus.INSPECTION_PERIOD, TransactionStatus.COMPLETED]:
         raise HttpError(400, "Reviews unlock once the package is delivered and inspection begins.")
@@ -123,26 +130,45 @@ def submit_seller_review(request, data: SubmitReviewSchema):
         if val < 1 or val > 5:
             raise HttpError(400, f"{field} must be between 1 and 5 stars.")
 
-    review, created = SellerReview.objects.update_or_create(
-        transaction=transaction,
-        defaults={
-            'seller': transaction.link.seller,
-            'buyer_name': transaction.buyer_name,
-            'buyer_phone': transaction.buyer_phone,
-            'rating_speed': data.rating_speed,
-            'rating_communication': data.rating_communication,
-            'rating_overall': data.rating_overall,
-            'comment': data.comment or "",
-            'image_url': data.image_url or "",
-            'is_active': True
-        }
-    )
+    existing_review = SellerReview.objects.filter(transaction=transaction).first()
+    if existing_review:
+        existing_review.seller = transaction.link.seller
+        existing_review.buyer_name = transaction.buyer_name
+        existing_review.buyer_phone = transaction.buyer_phone
+        existing_review.rating_speed = data.rating_speed
+        existing_review.rating_communication = data.rating_communication
+        existing_review.rating_overall = data.rating_overall
+        existing_review.comment = data.comment or ""
+        existing_review.image_url = data.image_url or ""
+        existing_review.is_active = True
+        existing_review.edit_count = (existing_review.edit_count or 0) + 1
+        existing_review.save()
+        review = existing_review
+        created = False
+    else:
+        review = SellerReview.objects.create(
+            transaction=transaction,
+            seller=transaction.link.seller,
+            buyer_name=transaction.buyer_name,
+            buyer_phone=transaction.buyer_phone,
+            rating_speed=data.rating_speed,
+            rating_communication=data.rating_communication,
+            rating_overall=data.rating_overall,
+            comment=data.comment or "",
+            image_url=data.image_url or "",
+            is_active=True,
+            edit_count=0
+        )
+        created = True
 
-    action = "created" if created else "updated"
+    action = "created" if created else f"updated ({review.edit_count} time{'s' if review.edit_count > 1 else ''})"
     return {
         "message": f"Thank you! Your rating and review have been {action} on the seller's storefront profile.",
         "review_id": str(review.id),
-        "review_token": transaction.buyer_review_token
+        "review_token": transaction.buyer_review_token,
+        "edit_count": review.edit_count,
+        "created_at": review.created_at.isoformat(),
+        "updated_at": review.updated_at.isoformat()
     }
 
 @reviews_router.get("/transaction-review/{paystack_reference}", response=TransactionReviewDetailSchema, auth=None)
@@ -168,6 +194,9 @@ def get_transaction_review_detail(request, paystack_reference: str, token: Optio
         "rating_overall": review.rating_overall if review else 5,
         "comment": review.comment if review else "",
         "review_id": str(review.id) if review else None,
+        "edit_count": review.edit_count if review else 0,
+        "created_at": review.created_at.isoformat() if review and review.created_at else None,
+        "updated_at": review.updated_at.isoformat() if review and review.updated_at else None,
     }
 
 @reviews_router.post("/request-edit-link", response=dict, auth=None)
@@ -257,6 +286,8 @@ def get_seller_storefront(request, identifier: str):
             "seller_reply": r.seller_reply,
             "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
             "created_at": r.created_at.isoformat(),
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "edit_count": r.edit_count or 0,
             "item_title": r.transaction.link.title if (r.transaction and r.transaction.link) else "Item Purchase",
             "item_image_url": r.image_url or (r.transaction.link.image_url if (r.transaction and r.transaction.link) else ""),
             "upvotes_count": r.upvotes_count,
@@ -658,6 +689,8 @@ def get_recent_reviews_feed(request, limit: int = 15):
             "seller_reply": r.seller_reply,
             "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
             "created_at": r.created_at.isoformat(),
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "edit_count": r.edit_count or 0,
             "item_title": item_title,
             "item_image_url": item_image_url,
             "upvotes_count": r.upvotes_count,

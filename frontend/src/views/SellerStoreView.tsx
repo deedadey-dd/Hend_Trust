@@ -17,6 +17,8 @@ interface ReviewItem {
   seller_reply?: string;
   seller_replied_at?: string;
   created_at: string;
+  updated_at?: string;
+  edit_count?: number;
   item_title: string;
   item_image_url?: string;
   upvotes_count?: number;
@@ -439,8 +441,13 @@ export default function SellerStoreView() {
                             <span className="text-gray-600 dark:text-slate-300 truncate">
                               Purchased: <strong className="font-bold text-gray-900 dark:text-white">{r.item_title}</strong>
                             </span>
-                            <span className="italic text-gray-500 dark:text-slate-400 shrink-0 text-[11px]">
+                            <span className="italic text-gray-500 dark:text-slate-400 shrink-0 text-[11px] flex items-center gap-1.5">
                               {new Date(r.created_at).toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' })}
+                              {(r.edit_count || 0) > 0 && (
+                                <span className="font-semibold text-blue-500 dark:text-blue-400 not-italic">
+                                  (Edited {r.edit_count}x)
+                                </span>
+                              )}
                             </span>
                           </div>
 
