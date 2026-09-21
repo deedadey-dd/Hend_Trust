@@ -28,8 +28,12 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Seller Default Penalty**: The defaulting seller is charged a **Non-Dispatch Default Penalty** equal to the **Platform Fee + 1.95% gateway processing fee**.
 
 ### 3. Payment Link Generation & Dynamic Fee Handling
-- **Link Creation**: Sellers create payment links specifying price, shipping fee, description, and fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`). Blocked with an interactive appeal modal if seller is suspended.
-- **Dynamic Fee Transparency**: Platform fees are calculated transparently in GHS and displayed in real-time.
+- **Link Creation**: Sellers create payment links specifying item price, shipping fee, description, and fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`). Blocked with an interactive appeal modal if seller is suspended.
+- **Dynamic Fee Transparency**: Platform fees are calculated transparently in GHS and displayed in real-time across checkout and public tools:
+  - **Platform Escrow Protection Fee**: $(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$
+  - **Payment Gateway Processing Fee**: $\text{Gross Amount} \times 1.95\%$ (Paystack transfer/processing fee)
+- **Interactive Fee Calculator & Floating Widget**: Public users and merchants can calculate exact buyer costs and net seller payouts on `/how-it-works` or via the interactive floating widget on the home page.
+- **Embeddable Trust Badges & Referral System**: Merchants can embed live JS/React trust badges (`/badge/:username.js`) on their external sites and earn referral rewards via `/dashboard` referrals tab.
 
 ### 4. Dual Logistics Verification Engine & Upfront OTP Tracking
 - **Upfront 2-Step OTP Tracking (`/tracking`)**: Both single item tracking ("Track by Order ID") and full order history tracking require upfront 6-digit OTP verification (valid for 2 hours with 60s cooldown). Once verified, the order unlocks completely with zero secondary popups.

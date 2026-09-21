@@ -4,7 +4,7 @@ from unittest.mock import patch
 from django.utils import timezone
 from datetime import timedelta
 
-from apps.users.models import User
+from apps.users.models import User, Role
 from apps.links.models import PaymentLink, FeeHandling
 from apps.escrow.models import Transaction, TransactionStatus
 from apps.escrow.api import resolve_dispute_admin, dispatch_return, seller_confirm_return
@@ -58,6 +58,7 @@ class MockAdminRequest:
     def __init__(self, user):
         self.user = user
         self.user.is_staff = True
+        self.user.role = Role.ARBITER
         self.auth = True
 
 

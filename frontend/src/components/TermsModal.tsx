@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { ShieldCheck, X, FileText, Lock, AlertTriangle, Scale, CheckCircle2, Search } from 'lucide-react';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 interface TermsModalProps {
   isOpen: boolean;
@@ -14,6 +15,7 @@ export const TermsModal: React.FC<TermsModalProps> = ({
   onAccept,
   showAcceptButton = false,
 }) => {
+  useEscapeKey(onClose, isOpen);
   const [searchQuery, setSearchQuery] = useState('');
 
   if (!isOpen) return null;

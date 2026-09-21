@@ -3,7 +3,8 @@ import { useSearchParams } from 'react-router-dom';
 import { 
   Search, Filter, Package, CheckCircle, 
   Printer, X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
-  ShieldAlert, MapPin, Copy, Lock, ZoomIn, Archive, ArchiveRestore, MessageSquare
+  ShieldAlert, MapPin, Copy, Lock, ZoomIn, Archive, ArchiveRestore, MessageSquare,
+  Gift, Award
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -12,6 +13,9 @@ import { ExportButton } from '../components/ExportButton';
 import type { ExportColumn } from '../utils/exportUtils';
 import { ImageLightboxModal } from '../components/ImageLightboxModal';
 import DisputeChatTimeline from '../components/DisputeChatTimeline';
+import ReferralDashboardTab from '../components/ReferralDashboardTab';
+import EmbeddableTrustBadge from '../components/EmbeddableTrustBadge';
+import { useAuthStore } from '../store/authStore';
 
 const merchantTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -970,6 +974,10 @@ interface SellerMetrics {
 
 export default function DashboardView() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const { user } = useAuthStore();
+  const [activeTab, setActiveTab] = useState<'transactions' | 'referrals' | 'badges'>(
+    (searchParams.get('tab') as any) || 'transactions'
+  );
   const [txns, setTxns] = useState<SellerTxn[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -1198,30 +1206,103 @@ export default function DashboardView() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      <div className="sm:flex sm:items-center sm:justify-between mb-6 print:hidden">
-        <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Transactions Dashboard</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
-            Manage your escrow sales, track active order payouts, print parcel tags, and manage deliveries.
-          </p>
-        </div>
-        <div className="mt-4 sm:mt-0 flex items-center gap-2">
-          <ExportButton
-            filename={`merchant_transactions_${new Date().toISOString().split('T')[0]}`}
-            title="Merchant Transactions Escrow Report"
-            headers={merchantTxnExportHeaders}
-            data={txns}
-            sheetName="Transactions"
-            label="Export Sales Report"
-          />
-          <button
-            onClick={handlePrint}
-            className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-          >
-            <Printer className="w-3.5 h-3.5" /> Print Page
-          </button>
-        </div>
+      {/* ─── MERCHANT NAVIGATION TABS ─────────────────────────────────────────── */}
+      <div className="flex items-center gap-2 mb-6 border-b border-gray-200 dark:border-slate-800 pb-3 overflow-x-auto print:hidden">
+        <button
+          type="button"
+          onClick={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set('tab', 'transactions');
+            setSearchParams(params);
+            setActiveTab('transactions');
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'transactions'
+              ? 'bg-blue-600 !text-white shadow-md'
+              : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Package className="h-4 w-4" />
+          Transactions & Escrows
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set('tab', 'referrals');
+            setSearchParams(params);
+            setActiveTab('referrals');
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'referrals'
+              ? 'bg-blue-600 !text-white shadow-md'
+              : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Gift className="h-4 w-4 text-emerald-400" />
+          Referrals & Cash Rewards
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set('tab', 'badges');
+            setSearchParams(params);
+            setActiveTab('badges');
+          }}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+            activeTab === 'badges'
+              ? 'bg-blue-600 !text-white shadow-md'
+              : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+          }`}
+        >
+          <Award className="h-4 w-4 text-amber-400" />
+          Trust Badges & Proof
+        </button>
       </div>
+
+      {activeTab === 'referrals' && <ReferralDashboardTab />}
+
+      {activeTab === 'badges' && (
+        <div className="space-y-6">
+          <div className="bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm">
+            <h2 className="text-xl font-bold text-gray-900 dark:text-white mb-2">Merchant Trust Badges & Social Proof</h2>
+            <p className="text-sm text-gray-600 dark:text-slate-400">
+              Embed verified trust badges on your Instagram Bio, WhatsApp catalog, website, or Shopify store to boost buyer confidence and conversion rate.
+            </p>
+          </div>
+          <EmbeddableTrustBadge username={user?.username || ''} />
+        </div>
+      )}
+
+      {activeTab === 'transactions' && (
+        <>
+          <div className="sm:flex sm:items-center sm:justify-between mb-6 print:hidden">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Transactions Dashboard</h1>
+              <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+                Manage your escrow sales, track active order payouts, print parcel tags, and manage deliveries.
+              </p>
+            </div>
+            <div className="mt-4 sm:mt-0 flex items-center gap-2">
+              <ExportButton
+                filename={`merchant_transactions_${new Date().toISOString().split('T')[0]}`}
+                title="Merchant Transactions Escrow Report"
+                headers={merchantTxnExportHeaders}
+                data={txns}
+                sheetName="Transactions"
+                label="Export Sales Report"
+              />
+              <button
+                onClick={handlePrint}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
+              >
+                <Printer className="w-3.5 h-3.5" /> Print Page
+              </button>
+            </div>
+          </div>
 
       {/* ─── SELLER DISPUTE HEALTH & ACCOUNT SUSPENSION BANNERS ───────────────── */}
       {metrics?.dispute_health && (
@@ -1892,6 +1973,8 @@ export default function DashboardView() {
           </div>
         )}
       </div>
+        </>
+      )}
 
       {/* Dispatch Modal */}
       {dispatchTxn && (

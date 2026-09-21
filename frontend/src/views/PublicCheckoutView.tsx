@@ -3,7 +3,8 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   ShieldCheck, Truck, ArrowRight, Loader2,
-  CheckCircle, Clock, AlertTriangle, X, KeyRound, Store, ZoomIn
+  CheckCircle, Clock, AlertTriangle, X, KeyRound, Store, ZoomIn,
+  Gift, Sparkles, Tag, RefreshCw, Check
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -12,6 +13,7 @@ import TermsModal from '../components/TermsModal';
 import ImageLightboxModal from '../components/ImageLightboxModal';
 import DisputeChatTimeline from '../components/DisputeChatTimeline';
 import { saveReviewToken } from '../utils/reviewStorage';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 
 interface LinkData {
@@ -69,6 +71,14 @@ interface TxnDetail {
   review_edit_count?: number;
   review_seller_reply?: string;
   review_seller_replied_at?: string;
+  price_ghs?: number;
+  shipping_fee_ghs?: number;
+  platform_fee_ghs?: number;
+  base_platform_fee_ghs?: number;
+  promo_discount_ghs?: number;
+  credit_discount_ghs?: number;
+  promo_code_applied?: string;
+  fee_handling?: string;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -147,6 +157,11 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
 
   // OTP Resend Cooldown (60 seconds)
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEscapeKey(() => setShowConfirmModal(false), showConfirmModal);
+  useEscapeKey(() => setShowDisputeModal(false), showDisputeModal);
+  useEscapeKey(() => setShowRetractModal(false), showRetractModal);
+  useEscapeKey(() => setShowRatingModal(false), showRatingModal);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -276,9 +291,57 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
           </div>
 
           <div className="p-6 space-y-3 text-sm">
+            {txn.price_ghs !== undefined && (
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/70 dark:border-slate-800 space-y-2.5 text-xs mb-3">
+                <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                  <span className="font-medium">Item Price</span>
+                  <span className="font-bold text-slate-900 dark:text-white">GHS {Number(txn.price_ghs).toFixed(2)}</span>
+                </div>
+                {Number(txn.shipping_fee_ghs || 0) > 0 && (
+                  <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                    <span className="flex items-center gap-1 font-medium"><Truck className="h-3.5 w-3.5 text-blue-500" /> Shipping Fee</span>
+                    <span className="font-bold text-slate-900 dark:text-white">GHS {Number(txn.shipping_fee_ghs).toFixed(2)}</span>
+                  </div>
+                )}
+                {txn.fee_handling === 'PASS_TO_BUYER' ? (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-700">
+                    <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                      <span className="flex items-center gap-1 font-medium"><ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection Fee</span>
+                      <span className={(txn.promo_discount_ghs || 0) > 0 || (txn.credit_discount_ghs || 0) > 0 ? 'line-through text-slate-400 text-[11px]' : 'font-bold'}>
+                        GHS {Number(txn.base_platform_fee_ghs || (Number(txn.price_ghs + (txn.shipping_fee_ghs || 0)) * 0.015 + 10)).toFixed(2)}
+                      </span>
+                    </div>
+                    {(txn.promo_discount_ghs || 0) > 0 && (
+                      <div className="flex justify-between items-center text-purple-600 dark:text-purple-400 pl-4 font-semibold text-[11px]">
+                        <span className="flex items-center gap-1"><Tag className="h-3 w-3" /> Promo Code ({txn.promo_code_applied})</span>
+                        <span>- GHS {Number(txn.promo_discount_ghs).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {(txn.credit_discount_ghs || 0) > 0 && (
+                      <div className="flex justify-between items-center text-amber-600 dark:text-amber-400 pl-4 font-semibold text-[11px]">
+                        <span className="flex items-center gap-1"><Sparkles className="h-3 w-3" /> Loyalty Reward Credit Absorbed</span>
+                        <span>- GHS {Number(txn.credit_discount_ghs).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {((txn.promo_discount_ghs || 0) > 0 || (txn.credit_discount_ghs || 0) > 0) && (
+                      <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 pl-4 font-bold text-[11px] pt-0.5">
+                        <span>Net Escrow Fee Paid</span>
+                        <span>{Number(txn.platform_fee_ghs || 0) === 0 ? 'GHS 0.00 (100% Subsidized)' : `GHS ${Number(txn.platform_fee_ghs).toFixed(2)}`}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 pt-2 border-t border-slate-200/70 dark:border-slate-700 font-semibold text-xs">
+                    <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Escrow Protection</span>
+                    <span className="bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 text-[10px]">Covered by Seller</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-between py-2 border-b border-gray-100 dark:border-slate-800">
-              <span className="text-gray-500 dark:text-slate-400">Amount Paid</span>
-              <span className="font-semibold text-gray-900 dark:text-slate-100">GHS {Number(txn.total_amount_ghs || 0).toFixed(2)}</span>
+              <span className="text-gray-500 dark:text-slate-400 font-medium">Total Paid</span>
+              <span className="font-extrabold text-emerald-700 dark:text-emerald-400 text-base">GHS {Number(txn.total_amount_ghs || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-gray-100 dark:border-slate-800">
               <span className="text-gray-500 dark:text-slate-400">Email</span>
@@ -619,10 +682,38 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
             </ul>
 
             <p className="text-xs text-amber-600 dark:text-amber-400 italic">
-              Once you confirm receipt, a {txn.total_amount_ghs >= 10000 ? '72' : txn.total_amount_ghs >= 2000 ? '48' : '24'}-hour inspection window opens. Raise a dispute before it expires if there is a problem.
+              Once you confirm receipt, an inspection window opens. Raise a dispute before it expires if there is a problem.
             </p>
           </div>
         )}
+
+        {/* Refer & Earn Callout for Buyers */}
+        <div className="bg-gradient-to-r from-indigo-900/40 via-purple-900/30 to-indigo-950/50 border border-indigo-500/30 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shrink-0">
+              <Gift className="w-6 h-6 text-amber-400" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black text-white flex items-center gap-2">
+                Refer Friends & Get GH₵ 10.00 Credits!
+                <span className="bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                  Zero Spam
+                </span>
+              </h4>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Protect fellow buyers in Ghana with HendAxis Trust escrow and earn fee discounts on your future orders.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/referrals"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Claim Your Referral Link
+          </a>
+        </div>
 
         <p className="text-center text-xs text-gray-400 dark:text-slate-500 pb-4">
           Bookmark this page to track your delivery status. Reference: {txRef}
@@ -866,10 +957,21 @@ export default function PublicCheckoutView() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
 
+  // Platform Settings & Promotions state
+  const [publicSettings, setPublicSettings] = useState<any>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [applyBuyerCredit, setApplyBuyerCredit] = useState(false);
+  const [promoSimulation, setPromoSimulation] = useState<any>(null);
+  const [isValidatingPromo, setIsValidatingPromo] = useState(false);
+  const [promoMessage, setPromoMessage] = useState('');
+  const [promoError, setPromoError] = useState('');
+
   // OTP state
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otp, setOtp] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  useEscapeKey(() => setShowOtpModal(false), showOtpModal);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -881,8 +983,14 @@ export default function PublicCheckoutView() {
             saveReviewToken(res.data.paystack_reference, res.data.buyer_review_token);
           }
         } else {
-          const res = await axios.get(`/api/v1/links/${linkId}`);
-          setLink(res.data);
+          const [linkRes, settingsRes] = await Promise.all([
+            axios.get(`/api/v1/links/${linkId}`),
+            axios.get('/api/v1/escrow/public-settings').catch(() => ({ data: null }))
+          ]);
+          setLink(linkRes.data);
+          if (settingsRes?.data) {
+            setPublicSettings(settingsRes.data);
+          }
         }
       } catch (err: any) {
         const backendMessage = err.response?.data?.message || err.response?.data?.detail;
@@ -893,6 +1001,56 @@ export default function PublicCheckoutView() {
     };
     if (linkId) fetchData();
   }, [linkId, txRef]);
+
+  const validatePromoDiscount = async (codeToUse?: string, useCredit?: boolean, phoneToUse?: string) => {
+    if (!linkId) return;
+    const code = codeToUse !== undefined ? codeToUse : promoCode;
+    const credit = useCredit !== undefined ? useCredit : applyBuyerCredit;
+    const targetPhone = phoneToUse !== undefined ? phoneToUse : phone;
+    
+    if (!code.trim() && !credit && !targetPhone.trim()) {
+      setPromoSimulation(null);
+      setPromoMessage('');
+      setPromoError('');
+      return;
+    }
+
+    setIsValidatingPromo(true);
+    setPromoError('');
+    setPromoMessage('');
+
+    try {
+      const res = await axios.post('/api/v1/checkout/validate-promo', {
+        link_id: linkId,
+        promo_code: code.trim() || undefined,
+        phone_number: targetPhone.trim() || undefined,
+        apply_buyer_credit: credit,
+        redeem_credit_ghs: credit ? 999999.0 : 0.0
+      });
+
+      setPromoSimulation(res.data);
+
+      if (res.data.promo_error) {
+        setPromoError(res.data.promo_error);
+        if (res.data.promo_discount_ghs <= 0 && res.data.credit_discount_ghs <= 0) {
+          setPromoMessage('');
+        }
+      } else if (res.data.promo_discount_ghs > 0 || res.data.credit_discount_ghs > 0) {
+        if (res.data.promo_code_applied && res.data.credit_discount_ghs > 0) {
+          setPromoMessage(`Promo code "${res.data.promo_code_applied}" (-GHS ${res.data.promo_discount_ghs.toFixed(2)}) and loyalty credit (-GHS ${res.data.credit_discount_ghs.toFixed(2)}) applied!`);
+        } else if (res.data.promo_code_applied) {
+          setPromoMessage(`Promo code "${res.data.promo_code_applied}" applied (-GHS ${res.data.promo_discount_ghs.toFixed(2)})!`);
+        } else {
+          setPromoMessage(`Buyer loyalty credit applied (-GHS ${res.data.credit_discount_ghs.toFixed(2)})!`);
+        }
+      }
+    } catch (err: any) {
+      setPromoError(err.response?.data?.detail || err.response?.data?.message || 'Failed to validate promo code.');
+      setPromoSimulation(null);
+    } finally {
+      setIsValidatingPromo(false);
+    }
+  };
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -913,11 +1071,19 @@ export default function PublicCheckoutView() {
     setIsProcessing(true);
     try {
       const res = await axios.post('/api/v1/checkout/verify-and-initialize', {
-        link_id: linkId, name, phone_number: phone, otp_code: otp, email, shipping_address: address
+        link_id: linkId,
+        name,
+        phone_number: phone,
+        otp_code: otp,
+        email,
+        shipping_address: address,
+        promo_code: promoSimulation?.promo_code_applied || (promoCode.trim() ? promoCode.trim().toUpperCase() : undefined),
+        apply_buyer_credit: Boolean(applyBuyerCredit),
+        redeem_credit_ghs: applyBuyerCredit ? (promoSimulation?.credit_discount_ghs || 999999.0) : 0.0
       });
       window.location.href = res.data.authorization_url;
-    } catch {
-      alert('Invalid OTP or verification failed.');
+    } catch (err: any) {
+      alert(err.response?.data?.detail || err.response?.data?.message || 'Invalid OTP or verification failed.');
       setIsProcessing(false);
     }
   };
@@ -963,8 +1129,25 @@ export default function PublicCheckoutView() {
   if (!link) return null;
 
   const grossTotal = parseFloat(link.price_ghs) + parseFloat(link.shipping_fee_ghs);
-  const platformFee = (grossTotal * 0.015) + 10;
-  const totalToPay = link.fee_handling === 'PASS_TO_BUYER' ? grossTotal + platformFee : grossTotal;
+  const basePlatformFee = (grossTotal * 0.015) + 10;
+  const standardTotalToPay = link.fee_handling === 'PASS_TO_BUYER' ? grossTotal + basePlatformFee : grossTotal;
+
+  const finalPlatformFee = promoSimulation?.effective_platform_fee !== undefined
+    ? promoSimulation.effective_platform_fee
+    : (promoSimulation?.final_platform_fee_ghs !== undefined ? promoSimulation.final_platform_fee_ghs : basePlatformFee);
+
+  const totalToPay = promoSimulation?.total_buyer_pays !== undefined
+    ? promoSimulation.total_buyer_pays
+    : (promoSimulation?.net_total_to_pay_ghs !== undefined ? promoSimulation.net_total_to_pay_ghs : standardTotalToPay);
+
+  const promoDiscountGhs = promoSimulation?.promo_discount_ghs || 0;
+  const creditDiscountGhs = promoSimulation?.credit_discount_ghs || 0;
+
+  const isPromoExpired = Boolean(
+    publicSettings?.promotions_expires_at &&
+    new Date(publicSettings.promotions_expires_at).getTime() <= Date.now()
+  );
+  const isPromotionsActive = Boolean(publicSettings?.promotions_active && !isPromoExpired);
 
   const productTitle = link ? `${link.title} — Buy with Escrow Protection on HendAxis Trust` : 'Secure Payment Link — HendAxis Trust';
   const productDesc = link ? `Buy ${link.title} for GHS ${link.price_ghs} safely with HendAxis Trust escrow protection.` : 'Secure escrow checkout powered by HendAxis Trust.';
@@ -1027,9 +1210,14 @@ export default function PublicCheckoutView() {
                     {link.description}
                   </p>
                 )}
-                <div className="text-3xl sm:text-4xl font-black pt-2">
-                  <span className="text-blue-200 text-lg mr-1 font-bold">GHS</span>
-                  {totalToPay.toFixed(2)}
+                <div className="text-3xl sm:text-4xl font-black pt-2 flex items-baseline gap-2">
+                  <span className="text-blue-200 text-lg font-bold">GHS</span>
+                  <span>{totalToPay.toFixed(2)}</span>
+                  {totalToPay < standardTotalToPay && (
+                    <span className="text-sm font-normal line-through text-blue-300/70">
+                      GHS {standardTotalToPay.toFixed(2)}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -1059,9 +1247,14 @@ export default function PublicCheckoutView() {
               {link.description && (
                 <p className="text-blue-100/90 text-sm leading-relaxed">{link.description}</p>
               )}
-              <div className="text-3xl sm:text-4xl font-black pt-2">
-                <span className="text-blue-200 text-lg mr-1 font-bold">GHS</span>
-                {totalToPay.toFixed(2)}
+              <div className="text-3xl sm:text-4xl font-black pt-2 flex items-baseline gap-2">
+                <span className="text-blue-200 text-lg font-bold">GHS</span>
+                <span>{totalToPay.toFixed(2)}</span>
+                {totalToPay < standardTotalToPay && (
+                  <span className="text-sm font-normal line-through text-blue-300/70">
+                    GHS {standardTotalToPay.toFixed(2)}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -1080,9 +1273,46 @@ export default function PublicCheckoutView() {
             </div>
           )}
           {link.fee_handling === 'PASS_TO_BUYER' && (
+            <div className="space-y-1 pt-1">
+              <div className="flex justify-between items-center text-slate-700 dark:text-slate-200">
+                <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection Fee</span>
+                <span className={`font-extrabold text-base ${promoDiscountGhs > 0 || creditDiscountGhs > 0 ? 'text-slate-400 line-through text-xs' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                  GHS {basePlatformFee.toFixed(2)}
+                </span>
+              </div>
+
+              {promoDiscountGhs > 0 && (
+                <div className="flex justify-between items-center text-purple-600 dark:text-purple-400 text-xs font-semibold pl-6">
+                  <span className="flex items-center gap-1">
+                    <Tag className="h-3 w-3" /> Promo Code ({promoSimulation?.promo_code_applied})
+                  </span>
+                  <span>- GHS {promoDiscountGhs.toFixed(2)}</span>
+                </div>
+              )}
+
+              {creditDiscountGhs > 0 && (
+                <div className="flex justify-between items-center text-amber-600 dark:text-amber-400 text-xs font-semibold pl-6">
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" /> Loyalty Reward Credit Absorbed
+                  </span>
+                  <span>- GHS {creditDiscountGhs.toFixed(2)}</span>
+                </div>
+              )}
+
+              {(promoDiscountGhs > 0 || creditDiscountGhs > 0) && (
+                <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 font-bold text-xs pl-6 pt-0.5">
+                  <span>Net Escrow Fee</span>
+                  <span>{finalPlatformFee === 0 ? 'GHS 0.00 (100% Subsidized)' : `GHS ${finalPlatformFee.toFixed(2)}`}</span>
+                </div>
+              )}
+            </div>
+          )}
+          {link.fee_handling !== 'PASS_TO_BUYER' && (
             <div className="flex justify-between items-center text-slate-700 dark:text-slate-200">
-              <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection Fee</span>
-              <span className="font-extrabold text-emerald-700 dark:text-emerald-400 text-base">GHS {platformFee.toFixed(2)}</span>
+              <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection</span>
+              <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-xs bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+                Covered by Seller
+              </span>
             </div>
           )}
         </div>
@@ -1098,7 +1328,19 @@ export default function PublicCheckoutView() {
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Phone Number</label>
-              <input required type="tel" value={phone} onChange={e => setPhone(e.target.value)}
+              <input required type="tel" value={phone}
+                onChange={e => {
+                  const newPhone = e.target.value;
+                  setPhone(newPhone);
+                  if (newPhone.trim().length >= 10 || applyBuyerCredit) {
+                    validatePromoDiscount(promoCode, applyBuyerCredit, newPhone);
+                  }
+                }}
+                onBlur={() => {
+                  if (phone.trim().length >= 9) {
+                    validatePromoDiscount(promoCode, applyBuyerCredit, phone);
+                  }
+                }}
                 className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
                 placeholder="e.g., 0241234567" />
             </div>
@@ -1116,6 +1358,105 @@ export default function PublicCheckoutView() {
                   placeholder="Street, City, Landmark" />
               </div>
             )}
+
+            {/* Promotions & Loyalty Rewards Accordion */}
+            {isPromotionsActive && (
+              <div className="bg-gradient-to-br from-purple-500/5 via-blue-500/5 to-pink-500/5 border border-purple-200 dark:border-purple-900/40 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Gift className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      Have a Promo Code or Reward Credit?
+                    </span>
+                  </div>
+                  {promoSimulation && (promoDiscountGhs > 0 || creditDiscountGhs > 0) && (
+                    <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      -GHS {(promoDiscountGhs + creditDiscountGhs).toFixed(2)} Applied
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={e => {
+                        const val = e.target.value.toUpperCase();
+                        setPromoCode(val);
+                        if (!val && !applyBuyerCredit) setPromoSimulation(null);
+                      }}
+                      placeholder="ENTER PROMO CODE"
+                      className="w-full pl-8 pr-3 py-2 text-xs font-mono font-bold uppercase rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:normal-case placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isValidatingPromo || !promoCode.trim()}
+                    onClick={() => validatePromoDiscount(promoCode, applyBuyerCredit, phone)}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center gap-1 cursor-pointer shadow-sm"
+                  >
+                    {isValidatingPromo ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Apply'}
+                  </button>
+                </div>
+
+                {/* Loyalty Credit Teaser / Checkbox */}
+                {phone.trim() && (
+                  <div className="pt-1 bg-white/70 dark:bg-slate-800/70 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                            Redeem Buyer Reward Credits
+                          </span>
+                          <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                            {promoSimulation?.available_buyer_credit_ghs !== undefined
+                              ? (promoSimulation.available_buyer_credit_ghs > 0
+                                  ? `🌟 Available Reward Balance: GHS ${promoSimulation.available_buyer_credit_ghs.toFixed(2)}`
+                                  : 'No active reward credits on this phone number.')
+                              : 'Enter phone number to check available reward credits'}
+                          </span>
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={applyBuyerCredit}
+                        disabled={promoSimulation?.available_buyer_credit_ghs === 0}
+                        onChange={e => {
+                          const checked = e.target.checked;
+                          setApplyBuyerCredit(checked);
+                          validatePromoDiscount(promoCode, checked, phone);
+                        }}
+                        className="h-4 w-4 text-purple-600 rounded border-slate-300 dark:border-slate-700 focus:ring-purple-500 cursor-pointer disabled:opacity-40"
+                      />
+                    </div>
+                    {creditDiscountGhs > 0 && (
+                      <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-200/80 dark:border-amber-900/50 flex items-center justify-between">
+                        <span>Applied to Escrow Fee:</span>
+                        <span className="font-bold">- GHS {creditDiscountGhs.toFixed(2)} (Remaining: GHS {(Number(promoSimulation?.available_buyer_credit_ghs || 0) - creditDiscountGhs).toFixed(2)})</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {promoMessage && (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 shrink-0" />
+                    {promoMessage}
+                  </div>
+                )}
+
+                {promoError && (
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-[11px] font-semibold flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    {promoError}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Mandatory Terms Acceptance Checkbox */}
             <div className="flex items-start gap-2 pt-2">
               <input

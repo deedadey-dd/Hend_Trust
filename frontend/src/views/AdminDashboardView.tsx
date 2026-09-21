@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, Package, ShieldAlert, Users, PhoneCall, Send, Search, Filter, 
   TrendingUp, DollarSign, Lock, Eye, X, Zap, Clock,
-  RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck, Store
+  RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck, Store,
+  Coins, UserPlus, Scale, History, UserCog, Gift, Menu, ChevronLeft, ChevronRight,
+  ExternalLink
 } from 'lucide-react';
 import { 
   useAdminMetricsQuery, 
@@ -17,6 +19,8 @@ import {
   useCancelBroadcastCampaignMutation,
   useAdminAppealsQuery,
   useReviewAppealMutation,
+  useAssignDisputeArbiterMutation,
+  useAdminStaffQuery,
   type SuspensionAppealItem
 } from '../hooks/api/useAdminPortal';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -27,6 +31,11 @@ import type { ExportColumn } from '../utils/exportUtils';
 import { AdminSellerDetailsModal } from '../components/AdminSellerDetailsModal';
 import { AdminBuyerDetailsModal, type AdminBuyerTarget } from '../components/AdminBuyerDetailsModal';
 import DisputeChatTimeline from '../components/DisputeChatTimeline';
+import { AdminDisputeAuditModal } from '../components/AdminDisputeAuditModal';
+import { AdminStaffManagement } from '../components/AdminStaffManagement';
+import { AdminArbiterPayouts } from '../components/AdminArbiterPayouts';
+import { AdminPromotionsManager } from '../components/AdminPromotionsManager';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 const adminTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -123,7 +132,7 @@ const adInvoicesExportHeaders: ExportColumn[] = [
   { label: 'Active Until', key: 'advertised_until' },
 ];
 
-type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'APPEALS' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'AD_INVOICES' | 'SETTINGS';
+type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'APPEALS' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'AD_INVOICES' | 'SETTINGS' | 'STAFF' | 'ARBITER_PAYOUTS' | 'PROMOTIONS';
 
 interface ShopAdInvoiceAdminRecord {
   id: string;
@@ -215,13 +224,27 @@ interface PlatformSettings {
   dispatch_expiry_warning_threshold?: number;
   dispatch_expiry_suspension_threshold?: number;
   unpaid_auto_archive_days?: number;
+  arbiter_fee_per_dispute?: number;
   django_admin_url?: string;
+  promotions_active?: boolean;
+  promotions_expires_at?: string | null;
+  buyer_reward_rate_percent?: number;
+  buyer_credit_validity_days?: number;
+  seller_reward_per_completed_order_ghs?: number;
+  seller_credit_validity_days?: number;
+  max_promo_discount_cap_ghs?: number;
 }
 
 
 export const AdminDashboardView: React.FC = () => {
   const { user } = useAuthStore();
   const isSuperUser = Boolean(user?.is_superuser);
+  const userRole = user?.role || 'ADMIN';
+  const isAdminManager = isSuperUser || userRole === 'ADMIN';
+  const isArbiter = isSuperUser || userRole === 'ARBITER' || userRole === 'ADMIN';
+  const isCompliance = isSuperUser || userRole === 'COMPLIANCE_OFFICER' || userRole === 'ADMIN';
+  const isFinance = isSuperUser || userRole === 'FINANCE_ADMIN' || userRole === 'ADMIN';
+  const isSupport = isSuperUser || userRole === 'SUPPORT_AGENT' || userRole === 'ADMIN';
 
   useEffect(() => {
     if (user && user.is_superuser === undefined) {
@@ -241,12 +264,20 @@ export const AdminDashboardView: React.FC = () => {
   }, [user]);
 
   const [activeTab, setActiveTab] = useState<AdminTab>('OVERVIEW');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!isSuperUser && activeTab === 'SETTINGS') {
       setActiveTab('TRANSACTIONS');
     }
-  }, [isSuperUser, activeTab]);
+    if (!isAdminManager && activeTab === 'STAFF') {
+      setActiveTab('OVERVIEW');
+    }
+    if (!isAdminManager && !isFinance && activeTab === 'PROMOTIONS') {
+      setActiveTab('OVERVIEW');
+    }
+  }, [isSuperUser, isAdminManager, isFinance, activeTab]);
 
   // Platform Settings State
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
@@ -534,6 +565,15 @@ export const AdminDashboardView: React.FC = () => {
   const [adminNotes, setAdminNotes] = useState<string>('');
   const [resolveMsg, setResolveMsg] = useState<string>('');
 
+  // Dispute Arbiter Assignment & Audit Trail State
+  const [selectedDisputeAuditTxnId, setSelectedDisputeAuditTxnId] = useState<string | null>(null);
+  const [assigningDispute, setAssigningDispute] = useState<any | null>(null);
+  const [selectedArbiterId, setSelectedArbiterId] = useState<string>('');
+  const [assignMsg, setAssignMsg] = useState<string>('');
+  const assignArbiterMutation = useAssignDisputeArbiterMutation();
+  const { data: staffList } = useAdminStaffQuery();
+  const arbitersList = staffList?.filter(s => s.role === 'ARBITER' || s.role === 'ADMIN' || s.is_superuser) || [];
+
   // Partial Refund Breakdown States
   const [refundAmountGhs, setRefundAmountGhs] = useState<number>(0);
   const [sellerAmountGhs, setSellerAmountGhs] = useState<number>(0);
@@ -595,6 +635,16 @@ export const AdminDashboardView: React.FC = () => {
   const [buyerSearch, setBuyerSearch] = useState<string>('');
   const [selectedBuyerModal, setSelectedBuyerModal] = useState<AdminBuyerTarget | null>(null);
   const { data: buyers, isLoading: buyersLoading } = useAdminBuyersQuery(buyerSearch);
+
+  // Wire ESC key to dismiss any active modal dialog
+  useEscapeKey(() => setGatewayConfirm(null), Boolean(gatewayConfirm));
+  useEscapeKey(() => setSelectedTxnId(null), Boolean(selectedTxnId));
+  useEscapeKey(() => setSelectedDisputeAuditTxnId(null), Boolean(selectedDisputeAuditTxnId));
+  useEscapeKey(() => setAssigningDispute(null), Boolean(assigningDispute));
+  useEscapeKey(() => { setRejectUserId(null); setRejectReason(''); }, Boolean(rejectUserId));
+  useEscapeKey(() => setPreviewImage(null), Boolean(previewImage));
+  useEscapeKey(() => setSelectedSellerIdModal(null), Boolean(selectedSellerIdModal));
+  useEscapeKey(() => setSelectedBuyerModal(null), Boolean(selectedBuyerModal));
 
   // Broadcast Messaging State
   const [targetGroup, setTargetGroup] = useState<string>('ALL_USERS');
@@ -712,91 +762,219 @@ export const AdminDashboardView: React.FC = () => {
     }
   };
 
-  return (
+  interface NavItem {
+    id: AdminTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string | number;
+    alert?: boolean;
+    visible: boolean;
+  }
 
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16 transition-colors">
-      {/* Header Banner */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-6 shadow-sm transition-colors">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-500/20 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
-                Platform Operations
-              </span>
-              <span className="text-slate-500 dark:text-slate-400 text-sm">Manager Portal v1.0</span>
+  interface NavGroup {
+    category: string;
+    items: NavItem[];
+  }
+
+  const navGroups: NavGroup[] = [
+    {
+      category: 'Operations',
+      items: [
+        { id: 'OVERVIEW', label: 'Overview & Metrics', icon: BarChart3, visible: true },
+        { id: 'TRANSACTIONS', label: 'Transactions', icon: Package, badge: txnsData?.total_count, visible: true },
+        { id: 'DISPUTES', label: 'Disputes Center', icon: ShieldAlert, badge: metrics?.active_disputes, alert: (metrics?.active_disputes || 0) > 0, visible: isArbiter || isCompliance || isAdminManager || isSupport },
+        { id: 'APPEALS', label: 'Suspension Appeals', icon: ShieldAlert, badge: appealsData?.filter(a => a.status === 'PENDING').length, alert: (appealsData?.filter(a => a.status === 'PENDING').length || 0) > 0, visible: isCompliance || isAdminManager },
+        { id: 'VERIFICATIONS', label: 'Seller Verifications', icon: FileCheck, badge: verifications.filter(v => v.verification_status === 'PENDING').length, alert: verifications.filter(v => v.verification_status === 'PENDING').length > 0, visible: isCompliance || isAdminManager },
+      ]
+    },
+    {
+      category: 'Finance & Ledger',
+      items: [
+        { id: 'FUNDS', label: 'Platform Funds & Ledger', icon: DollarSign, badge: fundsSummary ? `GHS ${fundsSummary.system_bank_asset_ghs.toLocaleString()}` : undefined, visible: isFinance || isAdminManager },
+        { id: 'ARBITER_PAYOUTS', label: 'Arbiter Compensation', icon: Coins, visible: isArbiter || isFinance || isAdminManager },
+        { id: 'AD_INVOICES', label: 'Ad Invoices', icon: Zap, badge: adInvoicesCount || undefined, visible: isFinance || isAdminManager },
+      ]
+    },
+    {
+      category: 'Users & Community',
+      items: [
+        { id: 'SELLERS', label: 'Sellers Directory', icon: Users, visible: isCompliance || isAdminManager || isSupport },
+        { id: 'BUYERS', label: 'Buyer Registry', icon: PhoneCall, visible: isCompliance || isAdminManager || isSupport },
+        { id: 'BROADCAST', label: 'Broadcast Studio', icon: Send, visible: isAdminManager || isSupport },
+      ]
+    },
+    {
+      category: 'System & Config',
+      items: [
+        { id: 'PROMOTIONS', label: 'Promotions & Rewards', icon: Gift, badge: platformSettings.promotions_active ? 'Active' : undefined, visible: isAdminManager || isFinance },
+        { id: 'STAFF', label: 'Staff & Roles', icon: UserCog, badge: staffList?.length || undefined, visible: isAdminManager },
+        { id: 'SETTINGS', label: 'Platform Settings', icon: Layers, visible: isSuperUser },
+      ]
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors flex flex-col">
+      {/* ─── STICKY TOP HEADER ────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3 shadow-sm transition-colors">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {/* Mobile menu toggle */}
+            <button
+              onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+              className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+              aria-label="Toggle navigation menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+
+            {/* Desktop collapse toggle */}
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="hidden lg:flex p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isSidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-500/20 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Platform Operations
+                </span>
+                <span className="text-slate-400 text-xs hidden sm:inline">Manager Portal</span>
+              </div>
+              <h1 className="text-base sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                HendAxis Trust <span className="text-blue-600 dark:text-blue-400">Admin</span>
+              </h1>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white mt-1">HendAxis Trust Management Center</h1>
-            <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm mt-0.5">Real-time surveillance, transaction escrow controls, dispute arbitration, and targeted broadcast engine.</p>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 sm:gap-3">
             <button 
               onClick={() => { refetchMetrics(); refetchTxns(); refetchDisputes(); }}
-              className="flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-semibold transition shadow-sm cursor-pointer"
+              className="flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs sm:text-sm font-semibold transition shadow-sm cursor-pointer"
             >
-              <RefreshCw className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              Refresh Data
+              <RefreshCw className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="hidden sm:inline">Refresh Data</span>
             </button>
             {isSuperUser && (
               <a
                 href={djangoAdminFullUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 bg-amber-50 dark:bg-amber-600/20 hover:bg-amber-100 dark:hover:bg-amber-600/30 text-amber-800 dark:text-amber-300 px-4 py-2.5 rounded-xl border border-amber-300 dark:border-amber-500/30 text-sm font-semibold transition shadow-sm cursor-pointer"
+                className="flex items-center justify-center gap-1.5 bg-amber-50 dark:bg-amber-600/20 hover:bg-amber-100 dark:hover:bg-amber-600/30 text-amber-800 dark:text-amber-300 px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-500/30 text-xs sm:text-sm font-semibold transition shadow-sm cursor-pointer"
                 title="Open native Django backend database administration panel"
               >
-                <ShieldCheck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                Django Database Admin ↗
+                <ShieldCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span className="hidden md:inline">Django Database Admin ↗</span>
+                <span className="md:hidden">Django DB ↗</span>
               </a>
             )}
           </div>
         </div>
+      </header>
 
-        {/* Tab Navigation */}
-        <div className="max-w-7xl mx-auto mt-6 flex overflow-x-auto gap-2 border-b border-slate-200 dark:border-slate-800 scrollbar-none pb-px">
-          {[
-            { id: 'OVERVIEW', label: 'Overview', icon: BarChart3 },
-            { id: 'TRANSACTIONS', label: 'Transactions', icon: Package, badge: txnsData?.total_count },
-            { id: 'DISPUTES', label: 'Disputes Center', icon: ShieldAlert, badge: metrics?.active_disputes, alert: (metrics?.active_disputes || 0) > 0 },
-            { id: 'APPEALS', label: 'Suspension Appeals', icon: ShieldAlert, badge: appealsData?.filter(a => a.status === 'PENDING').length, alert: (appealsData?.filter(a => a.status === 'PENDING').length || 0) > 0 },
-            { id: 'VERIFICATIONS', label: 'Seller Verifications', icon: FileCheck, badge: verifications.filter(v => v.verification_status === 'PENDING').length, alert: verifications.filter(v => v.verification_status === 'PENDING').length > 0 },
-            { id: 'FUNDS', label: 'Platform Funds & Ledger', icon: DollarSign, badge: fundsSummary ? `GHS ${fundsSummary.system_bank_asset_ghs.toLocaleString()}` : undefined },
-            { id: 'SELLERS', label: 'Sellers Directory', icon: Users },
-            { id: 'BUYERS', label: 'Buyer Registry', icon: PhoneCall },
-            { id: 'BROADCAST', label: 'Broadcast Studio', icon: Send },
-            { id: 'AD_INVOICES', label: 'Ad Invoices', icon: Zap, badge: adInvoicesCount || undefined },
-            { id: 'SETTINGS', label: '⚙️ Settings', icon: Layers, superuserOnly: true },
-          ].filter(tab => !tab.superuserOnly || isSuperUser).map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as AdminTab)}
-                className={`flex items-center gap-2.5 px-4 py-3 text-sm font-bold border-b-2 transition whitespace-nowrap rounded-t-lg ${
-                  isActive 
-                    ? 'border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-slate-800/90 shadow-sm' 
-                    : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700'
-                }`}
-              >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`} />
-                {tab.label}
-                {tab.badge !== undefined && (
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    tab.alert 
-                      ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 font-extrabold border border-rose-300 dark:border-rose-500/40' 
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
-                  }`}>
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* ─── MAIN LAYOUT WITH SIDEBAR + CONTENT ───────────────────────────── */}
+      <div className="flex-1 flex min-w-0">
+        {/* Mobile Navigation Drawer Backdrop */}
+        {mobileSidebarOpen && (
+          <div 
+            onClick={() => setMobileSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm lg:hidden transition-opacity"
+          />
+        )}
 
-      {/* Main Content Area */}
-      <div className="max-w-7xl mx-auto px-6 mt-8">
+        {/* Sidebar Navigation */}
+        <aside className={`
+          fixed lg:sticky top-[57px] sm:top-[61px] h-[calc(100vh-57px)] sm:h-[calc(100vh-61px)] z-40 lg:z-20
+          bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between
+          transition-all duration-300 shadow-xl lg:shadow-none
+          ${mobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'}
+          ${isSidebarCollapsed ? 'lg:w-20' : 'lg:w-68'}
+        `}>
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-6 scrollbar-thin">
+            {navGroups.map((group, groupIdx) => {
+              const visibleItems = group.items.filter(item => item.visible);
+              if (visibleItems.length === 0) return null;
+
+              return (
+                <div key={groupIdx} className="space-y-1.5">
+                  {!isSidebarCollapsed && (
+                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 px-3 py-1">
+                      {group.category}
+                    </div>
+                  )}
+                  {isSidebarCollapsed && (
+                    <div className="w-full border-t border-slate-200 dark:border-slate-800 my-2" />
+                  )}
+                  <div className="space-y-1">
+                    {visibleItems.map(item => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveTab(item.id);
+                            setMobileSidebarOpen(false);
+                          }}
+                          title={isSidebarCollapsed ? item.label : undefined}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition group cursor-pointer ${
+                            isActive
+                              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/70'
+                          } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
+                        >
+                          <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400 group-hover:text-blue-500'}`} />
+                          {!isSidebarCollapsed && (
+                            <span className="truncate flex-1 text-left">{item.label}</span>
+                          )}
+                          {!isSidebarCollapsed && item.badge !== undefined && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                              isActive
+                                ? 'bg-white/20 text-white'
+                                : item.alert
+                                  ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-500/40'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                            }`}>
+                              {item.badge}
+                            </span>
+                          )}
+                          {isSidebarCollapsed && item.alert && (
+                            <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* User profile / session footer in sidebar */}
+          <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
+            <div className={`flex items-center gap-2.5 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+              <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                {user?.name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || 'A'}
+              </div>
+              {!isSidebarCollapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                    {user?.name || user?.username || 'Administrator'}
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate uppercase font-mono">
+                    {userRole}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        {/* ─── MAIN CONTENT VIEWPORT ───────────────────────────────────────── */}
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 space-y-6">
 
         {/* ─── TAB 1: OVERVIEW & ANALYTICS ────────────────────────────────────── */}
         {activeTab === 'OVERVIEW' && (
@@ -972,7 +1150,17 @@ export const AdminDashboardView: React.FC = () => {
                     ) : (
                       txnsData?.items.map(t => (
                         <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                          <td className="px-5 py-4 font-mono font-bold text-blue-600 dark:text-blue-400">{t.paystack_reference}</td>
+                          <td className="px-5 py-4">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTxnId(t.id)}
+                              className="group/tx inline-flex items-center gap-1 font-mono font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                              title="Click to open Transaction Deep Inspection"
+                            >
+                              <span>{t.paystack_reference}</span>
+                              <ExternalLink className="h-3 w-3 opacity-60 group-hover/tx:opacity-100 transition" />
+                            </button>
+                          </td>
                           <td className="px-5 py-4">
                             <p className="font-semibold text-slate-900 dark:text-white">{t.title}</p>
                             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Seller: <strong className="text-slate-900 dark:text-white">{(t as any).shop_name || `@${t.seller_username}`}</strong> {(t as any).shop_name && <span className="text-slate-500 font-normal">(@{t.seller_username})</span>}</p>
@@ -1069,9 +1257,15 @@ export const AdminDashboardView: React.FC = () => {
                   <div key={d.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row justify-between gap-6">
                     <div className="space-y-3 flex-1">
                       <div className="flex items-center gap-3">
-                        <span className="font-mono text-sm font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-md border border-rose-500/20">
-                          {d.paystack_reference}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTxnId(d.id || d.transaction_id)}
+                          className="group/tx inline-flex items-center gap-1.5 font-mono text-sm font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded-md border border-rose-500/20 transition cursor-pointer"
+                          title="Click to open Transaction Deep Inspection"
+                        >
+                          <span>{d.paystack_reference}</span>
+                          <ExternalLink className="h-3.5 w-3.5 opacity-70 group-hover/tx:opacity-100 transition" />
+                        </button>
                         <h4 className="text-lg font-bold text-slate-900 dark:text-white">{d.link_title}</h4>
                       </div>
 
@@ -1156,6 +1350,48 @@ export const AdminDashboardView: React.FC = () => {
                           {d.driver_phone && <span>(Driver: {d.driver_phone} @ {d.destination_station})</span>}
                         </div>
                       )}
+
+                      {/* Arbiter Assignment & Resolution Audit Banner */}
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {d.assigned_arbiter ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg text-xs font-semibold">
+                              <Scale className="h-3.5 w-3.5 text-purple-500" />
+                              Arbiter: <strong>@{d.assigned_arbiter.username}</strong>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-lg text-xs font-semibold">
+                              <Scale className="h-3.5 w-3.5 text-slate-400" />
+                              Unassigned Arbiter
+                            </span>
+                          )}
+
+                          {isAdminManager && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAssigningDispute(d);
+                                setSelectedArbiterId(d.assigned_arbiter?.id || '');
+                                setAssignMsg('');
+                              }}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
+                              {d.assigned_arbiter ? 'Reassign' : 'Assign Arbiter'}
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDisputeAuditTxnId(d.id)}
+                          className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-sm"
+                          title="View complete multi-arbiter decision history and rulings"
+                        >
+                          <History className="h-3.5 w-3.5 text-blue-500" />
+                          Audit Trail
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex flex-col justify-between items-end gap-4 min-w-[220px]">
@@ -1164,13 +1400,15 @@ export const AdminDashboardView: React.FC = () => {
                         <p className="text-2xl font-black text-rose-400">GHS {d.total_amount_ghs.toFixed(2)}</p>
                       </div>
 
-                      <button
-                        onClick={() => { setResolvingTxnId(d.id); setResolveMsg(''); }}
-                        className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-500/10"
-                      >
-                        <ShieldAlert className="h-4 w-4" />
-                        Resolve Dispute
-                      </button>
+                      {isArbiter && (
+                        <button
+                          onClick={() => { setResolvingTxnId(d.id); setResolveMsg(''); }}
+                          className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-500/10 cursor-pointer"
+                        >
+                          <ShieldAlert className="h-4 w-4" />
+                          Resolve Dispute
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -3117,9 +3355,32 @@ export const AdminDashboardView: React.FC = () => {
                 </div>
               </div>
             </div>
+
           </div>
         )}
 
+        {/* ─── TAB: PROMOTIONS, REWARD TOKENS & PROMO ENGINE ───────────────── */}
+        {activeTab === 'PROMOTIONS' && (
+          <div className="max-w-6xl mx-auto space-y-6">
+            <AdminPromotionsManager
+              platformSettings={platformSettings}
+              onUpdateSettings={handleUpdateSettings}
+              onInspectTransaction={(txnId) => setSelectedTxnId(txnId)}
+            />
+          </div>
+        )}
+
+        {/* ─── TAB: ARBITER COMPENSATION & PAYOUTS ────────────────────────────── */}
+        {activeTab === 'ARBITER_PAYOUTS' && (
+          <AdminArbiterPayouts />
+        )}
+
+        {/* ─── TAB: STAFF & ROLE MANAGEMENT ────────────────────────────────────── */}
+        {activeTab === 'STAFF' && (
+          <AdminStaffManagement />
+        )}
+
+        </main>
       </div>
 
       {/* ─── MODAL: GATEWAY SWITCH CONFIRMATION ─────────────────────────────── */}
@@ -3179,7 +3440,7 @@ export const AdminDashboardView: React.FC = () => {
 
       {/* ─── MODAL: INSPECT TRANSACTION DETAIL ───────────────────────────────── */}
       {selectedTxnId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 my-auto">
             <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 shrink-0">
               <div>
@@ -3819,6 +4080,104 @@ export const AdminDashboardView: React.FC = () => {
             setSelectedSellerIdModal(sellerId);
           }}
         />
+      )}
+
+      {/* ─── MODAL: DISPUTE ACTION AUDIT TRAIL ───────────────────────────────── */}
+      {selectedDisputeAuditTxnId && (
+        <AdminDisputeAuditModal
+          transactionId={selectedDisputeAuditTxnId}
+          onClose={() => setSelectedDisputeAuditTxnId(null)}
+        />
+      )}
+
+      {/* ─── MODAL: ARBITER ASSIGNMENT ───────────────────────────────────────── */}
+      {assigningDispute && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-4 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Scale className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                Assign Dispute Arbiter
+              </h3>
+              <button 
+                onClick={() => setAssigningDispute(null)} 
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Assign an accredited platform arbiter or manager to arbitrate and resolve <strong>{assigningDispute.link_title}</strong> ({assigningDispute.paystack_reference}).
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Select Platform Arbiter *
+              </label>
+              <select
+                value={selectedArbiterId}
+                onChange={e => setSelectedArbiterId(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-medium outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">-- Select an Arbiter / Manager --</option>
+                {arbitersList.map(s => (
+                  <option key={s.id} value={s.id}>
+                    @{s.username} ({s.first_name} {s.last_name || ''}) - {s.role}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {assignMsg && (
+              <div className={`p-2.5 rounded-lg text-xs font-semibold ${
+                assignMsg.includes('success') 
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' 
+                  : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+              }`}>
+                {assignMsg}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setAssigningDispute(null)}
+                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!selectedArbiterId || assignArbiterMutation.isPending}
+                onClick={async () => {
+                  try {
+                    await assignArbiterMutation.mutateAsync({
+                      transactionId: assigningDispute.id,
+                      arbiterId: selectedArbiterId
+                    });
+                    setAssignMsg('Arbiter assigned successfully.');
+                    refetchDisputes();
+                    setTimeout(() => setAssigningDispute(null), 1200);
+                  } catch (err: any) {
+                    setAssignMsg(err.response?.data?.detail || 'Failed to assign arbiter.');
+                  }
+                }}
+                className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs shadow disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {assignArbiterMutation.isPending ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Assigning...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Confirm Assignment
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

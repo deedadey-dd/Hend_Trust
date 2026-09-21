@@ -46,6 +46,35 @@ class VerifyInitializeSchema(Schema):
     otp_code: str
     email: str
     shipping_address: Optional[str] = ""
+    promo_code: Optional[str] = None
+    redeem_credit_ghs: Optional[float] = 0.0
+    apply_buyer_credit: Optional[bool] = False
+
+class ValidatePromoRequestSchema(Schema):
+    link_id: uuid.UUID
+    promo_code: Optional[str] = None
+    phone_number: Optional[str] = None
+    redeem_credit_ghs: Optional[float] = 0.0
+    apply_buyer_credit: Optional[bool] = False
+
+class ValidatePromoResponseSchema(Schema):
+    is_promotions_enabled: bool
+    gross_merchandise_total: float
+    base_platform_fee: float
+    promo_code_applied: Optional[str] = None
+    discount_amount_ghs: float = 0.0
+    promo_discount_ghs: float
+    credit_discount_ghs: float
+    total_fee_subsidy_ghs: float
+    effective_platform_fee: float
+    final_platform_fee_ghs: float
+    total_buyer_pays: float
+    net_total_to_pay_ghs: float
+    net_seller_receives: float
+    available_buyer_credit_ghs: float
+    buyer_credit_balance_ghs: float = 0.0
+    promo_error: Optional[str] = None
+    valid: bool = True
 
 class MessageResponse(Schema):
     message: str
@@ -98,6 +127,14 @@ class TransactionStatusSchema(Schema):
     review_edit_count: Optional[int] = 0
     review_seller_reply: Optional[str] = None
     review_seller_replied_at: Optional[str] = None
+    price_ghs: Optional[float] = None
+    shipping_fee_ghs: Optional[float] = None
+    platform_fee_ghs: Optional[float] = None
+    base_platform_fee_ghs: Optional[float] = None
+    promo_discount_ghs: Optional[float] = 0.0
+    credit_discount_ghs: Optional[float] = 0.0
+    promo_code_applied: Optional[str] = None
+    fee_handling: Optional[str] = "PASS_TO_BUYER"
 
 class InitializeResponse(Schema):
     authorization_url: str
@@ -210,6 +247,14 @@ def _build_txn_status_dict(t):
         "review_edit_count": review.edit_count if review else 0,
         "review_seller_reply": review.seller_reply if (review and review.seller_reply) else None,
         "review_seller_replied_at": review.seller_replied_at.isoformat() if (review and review.seller_replied_at) else None,
+        "price_ghs": float(t.link.price_ghs) if t.link else float(t.total_amount_ghs),
+        "shipping_fee_ghs": float(t.link.shipping_fee_ghs) if t.link else 0.0,
+        "platform_fee_ghs": float(t.platform_fee_ghs or 0.0),
+        "base_platform_fee_ghs": round(float(((t.link.price_ghs + t.link.shipping_fee_ghs) * Decimal('0.015')) + Decimal('10.00')), 2) if (t.link and t.link.fee_handling == 'PASS_TO_BUYER') else 0.0,
+        "promo_discount_ghs": float(t.promo_discount_ghs or 0.0),
+        "credit_discount_ghs": float(t.credit_discount_ghs or 0.0),
+        "promo_code_applied": t.promo_code.code if t.promo_code else None,
+        "fee_handling": t.link.fee_handling if t.link else "PASS_TO_BUYER",
     }
 
 @checkout_router.post("/track", response=list[TransactionStatusSchema])
@@ -380,6 +425,55 @@ def get_my_transactions(request, data: VerifiedLookupSchema):
         "inspection_starts_at": str(t.inspection_starts_at) if t.inspection_starts_at else None,
     } for t in txns]
 
+@checkout_router.post("/validate-promo", response=ValidatePromoResponseSchema)
+def validate_promo(request, data: ValidatePromoRequestSchema):
+    link = get_object_or_404(PaymentLink.objects.select_related('seller'), id=data.link_id)
+    buyer = None
+    available_credit = 0.0
+    if data.phone_number:
+        from apps.escrow.services_promo import normalize_phone_number
+        norm_phone = normalize_phone_number(data.phone_number)
+        from apps.escrow.models import BuyerIdentity
+        buyer = BuyerIdentity.objects.filter(phone_number=norm_phone).first()
+        if buyer:
+            available_credit = float(buyer.available_credit_ghs)
+
+    credit_to_redeem = Decimal(str(data.redeem_credit_ghs or 0.0))
+    if data.apply_buyer_credit and credit_to_redeem == Decimal('0.00'):
+        credit_to_redeem = Decimal(str(available_credit))
+
+    from apps.escrow.services_promo import calculate_order_pricing
+    pricing = calculate_order_pricing(
+        price_ghs=link.price_ghs,
+        shipping_fee_ghs=link.shipping_fee_ghs,
+        fee_handling=link.fee_handling,
+        promo_code_str=data.promo_code,
+        buyer_credit_to_redeem_ghs=credit_to_redeem,
+        buyer_identity=buyer,
+        seller_user=link.seller
+    )
+
+    return {
+        "is_promotions_enabled": pricing["is_promotions_enabled"],
+        "gross_merchandise_total": float(pricing["gross_merchandise_total"]),
+        "base_platform_fee": float(pricing["base_platform_fee"]),
+        "promo_code_applied": pricing["promo_code_applied"],
+        "discount_amount_ghs": float(pricing["promo_discount_ghs"]),
+        "promo_discount_ghs": float(pricing["promo_discount_ghs"]),
+        "credit_discount_ghs": float(pricing["credit_discount_ghs"]),
+        "total_fee_subsidy_ghs": float(pricing["total_fee_subsidy_ghs"]),
+        "effective_platform_fee": float(pricing["effective_platform_fee"]),
+        "final_platform_fee_ghs": float(pricing["effective_platform_fee"]),
+        "total_buyer_pays": float(pricing["total_buyer_pays"]),
+        "net_total_to_pay_ghs": float(pricing["total_buyer_pays"]),
+        "net_seller_receives": float(pricing["net_seller_receives"]),
+        "available_buyer_credit_ghs": float(available_credit),
+        "buyer_credit_balance_ghs": float(available_credit),
+        "promo_error": pricing["promo_error"],
+        "valid": not bool(pricing["promo_error"])
+    }
+
+
 @checkout_router.post("/verify-and-initialize", response=InitializeResponse)
 @rate_limit('checkout_initialize', max_calls=10, window_seconds=300)
 def verify_and_initialize(request, data: VerifyInitializeSchema):
@@ -393,17 +487,43 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
     if getattr(link.seller, 'is_suspended', False):
         raise HttpError(403, "This payment link is currently unavailable because the seller's account has been suspended.")
 
-    # Fee logic calculation
-    gross_product_total = link.price_ghs + link.shipping_fee_ghs
-    base_percentage = Decimal('0.015') # 1.5%
-    fixed_fee = Decimal('10.00')
+    from apps.escrow.services_promo import (
+        get_or_create_buyer_identity,
+        calculate_order_pricing,
+        reserve_buyer_credit,
+        release_reserved_buyer_credit
+    )
+    from apps.escrow.models import PromoCode
 
-    platform_fee = (gross_product_total * base_percentage) + fixed_fee
+    buyer = get_or_create_buyer_identity(
+        phone=data.phone_number,
+        email=data.email,
+        name=data.name
+    )
 
-    if link.fee_handling == FeeHandling.PASS_TO_BUYER:
-        total_amount = gross_product_total + platform_fee
-    else: # ABSORB_FEE
-        total_amount = gross_product_total
+    credit_to_redeem = Decimal(str(data.redeem_credit_ghs or 0.0))
+    if data.apply_buyer_credit and credit_to_redeem == Decimal('0.00'):
+        credit_to_redeem = Decimal(str(buyer.available_credit_ghs if buyer else 0.0))
+
+    # Calculate authoritative pricing on the server
+    pricing = calculate_order_pricing(
+        price_ghs=link.price_ghs,
+        shipping_fee_ghs=link.shipping_fee_ghs,
+        fee_handling=link.fee_handling,
+        promo_code_str=data.promo_code,
+        buyer_credit_to_redeem_ghs=credit_to_redeem,
+        buyer_identity=buyer,
+        seller_user=link.seller
+    )
+
+    total_amount = Decimal(str(pricing["total_buyer_pays"]))
+    platform_fee = Decimal(str(pricing["effective_platform_fee"]))
+    promo_discount = Decimal(str(pricing["promo_discount_ghs"]))
+    credit_discount = Decimal(str(pricing["credit_discount_ghs"]))
+
+    promo_obj = None
+    if pricing["promo_code_applied"]:
+        promo_obj = PromoCode.objects.filter(code__iexact=pricing["promo_code_applied"], is_active=True).first()
 
     # Generate cryptographically secure unique Paystack reference with collision check
     _charset = string.ascii_uppercase + string.digits
@@ -412,15 +532,26 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
         if not Transaction.objects.filter(paystack_reference=paystack_ref).exists():
             break
 
+    # Reserve buyer credit if credit discount was applied
+    if credit_discount > Decimal('0.00'):
+        try:
+            reserve_buyer_credit(buyer, credit_discount, paystack_ref)
+        except Exception as reserve_err:
+            raise HttpError(400, f"Unable to apply promotional credit: {str(reserve_err)}")
+
     # Create transaction
     txn = Transaction.objects.create(
         link=link,
+        buyer_identity=buyer,
         buyer_name=data.name,
         buyer_phone=data.phone_number,
         buyer_email=data.email,
         shipping_address=data.shipping_address,
         total_amount_ghs=total_amount,
         platform_fee_ghs=platform_fee,
+        promo_code=promo_obj,
+        promo_discount_ghs=promo_discount,
+        credit_discount_ghs=credit_discount,
         status=TransactionStatus.AWAITING_PAYMENT,
         paystack_reference=paystack_ref
     )
@@ -456,6 +587,8 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
             "reference": paystack_ref
         }
     except Exception as e:
+        if credit_discount > Decimal('0.00'):
+            release_reserved_buyer_credit(buyer, credit_discount, paystack_ref)
         txn.status = TransactionStatus.DISPUTED
         txn.save()
         raise HttpError(500, f"Payment gateway initialization failed: {str(e)}")

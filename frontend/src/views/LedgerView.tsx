@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Wallet, Filter, Loader2, ArrowUpRight, ArrowDownLeft, Send, AlertTriangle, CheckCircle, X } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 const PAYSTACK_FEE_RATE = 0.0195;
 
@@ -116,6 +117,7 @@ export const LedgerView: React.FC = () => {
   };
 
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
+  useEscapeKey(() => setSelectedEntry(null), Boolean(selectedEntry));
 
   const ENTRY_TYPE_LABELS: Record<string, string> = {
     ESCROW_RELEASE_NET: 'Sale Payout Credit',

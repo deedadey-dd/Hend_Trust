@@ -6,6 +6,7 @@ import {
   AlertOctagon, UserCheck
 } from 'lucide-react';
 import { useAdminSellerDetailsQuery } from '../hooks/api/useAdminPortal';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 interface AdminSellerDetailsModalProps {
   sellerId: string | null;
@@ -20,6 +21,7 @@ export const AdminSellerDetailsModal: React.FC<AdminSellerDetailsModalProps> = (
   onSuspend,
   onReinstate,
 }) => {
+  useEscapeKey(onClose, Boolean(sellerId));
   const { data, isLoading, error, refetch } = useAdminSellerDetailsQuery(sellerId);
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'LINKS' | 'REVIEWS' | 'HEALTH'>('OVERVIEW');
   const [copiedLink, setCopiedLink] = useState(false);

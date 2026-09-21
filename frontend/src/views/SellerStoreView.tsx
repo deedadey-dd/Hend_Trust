@@ -1,11 +1,34 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, Link } from 'react-router-dom';
-import { Shield, ShieldCheck, Star, Award, CheckCircle2, MessageSquare, Loader2, Calendar, PackageCheck, Send, Zap, ChevronRight, Pencil } from 'lucide-react';
+import { 
+  Shield, ShieldCheck, Star, Award, CheckCircle2, MessageSquare, Loader2, 
+  Calendar, PackageCheck, Send, Zap, ChevronRight, Pencil, Package, ExternalLink, 
+  MessageCircle, Info, Phone
+} from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import SEOHead from '../components/SEOHead';
 import ReviewDetailModal from '../components/ReviewDetailModal';
 import type { RecentReview } from '../components/TrustpilotReviewCard';
+
+interface ProductCard {
+  link_id: string;
+  title: string;
+  description: string;
+  price_ghs: number;
+  image_url: string;
+  escrow_url: string;
+  seller_id: string;
+  seller_username: string;
+  seller_shop_name: string;
+  seller_phone: string;
+  badge_verified_seller: boolean;
+  badge_title?: string;
+  seller_avg_rating: number;
+  seller_total_reviews: number;
+  whatsapp_contact_url: string;
+  created_at: string;
+}
 
 interface ReviewItem {
   id: string;
@@ -51,6 +74,7 @@ interface SellerStorefront {
   badge_top_rated: boolean;
   badge_title?: string;
   reviews: ReviewItem[];
+  active_products?: ProductCard[];
 }
 
 export default function SellerStoreView() {
@@ -328,6 +352,121 @@ export default function SellerStoreView() {
             </div>
           </div>
         </div>
+
+        {/* 3. ACTIVE PRODUCTS & ESCROW OFFERS SECTION */}
+        {store.active_products && store.active_products.length > 0 && (
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden transition-colors">
+            <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Products & Available Payment Links ({store.active_products.length})
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                  Order directly via verified Escrow protection or contact seller for custom delivery quotes.
+                </p>
+              </div>
+              <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-1 rounded-xl shrink-0" title="Shipping fees are based on your location and agreed upon with the seller.">
+                <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span>Shipping cost is based on your location</span>
+              </div>
+            </div>
+
+            <div className="p-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+                {store.active_products.map((prod) => (
+                  <div
+                    key={prod.link_id}
+                    className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200/90 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-lg transition-all flex flex-col overflow-hidden group"
+                  >
+                    {/* Product Image */}
+                    <div className="h-44 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0">
+                      {prod.image_url ? (
+                        <img
+                          src={prod.image_url}
+                          alt={prod.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                          loading="lazy"
+                        />
+                      ) : (
+                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-indigo-950 text-slate-400 p-4 text-center">
+                          <Package className="h-10 w-10 text-slate-500 mb-1" />
+                          <span className="text-xs font-semibold text-slate-300 line-clamp-1">{prod.title}</span>
+                        </div>
+                      )}
+
+                      {/* Floating Price Tag */}
+                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1">
+                        <span className="px-2.5 py-1 rounded-xl bg-slate-950/90 backdrop-blur-md text-emerald-400 font-extrabold text-xs shadow-lg border border-emerald-500/30">
+                          GHS {Number(prod.price_ghs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                        </span>
+                      </div>
+                    </div>
+
+                    {/* Card Content */}
+                    <div className="p-4 flex flex-col flex-1 justify-between gap-3">
+                      <div>
+                        <h4 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {prod.title}
+                        </h4>
+                        {prod.description && (
+                          <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2 mt-1">
+                            {prod.description}
+                          </p>
+                        )}
+                      </div>
+
+                      {/* Transparent Shipping Disclaimer Pill */}
+                      <div className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
+                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider shrink-0">📦 Shipping:</span>
+                        <span className="truncate">Based on your location</span>
+                      </div>
+
+                      {/* Clean Icon-Only Contact Row: Location pill on the left, Phone & WhatsApp icons on the right */}
+                      <div className="pt-2 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 truncate">
+                          <span>Direct Inquiries</span>
+                        </div>
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          {prod.seller_phone && (
+                            <a
+                              href={`tel:${prod.seller_phone}`}
+                              className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/60 dark:hover:text-blue-400 text-slate-700 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition shadow-2xs cursor-pointer"
+                              title={`Call seller (${prod.seller_phone})`}
+                              aria-label={`Call seller at ${prod.seller_phone}`}
+                            >
+                              <Phone className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                            </a>
+                          )}
+                          {prod.whatsapp_contact_url ? (
+                            <a
+                              href={prod.whatsapp_contact_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="h-8 w-8 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
+                              title="Chat with seller on WhatsApp"
+                              aria-label="Chat with seller on WhatsApp"
+                            >
+                              <MessageCircle className="w-4 h-4" />
+                            </a>
+                          ) : (
+                            <Link
+                              to={`/l/${prod.link_id}`}
+                              className="h-8 w-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-xs transition"
+                              title="View Payment Link"
+                              aria-label="View Payment Link"
+                            >
+                              <ExternalLink className="w-3.5 h-3.5" />
+                            </Link>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Public Reviews List */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden transition-colors">

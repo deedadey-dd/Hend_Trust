@@ -3,6 +3,7 @@ import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, 
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 export default function CreatePaymentLinkView() {
   const [title, setTitle] = useState('');
@@ -22,6 +23,9 @@ export default function CreatePaymentLinkView() {
   const [isSubmittingAppeal, setIsSubmittingAppeal] = useState(false);
   const [appealSuccess, setAppealSuccess] = useState('');
   const [appealError, setAppealError] = useState('');
+
+  useEscapeKey(() => setShowModal(false), showModal);
+  useEscapeKey(() => setSuspensionError(null), Boolean(suspensionError));
 
   // Past products autosuggestion & quick fill
   const [pastLinks, setPastLinks] = useState<any[]>([]);
@@ -435,21 +439,35 @@ export default function CreatePaymentLinkView() {
                 <QRCodeDisplay url={createdUrl} title={title} priceGhs={buyerPays} size={150} />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleCopy(createdUrl)}
-                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border-2 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition-all text-xs sm:text-sm"
-                >
-                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                  {copied ? 'Copied!' : 'Copy Link'}
-                </button>
-                <button
-                  onClick={() => handleShare(createdUrl)}
-                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 text-xs sm:text-sm"
+              <div className="space-y-2.5">
+                <a
+                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                    `Hello! Here is your secure HendAxis Trust escrow checkout link for "${title}" (Total: GHS ${buyerPays.toFixed(2)}).\n\n🔒 Your payment is held safely in escrow until you receive and inspect your package.\n👉 Pay safely here: ${createdUrl}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition-all shadow-md shadow-emerald-500/20 text-xs sm:text-sm cursor-pointer"
                 >
                   <Share2 className="h-4 w-4" />
-                  Share Link
-                </button>
+                  <span>Send to Buyer via WhatsApp</span>
+                </a>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    onClick={() => handleCopy(createdUrl)}
+                    className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition-all text-xs cursor-pointer"
+                  >
+                    {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                    {copied ? 'Copied!' : 'Copy Link'}
+                  </button>
+                  <button
+                    onClick={() => handleShare(createdUrl)}
+                    className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 text-xs cursor-pointer"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Share Options
+                  </button>
+                </div>
               </div>
             </div>
           </div>

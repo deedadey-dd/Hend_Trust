@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, ZoomIn, ZoomOut, RotateCw, Download } from 'lucide-react';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 interface ImageLightboxModalProps {
   src?: string;
@@ -10,10 +11,12 @@ interface ImageLightboxModalProps {
 }
 
 export const ImageLightboxModal: React.FC<ImageLightboxModalProps> = ({ src, imageUrl, alt = "Enlarged Image View", isOpen = true, onClose }) => {
+  const imageSrc = src || imageUrl;
+  useEscapeKey(onClose, isOpen && Boolean(imageSrc));
+
   const [zoom, setZoom] = useState(1);
   const [rotation, setRotation] = useState(0);
 
-  const imageSrc = src || imageUrl;
   if (!isOpen || !imageSrc) return null;
 
   const handleZoomIn = () => setZoom(prev => Math.min(prev + 0.25, 3));

@@ -1,6 +1,7 @@
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from django.shortcuts import get_object_or_404
+from django.db.models import Q
 from hendaxis_trust.auth import JWTCookieAuth
 from apps.links.models import PaymentLink, FeeHandling
 from typing import Optional
@@ -41,10 +42,16 @@ class LinkDetailSchema(Schema):
 class SellerLinkSchema(Schema):
     id: uuid.UUID
     title: str
+    description: Optional[str] = ""
     price_ghs: Decimal
+    shipping_fee_ghs: Optional[Decimal] = Decimal('0.00')
+    fee_handling: Optional[str] = "PASS_TO_BUYER"
+    intended_buyer_phone: Optional[str] = ""
     image_url: Optional[str] = ""
     created_at: str
     url: str
+    is_active: bool = True
+    is_archived: bool = False
 
 @links_router.get("/", response=dict)
 def list_seller_links(request, search: str = None, status_filter: str = 'all', start_date: str = None, end_date: str = None, limit: int = 10, offset: int = 0):
@@ -80,7 +87,11 @@ def list_seller_links(request, search: str = None, status_filter: str = 'all', s
             {
                 "id": link.id,
                 "title": link.title,
+                "description": link.description or "",
                 "price_ghs": link.price_ghs,
+                "shipping_fee_ghs": link.shipping_fee_ghs,
+                "fee_handling": link.fee_handling,
+                "intended_buyer_phone": link.intended_buyer_phone or "",
                 "image_url": link.image_url or "",
                 "created_at": link.created_at.isoformat(),
                 "url": f"{base_url}/l/{link.id}",

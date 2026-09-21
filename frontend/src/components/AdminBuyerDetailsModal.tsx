@@ -3,9 +3,10 @@ import {
   X, Star, ShieldCheck, ShieldAlert, 
   DollarSign, Phone, Mail, 
   AlertTriangle, CheckCircle2, MessageSquare, Copy, Check,
-  AlertOctagon, UserCheck, ShoppingBag, MapPin, Search, ArrowUpRight
+  AlertOctagon, UserCheck, ShoppingBag, MapPin, Search, ArrowUpRight, ExternalLink
 } from 'lucide-react';
 import { useAdminBuyerIntelligenceQuery } from '../hooks/api/useAdminPortal';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 export interface AdminBuyerTarget {
   phone?: string | null;
@@ -27,6 +28,9 @@ export const AdminBuyerDetailsModal: React.FC<AdminBuyerDetailsModalProps> = ({
   onInspectTxn,
   onInspectSeller,
 }) => {
+  const isOpen = Boolean(target && (target.phone || target.email || target.userId));
+  useEscapeKey(onClose, isOpen);
+
   const { data, isLoading, error, refetch } = useAdminBuyerIntelligenceQuery({
     phone: target?.phone,
     email: target?.email,
@@ -587,7 +591,22 @@ export const AdminBuyerDetailsModal: React.FC<AdminBuyerDetailsModalProps> = ({
                                   <strong className="text-slate-700 dark:text-slate-300">{txn.shop_name}</strong>
                                 )}
                               </span>
-                              <span className="font-mono text-slate-400">Ref: {txn.paystack_reference}</span>
+                              {onInspectTxn ? (
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    onClose();
+                                    onInspectTxn(txn.id);
+                                  }}
+                                  className="group/ref font-mono font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 inline-flex items-center gap-1 cursor-pointer hover:underline"
+                                  title="Inspect Transaction"
+                                >
+                                  <span>Ref: {txn.paystack_reference}</span>
+                                  <ExternalLink className="h-3 w-3 opacity-60 group-hover/ref:opacity-100 transition" />
+                                </button>
+                              ) : (
+                                <span className="font-mono text-slate-400">Ref: {txn.paystack_reference}</span>
+                              )}
                               <span className="font-mono">{new Date(txn.created_at).toLocaleString()}</span>
                             </div>
 

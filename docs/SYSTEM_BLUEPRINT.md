@@ -117,13 +117,20 @@ graph TD
    - **Dynamic Price Links**: Seller defines title and description; buyer enters custom payment amount at checkout (ideal for custom quotes, services, or invoices).
    - **Item Catalog Integration**: Optionally attach product stock image URL and custom SKU metadata.
    - **Delivery Configuration**: Set delivery fee options (Pickup, Fixed Delivery Fee, or Dynamic Courier Delivery).
+   - **Fee Handling Preferences**:
+     - **`PASS_TO_BUYER` (Default)**: Buyer pays Item Price + Delivery Fee + Platform Escrow Fee. Seller receives 100% of their item and shipping amount upon completion.
+     - **`ABSORB_FEE`**: Buyer pays only Item Price + Delivery Fee. The platform escrow fee is automatically deducted from the seller's gross payout.
+   - **Mathematical Fee Formula**:
+     $$\text{Gross Transaction Value} = \text{Item Price (GHS)} + \text{Delivery Fee (GHS)}$$
+     $$\text{Platform Escrow Protection Fee} = (\text{Gross Transaction Value} \times 1.5\%) + \text{GHS } 10.00$$
+     $$\text{Gateway Processing / Transfer Fee} = \text{Disbursed Amount} \times 1.95\%$$
    - **Custom Checkout Fields**: Collect buyer delivery address, landmark, phone number, and optional notes.
    - **Stale Transaction Management & Auto-Archiving**: Unpaid transactions older than the platform's configured duration (`unpaid_auto_archive_days`, default: 3 days) automatically archive (`is_archived = True`). Sellers can click **"Check Payment"** on `AWAITING_PAYMENT` entries to manually query gateway completion before archiving occurs. Confirmed payments automatically restore transactions (`is_archived = False`).
    - **Archiving & Expiration**: Deactivate or archive stale links without breaking existing escrow histories.
 
 2. **Public Checkout Page (`/pay/:slug`)**:
    - Clean, conversion-focused responsive checkout UI.
-   - Real-time total calculation (Item Price + Delivery Fee + Buyer Service Fee if applicable).
+   - Real-time transparent fee calculation (Item Price + Delivery Fee + Escrow Protection Fee if passed to buyer).
    - Payment method selection:
      - **Mobile Money (MoMo)**: MTN Mobile Money, Telecel Cash, AT Money.
      - **Debit / Credit Card**: Visa, Mastercard.
@@ -132,7 +139,7 @@ graph TD
    - Upon successful payment verification, the transaction instantly transitions into an active **Held in Escrow** state.
 
 #### Database Models (`backend/apps/links/models.py`)
-- `PaymentLink`: Holds `title`, `slug`, `amount`, `is_dynamic_amount`, `description`, `image_url`, `delivery_fee`, `is_archived`, `created_at`.
+- `PaymentLink`: Holds `title`, `slug`, `price_ghs`, `shipping_fee_ghs`, `fee_handling` (`PASS_TO_BUYER` / `ABSORB_FEE`), `is_dynamic_amount`, `description`, `image_url`, `is_archived`, `created_at`.
 
 ---
 
@@ -455,24 +462,29 @@ stateDiagram-v2
 
 | Path | View Component | Access Level | Description |
 | :--- | :--- | :--- | :--- |
-| `/` | `HomeView.tsx` | Public | Homepage showcasing hero section, how escrow works, recent verified reviews carousel, and CTA buttons. |
+| `/` | `HomeView.tsx` | Public | Homepage showcasing hero banner, interactive Escrow Fee Calculator, floating calculator widget, how escrow works, reviews carousel, and CTA. |
+| `/for-buyers` | `ForBuyersView.tsx` | Public | Dedicated buyer landing page highlighting 100% money-back guarantee, MoMo escrow protection, OTP delivery, and inspection windows. |
+| `/for-sellers` | `ForSellersView.tsx` | Public | Dedicated seller landing page detailing zero payment defaults, instant payment links, bus/courier dispatch options, and fee handling. |
+| `/how-it-works` | `HowItWorksView.tsx` | Public | Step-by-step visual escrow walkthrough with integrated interactive live Escrow Fee Calculator. |
+| `/trust-center` | `TrustCenterView.tsx` | Public | Trust, safety, bank-grade ledger security, KYC compliance, and buyer/seller dispute rules. |
+| `/guides` | `GuidesHubView.tsx` | Public | Visual step-by-step educational guides hub for buyers and sellers in Ghana social commerce. |
 | `/shops` | `ShopsDirectoryView.tsx` | Public | Directory of verified sellers with category filters, search bar, and recent reviews carousel. |
 | `/store/:username` | `SellerStoreView.tsx` | Public | Individual seller storefront displaying store banner, bio, social links, products, and customer review cards. |
 | `/reviews` | `ReviewsView.tsx` | Public | Dedicated All Reviews page with star-rating filter chips (1★-5★) and live search bar. |
-| `/pay/:slug` | `PublicCheckoutView.tsx` | Public | Secure checkout page for buyers to pay via MoMo, Card, or GhanaQR. |
-| `/tracking` | `TrackingView.tsx` | Public | Order tracking page for inspecting order progress using reference number. |
-| `/help` | `HelpView.tsx` | Public | Help Center & FAQ page. |
+| `/pay/:slug` | `PublicCheckoutView.tsx` | Public | Secure checkout page for buyers to pay via MoMo, Card, or GhanaQR with real-time fee calculation. |
+| `/tracking` | `TrackingView.tsx` | Public | Order tracking page for inspecting order progress using reference number and upfront 2-step OTP verification. |
+| `/help` | `HelpView.tsx` | Public | Help Center & FAQ platform guide. |
 | `/contact` | `ContactView.tsx` | Public | Customer support contact page. |
 | `/login` | `LoginView.tsx` | Public | Account login page. |
-| `/register` | `RegisterView.tsx` | Public | Buyer & Seller registration page. |
+| `/register` | `RegisterView.tsx` | Public | Buyer & Seller registration page with referral code tracking. |
 | `/forgot-password` | `ForgotPasswordView.tsx` | Public | Password recovery request page. |
 | `/reset-password` | `ResetPasswordView.tsx` | Public | Password reset entry page. |
 | `/activate` | `ActivateAccountView.tsx` | Public | Email OTP activation page. |
-| `/dashboard` | `DashboardView.tsx` | Authenticated | Buyer & Seller main dashboard for managing orders, payment links, and disputes. |
+| `/dashboard` | `DashboardView.tsx` | Authenticated | Buyer & Seller main dashboard for managing orders, payment links, referral rewards, and disputes. |
 | `/links` | `LinksView.tsx` | Authenticated (Seller) | Payment link creation and management interface. |
 | `/links/create` | `CreatePaymentLinkView.tsx` | Authenticated (Seller) | Form for building dynamic or fixed price payment links with Account Suspended modal appeal integration. |
 | `/ledger` | `LedgerView.tsx` | Authenticated (Seller) | Financial wallet, balance breakdown, and withdrawal requests. |
-| `/profile` | `ProfileView.tsx` | Authenticated | User profile management, security settings, and Ghana Card KYC upload. |
+| `/profile` | `ProfileView.tsx` | Authenticated | User profile management, security settings, embeddable trust badges, and Ghana Card KYC upload. |
 | `/developer` | `DeveloperView.tsx` | Authenticated (Seller) | Developer documentation, API overview, and webhook configuration. |
 | `/developer/keys` | `DeveloperKeysView.tsx` | Authenticated (Seller) | API Key management portal (Live vs Sandbox keys). |
 | `/admin-portal` | `AdminDashboardView.tsx` | Admin Only | Master operations dashboard, disputes desk, KYC approvals, suspension appeals desk, ledger audits, and platform settings. |

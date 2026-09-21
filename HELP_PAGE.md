@@ -21,8 +21,10 @@ Sellers can create secure Payment Links to send to their buyers.
 1. **Log in** to your Seller Dashboard and click **Create Payment Link**.
 2. Enter item details: Title, Description, Price in GHS, and Shipping Fee.
 3. **Choose Fee Handling**:
-   - **Absorb Fee**: Seller pays the platform fee. The buyer pays only the exact item price.
-   - **Pass to Buyer**: The buyer pays the item price + platform fee. Seller receives 100% of their item price.
+   - **Platform Fee Formula**: Calculated transparently as $(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$.
+   - **Absorb Fee**: Seller pays the platform fee. The buyer pays only the exact item price + shipping. The fee is deducted from the seller's final wallet payout.
+   - **Pass to Buyer (Default)**: The buyer pays the item price + shipping + platform fee at checkout. Seller receives 100% of their item and shipping amount.
+   - *Tip*: Sellers and buyers can use the **Escrow Fee Calculator** on the home page or `/how-it-works` to simulate exact figures anytime.
 4. **Configurable Seller Dispatch Guarantee & Progressive Reminders**: Once the buyer pays, the seller must dispatch the package within the platform-configured dispatch window (default: **4 days / 96 hours**, managed via **Gateway & Logistics Settings** in the Admin Portal).
    - **Progressive Pre-Expiry Reminders**:
      - At **24 Hours Remaining**: Seller receives an SMS & Email reminder outlining the exact itemized penalty (Platform Fee + 1.95% Gateway Processing Fee) charged if they default.

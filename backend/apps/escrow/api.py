@@ -1,12 +1,15 @@
 from typing import List, Optional
-import logging
-import secrets
-from decimal import Decimal
+import uuid
+import datetime
+from datetime import timedelta
+from decimal import Decimal, ROUND_HALF_UP
 from django.conf import settings
 from django.core.mail import send_mail
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from django.shortcuts import get_object_or_404
+import logging
+import secrets
 from hendaxis_trust.auth import JWTCookieAuth
 from apps.escrow.models import Transaction, TransactionStatus, PlatformSetting
 from apps.escrow.payouts import execute_payout_for_transaction
@@ -1221,11 +1224,52 @@ def resolve_dispute(request, transaction_id: uuid.UUID, data: ResolveDisputeSche
     raise HttpError(400, "Invalid resolution. Use 'COMPLETED' or 'CANCELLED'.")
 
 from ninja_jwt.authentication import JWTAuth
-from apps.core.permissions import is_admin_user, is_superuser_user
+from django.db import transaction as db_transaction
+from apps.core.permissions import (
+    is_staff_user,
+    is_admin_user,
+    is_admin_manager,
+    is_arbiter_user,
+    is_compliance_user,
+    is_finance_user,
+    is_superuser_user,
+    require_role,
+)
+from apps.users.models import Role, User
+from apps.escrow.models import (
+    DisputeResolutionAction,
+    DisputeActionType,
+    ArbiterActivityLog,
+    ArbiterActivityType,
+    ArbiterPayoutBatch,
+    ArbiterPayoutStatus,
+)
 from apps.ledger.models import LedgerAccount
 from django.db.models import Sum
 
 admin_router = Router(tags=["Admin Operations"], auth=JWTCookieAuth())
+
+class AssignArbiterSchema(Schema):
+    arbiter_id: Optional[uuid.UUID] = None
+    notes: Optional[str] = None
+
+class CreateArbiterPayoutBatchSchema(Schema):
+    arbiter_id: Optional[uuid.UUID] = None
+    payout_method: Optional[str] = 'MOMO'
+    payout_account_details: Optional[dict] = {}
+    payment_reference: Optional[str] = ''
+    notes: Optional[str] = ''
+
+class UpdateStaffRoleSchema(Schema):
+    role: str
+    is_staff: Optional[bool] = True
+
+class CreateStaffMemberSchema(Schema):
+    email: str
+    phone_number: str
+    role: str
+    first_name: Optional[str] = ""
+    last_name: Optional[str] = ""
 
 class DisputeResolutionAdminSchema(Schema):
     action: str  # 'RELEASE_TO_SELLER', 'FULL_REFUND_TO_BUYER', 'PARTIAL_REFUND_TO_BUYER', 'REQUIRE_RETURN_FROM_BUYER'
@@ -1605,8 +1649,8 @@ def get_platform_metrics(request):
 
 @admin_router.get("/disputes")
 def get_disputes(request):
-    is_admin_user(request)
-    txns = Transaction.objects.filter(status=TransactionStatus.DISPUTED).select_related('link', 'link__seller').prefetch_related('delivery_logs')
+    is_staff_user(request)
+    txns = Transaction.objects.filter(status=TransactionStatus.DISPUTED).select_related('link', 'link__seller', 'assigned_arbiter').prefetch_related('delivery_logs')
     res = []
     for t in txns:
         log = t.delivery_logs.order_by('-created_at').first()
@@ -1631,6 +1675,14 @@ def get_disputes(request):
             "seller_dispute_photos": t.seller_dispute_photos or [],
             "manager_dispute_notes": t.manager_dispute_notes,
             "manager_dispute_photos": t.manager_dispute_photos or [],
+            "assigned_arbiter": {
+                "id": str(t.assigned_arbiter.id),
+                "username": t.assigned_arbiter.username,
+                "first_name": t.assigned_arbiter.first_name,
+                "last_name": t.assigned_arbiter.last_name,
+                "email": t.assigned_arbiter.email,
+                "role": t.assigned_arbiter.role,
+            } if t.assigned_arbiter else None,
             "created_at": t.created_at.isoformat(),
             "dispatched_at": t.dispatched_at.isoformat() if t.dispatched_at else None,
             "delivered_at": t.delivered_at.isoformat() if t.delivered_at else None,
@@ -1645,9 +1697,71 @@ def get_disputes(request):
         })
     return res
 
+
+@admin_router.post("/disputes/{id}/assign")
+def assign_dispute_arbiter(request, id: uuid.UUID, data: AssignArbiterSchema):
+    is_arbiter_user(request)
+    transaction = get_object_or_404(Transaction, id=id)
+    if transaction.status != TransactionStatus.DISPUTED:
+        raise HttpError(400, "Transaction is not currently in DISPUTED state")
+    
+    if data.arbiter_id:
+        target_arbiter = get_object_or_404(User, id=data.arbiter_id)
+    else:
+        target_arbiter = request.user
+        
+    with db_transaction.atomic():
+        transaction.assigned_arbiter = target_arbiter
+        transaction.save(update_fields=['assigned_arbiter', 'updated_at'])
+        
+        DisputeResolutionAction.objects.create(
+            transaction=transaction,
+            arbiter=request.user,
+            action_type=DisputeActionType.ASSIGNED,
+            admin_notes=data.notes or f"Assigned to @{target_arbiter.username}",
+            refund_amount_ghs=Decimal('0.00'),
+            seller_amount_ghs=Decimal('0.00'),
+            platform_retained_fee_ghs=Decimal('0.00'),
+        )
+        
+    return {
+        "message": f"Dispute successfully assigned to @{target_arbiter.username}.",
+        "assigned_arbiter_id": str(target_arbiter.id),
+        "assigned_arbiter_username": target_arbiter.username
+    }
+
+
+@admin_router.get("/disputes/{id}/actions")
+def get_dispute_actions(request, id: uuid.UUID):
+    is_staff_user(request)
+    transaction = get_object_or_404(Transaction, id=id)
+    actions = transaction.resolution_actions.select_related('arbiter').order_by('-created_at')
+    
+    return [
+        {
+            "id": str(action.id),
+            "action_type": action.action_type,
+            "admin_notes": action.admin_notes,
+            "manager_photos": action.manager_photos or [],
+            "refund_amount_ghs": float(action.refund_amount_ghs),
+            "seller_amount_ghs": float(action.seller_amount_ghs),
+            "platform_retained_fee_ghs": float(action.platform_retained_fee_ghs),
+            "created_at": action.created_at.isoformat(),
+            "arbiter": {
+                "id": str(action.arbiter.id),
+                "username": action.arbiter.username,
+                "first_name": action.arbiter.first_name,
+                "last_name": action.arbiter.last_name,
+                "email": action.arbiter.email,
+                "role": action.arbiter.role,
+            } if action.arbiter else None
+        } for action in actions
+    ]
+
+
 @admin_router.post("/disputes/{id}/resolve")
 def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSchema):
-    is_admin_user(request)
+    is_arbiter_user(request)
     transaction = get_object_or_404(Transaction, id=id)
     if transaction.status != TransactionStatus.DISPUTED:
         raise HttpError(400, "Transaction is not in a DISPUTED state")
@@ -1656,84 +1770,121 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
     if len(manager_photos) > 5:
         raise HttpError(400, "Managers can upload a maximum of 5 ruling photos.")
 
-    if data.admin_notes:
-        transaction.manager_dispute_notes = data.admin_notes
+    opt_manager_photos = []
     if manager_photos:
-        transaction.manager_dispute_photos = process_and_optimize_dispute_photos(manager_photos[:5])
+        opt_manager_photos = process_and_optimize_dispute_photos(manager_photos[:5])
         
     from apps.core.tasks import notify_dispute_resolution_task
-    if data.action == "RELEASE_TO_SELLER":
-        transaction.status = TransactionStatus.COMPLETED
-        transaction.save()
-        execute_payout_for_transaction(transaction)
-        notify_dispute_resolution_task.delay(transaction.id, "RELEASE_TO_SELLER", data.admin_notes)
-        compress_dispute_images_total_1mb(transaction)
-        return {"message": "Funds released to seller."}
-        
-    elif data.action == "FULL_REFUND_TO_BUYER":
-        from apps.ledger.services import execute_full_refund
-        execute_full_refund(
-            reference_id=str(transaction.id),
-            seller_user_id=transaction.link.seller.id,
-            gross_amount=transaction.total_amount_ghs,
-            platform_fee=transaction.platform_fee_ghs
-        )
-        transaction.status = TransactionStatus.REFUNDED
-        transaction.save()
-        notify_dispute_resolution_task.delay(transaction.id, "FULL_REFUND_TO_BUYER", data.admin_notes)
-        compress_dispute_images_total_1mb(transaction)
-        return {"message": "Full refund issued to buyer. Seller charged for platform fee."}
-        
-    elif data.action in ["PARTIAL_REFUND_TO_BUYER", "PARTIAL_REFUND"]:
-        from decimal import Decimal
+    cfg = get_platform_settings()
+    fee_rate = Decimal(str(cfg.get("arbiter_fee_per_dispute", 25.00)))
+
+    with db_transaction.atomic():
+        if not transaction.assigned_arbiter:
+            transaction.assigned_arbiter = request.user
+
+        if data.admin_notes:
+            transaction.manager_dispute_notes = data.admin_notes
+        if opt_manager_photos:
+            transaction.manager_dispute_photos = opt_manager_photos
+
         refund_val = Decimal(str(data.refund_amount_ghs or 0.0))
         seller_val = Decimal(str(data.seller_amount_ghs or 0.0))
-        requested_fee = Decimal(str(data.platform_retained_fee_ghs or 0.0))
-        
-        total_split = refund_val + seller_val + requested_fee
-        if total_split > transaction.total_amount_ghs:
-            raise HttpError(
-                400, 
-                f"The total allocated (GHS {total_split:.2f}) exceeds the total amount paid by the buyer (GHS {transaction.total_amount_ghs:.2f})."
-            )
-            
-        fee_val = requested_fee + max(Decimal('0.00'), transaction.total_amount_ghs - total_split)
+        fee_val = Decimal(str(data.platform_retained_fee_ghs or 0.0))
 
-        from apps.ledger.services import execute_partial_refund
-        execute_partial_refund(
-            reference_id=str(transaction.id),
-            seller_user_id=transaction.link.seller.id,
+        if data.action == "RELEASE_TO_SELLER":
+            transaction.status = TransactionStatus.COMPLETED
+            transaction.save()
+            execute_payout_for_transaction(transaction)
+            notify_dispute_resolution_task.delay(transaction.id, "RELEASE_TO_SELLER", data.admin_notes)
+            compress_dispute_images_total_1mb(transaction)
+            msg = "Funds released to seller."
+            seller_val = transaction.total_amount_ghs - transaction.platform_fee_ghs
+            fee_val = transaction.platform_fee_ghs
+
+        elif data.action == "FULL_REFUND_TO_BUYER":
+            from apps.ledger.services import execute_full_refund
+            execute_full_refund(
+                reference_id=str(transaction.id),
+                seller_user_id=transaction.link.seller.id,
+                gross_amount=transaction.total_amount_ghs,
+                platform_fee=transaction.platform_fee_ghs
+            )
+            transaction.status = TransactionStatus.REFUNDED
+            transaction.save()
+            notify_dispute_resolution_task.delay(transaction.id, "FULL_REFUND_TO_BUYER", data.admin_notes)
+            compress_dispute_images_total_1mb(transaction)
+            msg = "Full refund issued to buyer. Seller charged for platform fee."
+            refund_val = transaction.total_amount_ghs
+            fee_val = transaction.platform_fee_ghs
+
+        elif data.action in ["PARTIAL_REFUND_TO_BUYER", "PARTIAL_REFUND"]:
+            total_split = refund_val + seller_val + fee_val
+            if total_split > transaction.total_amount_ghs:
+                raise HttpError(
+                    400, 
+                    f"The total allocated (GHS {total_split:.2f}) exceeds the total amount paid by the buyer (GHS {transaction.total_amount_ghs:.2f})."
+                )
+                
+            actual_fee = fee_val + max(Decimal('0.00'), transaction.total_amount_ghs - total_split)
+
+            from apps.ledger.services import execute_partial_refund
+            execute_partial_refund(
+                reference_id=str(transaction.id),
+                seller_user_id=transaction.link.seller.id,
+                refund_amount_ghs=refund_val,
+                seller_amount_ghs=seller_val,
+                platform_retained_fee_ghs=actual_fee
+            )
+            transaction.status = TransactionStatus.REFUNDED
+            transaction.save()
+            
+            notify_dispute_resolution_task.delay(
+                transaction.id,
+                "PARTIAL_REFUND_TO_BUYER",
+                data.admin_notes,
+                float(refund_val),
+                float(seller_val)
+            )
+
+            compress_dispute_images_total_1mb(transaction)
+            msg = f"Dispute settlement processed successfully. Payouts scheduled within 24 hours: GHS {refund_val:.2f} to buyer via original payment method, GHS {seller_val:.2f} to seller."
+
+        elif data.action in ["REQUIRE_RETURN_FROM_BUYER", "RETURN_IN_PROGRESS"]:
+            transaction.status = TransactionStatus.RETURN_IN_PROGRESS
+            transaction.save()
+
+            return_days = cfg.get("return_dispatch_days", 3)
+            notify_dispute_resolution_task.delay(transaction.id, "REQUIRE_RETURN_FROM_BUYER", data.admin_notes)
+            compress_dispute_images_total_1mb(transaction)
+            msg = f"Dispute marked as Return Required ({return_days}-day limit). Buyer notified to dispatch return shipment."
+
+        else:
+            raise HttpError(400, "Invalid action")
+
+        # Create immutable DisputeResolutionAction record
+        res_action = DisputeResolutionAction.objects.create(
+            transaction=transaction,
+            arbiter=request.user,
+            action_type=data.action,
+            admin_notes=data.admin_notes or "",
+            manager_photos=opt_manager_photos,
             refund_amount_ghs=refund_val,
             seller_amount_ghs=seller_val,
-            platform_retained_fee_ghs=fee_val
-        )
-        transaction.status = TransactionStatus.REFUNDED
-        transaction.save()
-        
-        notify_dispute_resolution_task.delay(
-            transaction.id,
-            "PARTIAL_REFUND_TO_BUYER",
-            data.admin_notes,
-            float(refund_val),
-            float(seller_val)
+            platform_retained_fee_ghs=fee_val,
         )
 
-        compress_dispute_images_total_1mb(transaction)
-        return {"message": f"Dispute settlement processed successfully. Payouts scheduled within 24 hours: GHS {refund_val:.2f} to buyer via original payment method, GHS {seller_val:.2f} to seller."}
-        
-    elif data.action in ["REQUIRE_RETURN_FROM_BUYER", "RETURN_IN_PROGRESS"]:
-        transaction.status = TransactionStatus.RETURN_IN_PROGRESS
-        transaction.save()
+        # Create ArbiterActivityLog record for accounting & payouts
+        ArbiterActivityLog.objects.create(
+            arbiter=request.user,
+            transaction=transaction,
+            resolution_action=res_action,
+            activity_type=ArbiterActivityType.DISPUTE_RESOLVED,
+            fee_rate_ghs=fee_rate,
+            payout_status=ArbiterPayoutStatus.PENDING,
+            notes=f"Resolved dispute ({data.action}) for order #{transaction.paystack_reference}",
+        )
 
-        cfg = get_platform_settings()
-        return_days = cfg.get("return_dispatch_days", 3)
-
-        notify_dispute_resolution_task.delay(transaction.id, "REQUIRE_RETURN_FROM_BUYER", data.admin_notes)
-
-        compress_dispute_images_total_1mb(transaction)
-        return {"message": f"Dispute marked as Return Required ({return_days}-day limit). Buyer notified to dispatch return shipment."}
-    
-    raise HttpError(400, "Invalid action")
+    return {"message": msg}
 
 @admin_router.get("/transactions")
 def get_all_transactions_admin(request, status: Optional[str] = None, search: Optional[str] = None, limit: int = 50, offset: int = 0):
@@ -2071,7 +2222,7 @@ class AdminSuspendSellerSchema(Schema):
 @admin_router.post("/sellers/{seller_id}/suspend", response=dict)
 @escrow_router.post("/admin/sellers/{seller_id}/suspend", response=dict)
 def admin_suspend_seller(request, seller_id: uuid.UUID, data: AdminSuspendSellerSchema):
-    is_admin_user(request)
+    is_compliance_user(request)
     from apps.users.models import User
     from apps.links.models import PaymentLink
 
@@ -2096,7 +2247,7 @@ def admin_suspend_seller(request, seller_id: uuid.UUID, data: AdminSuspendSeller
 @admin_router.post("/sellers/{seller_id}/reinstate", response=dict)
 @escrow_router.post("/admin/sellers/{seller_id}/reinstate", response=dict)
 def admin_reinstate_seller(request, seller_id: uuid.UUID):
-    is_admin_user(request)
+    is_compliance_user(request)
     from apps.users.models import User
 
     seller = get_object_or_404(User, id=seller_id)
@@ -2122,7 +2273,7 @@ class ReviewSuspensionAppealSchema(Schema):
 
 @admin_router.get("/appeals", response=List[dict])
 def list_suspension_appeals(request, status: Optional[str] = None):
-    is_admin_user(request)
+    is_compliance_user(request)
     from apps.users.models import SuspensionAppeal
     qs = SuspensionAppeal.objects.select_related('user', 'reviewed_by').all().order_by('-created_at')
     if status and status.upper() in ['PENDING', 'APPROVED', 'REJECTED']:
@@ -2152,7 +2303,7 @@ def list_suspension_appeals(request, status: Optional[str] = None):
 
 @admin_router.post("/appeals/{appeal_id}/review", response=dict)
 def review_suspension_appeal(request, appeal_id: uuid.UUID, data: ReviewSuspensionAppealSchema):
-    is_admin_user(request)
+    is_compliance_user(request)
     from apps.users.models import SuspensionAppeal, AppealStatus
     appeal = get_object_or_404(SuspensionAppeal.objects.select_related('user'), id=appeal_id)
 
@@ -2398,7 +2549,7 @@ def get_buyer_intelligence_admin(request, phone: Optional[str] = None, email: Op
 
 @admin_router.post("/broadcast-message")
 def broadcast_message_admin(request, data: BroadcastMessageSchema):
-    is_admin_user(request)
+    is_admin_manager(request)
     from apps.notifications.models import BroadcastCampaign, BroadcastCampaignStatus
     from apps.core.tasks import process_broadcast_campaign_task
     import threading
@@ -2440,7 +2591,7 @@ def broadcast_message_admin(request, data: BroadcastMessageSchema):
 
 @admin_router.get("/broadcast-campaigns")
 def list_broadcast_campaigns(request):
-    is_admin_user(request)
+    is_admin_manager(request)
     from apps.notifications.models import BroadcastCampaign
     campaigns = BroadcastCampaign.objects.all()[:20]
     res = []
@@ -2464,7 +2615,7 @@ def list_broadcast_campaigns(request):
 
 @admin_router.post("/broadcast-campaigns/{campaign_id}/cancel")
 def cancel_broadcast_campaign(request, campaign_id: uuid.UUID):
-    is_admin_user(request)
+    is_admin_manager(request)
     from apps.notifications.models import BroadcastCampaign, BroadcastCampaignStatus
     from hendaxis_trust.celery import app as celery_app
     from django.conf import settings
@@ -2494,7 +2645,7 @@ class RejectVerificationSchema(Schema):
 
 @admin_router.get("/verifications", response=List[dict])
 def get_pending_seller_verifications(request):
-    is_admin_user(request)
+    is_compliance_user(request)
     from apps.users.models import User
     users = User.objects.exclude(verification_status='UNSUBMITTED').order_by('-date_joined')
     return [
@@ -2518,7 +2669,7 @@ def get_pending_seller_verifications(request):
 
 @admin_router.post("/verifications/{user_id}/approve", response=dict)
 def approve_seller_verification(request, user_id: uuid.UUID):
-    is_admin_user(request)
+    is_compliance_user(request)
     from apps.users.models import User, VerificationStatus
     seller = get_object_or_404(User, id=user_id)
     from apps.users.models import VerificationStatus
@@ -2545,7 +2696,7 @@ def approve_seller_verification(request, user_id: uuid.UUID):
 
 @admin_router.post("/verifications/{user_id}/reject", response=dict)
 def reject_seller_verification(request, user_id: uuid.UUID, data: RejectVerificationSchema):
-    is_admin_user(request)
+    is_compliance_user(request)
     seller = get_object_or_404(User, id=user_id)
     from apps.users.models import VerificationStatus
     from apps.core.tasks import dispatch_sms_task
@@ -2562,7 +2713,7 @@ def reject_seller_verification(request, user_id: uuid.UUID, data: RejectVerifica
 
 @admin_router.post("/verifications/{user_id}/auto-verify", response=dict)
 def auto_verify_seller_verification(request, user_id: uuid.UUID):
-    is_admin_user(request)
+    is_compliance_user(request)
     from apps.users.models import User, VerificationStatus
     from apps.users.ghana_card import verify_ghana_card
     from django.utils import timezone
@@ -2590,7 +2741,7 @@ def auto_verify_seller_verification(request, user_id: uuid.UUID):
 
 @admin_router.get("/funds/accounts", response=dict)
 def get_platform_accounts_summary(request):
-    is_admin_user(request)
+    is_finance_user(request)
     from apps.ledger.models import LedgerAccount
     from django.db.models import Sum
 
@@ -2652,7 +2803,7 @@ def get_platform_ledger_entries(
     limit: int = 50,
     offset: int = 0
 ):
-    is_admin_user(request)
+    is_finance_user(request)
     from apps.ledger.models import LedgerEntry
     from django.db.models import Q, Sum
 
@@ -2771,6 +2922,16 @@ DEFAULT_SYSTEM_SETTINGS = {
     # Seller Dispatch Expiry Governance Thresholds
     "dispatch_expiry_warning_threshold": 20.0,
     "dispatch_expiry_suspension_threshold": 35.0,
+    # Arbiter Compensation Rate
+    "arbiter_fee_per_dispute": 25.0,
+    # Global Promotions & Rewards Configuration
+    "promotions_active": False,
+    "promotions_expires_at": None,
+    "buyer_reward_rate_percent": 1.0,
+    "buyer_credit_validity_days": 90,
+    "seller_reward_per_completed_order_ghs": 2.0,
+    "seller_credit_validity_days": 180,
+    "max_promo_discount_cap_ghs": 25.0,
 }
 
 
@@ -2784,6 +2945,15 @@ def get_platform_settings():
             res = DEFAULT_SYSTEM_SETTINGS.copy()
             res.update(setting.value)
         res['django_admin_url'] = admin_url
+
+        # Check if promotions have auto-expired by date
+        if res.get("promotions_active") and res.get("promotions_expires_at"):
+            from django.utils.dateparse import parse_datetime
+            from django.utils import timezone
+            exp = parse_datetime(res["promotions_expires_at"])
+            if exp and exp <= timezone.now():
+                res["promotions_active"] = False
+
         return res
     except Exception:
         res = DEFAULT_SYSTEM_SETTINGS.copy()
@@ -2832,6 +3002,15 @@ class PublicPlatformSettingsSchema(Schema):
     dispute_retraction_release_hours: int = 24
     dispatch_expiry_warning_threshold: float = 20.0
     dispatch_expiry_suspension_threshold: float = 35.0
+    arbiter_fee_per_dispute: float = 25.0
+    # Promotions
+    promotions_active: bool = False
+    promotions_expires_at: Optional[str] = None
+    buyer_reward_rate_percent: float = 1.0
+    buyer_credit_validity_days: int = 90
+    seller_reward_per_completed_order_ghs: float = 2.0
+    seller_credit_validity_days: int = 180
+    max_promo_discount_cap_ghs: float = 25.0
 
 
 class PlatformSettingsSchema(Schema):
@@ -2858,7 +3037,16 @@ class PlatformSettingsSchema(Schema):
     dispute_retraction_release_hours: int = 24
     dispatch_expiry_warning_threshold: float = 20.0
     dispatch_expiry_suspension_threshold: float = 35.0
+    arbiter_fee_per_dispute: float = 25.0
     django_admin_url: Optional[str] = 'admin/'
+    # Promotions
+    promotions_active: bool = False
+    promotions_expires_at: Optional[str] = None
+    buyer_reward_rate_percent: float = 1.0
+    buyer_credit_validity_days: int = 90
+    seller_reward_per_completed_order_ghs: float = 2.0
+    seller_credit_validity_days: int = 180
+    max_promo_discount_cap_ghs: float = 25.0
 
 
 class UpdatePlatformSettingsSchema(Schema):
@@ -2884,6 +3072,15 @@ class UpdatePlatformSettingsSchema(Schema):
     dispute_suspension_threshold: Optional[float] = None
     dispatch_expiry_warning_threshold: Optional[float] = None
     dispatch_expiry_suspension_threshold: Optional[float] = None
+    arbiter_fee_per_dispute: Optional[float] = None
+    # Promotions
+    promotions_active: Optional[bool] = None
+    promotions_expires_at: Optional[str] = None
+    buyer_reward_rate_percent: Optional[float] = None
+    buyer_credit_validity_days: Optional[int] = None
+    seller_reward_per_completed_order_ghs: Optional[float] = None
+    seller_credit_validity_days: Optional[int] = None
+    max_promo_discount_cap_ghs: Optional[float] = None
 
 
 
@@ -2895,17 +3092,15 @@ def get_public_settings(request):
 
 @escrow_router.get("/admin/settings", response=PlatformSettingsSchema)
 def get_admin_settings(request):
-    """Retrieve current platform settings (Superuser only)."""
-    from apps.core.permissions import is_superuser_user
-    is_superuser_user(request)
+    """Retrieve current platform settings (Admin Managers & Superusers)."""
+    is_admin_manager(request)
     return get_platform_settings()
 
 
 @escrow_router.post("/admin/settings", response=PlatformSettingsSchema)
 def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
-    """Superuser endpoint to update active payment gateway, delivery channels/carriers, shipping timeouts & inspection tiers."""
-    from apps.core.permissions import is_superuser_user
-    user = is_superuser_user(request)
+    """Admin Manager endpoint to update active payment gateway, delivery channels/carriers, shipping timeouts, fee & inspection tiers."""
+    is_admin_manager(request)
 
     current = get_platform_settings()
     if data.active_payment_gateway:
@@ -2937,7 +3132,6 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
 
     if data.unpaid_auto_archive_days is not None:
         current["unpaid_auto_archive_days"] = max(1, data.unpaid_auto_archive_days)
-
 
     if data.inspection_tier1_threshold is not None:
         current["inspection_tier1_threshold"] = float(data.inspection_tier1_threshold)
@@ -3015,11 +3209,1205 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     if cur_d_warn >= cur_d_susp:
         raise HttpError(400, "dispatch_expiry_warning_threshold must be strictly less than dispatch_expiry_suspension_threshold.")
 
+    if data.arbiter_fee_per_dispute is not None:
+        current["arbiter_fee_per_dispute"] = max(0.0, float(data.arbiter_fee_per_dispute))
+
+    # Promotions Settings Updates
+    if data.promotions_active is not None:
+        current["promotions_active"] = bool(data.promotions_active)
+
+    if data.promotions_expires_at is not None:
+        current["promotions_expires_at"] = data.promotions_expires_at if data.promotions_expires_at else None
+
+    if data.buyer_reward_rate_percent is not None:
+        current["buyer_reward_rate_percent"] = max(0.0, min(100.0, float(data.buyer_reward_rate_percent)))
+
+    if data.buyer_credit_validity_days is not None:
+        current["buyer_credit_validity_days"] = max(1, int(data.buyer_credit_validity_days))
+
+    if data.seller_reward_per_completed_order_ghs is not None:
+        current["seller_reward_per_completed_order_ghs"] = max(0.0, float(data.seller_reward_per_completed_order_ghs))
+
+    if data.seller_credit_validity_days is not None:
+        current["seller_credit_validity_days"] = max(1, int(data.seller_credit_validity_days))
+
+    if data.max_promo_discount_cap_ghs is not None:
+        current["max_promo_discount_cap_ghs"] = max(0.0, float(data.max_promo_discount_cap_ghs))
+
     setting, _ = PlatformSetting.objects.get_or_create(key="system_config")
     setting.value = current
     setting.save()
 
     return current
+
+
+# ─── Admin Promo Code & Rewards Management Endpoints ──────────────────────────
+
+class PromoCodeItemSchema(Schema):
+    id: uuid.UUID
+    code: str
+    description: str
+    discount_type: str
+    discount_value: float
+    max_discount_cap_ghs: Optional[float] = None
+    min_order_amount_ghs: float
+    usage_limit: Optional[int] = None
+    usage_count: int
+    per_buyer_limit: int
+    eligible_role: str
+    is_active: bool
+    expires_at: Optional[str] = None
+    created_at: str
+    redemptions_count: int = 0
+    total_subsidized_ghs: float = 0.0
+
+
+class CreatePromoCodeSchema(Schema):
+    code: str
+    description: Optional[str] = ""
+    discount_type: str = "PERCENTAGE" # PERCENTAGE or FIXED_GHS
+    discount_value: float
+    max_discount_cap_ghs: Optional[float] = None
+    min_order_amount_ghs: Optional[float] = 0.0
+    usage_limit: Optional[int] = None
+    per_buyer_limit: Optional[int] = 1
+    eligible_role: Optional[str] = "ALL"
+    is_active: Optional[bool] = True
+    expires_at: Optional[str] = None
+
+
+class UpdatePromoCodeSchema(Schema):
+    code: Optional[str] = None
+    description: Optional[str] = None
+    discount_type: Optional[str] = None
+    discount_value: Optional[float] = None
+    max_discount_cap_ghs: Optional[float] = None
+    min_order_amount_ghs: Optional[float] = None
+    usage_limit: Optional[int] = None
+    per_buyer_limit: Optional[int] = None
+    eligible_role: Optional[str] = None
+    is_active: Optional[bool] = None
+    expires_at: Optional[str] = None
+
+
+class AdminGrantCreditSchema(Schema):
+    target_type: str # 'SELLER' or 'BUYER'
+    target_identifier: str # username / email / phone
+    amount_ghs: float
+    notes: str
+    validity_days: Optional[int] = 90
+
+
+class PromoRedemptionItemSchema(Schema):
+    id: uuid.UUID
+    promo_code: str
+    promo_code_id: Optional[uuid.UUID] = None
+    transaction_id: uuid.UUID
+    paystack_reference: str
+    buyer_name: str
+    buyer_phone: str
+    buyer_email: str
+    seller_name: str
+    seller_username: str
+    discount_applied_ghs: float
+    order_total_ghs: float
+    transaction_status: str
+    created_at: str
+
+
+class PromoRedemptionsMetricsSchema(Schema):
+    total_count: int
+    total_subsidy_ghs: float
+    unique_buyers_count: int
+    avg_discount_ghs: float
+
+
+class AdminGlobalPromoRedemptionsSchema(Schema):
+    items: List[PromoRedemptionItemSchema]
+    metrics: PromoRedemptionsMetricsSchema
+    total_count: int
+
+
+@escrow_router.get("/admin/promo-codes", response=List[PromoCodeItemSchema])
+def list_admin_promo_codes(request):
+    """List all configured promotional codes with usage and financial subsidy metrics (Admin Managers)."""
+    is_admin_manager(request)
+    from apps.escrow.models import PromoCode, PromoRedemption
+    from django.db.models import Sum
+
+    codes = PromoCode.objects.all().order_by('-created_at')
+    res = []
+    for c in codes:
+        stats = PromoRedemption.objects.filter(promo_code=c).aggregate(
+            total_subsidy=Sum('discount_applied_ghs')
+        )
+        redemptions_cnt = c.redemptions.count()
+        effective_usage = max(c.usage_count, redemptions_cnt)
+        if c.usage_count != effective_usage:
+            PromoCode.objects.filter(id=c.id).update(usage_count=effective_usage)
+            c.usage_count = effective_usage
+
+        res.append({
+            "id": c.id,
+            "code": c.code,
+            "description": c.description,
+            "discount_type": c.discount_type,
+            "discount_value": float(c.discount_value),
+            "max_discount_cap_ghs": float(c.max_discount_cap_ghs) if c.max_discount_cap_ghs else None,
+            "min_order_amount_ghs": float(c.min_order_amount_ghs),
+            "usage_limit": c.usage_limit,
+            "usage_count": effective_usage,
+            "per_buyer_limit": c.per_buyer_limit,
+            "eligible_role": c.eligible_role,
+            "is_active": c.is_active,
+            "expires_at": c.expires_at.isoformat() if c.expires_at else None,
+            "created_at": c.created_at.isoformat(),
+            "redemptions_count": redemptions_cnt,
+            "total_subsidized_ghs": float(stats['total_subsidy'] or 0.0)
+        })
+    return res
+
+
+@escrow_router.post("/admin/promo-codes", response=PromoCodeItemSchema)
+def create_admin_promo_code(request, data: CreatePromoCodeSchema):
+    """Create a new promotional code with usage restrictions and caps (Admin Managers)."""
+    is_admin_manager(request)
+    from apps.escrow.models import PromoCode, PromoDiscountType, PromoEligibleRole
+    from django.utils.dateparse import parse_datetime
+
+    clean_code = data.code.strip().upper()
+    if not clean_code:
+        raise HttpError(400, "Promo code string cannot be blank.")
+    if PromoCode.objects.filter(code__iexact=clean_code).exists():
+        raise HttpError(400, f"Promo code '{clean_code}' already exists.")
+
+    disc_type = data.discount_type.upper()
+    if disc_type not in [PromoDiscountType.PERCENTAGE, PromoDiscountType.FIXED_GHS]:
+        raise HttpError(400, "Invalid discount type. Must be PERCENTAGE or FIXED_GHS.")
+
+    if data.discount_value <= 0:
+        raise HttpError(400, "Discount value must be greater than zero.")
+
+    exp_dt = parse_datetime(data.expires_at) if data.expires_at else None
+
+    promo = PromoCode.objects.create(
+        code=clean_code,
+        description=data.description or '',
+        discount_type=disc_type,
+        discount_value=Decimal(str(data.discount_value)),
+        max_discount_cap_ghs=Decimal(str(data.max_discount_cap_ghs)) if data.max_discount_cap_ghs else None,
+        min_order_amount_ghs=Decimal(str(data.min_order_amount_ghs or 0.0)),
+        usage_limit=data.usage_limit,
+        per_buyer_limit=max(1, data.per_buyer_limit or 1),
+        eligible_role=data.eligible_role.upper() if data.eligible_role else PromoEligibleRole.ALL,
+        is_active=bool(data.is_active if data.is_active is not None else True),
+        expires_at=exp_dt,
+        created_by=request.user
+    )
+
+    return {
+        "id": promo.id,
+        "code": promo.code,
+        "description": promo.description,
+        "discount_type": promo.discount_type,
+        "discount_value": float(promo.discount_value),
+        "max_discount_cap_ghs": float(promo.max_discount_cap_ghs) if promo.max_discount_cap_ghs else None,
+        "min_order_amount_ghs": float(promo.min_order_amount_ghs),
+        "usage_limit": promo.usage_limit,
+        "usage_count": promo.usage_count,
+        "per_buyer_limit": promo.per_buyer_limit,
+        "eligible_role": promo.eligible_role,
+        "is_active": promo.is_active,
+        "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
+        "created_at": promo.created_at.isoformat(),
+        "redemptions_count": 0,
+        "total_subsidized_ghs": 0.0
+    }
+
+
+@escrow_router.put("/admin/promo-codes/{promo_id}", response=PromoCodeItemSchema)
+def update_admin_promo_code(request, promo_id: uuid.UUID, data: UpdatePromoCodeSchema):
+    """Update active status, discounts, or limits on an existing promo code (Admin Managers)."""
+    is_admin_manager(request)
+    from apps.escrow.models import PromoCode, PromoRedemption
+    from django.db.models import Sum
+    from django.utils.dateparse import parse_datetime
+
+    promo = get_object_or_404(PromoCode, id=promo_id)
+
+    if data.code is not None:
+        clean_code = data.code.strip().upper()
+        if not clean_code:
+            raise HttpError(400, "Promo code identifier cannot be empty.")
+        if PromoCode.objects.filter(code=clean_code).exclude(id=promo.id).exists():
+            raise HttpError(400, f"Promo code '{clean_code}' already exists.")
+        promo.code = clean_code
+
+    if data.description is not None:
+        promo.description = data.description
+    if data.discount_type is not None:
+        promo.discount_type = data.discount_type.upper()
+    if data.discount_value is not None:
+        if data.discount_value <= 0:
+            raise HttpError(400, "Discount value must be greater than zero.")
+        promo.discount_value = Decimal(str(data.discount_value))
+    if data.max_discount_cap_ghs is not None:
+        promo.max_discount_cap_ghs = Decimal(str(data.max_discount_cap_ghs)) if data.max_discount_cap_ghs else None
+    if data.min_order_amount_ghs is not None:
+        promo.min_order_amount_ghs = Decimal(str(data.min_order_amount_ghs))
+    if data.usage_limit is not None:
+        promo.usage_limit = data.usage_limit if data.usage_limit > 0 else None
+    if data.per_buyer_limit is not None:
+        promo.per_buyer_limit = max(1, data.per_buyer_limit)
+    if data.eligible_role is not None:
+        promo.eligible_role = data.eligible_role.upper()
+    if data.is_active is not None:
+        promo.is_active = bool(data.is_active)
+    if data.expires_at is not None:
+        promo.expires_at = parse_datetime(data.expires_at) if data.expires_at else None
+
+    promo.save()
+
+    stats = PromoRedemption.objects.filter(promo_code=promo).aggregate(
+        total_subsidy=Sum('discount_applied_ghs')
+    )
+    redemptions_cnt = promo.redemptions.count()
+    effective_usage = max(promo.usage_count, redemptions_cnt)
+
+    return {
+        "id": promo.id,
+        "code": promo.code,
+        "description": promo.description,
+        "discount_type": promo.discount_type,
+        "discount_value": float(promo.discount_value),
+        "max_discount_cap_ghs": float(promo.max_discount_cap_ghs) if promo.max_discount_cap_ghs else None,
+        "min_order_amount_ghs": float(promo.min_order_amount_ghs),
+        "usage_limit": promo.usage_limit,
+        "usage_count": effective_usage,
+        "per_buyer_limit": promo.per_buyer_limit,
+        "eligible_role": promo.eligible_role,
+        "is_active": promo.is_active,
+        "expires_at": promo.expires_at.isoformat() if promo.expires_at else None,
+        "created_at": promo.created_at.isoformat(),
+        "redemptions_count": redemptions_cnt,
+        "total_subsidized_ghs": float(stats['total_subsidy'] or 0.0)
+    }
+
+
+@escrow_router.delete("/admin/promo-codes/{promo_id}", response=MessageResponse)
+def delete_admin_promo_code(request, promo_id: uuid.UUID):
+    """Deactivates and deletes a promo code (Admin Managers)."""
+    is_admin_manager(request)
+    from apps.escrow.models import PromoCode
+    promo = get_object_or_404(PromoCode, id=promo_id)
+    promo.delete()
+    return {"message": f"Promo code '{promo.code}' deleted successfully."}
+
+
+@escrow_router.get("/admin/promo-codes/{promo_id}/redemptions", response=List[PromoRedemptionItemSchema])
+def list_promo_code_redemptions(request, promo_id: uuid.UUID):
+    """List detailed audit history of all orders that redeemed a specific promo code."""
+    is_admin_manager(request)
+    from apps.escrow.models import PromoCode, PromoRedemption
+    promo = get_object_or_404(PromoCode, id=promo_id)
+    redemptions = PromoRedemption.objects.filter(promo_code=promo).select_related(
+        'transaction', 'buyer_identity', 'seller', 'transaction__link', 'transaction__link__seller'
+    ).order_by('-created_at')
+
+    res = []
+    for r in redemptions:
+        txn = r.transaction
+        buyer_id = r.buyer_identity
+        seller = r.seller or (txn.link.seller if txn and txn.link else None)
+
+        b_name = (txn.buyer_name if txn else '') or (buyer_id.name if buyer_id else '') or 'Guest Buyer'
+        b_phone = (txn.buyer_phone if txn else '') or (buyer_id.phone_number if buyer_id else '')
+        b_email = (txn.buyer_email if txn else '') or (buyer_id.primary_email if buyer_id else '')
+
+        s_name = (seller.get_full_name() if seller else '') or (seller.username if seller else 'Unknown Seller')
+        s_username = seller.username if seller else ''
+
+        res.append({
+            "id": r.id,
+            "promo_code": promo.code,
+            "promo_code_id": promo.id,
+            "transaction_id": txn.id if txn else r.id,
+            "paystack_reference": txn.paystack_reference if txn else '',
+            "buyer_name": b_name,
+            "buyer_phone": b_phone,
+            "buyer_email": b_email,
+            "seller_name": s_name,
+            "seller_username": s_username,
+            "discount_applied_ghs": float(r.discount_applied_ghs or 0.0),
+            "order_total_ghs": float(txn.total_amount_ghs if txn else 0.0),
+            "transaction_status": txn.status if txn else 'UNKNOWN',
+            "created_at": r.created_at.isoformat()
+        })
+    return res
+
+
+@escrow_router.get("/admin/promo-redemptions", response=AdminGlobalPromoRedemptionsSchema)
+def list_all_promo_redemptions(
+    request,
+    code_id: Optional[uuid.UUID] = None,
+    promo_code: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    transaction_status: Optional[str] = None,
+    limit: Optional[int] = 100,
+    offset: Optional[int] = 0
+):
+    """Global query endpoint for all promotional code redemptions across campaigns with filters and aggregates (Admin Managers)."""
+    is_admin_manager(request)
+    from apps.escrow.models import PromoRedemption
+    from django.db.models import Q, Sum, Avg, Count
+    from django.utils.dateparse import parse_datetime, parse_date
+
+    qs = PromoRedemption.objects.all().select_related(
+        'promo_code', 'transaction', 'buyer_identity', 'seller', 'transaction__link', 'transaction__link__seller'
+    )
+
+    if code_id:
+        qs = qs.filter(promo_code_id=code_id)
+
+    if promo_code:
+        qs = qs.filter(promo_code__code__iexact=promo_code.strip())
+
+    if transaction_status and transaction_status.upper() != 'ALL':
+        qs = qs.filter(transaction__status=transaction_status.upper())
+
+    if start_date:
+        parsed_start = parse_datetime(start_date) or parse_date(start_date)
+        if parsed_start:
+            qs = qs.filter(created_at__gte=parsed_start)
+
+    if end_date:
+        parsed_end = parse_datetime(end_date) or parse_date(end_date)
+        if parsed_end:
+            # If date only, include until end of day
+            if not isinstance(parsed_end, timezone.datetime) or parsed_end.hour == 0:
+                parsed_end = timezone.make_aware(timezone.datetime.combine(parsed_end if not hasattr(parsed_end, 'date') else parsed_end.date(), timezone.datetime.max.time()))
+            qs = qs.filter(created_at__lte=parsed_end)
+
+    if search:
+        s = search.strip()
+        from apps.escrow.services_promo import normalize_phone_number
+        norm_phone = normalize_phone_number(s)
+        phone_q = Q()
+        if norm_phone:
+            phone_q = Q(buyer_identity__phone_number__icontains=norm_phone) | Q(transaction__buyer_phone__icontains=norm_phone)
+        elif s.isdigit() and len(s) >= 4:
+            clean_digits = s.lstrip('0')
+            phone_q = Q(buyer_identity__phone_number__icontains=clean_digits) | Q(transaction__buyer_phone__icontains=clean_digits)
+
+        qs = qs.filter(
+            Q(promo_code__code__icontains=s) |
+            Q(transaction__paystack_reference__icontains=s) |
+            Q(transaction__buyer_name__icontains=s) |
+            Q(transaction__buyer_phone__icontains=s) |
+            Q(transaction__buyer_email__icontains=s) |
+            Q(buyer_identity__phone_number__icontains=s) |
+            Q(buyer_identity__primary_email__icontains=s) |
+            Q(buyer_identity__name__icontains=s) |
+            Q(seller__username__icontains=s) |
+            Q(transaction__link__seller__username__icontains=s) |
+            phone_q
+        )
+
+    # Compute aggregate metrics before slicing
+    metrics_data = qs.aggregate(
+        total_subsidy=Sum('discount_applied_ghs'),
+        avg_discount=Avg('discount_applied_ghs'),
+        unique_buyers=Count('buyer_identity', distinct=True)
+    )
+    total_count = qs.count()
+
+    # Sort & slice
+    qs = qs.order_by('-created_at')
+    limit_val = max(1, min(limit or 100, 500))
+    offset_val = max(0, offset or 0)
+    page_items = qs[offset_val:offset_val + limit_val]
+
+    items = []
+    for r in page_items:
+        promo = r.promo_code
+        txn = r.transaction
+        buyer_id = r.buyer_identity
+        seller = r.seller or (txn.link.seller if txn and txn.link else None)
+
+        b_name = (txn.buyer_name if txn else '') or (buyer_id.name if buyer_id else '') or 'Guest Buyer'
+        b_phone = (txn.buyer_phone if txn else '') or (buyer_id.phone_number if buyer_id else '')
+        b_email = (txn.buyer_email if txn else '') or (buyer_id.primary_email if buyer_id else '')
+
+        s_name = (seller.get_full_name() if seller else '') or (seller.username if seller else 'Unknown Seller')
+        s_username = seller.username if seller else ''
+
+        items.append({
+            "id": r.id,
+            "promo_code": promo.code if promo else 'UNKNOWN',
+            "promo_code_id": promo.id if promo else None,
+            "transaction_id": txn.id if txn else r.id,
+            "paystack_reference": txn.paystack_reference if txn else '',
+            "buyer_name": b_name,
+            "buyer_phone": b_phone,
+            "buyer_email": b_email,
+            "seller_name": s_name,
+            "seller_username": s_username,
+            "discount_applied_ghs": float(r.discount_applied_ghs or 0.0),
+            "order_total_ghs": float(txn.total_amount_ghs if txn else 0.0),
+            "transaction_status": txn.status if txn else 'UNKNOWN',
+            "created_at": r.created_at.isoformat()
+        })
+
+    return {
+        "items": items,
+        "metrics": {
+            "total_count": total_count,
+            "total_subsidy_ghs": float(metrics_data['total_subsidy'] or 0.0),
+            "unique_buyers_count": metrics_data['unique_buyers'] or 0,
+            "avg_discount_ghs": float(metrics_data['avg_discount'] or 0.0)
+        },
+        "total_count": total_count
+    }
+
+
+@escrow_router.post("/admin/grant-credit", response=MessageResponse)
+def grant_admin_credit(request, data: AdminGrantCreditSchema):
+    """Grants discretionary promotional credit to a seller or guest buyer with audit logging."""
+    is_admin_manager(request)
+    amount = Decimal(str(data.amount_ghs))
+    if amount <= Decimal('0.00'):
+        raise HttpError(400, "Credit grant amount must be greater than zero.")
+    if not data.notes or len(data.notes.strip()) < 5:
+        raise HttpError(400, "A clear audit reason (at least 5 characters) is required for admin credit grants.")
+
+    target_type = data.target_type.upper()
+    identifier = data.target_identifier.strip()
+    validity_days = max(1, data.validity_days or 90)
+    exp_dt = timezone.now() + timedelta(days=validity_days)
+
+    if target_type == 'SELLER':
+        from apps.users.models import User
+        from apps.escrow.models import SellerRewardLedgerEntry, SellerRewardEntryType
+
+        seller = User.objects.filter(username__iexact=identifier).first()
+        if not seller:
+            seller = User.objects.filter(email__iexact=identifier).first()
+        if not seller:
+            raise HttpError(404, f"Seller account '{identifier}' not found.")
+
+        with db_transaction.atomic():
+            seller.wallet_bonus_credits_ghs = (seller.wallet_bonus_credits_ghs or Decimal('0.00')) + amount
+            seller.save(update_fields=['wallet_bonus_credits_ghs'])
+
+            SellerRewardLedgerEntry.objects.create(
+                seller=seller,
+                amount_ghs=amount,
+                entry_type=SellerRewardEntryType.ADMIN_GRANT,
+                reference_id=f"ADMIN_GRANT_{uuid.uuid4().hex[:8]}",
+                expires_at=exp_dt,
+                notes=f"Admin grant by @{request.user.username}: {data.notes}"
+            )
+        return {"message": f"Successfully granted GHS {amount:.2f} fee credit to seller @{seller.username}."}
+
+    else: # BUYER
+        from apps.escrow.services_promo import get_or_create_buyer_identity
+        from apps.escrow.models import BuyerCreditLedgerEntry, BuyerCreditEntryType
+
+        buyer = get_or_create_buyer_identity(phone=identifier)
+        with db_transaction.atomic():
+            buyer.available_credit_ghs += amount
+            buyer.lifetime_credit_earned_ghs += amount
+            buyer.save(update_fields=['available_credit_ghs', 'lifetime_credit_earned_ghs', 'updated_at'])
+
+            BuyerCreditLedgerEntry.objects.create(
+                buyer=buyer,
+                amount_ghs=amount,
+                entry_type=BuyerCreditEntryType.ADMIN_GRANT,
+                reference_id=f"ADMIN_GRANT_{uuid.uuid4().hex[:8]}",
+                expires_at=exp_dt,
+                notes=f"Admin grant by @{request.user.username}: {data.notes}"
+            )
+        return {"message": f"Successfully granted GHS {amount:.2f} promotional credit to buyer {buyer.phone_number}."}
+
+
+# ─── SEASONAL & FESTIVE PLATFORM FEE CAMPAIGN ENDPOINTS ───────────────────────
+
+class SeasonalFeeCampaignSchema(Schema):
+    id: uuid.UUID
+    name: str
+    description: str
+    fee_rule_type: str
+    rule_value: float
+    min_order_amount_ghs: float
+    max_discount_cap_ghs: Optional[float] = None
+    start_date: str
+    end_date: str
+    is_active: bool
+    created_at: str
+    orders_count: int = 0
+    total_subsidized_ghs: float = 0.0
+
+
+class CreateSeasonalFeeCampaignSchema(Schema):
+    name: str
+    description: Optional[str] = ""
+    fee_rule_type: str  # WAIVED, REDUCED_PERCENTAGE, REDUCED_FIXED, PERCENTAGE_DISCOUNT, FIXED_DISCOUNT
+    rule_value: float = 0.0
+    min_order_amount_ghs: float = 0.0
+    max_discount_cap_ghs: Optional[float] = None
+    start_date: str
+    end_date: str
+    is_active: bool = True
+
+
+class UpdateSeasonalFeeCampaignSchema(Schema):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    fee_rule_type: Optional[str] = None
+    rule_value: Optional[float] = None
+    min_order_amount_ghs: Optional[float] = None
+    max_discount_cap_ghs: Optional[float] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@escrow_router.get("/admin/seasonal-fees", response=List[SeasonalFeeCampaignSchema])
+def list_admin_seasonal_fee_campaigns(request):
+    """Lists all festive & seasonal platform fee override campaigns with order aggregates."""
+    is_admin_manager(request)
+    from apps.escrow.models import SeasonalFeeCampaign
+    from django.db.models import Sum, Count
+
+    campaigns = SeasonalFeeCampaign.objects.all().annotate(
+        orders_cnt=Count('transactions'),
+        total_subsidy=Sum('transactions__seasonal_fee_discount_ghs')
+    ).order_by('-start_date')
+
+    res = []
+    for c in campaigns:
+        res.append({
+            "id": c.id,
+            "name": c.name,
+            "description": c.description,
+            "fee_rule_type": c.fee_rule_type,
+            "rule_value": float(c.rule_value),
+            "min_order_amount_ghs": float(c.min_order_amount_ghs),
+            "max_discount_cap_ghs": float(c.max_discount_cap_ghs) if c.max_discount_cap_ghs else None,
+            "start_date": c.start_date.isoformat(),
+            "end_date": c.end_date.isoformat(),
+            "is_active": c.is_active,
+            "created_at": c.created_at.isoformat(),
+            "orders_count": c.orders_cnt,
+            "total_subsidized_ghs": float(c.total_subsidy or 0.0),
+        })
+    return res
+
+
+@escrow_router.post("/admin/seasonal-fees", response=SeasonalFeeCampaignSchema)
+def create_admin_seasonal_fee_campaign(request, data: CreateSeasonalFeeCampaignSchema):
+    """Creates a new festive/seasonal platform fee waiver or reduction campaign."""
+    is_admin_manager(request)
+    from apps.escrow.models import SeasonalFeeCampaign, SeasonalFeeRuleType
+    from django.utils.dateparse import parse_datetime
+
+    clean_name = data.name.strip()
+    if not clean_name:
+        raise HttpError(400, "Campaign title is required.")
+
+    valid_rules = [r[0] for r in SeasonalFeeRuleType.choices]
+    if data.fee_rule_type.upper() not in valid_rules:
+        raise HttpError(400, f"Invalid fee rule type. Choices are: {', '.join(valid_rules)}")
+
+    s_date = parse_datetime(data.start_date)
+    e_date = parse_datetime(data.end_date)
+    if not s_date or not e_date:
+        raise HttpError(400, "Valid start and end datetimes are required.")
+    if e_date <= s_date:
+        raise HttpError(400, "Campaign end date must be strictly after the start date.")
+
+    campaign = SeasonalFeeCampaign.objects.create(
+        name=clean_name,
+        description=data.description.strip() if data.description else "",
+        fee_rule_type=data.fee_rule_type.upper(),
+        rule_value=Decimal(str(data.rule_value or 0.0)),
+        min_order_amount_ghs=Decimal(str(data.min_order_amount_ghs or 0.0)),
+        max_discount_cap_ghs=Decimal(str(data.max_discount_cap_ghs)) if data.max_discount_cap_ghs else None,
+        start_date=s_date,
+        end_date=e_date,
+        is_active=data.is_active,
+        created_by=request.user
+    )
+
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "description": campaign.description,
+        "fee_rule_type": campaign.fee_rule_type,
+        "rule_value": float(campaign.rule_value),
+        "min_order_amount_ghs": float(campaign.min_order_amount_ghs),
+        "max_discount_cap_ghs": float(campaign.max_discount_cap_ghs) if campaign.max_discount_cap_ghs else None,
+        "start_date": campaign.start_date.isoformat(),
+        "end_date": campaign.end_date.isoformat(),
+        "is_active": campaign.is_active,
+        "created_at": campaign.created_at.isoformat(),
+        "orders_count": 0,
+        "total_subsidized_ghs": 0.0,
+    }
+
+
+@escrow_router.put("/admin/seasonal-fees/{campaign_id}", response=SeasonalFeeCampaignSchema)
+def update_admin_seasonal_fee_campaign(request, campaign_id: uuid.UUID, data: UpdateSeasonalFeeCampaignSchema):
+    """Updates an existing seasonal fee campaign."""
+    is_admin_manager(request)
+    from apps.escrow.models import SeasonalFeeCampaign, SeasonalFeeRuleType
+    from django.utils.dateparse import parse_datetime
+    from django.db.models import Sum
+
+    campaign = get_object_or_404(SeasonalFeeCampaign, id=campaign_id)
+
+    if data.name is not None:
+        campaign.name = data.name.strip()
+    if data.description is not None:
+        campaign.description = data.description.strip()
+    if data.fee_rule_type is not None:
+        valid_rules = [r[0] for r in SeasonalFeeRuleType.choices]
+        if data.fee_rule_type.upper() not in valid_rules:
+            raise HttpError(400, f"Invalid fee rule type. Choices: {', '.join(valid_rules)}")
+        campaign.fee_rule_type = data.fee_rule_type.upper()
+    if data.rule_value is not None:
+        campaign.rule_value = Decimal(str(data.rule_value))
+    if data.min_order_amount_ghs is not None:
+        campaign.min_order_amount_ghs = Decimal(str(data.min_order_amount_ghs))
+    if data.max_discount_cap_ghs is not None:
+        campaign.max_discount_cap_ghs = Decimal(str(data.max_discount_cap_ghs)) if data.max_discount_cap_ghs else None
+    if data.start_date is not None:
+        s_date = parse_datetime(data.start_date)
+        if s_date:
+            campaign.start_date = s_date
+    if data.end_date is not None:
+        e_date = parse_datetime(data.end_date)
+        if e_date:
+            campaign.end_date = e_date
+    if data.is_active is not None:
+        campaign.is_active = bool(data.is_active)
+
+    campaign.save()
+
+    stats = campaign.transactions.aggregate(total_subsidy=Sum('seasonal_fee_discount_ghs'))
+    return {
+        "id": campaign.id,
+        "name": campaign.name,
+        "description": campaign.description,
+        "fee_rule_type": campaign.fee_rule_type,
+        "rule_value": float(campaign.rule_value),
+        "min_order_amount_ghs": float(campaign.min_order_amount_ghs),
+        "max_discount_cap_ghs": float(campaign.max_discount_cap_ghs) if campaign.max_discount_cap_ghs else None,
+        "start_date": campaign.start_date.isoformat(),
+        "end_date": campaign.end_date.isoformat(),
+        "is_active": campaign.is_active,
+        "created_at": campaign.created_at.isoformat(),
+        "orders_count": campaign.transactions.count(),
+        "total_subsidized_ghs": float(stats['total_subsidy'] or 0.0),
+    }
+
+
+@escrow_router.delete("/admin/seasonal-fees/{campaign_id}", response=MessageResponse)
+def delete_admin_seasonal_fee_campaign(request, campaign_id: uuid.UUID):
+    """Deletes or deactivates a seasonal fee campaign."""
+    is_admin_manager(request)
+    from apps.escrow.models import SeasonalFeeCampaign
+    campaign = get_object_or_404(SeasonalFeeCampaign, id=campaign_id)
+    name = campaign.name
+    campaign.delete()
+    return {"message": f"Seasonal fee campaign '{name}' deleted successfully."}
+
+
+class AdminSeasonalFeeOrderItemSchema(Schema):
+    id: uuid.UUID
+    campaign_id: Optional[uuid.UUID] = None
+    campaign_name: str
+    paystack_reference: str
+    item_title: str
+    buyer_name: str
+    buyer_phone: str
+    seller_name: str
+    seller_username: str
+    order_total_ghs: float
+    platform_fee_ghs: float
+    seasonal_discount_ghs: float
+    status: str
+    created_at: str
+
+
+class AdminSeasonalFeeOrdersResponseSchema(Schema):
+    count: int
+    metrics: dict
+    items: List[AdminSeasonalFeeOrderItemSchema]
+
+
+@escrow_router.get("/admin/seasonal-fee-orders", response=AdminSeasonalFeeOrdersResponseSchema)
+def get_admin_seasonal_fee_orders(
+    request,
+    campaign_id: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+):
+    """Retrieves orders that benefited from festive/seasonal platform fee waivers and discounts."""
+    is_admin_manager(request)
+    from apps.escrow.models import Transaction
+    from django.db.models import Sum, Count, Avg
+
+    qs = Transaction.objects.filter(
+        seasonal_fee_discount_ghs__gt=Decimal('0.00')
+    ).select_related('seasonal_fee_campaign', 'link', 'link__seller').order_by('-created_at')
+
+    if campaign_id and campaign_id != 'ALL':
+        try:
+            cid = uuid.UUID(campaign_id)
+            qs = qs.filter(seasonal_fee_campaign_id=cid)
+        except Exception:
+            pass
+
+    if start_date:
+        from django.utils.dateparse import parse_date
+        sd = parse_date(start_date)
+        if sd:
+            qs = qs.filter(created_at__date__gte=sd)
+
+    if end_date:
+        from django.utils.dateparse import parse_date
+        ed = parse_date(end_date)
+        if ed:
+            qs = qs.filter(created_at__date__lte=ed)
+
+    if search:
+        s = search.strip()
+        qs = qs.filter(
+            Q(paystack_reference__icontains=s) |
+            Q(link__title__icontains=s) |
+            Q(buyer_name__icontains=s) |
+            Q(buyer_phone__icontains=s) |
+            Q(link__seller__username__icontains=s) |
+            Q(seasonal_fee_campaign__name__icontains=s)
+        )
+
+    total_count = qs.count()
+    stats = qs.aggregate(
+        total_subsidized=Sum('seasonal_fee_discount_ghs'),
+        avg_discount=Avg('seasonal_fee_discount_ghs'),
+        total_volume=Sum('total_amount_ghs'),
+        unique_sellers=Count('link__seller', distinct=True)
+    )
+
+    page_items = qs[offset:offset + limit]
+    items = []
+    for t in page_items:
+        s = getattr(t.link, 'seller', None)
+        items.append({
+            "id": t.id,
+            "campaign_id": t.seasonal_fee_campaign_id,
+            "campaign_name": t.seasonal_fee_campaign.name if t.seasonal_fee_campaign else "Seasonal Promotion",
+            "paystack_reference": t.paystack_reference,
+            "item_title": t.link.title if t.link else "Escrow Transaction",
+            "buyer_name": t.buyer_name or "Guest Buyer",
+            "buyer_phone": t.buyer_phone or "",
+            "seller_name": s.get_full_name() or s.username if s else "Unknown Seller",
+            "seller_username": s.username if s else "",
+            "order_total_ghs": float(t.total_amount_ghs),
+            "platform_fee_ghs": float(t.platform_fee_ghs),
+            "seasonal_discount_ghs": float(t.seasonal_fee_discount_ghs),
+            "status": t.status,
+            "created_at": t.created_at.isoformat(),
+        })
+
+    return {
+        "count": total_count,
+        "metrics": {
+            "total_count": total_count,
+            "total_subsidized_ghs": float(stats['total_subsidized'] or 0.0),
+            "avg_discount_ghs": float(stats['avg_discount'] or 0.0),
+            "total_volume_ghs": float(stats['total_volume'] or 0.0),
+            "unique_sellers_count": stats['unique_sellers'] or 0,
+        },
+        "items": items,
+    }
+
+
+# ─── TRANSACTION REWARD / CASHBACK CAMPAIGN ENDPOINTS ────────────────────────
+
+class TransactionRewardCampaignSchema(Schema):
+    id: uuid.UUID
+    name: str
+    description: str
+    target_role: str
+    reward_type: str
+    reward_value: float
+    min_order_amount_ghs: float
+    max_reward_cap_ghs: Optional[float] = None
+    validity_days: int
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    is_active: bool
+    created_at: str
+
+
+class CreateTransactionRewardCampaignSchema(Schema):
+    name: str
+    description: Optional[str] = ""
+    target_role: str  # SELLER, BUYER, ALL
+    reward_type: str  # FIXED_GHS, PERCENTAGE_OF_ORDER, PERCENTAGE_OF_FEE
+    reward_value: float
+    min_order_amount_ghs: float = 0.0
+    max_reward_cap_ghs: Optional[float] = None
+    validity_days: int = 180
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    is_active: bool = True
+
+
+class UpdateTransactionRewardCampaignSchema(Schema):
+    name: Optional[str] = None
+    description: Optional[str] = None
+    target_role: Optional[str] = None
+    reward_type: Optional[str] = None
+    reward_value: Optional[float] = None
+    min_order_amount_ghs: Optional[float] = None
+    max_reward_cap_ghs: Optional[float] = None
+    validity_days: Optional[int] = None
+    start_date: Optional[str] = None
+    end_date: Optional[str] = None
+    is_active: Optional[bool] = None
+
+
+@escrow_router.get("/admin/reward-campaigns", response=List[TransactionRewardCampaignSchema])
+def list_admin_reward_campaigns(request):
+    """Lists all transaction cashback & loyalty reward campaigns."""
+    is_admin_manager(request)
+    from apps.escrow.models import TransactionRewardCampaign
+    campaigns = TransactionRewardCampaign.objects.all().order_by('-created_at')
+    res = []
+    for c in campaigns:
+        res.append({
+            "id": c.id,
+            "name": c.name,
+            "description": c.description,
+            "target_role": c.target_role,
+            "reward_type": c.reward_type,
+            "reward_value": float(c.reward_value),
+            "min_order_amount_ghs": float(c.min_order_amount_ghs),
+            "max_reward_cap_ghs": float(c.max_reward_cap_ghs) if c.max_reward_cap_ghs else None,
+            "validity_days": c.validity_days,
+            "start_date": c.start_date.isoformat() if c.start_date else None,
+            "end_date": c.end_date.isoformat() if c.end_date else None,
+            "is_active": c.is_active,
+            "created_at": c.created_at.isoformat(),
+        })
+    return res
+
+
+@escrow_router.post("/admin/reward-campaigns", response=TransactionRewardCampaignSchema)
+def create_admin_reward_campaign(request, data: CreateTransactionRewardCampaignSchema):
+    """Creates a new transaction cashback reward campaign."""
+    is_admin_manager(request)
+    from apps.escrow.models import TransactionRewardCampaign, RewardTargetRole, RewardCalculationType
+    from django.utils.dateparse import parse_datetime
+
+    clean_name = data.name.strip()
+    if not clean_name:
+        raise HttpError(400, "Campaign name is required.")
+
+    valid_roles = [r[0] for r in RewardTargetRole.choices]
+    if data.target_role.upper() not in valid_roles:
+        raise HttpError(400, f"Invalid target role. Choices: {', '.join(valid_roles)}")
+
+    valid_types = [t[0] for t in RewardCalculationType.choices]
+    if data.reward_type.upper() not in valid_types:
+        raise HttpError(400, f"Invalid reward type. Choices: {', '.join(valid_types)}")
+
+    s_date = parse_datetime(data.start_date) if data.start_date else None
+    e_date = parse_datetime(data.end_date) if data.end_date else None
+
+    camp = TransactionRewardCampaign.objects.create(
+        name=clean_name,
+        description=data.description.strip() if data.description else "",
+        target_role=data.target_role.upper(),
+        reward_type=data.reward_type.upper(),
+        reward_value=Decimal(str(data.reward_value)),
+        min_order_amount_ghs=Decimal(str(data.min_order_amount_ghs or 0.0)),
+        max_reward_cap_ghs=Decimal(str(data.max_reward_cap_ghs)) if data.max_reward_cap_ghs else None,
+        validity_days=max(1, data.validity_days or 180),
+        start_date=s_date,
+        end_date=e_date,
+        is_active=data.is_active,
+        created_by=request.user
+    )
+
+    return {
+        "id": camp.id,
+        "name": camp.name,
+        "description": camp.description,
+        "target_role": camp.target_role,
+        "reward_type": camp.reward_type,
+        "reward_value": float(camp.reward_value),
+        "min_order_amount_ghs": float(camp.min_order_amount_ghs),
+        "max_reward_cap_ghs": float(camp.max_reward_cap_ghs) if camp.max_reward_cap_ghs else None,
+        "validity_days": camp.validity_days,
+        "start_date": camp.start_date.isoformat() if camp.start_date else None,
+        "end_date": camp.end_date.isoformat() if camp.end_date else None,
+        "is_active": camp.is_active,
+        "created_at": camp.created_at.isoformat(),
+    }
+
+
+@escrow_router.put("/admin/reward-campaigns/{campaign_id}", response=TransactionRewardCampaignSchema)
+def update_admin_reward_campaign(request, campaign_id: uuid.UUID, data: UpdateTransactionRewardCampaignSchema):
+    """Updates an existing reward campaign."""
+    is_admin_manager(request)
+    from apps.escrow.models import TransactionRewardCampaign, RewardTargetRole, RewardCalculationType
+    from django.utils.dateparse import parse_datetime
+
+    camp = get_object_or_404(TransactionRewardCampaign, id=campaign_id)
+    if data.name is not None:
+        camp.name = data.name.strip()
+    if data.description is not None:
+        camp.description = data.description.strip()
+    if data.target_role is not None:
+        camp.target_role = data.target_role.upper()
+    if data.reward_type is not None:
+        camp.reward_type = data.reward_type.upper()
+    if data.reward_value is not None:
+        camp.reward_value = Decimal(str(data.reward_value))
+    if data.min_order_amount_ghs is not None:
+        camp.min_order_amount_ghs = Decimal(str(data.min_order_amount_ghs))
+    if data.max_reward_cap_ghs is not None:
+        camp.max_reward_cap_ghs = Decimal(str(data.max_reward_cap_ghs)) if data.max_reward_cap_ghs else None
+    if data.validity_days is not None:
+        camp.validity_days = max(1, data.validity_days)
+    if data.start_date is not None:
+        camp.start_date = parse_datetime(data.start_date) if data.start_date else None
+    if data.end_date is not None:
+        camp.end_date = parse_datetime(data.end_date) if data.end_date else None
+    if data.is_active is not None:
+        camp.is_active = bool(data.is_active)
+
+    camp.save()
+    return {
+        "id": camp.id,
+        "name": camp.name,
+        "description": camp.description,
+        "target_role": camp.target_role,
+        "reward_type": camp.reward_type,
+        "reward_value": float(camp.reward_value),
+        "min_order_amount_ghs": float(camp.min_order_amount_ghs),
+        "max_reward_cap_ghs": float(camp.max_reward_cap_ghs) if camp.max_reward_cap_ghs else None,
+        "validity_days": camp.validity_days,
+        "start_date": camp.start_date.isoformat() if camp.start_date else None,
+        "end_date": camp.end_date.isoformat() if camp.end_date else None,
+        "is_active": camp.is_active,
+        "created_at": camp.created_at.isoformat(),
+    }
+
+
+@escrow_router.delete("/admin/reward-campaigns/{campaign_id}", response=MessageResponse)
+def delete_admin_reward_campaign(request, campaign_id: uuid.UUID):
+    """Deletes a reward campaign."""
+    is_admin_manager(request)
+    from apps.escrow.models import TransactionRewardCampaign
+    camp = get_object_or_404(TransactionRewardCampaign, id=campaign_id)
+    name = camp.name
+    camp.delete()
+    return {"message": f"Reward campaign '{name}' deleted successfully."}
+
+
+class CashbackLedgerItemSchema(Schema):
+    id: uuid.UUID
+    recipient_type: str  # SELLER or BUYER
+    recipient_identifier: str  # username or phone
+    recipient_name: str
+    amount_ghs: float
+    entry_type: str
+    reference_id: str
+    transaction_id: Optional[str] = None
+    transaction_reference: Optional[str] = None
+    notes: str
+    expires_at: Optional[str] = None
+    created_at: str
+
+
+class CashbackLedgerResponseSchema(Schema):
+    count: int
+    metrics: dict
+    items: List[CashbackLedgerItemSchema]
+
+
+@escrow_router.get("/admin/cashback-ledger", response=CashbackLedgerResponseSchema)
+def get_admin_cashback_ledger(
+    request,
+    recipient_type: Optional[str] = None,
+    entry_type: Optional[str] = None,
+    search: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+):
+    """Audits fee credit and loyalty reward transactions across sellers and buyers."""
+    is_admin_manager(request)
+    import re
+    from apps.escrow.models import SellerRewardLedgerEntry, BuyerCreditLedgerEntry, Transaction
+    from django.utils.dateparse import parse_date
+
+    seller_entries = []
+    buyer_entries = []
+
+    # Filter seller reward ledger
+    if recipient_type in [None, 'ALL', 'SELLER']:
+        sqs = SellerRewardLedgerEntry.objects.select_related('seller').all()
+        if entry_type and entry_type != 'ALL':
+            sqs = sqs.filter(entry_type=entry_type)
+        if start_date:
+            sd = parse_date(start_date)
+            if sd:
+                sqs = sqs.filter(created_at__date__gte=sd)
+        if end_date:
+            ed = parse_date(end_date)
+            if ed:
+                sqs = sqs.filter(created_at__date__lte=ed)
+        if search:
+            s = search.strip()
+            sqs = sqs.filter(
+                Q(seller__username__icontains=s) |
+                Q(seller__phone_number__icontains=s) |
+                Q(reference_id__icontains=s) |
+                Q(notes__icontains=s)
+            )
+        for e in sqs:
+            seller_entries.append({
+                "id": e.id,
+                "recipient_type": "SELLER",
+                "recipient_identifier": f"@{e.seller.username}",
+                "recipient_name": e.seller.get_full_name() or e.seller.username,
+                "amount_ghs": float(e.amount_ghs),
+                "entry_type": e.entry_type,
+                "reference_id": e.reference_id,
+                "notes": e.notes,
+                "expires_at": e.expires_at.isoformat() if e.expires_at else None,
+                "created_at": e.created_at.isoformat(),
+                "_dt": e.created_at,
+            })
+
+    # Filter buyer credit ledger
+    if recipient_type in [None, 'ALL', 'BUYER']:
+        bqs = BuyerCreditLedgerEntry.objects.select_related('buyer').all()
+        if entry_type and entry_type != 'ALL':
+            bqs = bqs.filter(entry_type=entry_type)
+        if start_date:
+            sd = parse_date(start_date)
+            if sd:
+                bqs = bqs.filter(created_at__date__gte=sd)
+        if end_date:
+            ed = parse_date(end_date)
+            if ed:
+                bqs = bqs.filter(created_at__date__lte=ed)
+        if search:
+            s = search.strip()
+            bqs = bqs.filter(
+                Q(buyer__phone_number__icontains=s) |
+                Q(buyer__name__icontains=s) |
+                Q(reference_id__icontains=s) |
+                Q(notes__icontains=s)
+            )
+        for e in bqs:
+            buyer_entries.append({
+                "id": e.id,
+                "recipient_type": "BUYER",
+                "recipient_identifier": e.buyer.phone_number,
+                "recipient_name": e.buyer.name or "Guest Buyer",
+                "amount_ghs": float(e.amount_ghs),
+                "entry_type": e.entry_type,
+                "reference_id": e.reference_id,
+                "notes": e.notes,
+                "expires_at": e.expires_at.isoformat() if e.expires_at else None,
+                "created_at": e.created_at.isoformat(),
+                "_dt": e.created_at,
+            })
+
+    all_items = sorted(seller_entries + buyer_entries, key=lambda x: x["_dt"], reverse=True)
+    total_count = len(all_items)
+
+    total_earned = sum(x["amount_ghs"] for x in all_items if x["entry_type"] in ['EARNED', 'REFERRAL_BONUS', 'ADMIN_GRANT'])
+    total_redeemed = sum(x["amount_ghs"] for x in all_items if x["entry_type"] in ['REDEEMED'])
+
+    page_items = all_items[offset:offset + limit]
+
+    # Resolve linked transactions for page items
+    uuid_pattern = re.compile(r'[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}')
+    ref_pattern = re.compile(r'(?:HT-TX-[A-Za-z0-9_-]+|HT-[A-Za-z0-9_-]+|TXN-[A-Za-z0-9_-]+)')
+
+    candidate_uuids = set()
+    candidate_refs = set()
+
+    for it in page_items:
+        ref_text = f"{it.get('reference_id', '')} {it.get('notes', '')}"
+        for u in uuid_pattern.findall(ref_text):
+            try:
+                candidate_uuids.add(uuid.UUID(u))
+            except Exception:
+                pass
+        for r in ref_pattern.findall(ref_text):
+            candidate_refs.add(r)
+
+    tx_by_id = {}
+    tx_by_ref = {}
+    if candidate_uuids or candidate_refs:
+        tx_qs = Transaction.objects.filter(
+            Q(id__in=candidate_uuids) | Q(paystack_reference__in=candidate_refs)
+        ).only('id', 'paystack_reference')
+        for t in tx_qs:
+            tx_by_id[str(t.id)] = t
+            tx_by_ref[t.paystack_reference] = t
+
+    clean_items = []
+    for it in page_items:
+        it_copy = it.copy()
+        it_copy.pop("_dt", None)
+
+        matched_tx = None
+        ref_text = f"{it.get('reference_id', '')} {it.get('notes', '')}"
+        for u in uuid_pattern.findall(ref_text):
+            if u in tx_by_id:
+                matched_tx = tx_by_id[u]
+                break
+        if not matched_tx:
+            for r in ref_pattern.findall(ref_text):
+                if r in tx_by_ref:
+                    matched_tx = tx_by_ref[r]
+                    break
+
+        if matched_tx:
+            it_copy["transaction_id"] = str(matched_tx.id)
+            it_copy["transaction_reference"] = matched_tx.paystack_reference
+        else:
+            it_copy["transaction_id"] = None
+            it_copy["transaction_reference"] = None
+
+        clean_items.append(it_copy)
+
+    return {
+        "count": total_count,
+        "metrics": {
+            "total_count": total_count,
+            "total_earned_ghs": total_earned,
+            "total_redeemed_ghs": total_redeemed,
+        },
+        "items": clean_items,
+    }
 
 
 class AdvanceStatusSchema(Schema):
@@ -3051,6 +4439,12 @@ def advance_transaction_status(request, transaction_id: uuid.UUID, data: Advance
         except Exception:
             pass
 
+        from apps.escrow.services_promo import apply_transaction_promotions_on_payment
+        try:
+            apply_transaction_promotions_on_payment(transaction)
+        except Exception:
+            pass
+
     elif target == TransactionStatus.DELIVERY_IN_PROGRESS:
         from apps.delivery.services import transition_to_delivery
         from apps.delivery.models import DeliveryLog, DeliveryMethod, CarrierChoice
@@ -3059,6 +4453,11 @@ def advance_transaction_status(request, transaction_id: uuid.UUID, data: Advance
         if transaction.status == TransactionStatus.AWAITING_PAYMENT:
             transaction.status = TransactionStatus.PAYMENT_RECEIVED
             transaction.save(update_fields=['status', 'updated_at'])
+            from apps.escrow.services_promo import apply_transaction_promotions_on_payment
+            try:
+                apply_transaction_promotions_on_payment(transaction)
+            except Exception:
+                pass
 
         transition_to_delivery(transaction)
         if not transaction.delivery_logs.exists():
@@ -3098,7 +4497,7 @@ def advance_transaction_status(request, transaction_id: uuid.UUID, data: Advance
 
 @admin_router.get("/ad-invoices", response=dict)
 def list_admin_ad_invoices(request, search: Optional[str] = None, limit: int = 50, offset: int = 0):
-    is_admin_user(request)
+    is_finance_user(request)
     from apps.reviews.models import ShopAdInvoice
     from django.db.models import Q
 
@@ -3143,7 +4542,7 @@ def list_admin_ad_invoices(request, search: Optional[str] = None, limit: int = 5
 
 @admin_router.post("/ad-invoices/{invoice_id}/resend-email", response=dict)
 def admin_resend_ad_invoice_email(request, invoice_id: uuid.UUID):
-    is_admin_user(request)
+    is_finance_user(request)
     from apps.reviews.models import ShopAdInvoice
     from apps.reviews.services import send_ad_invoice_email
 
@@ -3159,6 +4558,257 @@ def admin_resend_ad_invoice_email(request, invoice_id: uuid.UUID):
     return {
         "message": f"Official invoice receipt #{invoice.invoice_number} has been resent to {invoice.seller.email}."
     }
+
+
+# ─── Finance: Arbiter Compensation & Activity Accounting ───────────────────────
+
+@admin_router.get("/finance/arbiter-activities", response=dict)
+def list_arbiter_activities(request, arbiter_id: Optional[uuid.UUID] = None, payout_status: Optional[str] = None, limit: int = 50, offset: int = 0):
+    is_finance_user(request)
+    qs = ArbiterActivityLog.objects.select_related('arbiter', 'transaction', 'payout_batch', 'resolution_action').order_by('-created_at')
+    
+    if arbiter_id:
+        qs = qs.filter(arbiter_id=arbiter_id)
+    if payout_status and payout_status != 'ALL':
+        qs = qs.filter(payout_status=payout_status)
+
+    total_count = qs.count()
+    items = list(qs[offset:offset + limit])
+    
+    return {
+        "total_count": total_count,
+        "items": [
+            {
+                "id": str(item.id),
+                "arbiter": {
+                    "id": str(item.arbiter.id),
+                    "username": item.arbiter.username,
+                    "first_name": item.arbiter.first_name,
+                    "last_name": item.arbiter.last_name,
+                    "email": item.arbiter.email,
+                    "phone_number": item.arbiter.phone_number,
+                    "role": item.arbiter.role,
+                },
+                "transaction_id": str(item.transaction.id) if item.transaction else None,
+                "order_reference": item.transaction.paystack_reference if item.transaction else None,
+                "activity_type": item.activity_type,
+                "fee_rate_ghs": float(item.fee_rate_ghs),
+                "payout_status": item.payout_status,
+                "payout_batch_id": str(item.payout_batch.id) if item.payout_batch else None,
+                "payout_batch_reference": item.payout_batch.batch_reference if item.payout_batch else None,
+                "notes": item.notes,
+                "paid_at": item.paid_at.isoformat() if item.paid_at else None,
+                "created_at": item.created_at.isoformat(),
+            } for item in items
+        ]
+    }
+
+
+@admin_router.get("/finance/arbiter-balances", response=List[dict])
+def list_arbiter_balances(request):
+    is_finance_user(request)
+    from django.db.models import Sum, Q
+    
+    arbiters = User.objects.filter(
+        Q(role__in=[Role.ARBITER, Role.ADMIN]) | Q(arbiter_activity_logs__isnull=False)
+    ).distinct()
+    
+    results = []
+    for arb in arbiters:
+        activities = ArbiterActivityLog.objects.filter(arbiter=arb)
+        unpaid_qs = activities.filter(payout_status=ArbiterPayoutStatus.PENDING)
+        paid_qs = activities.filter(payout_status=ArbiterPayoutStatus.PAID)
+        
+        unpaid_sum = unpaid_qs.aggregate(total=Sum('fee_rate_ghs'))['total'] or Decimal('0.00')
+        paid_sum = paid_qs.aggregate(total=Sum('fee_rate_ghs'))['total'] or Decimal('0.00')
+        total_earned = unpaid_sum + paid_sum
+        
+        results.append({
+            "arbiter_id": str(arb.id),
+            "username": arb.username,
+            "first_name": arb.first_name,
+            "last_name": arb.last_name,
+            "email": arb.email,
+            "phone_number": arb.phone_number,
+            "role": arb.role,
+            "unpaid_count": unpaid_qs.count(),
+            "unpaid_balance_ghs": float(unpaid_sum),
+            "paid_balance_ghs": float(paid_sum),
+            "total_earned_ghs": float(total_earned),
+        })
+        
+    return results
+
+
+@admin_router.post("/finance/arbiter-payouts/create-batch", response=dict)
+def create_arbiter_payout_batch(request, data: CreateArbiterPayoutBatchSchema):
+    is_finance_user(request)
+    
+    with db_transaction.atomic():
+        if data.arbiter_id:
+            target_arbiter = get_object_or_404(User, id=data.arbiter_id)
+            unpaid_activities = ArbiterActivityLog.objects.filter(
+                arbiter=target_arbiter,
+                payout_status=ArbiterPayoutStatus.PENDING
+            )
+        else:
+            raise HttpError(400, "arbiter_id is required to create a payout batch.")
+            
+        count = unpaid_activities.count()
+        if count == 0:
+            raise HttpError(400, "No pending unpaid activities found for this arbiter.")
+            
+        total_amount = unpaid_activities.aggregate(total=Sum('fee_rate_ghs'))['total'] or Decimal('0.00')
+        
+        now = timezone.now()
+        batch_ref = f"ARB-PAY-{now.strftime('%Y%m%d%H%M%S')}-{secrets.token_hex(2).upper()}"
+        
+        batch = ArbiterPayoutBatch.objects.create(
+            batch_reference=batch_ref,
+            arbiter=target_arbiter,
+            finance_admin=request.user,
+            total_amount_ghs=total_amount,
+            activity_count=count,
+            status='PAID',
+            payout_method=data.payout_method or 'MOMO',
+            payout_account_details=data.payout_account_details or {},
+            payment_reference=data.payment_reference or '',
+            notes=data.notes or '',
+            completed_at=now
+        )
+        
+        unpaid_activities.update(
+            payout_status=ArbiterPayoutStatus.PAID,
+            payout_batch=batch,
+            approved_by=request.user,
+            paid_at=now
+        )
+        
+    return {
+        "message": f"Successfully processed payout batch {batch_ref} of GHS {total_amount:.2f} for @{target_arbiter.username}.",
+        "batch_id": str(batch.id),
+        "batch_reference": batch.batch_reference,
+        "total_amount_ghs": float(total_amount),
+        "activity_count": count
+    }
+
+
+# ─── Admin: Staff & Role Management ───────────────────────────────────────────
+
+@admin_router.get("/staff", response=List[dict])
+def list_staff_members(request):
+    is_staff_user(request)
+    staff_roles = [Role.ADMIN, Role.ARBITER, Role.COMPLIANCE_OFFICER, Role.FINANCE_ADMIN, Role.SUPPORT_AGENT]
+    users = User.objects.filter(
+        Q(role__in=staff_roles) | Q(is_staff=True) | Q(is_superuser=True)
+    ).distinct().order_by('-date_joined')
+    
+    return [
+        {
+            "id": str(u.id),
+            "username": u.username,
+            "first_name": u.first_name,
+            "last_name": u.last_name,
+            "email": u.email or "",
+            "phone_number": u.phone_number or "",
+            "role": u.role,
+            "is_staff": u.is_staff,
+            "is_superuser": u.is_superuser,
+            "is_active": u.is_active,
+            "date_joined": u.date_joined.isoformat() if u.date_joined else None,
+        } for u in users
+    ]
+
+
+@admin_router.post("/staff/{user_id}/role", response=dict)
+def update_staff_role(request, user_id: uuid.UUID, data: UpdateStaffRoleSchema):
+    is_admin_manager(request)
+    target_user = get_object_or_404(User, id=user_id)
+    
+    valid_roles = [r[0] for r in Role.choices]
+    if data.role not in valid_roles:
+        raise HttpError(400, f"Invalid role. Choices are: {', '.join(valid_roles)}")
+        
+    if target_user.is_superuser and not request.user.is_superuser:
+        raise HttpError(403, "Only a superuser can modify another superuser's role.")
+        
+    target_user.role = data.role
+    if data.is_staff is not None:
+        target_user.is_staff = data.is_staff
+    elif data.role in [Role.ADMIN, Role.ARBITER, Role.COMPLIANCE_OFFICER, Role.FINANCE_ADMIN, Role.SUPPORT_AGENT]:
+        target_user.is_staff = True
+        
+    target_user.save()
+    
+    return {
+        "message": f"Updated role for @{target_user.username} to {target_user.role}.",
+        "user": {
+            "id": str(target_user.id),
+            "username": target_user.username,
+            "role": target_user.role,
+            "is_staff": target_user.is_staff,
+        }
+    }
+
+
+@admin_router.post("/staff/create", response=dict)
+def create_staff_member(request, data: CreateStaffMemberSchema):
+    is_admin_manager(request)
+    valid_roles = [r[0] for r in Role.choices]
+    if data.role not in valid_roles:
+        raise HttpError(400, f"Invalid role. Choices are: {', '.join(valid_roles)}")
+        
+    clean_phone = data.phone_number.strip()
+    clean_email = data.email.strip().lower()
+    
+    existing = User.objects.filter(Q(phone_number=clean_phone) | Q(email=clean_email)).first()
+    if existing:
+        existing.role = data.role
+        existing.is_staff = True
+        if data.first_name:
+            existing.first_name = data.first_name
+        if data.last_name:
+            existing.last_name = data.last_name
+        existing.save()
+        return {
+            "message": f"Existing user @{existing.username} promoted to staff role {data.role}.",
+            "user": {
+                "id": str(existing.id),
+                "username": existing.username,
+                "role": existing.role,
+                "is_staff": existing.is_staff,
+            }
+        }
+        
+    temp_password = secrets.token_urlsafe(12)
+    base_username = clean_email.split('@')[0] if clean_email else f"staff_{clean_phone[-6:]}"
+    candidate_username = base_username
+    suffix = 1
+    while User.objects.filter(username=candidate_username).exists():
+        candidate_username = f"{base_username}_{suffix}"
+        suffix += 1
+
+    new_user = User.objects.create_user(
+        username=candidate_username,
+        phone_number=clean_phone,
+        email=clean_email,
+        password=temp_password,
+        role=data.role,
+        is_staff=True,
+        first_name=data.first_name or "",
+        last_name=data.last_name or ""
+    )
+    
+    return {
+        "message": f"New staff user @{new_user.username} created with role {new_user.role}.",
+        "user": {
+            "id": str(new_user.id),
+            "username": new_user.username,
+            "role": new_user.role,
+            "is_staff": new_user.is_staff,
+        }
+    }
+
 
 
 
