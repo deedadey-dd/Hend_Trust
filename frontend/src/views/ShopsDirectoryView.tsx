@@ -25,6 +25,7 @@ interface ProductCard {
   description: string;
   price_ghs: number;
   image_url?: string;
+  category?: string;
   escrow_url: string;
   seller_id: string;
   seller_username: string;
@@ -86,6 +87,7 @@ export default function ShopsDirectoryView() {
   const [query, setQuery] = useState(initialQuery);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [activeTab, setActiveTab] = useState<'ALL' | 'PRODUCTS' | 'SHOPS'>('ALL');
+  const [showAllStores, setShowAllStores] = useState(false);
 
   useEffect(() => {
     const urlQuery = searchParams.get('query') || searchParams.get('search') || '';
@@ -108,14 +110,37 @@ export default function ShopsDirectoryView() {
   const [shippingModalItem, setShippingModalItem] = useState<{ product: ShopProduct; shop: ShopCard } | null>(null);
   useEscapeKey(() => setShippingModalItem(null), Boolean(shippingModalItem));
 
-  const getProductWhatsappUrl = (phoneRaw?: string, pTitle?: string, pPrice?: number, sName?: string, linkId?: string) => {
+  const getProductWhatsappUrl = (
+    phoneRaw?: string,
+    pTitle?: string,
+    pPrice?: number,
+    sName?: string,
+    pCategory?: string,
+    pImg?: string
+  ) => {
     let clean = (phoneRaw || '').trim().replace(/\s+/g, '').replace(/-/g, '').replace(/\+/g, '');
     if (clean.startsWith('0')) {
       clean = '233' + clean.slice(1);
     }
-    const escrowUrl = `${window.location.origin}/l/${linkId}`;
-    const msg = `Hi ${sName || 'Seller'}, I saw your product "${pTitle}" (GH₵ ${(pPrice || 0).toFixed(2)}) on HendAxis Trust.\n\nMy delivery location is: [Your Town / Region]\nCould you confirm the total price including shipping? Product Link: ${escrowUrl}`;
+    const params = new URLSearchParams();
+    if (pTitle) params.set('title', pTitle);
+    if (pPrice) params.set('price', pPrice.toFixed(2));
+    if (pCategory) params.set('category', pCategory);
+    if (pImg) params.set('img', pImg);
+    const createLinkUrl = `${window.location.origin}/create-link?${params.toString()}`;
+
+    const msg = `Hi ${sName || 'Seller'}, I saw your product "${pTitle}" (GH₵ ${(pPrice || 0).toFixed(2)}) on HendAxis Trust.\n\nMy delivery location is: [Your Town / Region]\nCould you confirm availability and total price with shipping?\n\nGenerate Escrow Link for this order:\n${createLinkUrl}`;
     return clean ? `https://api.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(msg)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+  };
+
+  const getShopWhatsappUrl = (phoneRaw?: string, sName?: string, username?: string) => {
+    let clean = (phoneRaw || '').trim().replace(/\s+/g, '').replace(/-/g, '').replace(/\+/g, '');
+    if (clean.startsWith('0')) {
+      clean = '233' + clean.slice(1);
+    }
+    const storeUrl = `${window.location.origin}/store/${username}`;
+    const msg = `Hi ${sName || username || 'Seller'}, I found your store on HendAxis Trust (${storeUrl}). I'd like to make an inquiry.`;
+    return clean ? `https://api.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(msg)}` : '';
   };
 
   const fetchDirectory = async () => {
@@ -223,6 +248,14 @@ export default function ShopsDirectoryView() {
               <ShieldCheck className="w-3 h-3 text-emerald-400" /> Escrow Protected
             </span>
           </div>
+
+          {product.category && (
+            <div className="absolute top-2.5 right-2.5">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-950/80 text-indigo-200 backdrop-blur-md border border-indigo-400/30">
+                {product.category}
+              </span>
+            </div>
+          )}
         </div>
 
         {/* Product Title */}
@@ -316,122 +349,186 @@ export default function ShopsDirectoryView() {
   );
 
   // Render Shop Card
-  const renderShopCard = (shop: ShopCard, isFeaturedAd: boolean = false) => (
-    <div
-      key={shop.seller_id}
-      className={`rounded-3xl p-5 sm:p-6 transition-all border flex flex-col justify-between shadow-sm hover:shadow-xl ${
-        isFeaturedAd
-          ? 'bg-gradient-to-b from-amber-500/10 via-white to-white dark:from-amber-950/30 dark:via-slate-900 dark:to-slate-900 border-amber-400 dark:border-amber-600/60 ring-2 ring-amber-400/20 shadow-amber-500/10'
-          : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-blue-500/40'
-      }`}
-    >
-      <div>
-        <div className="flex items-start justify-between gap-3 mb-3">
-          <div className="flex items-center gap-3">
-            <Link to={`/store/${shop.seller_username}`}>
-              {shop.profile_picture_url ? (
-                <img
-                  src={shop.profile_picture_url}
-                  alt={shop.shop_name}
-                  className="w-12 h-12 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm"
-                />
-              ) : (
-                <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-base shadow-sm">
-                  {(shop.shop_name || shop.seller_username).charAt(0).toUpperCase()}
-                </div>
-              )}
-            </Link>
+  const renderShopCard = (shop: ShopCard, isFeaturedAd: boolean = false) => {
+    const shopWhatsappUrl = getShopWhatsappUrl(shop.seller_phone, shop.shop_name, shop.seller_username);
+    const categoryName = shop.shop_categories && shop.shop_categories.length > 0
+      ? shop.shop_categories[0]
+      : (shop.shop_category || 'Ghanaian Marketplace');
 
-            <div className="min-w-0">
-              <Link to={`/store/${shop.seller_username}`} className="group block">
-                <div className="flex items-center gap-1.5 flex-wrap">
-                  <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm sm:text-base group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
-                    {shop.shop_name}
-                  </h3>
-                  <IconTooltip text="Verified Escrow Merchant">
-                    <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
-                  </IconTooltip>
-                </div>
-                <p className="font-mono text-xs text-blue-600 dark:text-blue-400 font-semibold group-hover:underline">
-                  @{shop.seller_username}
-                </p>
+    return (
+      <div
+        key={shop.seller_id}
+        className={`rounded-3xl p-5 sm:p-6 transition-all border flex flex-col justify-between shadow-sm hover:shadow-xl ${
+          isFeaturedAd
+            ? 'bg-gradient-to-b from-amber-500/10 via-white to-white dark:from-amber-950/30 dark:via-slate-900 dark:to-slate-900 border-amber-400 dark:border-amber-600/60 ring-2 ring-amber-400/20 shadow-amber-500/10'
+            : 'bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 hover:border-blue-500/40'
+        }`}
+      >
+        <div className="space-y-3">
+          {/* Top Header: Avatar, Name, Handle, Featured Badge */}
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <Link to={`/store/${shop.seller_username}`} className="shrink-0">
+                {shop.profile_picture_url ? (
+                  <img
+                    src={shop.profile_picture_url}
+                    alt={shop.shop_name}
+                    className="w-12 h-12 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shadow-sm"
+                  />
+                ) : (
+                  <div className="w-12 h-12 rounded-2xl bg-blue-600 text-white flex items-center justify-center font-black text-base shadow-sm">
+                    {(shop.shop_name || shop.seller_username).charAt(0).toUpperCase()}
+                  </div>
+                )}
               </Link>
+
+              <div className="min-w-0">
+                <Link to={`/store/${shop.seller_username}`} className="group block">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm sm:text-base group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
+                      {shop.shop_name}
+                    </h3>
+                    <IconTooltip text="Verified Escrow Merchant">
+                      <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                    </IconTooltip>
+                  </div>
+                  <p className="font-mono text-xs text-blue-600 dark:text-blue-400 font-semibold group-hover:underline">
+                    @{shop.seller_username}
+                  </p>
+                </Link>
+              </div>
             </div>
+
+            {isFeaturedAd && (
+              <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-500 text-white uppercase tracking-wider flex items-center gap-1 shrink-0">
+                <Zap className="w-3 h-3 fill-white" /> Featured Ad
+              </span>
+            )}
           </div>
 
-          {isFeaturedAd && (
-            <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-500 text-white uppercase tracking-wider flex items-center gap-1 shrink-0">
-              <Zap className="w-3 h-3 fill-white" /> Featured Ad
+          {/* Stats & Category Badges */}
+          <div className="flex items-center gap-1.5 flex-wrap">
+            <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg text-[11px] border border-slate-200/80 dark:border-slate-700/60">
+              <ShieldCheck className="h-3 w-3 text-blue-600 dark:text-blue-400" />
+              {shop.total_completed_escrows} Deals
             </span>
+
+            <span className="inline-flex items-center gap-1 font-bold text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/50 px-2 py-0.5 rounded-lg text-[11px]">
+              <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
+              {shop.avg_overall > 0 ? shop.avg_overall.toFixed(1) : 'New'}
+              {shop.total_reviews_count > 0 && (
+                <span className="text-[10px] text-slate-400 font-normal">({shop.total_reviews_count})</span>
+              )}
+            </span>
+
+            {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).slice(0, 2).map((cat, i) => (
+              <span key={i} className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40 px-2 py-0.5 rounded-md whitespace-nowrap">
+                {cat}
+              </span>
+            ))}
+          </div>
+
+          {/* Description or Smart Fallback */}
+          <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed min-h-[32px]">
+            {shop.shop_description || `Verified escrow store on HendAxis Trust specializing in ${categoryName} with 100% buyer protection.`}
+          </p>
+
+          {/* Featured Links (if any) OR Custom Orders Placeholder Box */}
+          {shop.featured_products && shop.featured_products.length > 0 ? (
+            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Featured Links</span>
+                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-0.5">
+                  <Truck className="h-2.5 w-2.5" /> Confirm shipping first
+                </span>
+              </div>
+              <div className="space-y-1.5">
+                {shop.featured_products.slice(0, 2).map(prod => (
+                  <button
+                    key={prod.link_id}
+                    type="button"
+                    onClick={() => setShippingModalItem({ product: prod, shop })}
+                    className="w-full flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-amber-50/70 dark:hover:bg-amber-950/30 border border-slate-200/80 dark:border-slate-700/60 hover:border-amber-300 dark:hover:border-amber-700 transition group text-xs text-left cursor-pointer"
+                    title="Click to verify delivery terms with seller before payment"
+                  >
+                    <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-amber-700 dark:group-hover:text-amber-300 truncate max-w-[170px]">
+                      {prod.title}
+                    </span>
+                    <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-amber-700 dark:group-hover:text-amber-300 flex items-center gap-1 shrink-0 font-mono">
+                      GH₵ {prod.price_ghs.toFixed(2)}
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded font-sans font-bold">Inquire</span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Storefront Catalog</span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
+                  <ShieldCheck className="h-3 w-3" /> Escrow Ready
+                </span>
+              </div>
+              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 min-w-0">
+                  <ShoppingBag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span className="truncate text-[11px] font-medium">Accepts custom escrow orders & direct inquiries</span>
+                </div>
+                <Link
+                  to={`/store/${shop.seller_username}`}
+                  className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline shrink-0 ml-1.5"
+                >
+                  Browse →
+                </Link>
+              </div>
+            </div>
           )}
         </div>
 
-        {/* Stats & Categories */}
-        <div className="flex items-center gap-1.5 flex-wrap my-2.5">
-          <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg text-[11px] border border-slate-200/80 dark:border-slate-700/60">
-            <ShieldCheck className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-            {shop.total_completed_escrows} Deals
-          </span>
+        {/* Standardized Bottom Action Footer */}
+        <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 gap-2">
+          <Link
+            to={`/store/${shop.seller_username}`}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition"
+          >
+            <Store className="w-3.5 h-3.5" />
+            <span>Visit Storefront →</span>
+          </Link>
 
-          <span className="inline-flex items-center gap-1 font-bold text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/50 px-2 py-0.5 rounded-lg text-[11px]">
-            <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
-            {shop.avg_overall > 0 ? shop.avg_overall.toFixed(1) : 'New'}
-            {shop.total_reviews_count > 0 && (
-              <span className="text-[10px] text-slate-400 font-normal">({shop.total_reviews_count})</span>
-            )}
-          </span>
-
-          {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).map((cat, i) => (
-            <span key={i} className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40 px-2 py-0.5 rounded-md whitespace-nowrap">
-              {cat}
-            </span>
-          ))}
-        </div>
-
-        {shop.shop_description && (
-          <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed">
-            {shop.shop_description}
-          </p>
-        )}
-      </div>
-
-      {/* Available Payment Links snippet with Interstitial Shipping Confirmation Modal trigger */}
-      {shop.featured_products && shop.featured_products.length > 0 && (
-        <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5 mt-3">
-          <div className="flex items-center justify-between">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Featured Links</span>
-            <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-0.5">
-              <Truck className="h-2.5 w-2.5" /> Confirm shipping first
-            </span>
-          </div>
-          <div className="space-y-1.5">
-            {shop.featured_products.map(prod => (
-              <button
-                key={prod.link_id}
-                type="button"
-                onClick={() => setShippingModalItem({ product: prod, shop })}
-                className="w-full flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-amber-50/70 dark:hover:bg-amber-950/30 border border-slate-200/80 dark:border-slate-700/60 hover:border-amber-300 dark:hover:border-amber-700 transition group text-xs text-left cursor-pointer"
-                title="Click to verify delivery terms with seller before payment"
+          <div className="flex items-center gap-1.5 shrink-0">
+            {shop.seller_phone && (
+              <a
+                href={`tel:${shop.seller_phone}`}
+                className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/60 dark:hover:text-blue-400 text-slate-700 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition shadow-2xs cursor-pointer"
+                title={`Call ${shop.shop_name || shop.seller_username}`}
+                aria-label={`Call merchant at ${shop.seller_phone}`}
               >
-                <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-amber-700 dark:group-hover:text-amber-300 truncate max-w-[170px]">
-                  {prod.title}
-                </span>
-                <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-amber-700 dark:group-hover:text-amber-300 flex items-center gap-1 shrink-0 font-mono">
-                  GH₵ {prod.price_ghs.toFixed(2)}
-                  <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded font-sans font-bold">Inquire</span>
-                </span>
-              </button>
-            ))}
+                <Phone className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              </a>
+            )}
+            {shopWhatsappUrl && (
+              <a
+                href={shopWhatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-8 w-8 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
+                title="Chat on WhatsApp"
+                aria-label="Chat with merchant on WhatsApp"
+              >
+                <MessageCircle className="w-4 h-4" />
+              </a>
+            )}
           </div>
         </div>
-      )}
-    </div>
-  );
+      </div>
+    );
+  };
 
   const totalShops = featuredShops.length + standardShops.length;
 
   return (
-    <div className="min-h-screen bg-slate-50/60 dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 transition-colors">
+    <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 transition-colors">
       <SEOHead
         title="Marketplace Directory — Find Products & Verified Escrow Shops in Ghana"
         description="Search active escrow products, verified online stores, and boutique merchants in Ghana. Transparent pricing with scam-free buyer protection."
@@ -442,7 +539,7 @@ export default function ShopsDirectoryView() {
       <div className="bg-slate-950 text-white min-h-[340px] sm:min-h-[400px] px-4 sm:px-6 lg:px-8 pt-8 pb-6 relative overflow-hidden flex flex-col justify-between border-b border-slate-800">
         <div className="absolute inset-0 z-0">
           <img src={heroBanner} alt="Marketplace Banner" className="w-full h-full object-cover opacity-100" fetchPriority="high" decoding="async" loading="eager" />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/70 to-slate-950/40" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/45 to-slate-950/20" />
         </div>
 
         <div className="max-w-5xl w-full mx-auto relative z-10 flex flex-col justify-between flex-1">
@@ -451,25 +548,25 @@ export default function ShopsDirectoryView() {
               <Sparkles className="w-4 h-4 text-amber-400" />
               Ghana's Escrow Marketplace
             </div>
-            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight">
+            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
               Search Products & Verified Stores
             </h1>
-            <p className="text-xs sm:text-sm text-slate-300 max-w-xl mx-auto">
+            <p className="text-xs sm:text-sm text-slate-200 max-w-xl mx-auto drop-shadow">
               Find products by name or description. Buy directly with escrow protection or message the merchant on WhatsApp.
             </p>
           </div>
 
-          {/* Search Bar & Expanded Category Horizontal Scroller */}
-          <div className="space-y-3 mt-4 bg-slate-950/80 backdrop-blur-md p-4 sm:p-5 rounded-3xl border border-white/15 shadow-2xl">
+          {/* Transparent Search Bar & Category Scroller (NO solid outer card) */}
+          <div className="space-y-3 mt-4 w-full">
             {/* Search Input Box */}
             <form onSubmit={(e) => { e.preventDefault(); fetchDirectory(); }} className="relative max-w-2xl mx-auto">
-              <Search className="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10" />
+              <Search className="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" />
               <input
                 type="text"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="Search products or stores (e.g. 'iPhone 15', 'Bone straight wig', 'Sneakers', 'Solar')..."
-                className="w-full pl-12 pr-28 py-3.5 hero-search-input rounded-2xl text-xs sm:text-sm border shadow-2xl focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all text-white placeholder-slate-400"
+                className="w-full pl-12 pr-28 py-3.5 bg-black/40 hover:bg-black/50 focus:bg-black/60 backdrop-blur-md rounded-2xl text-xs sm:text-sm border border-white/20 shadow-xl focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all text-white placeholder-slate-300"
               />
               <button
                 type="submit"
@@ -479,14 +576,14 @@ export default function ShopsDirectoryView() {
               </button>
             </form>
 
-            {/* Category Filter Pills (All 16 Categories) */}
-            <div className="flex items-center gap-2 overflow-x-auto pb-1 scrollbar-none pt-1">
+            {/* Category Filter Pills (All 16 Categories) with scrollbar hidden */}
+            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scrollbar-none pt-1">
               <button
                 onClick={() => handleCategorySelect('All')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-sm cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer flex items-center gap-1.5 ${
                   selectedCategory === 'All'
                     ? 'bg-blue-600 text-white shadow-md border border-blue-400/40'
-                    : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-white/10 hover:text-white'
+                    : 'bg-black/35 hover:bg-black/50 text-white/90 hover:text-white border border-white/20'
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" /> All Categories
@@ -499,10 +596,10 @@ export default function ShopsDirectoryView() {
                   <button
                     key={cat.id}
                     onClick={() => handleCategorySelect(cat.name)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-sm cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer flex items-center gap-1.5 ${
                       isSelected
                         ? 'bg-blue-600 text-white shadow-md border border-blue-400/40'
-                        : 'bg-slate-900/80 hover:bg-slate-800 text-slate-300 border border-white/10 hover:text-white'
+                        : 'bg-black/35 hover:bg-black/50 text-white/90 hover:text-white border border-white/20'
                     }`}
                   >
                     <IconComp className="w-3.5 h-3.5" />
@@ -525,7 +622,7 @@ export default function ShopsDirectoryView() {
               onClick={() => setActiveTab('ALL')}
               className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-2 ${
                 activeTab === 'ALL'
-                  ? 'bg-indigo-600 text-white shadow-sm'
+                  ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
@@ -533,27 +630,27 @@ export default function ShopsDirectoryView() {
             </button>
 
             <button
+              onClick={() => setActiveTab('SHOPS')}
+              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-2 ${
+                activeTab === 'SHOPS'
+                  ? 'bg-blue-600 text-white shadow-sm'
+                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Store className="w-4 h-4" />
+              Verified Stores ({totalShops})
+            </button>
+
+            <button
               onClick={() => setActiveTab('PRODUCTS')}
               className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-2 ${
                 activeTab === 'PRODUCTS'
-                  ? 'bg-indigo-600 text-white shadow-sm'
+                  ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <ShoppingBag className="w-4 h-4" />
               Products ({matchedProducts.length})
-            </button>
-
-            <button
-              onClick={() => setActiveTab('SHOPS')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-2 ${
-                activeTab === 'SHOPS'
-                  ? 'bg-indigo-600 text-white shadow-sm'
-                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
-              }`}
-            >
-              <Store className="w-4 h-4" />
-              Shops & Sellers ({totalShops})
             </button>
           </div>
 
@@ -566,97 +663,127 @@ export default function ShopsDirectoryView() {
           </button>
         </div>
 
-        {/* RECENT CUSTOMER REVIEWS MULTI-COLUMN CAROUSEL */}
-        <RecentReviewsCarousel
-          mode="multi-column"
-          title="Recent Customer Reviews"
-          subtitle="Explore verified feedback and ratings from recent escrow purchases across Ghana."
-        />
-
         {loading ? (
           <div className="py-20 text-center space-y-3">
-            <Loader2 className="h-8 w-8 animate-spin mx-auto text-indigo-600 dark:text-indigo-400" />
+            <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600 dark:text-blue-400" />
             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Searching marketplace for products & stores...</p>
           </div>
         ) : (
-          <div className="space-y-10">
+          <div className="space-y-12">
 
-            {/* SECTION 1: MATCHED PRODUCTS GRID */}
-            {(activeTab === 'ALL' || activeTab === 'PRODUCTS') && (
-              <div className="space-y-4">
+            {/* 1. VERIFIED ESCROW STORES SECTION (Row 1: Sponsored/Paid, Rows 2-3: Standard shops) */}
+            {(activeTab === 'ALL' || activeTab === 'SHOPS') && (
+              <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-                      <ShoppingBag className="w-5 h-5 text-indigo-600" />
-                      Matched Products & Escrow Links ({matchedProducts.length})
+                      <Store className="h-5 w-5 text-blue-600" />
+                      Verified Escrow Stores ({totalShops})
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      Prices exclude shipping. Shipping is calculated at checkout based on your delivery method.
+                      KYC-verified merchants with buyer protection guarantees.
                     </p>
                   </div>
                 </div>
 
-                {matchedProducts.length === 0 ? (
-                  activeTab === 'PRODUCTS' && (
-                    <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800 space-y-3">
-                      <ShoppingBag className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-700" />
-                      <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No matching products found</h3>
-                      <p className="text-xs text-slate-400 dark:text-slate-500">
-                        Try searching with general keywords (e.g. 'phone', 'bag', 'shoes') or browse categories.
-                      </p>
+                {/* ROW 1: FEATURED SPONSORED STORES (Paid Advertisements) */}
+                {featuredShops.length > 0 && (
+                  <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2.5">
+                        <div className="p-2 bg-amber-500 text-white rounded-xl shadow-sm">
+                          <Zap className="h-4 w-4 fill-white" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">Featured Sponsored Stores</h3>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400">Promoted escrow merchants with verified active catalogs</p>
+                        </div>
+                      </div>
+                      <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-900/50 px-3 py-0.5 rounded-full border border-amber-300/80 dark:border-amber-800">
+                        {featuredShops.length} Sponsored
+                      </span>
                     </div>
-                  )
-                ) : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                    {matchedProducts.map(renderProductCard)}
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {featuredShops.map(shop => renderShopCard(shop, true))}
+                    </div>
                   </div>
                 )}
-              </div>
-            )}
 
-            {/* SECTION 2: FEATURED SPONSORED STORES */}
-            {(activeTab === 'ALL' || activeTab === 'SHOPS') && featuredShops.length > 0 && (
-              <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2.5">
-                    <div className="p-2 bg-amber-500 text-white rounded-xl shadow-sm">
-                      <Zap className="h-5 w-5 fill-white" />
+                {/* ROWS 2 & 3: STANDARD / RANDOM STORES */}
+                {standardShops.length > 0 && (
+                  <div className="space-y-4">
+                    {featuredShops.length > 0 && (
+                      <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <span>All Verified Merchants</span>
+                      </h3>
+                    )}
+                    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+                      {((showAllStores || activeTab === 'SHOPS') ? standardShops : standardShops.slice(0, 6)).map(shop => renderShopCard(shop, false))}
                     </div>
-                    <div>
-                      <h2 className="text-base sm:text-lg font-extrabold text-slate-900 dark:text-slate-100">Featured Stores</h2>
-                      <p className="text-xs text-slate-600 dark:text-slate-400">Promoted escrow merchants with verified catalogs</p>
-                    </div>
+
+                    {/* View All / Collapse Button */}
+                    {standardShops.length > 6 && activeTab === 'ALL' && (
+                      <div className="text-center pt-2">
+                        <button
+                          onClick={() => setShowAllStores(!showAllStores)}
+                          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition shadow-2xs cursor-pointer border border-slate-200 dark:border-slate-700"
+                        >
+                          <Store className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                          <span>{showAllStores ? 'Show Fewer Stores' : `View All Verified Stores (${totalShops})`}</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
-                  <span className="text-xs font-bold text-amber-800 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-900/50 px-3 py-1 rounded-full border border-amber-300/80 dark:border-amber-800">
-                    {featuredShops.length} Sponsored Store(s)
-                  </span>
-                </div>
+                )}
 
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                  {featuredShops.map(shop => renderShopCard(shop, true))}
-                </div>
-              </div>
-            )}
-
-            {/* SECTION 3: ALL SHOPS & MERCHANTS */}
-            {(activeTab === 'ALL' || activeTab === 'SHOPS') && (
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-                    <Store className="h-5 w-5 text-indigo-600" />
-                    Verified Escrow Stores ({standardShops.length})
-                  </h2>
-                </div>
-
-                {standardShops.length === 0 && featuredShops.length === 0 ? (
+                {standardShops.length === 0 && featuredShops.length === 0 && (
                   <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800 space-y-3">
                     <Shield className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-700" />
                     <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No matching stores found</h3>
                     <p className="text-xs text-slate-400 dark:text-slate-500">Try adjusting your search terms or category filter.</p>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* 2. RECENT CUSTOMER REVIEWS (Shown when browsing without active search query) */}
+            {!query.trim() && (activeTab === 'ALL') && (
+              <div className="pt-2">
+                <RecentReviewsCarousel
+                  mode="multi-column"
+                  title="Recent Customer Reviews"
+                  subtitle="Explore verified feedback and ratings from recent escrow purchases across Ghana."
+                />
+              </div>
+            )}
+
+            {/* 3. MATCHED PRODUCTS & ESCROW OFFERS GRID */}
+            {(activeTab === 'ALL' || activeTab === 'PRODUCTS') && (
+              <div className="space-y-4 pt-2">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                      <ShoppingBag className="w-5 h-5 text-blue-600" />
+                      {query.trim() ? `Search Results for "${query}"` : 'Marketplace Products & Escrow Offers'} ({matchedProducts.length})
+                    </h2>
+                    <p className="text-xs text-slate-500 dark:text-slate-400">
+                      Shipping cost is based on your location and agreed upon with the merchant.
+                    </p>
+                  </div>
+                </div>
+
+                {matchedProducts.length === 0 ? (
+                  <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800 space-y-3">
+                    <ShoppingBag className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-700" />
+                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No matching products found</h3>
+                    <p className="text-xs text-slate-400 dark:text-slate-500">
+                      Try searching with general keywords (e.g. 'phone', 'bag', 'shoes') or browse categories.
+                    </p>
+                  </div>
                 ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                    {standardShops.map(shop => renderShopCard(shop, false))}
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
+                    {matchedProducts.map(renderProductCard)}
                   </div>
                 )}
               </div>
@@ -846,7 +973,7 @@ export default function ShopsDirectoryView() {
                   shippingModalItem.product.title,
                   shippingModalItem.product.price_ghs,
                   shippingModalItem.shop.shop_name,
-                  shippingModalItem.product.link_id
+                  shippingModalItem.shop.shop_category
                 )}
                 target="_blank"
                 rel="noopener noreferrer"

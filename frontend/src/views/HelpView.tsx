@@ -47,13 +47,37 @@ const FAQS: FAQItem[] = [
     question: 'When can I rate a seller, and how does the review system work?',
     answer: 'To guarantee honest reviews, rating a seller is locked while an item is in transit and unlocks automatically once delivery is verified. Buyers rate sellers across 3 axes: Product Quality, Shipping Speed, and Communication. If you ever update your review, the platform transparently records the edit count and timestamp for complete community trust.'
   },
+  {
+    id: 'faq-5b',
+    category: 'BUYERS',
+    question: 'How does the Marketplace Search and Store Directory work?',
+    answer: 'The HendAxis Marketplace Directory (/shops) lets buyers discover verified escrow stores and search across hundreds of products using real-time ballpark keyword matching. You can filter by 16 standard Ghanaian commerce categories (Phones, Electronics, Fashion, Auto Parts, etc.) and explore featured merchants alongside verified customer reviews.'
+  },
+  {
+    id: 'faq-5c',
+    category: 'BUYERS',
+    question: 'What is the "Buy via HendAxis Escrow (WhatsApp)" button on storefronts?',
+    answer: 'When browsing a seller’s storefront, clicking "Buy via HendAxis Escrow (WhatsApp)" sends a pre-formatted message to the seller containing the product details and an instant link generator. The seller confirms your delivery location, adds the exact shipping fee, and immediately generates a secure HendAxis checkout link for you.'
+  },
 
   // ─── SELLERS ────────────────────────────────────────────────────────────
   {
     id: 'faq-6',
     category: 'SELLERS',
     question: 'How do I create a payment link and choose fee handling?',
-    answer: 'Log in to your Seller Dashboard and click "Create Payment Link". Enter your item title, description, price in GH₵, and shipping fee. You can choose "Pass Fee to Buyer" (buyer pays the 1.5% + GH₵ 10 escrow fee at checkout and you receive 100% of your listed price) or "Absorb Fee" (fee is deducted from your final payout). You can also simulate exact calculations anytime with the Escrow Fee Calculator.'
+    answer: 'Log in to your Seller Dashboard and click "Create Payment Link". Enter your item title, category (from the 16 marketplace categories), description, price in GH₵, and shipping fee. You can choose "Pass Fee to Buyer" (buyer pays the 1.5% + GH₵ 10 escrow fee at checkout and you receive 100% of your listed price) or "Absorb Fee" (fee is deducted from your final payout). You can also simulate exact calculations anytime with the Escrow Fee Calculator.'
+  },
+  {
+    id: 'faq-6b',
+    category: 'SELLERS',
+    question: 'Why should I select a category when creating a payment link?',
+    answer: 'Selecting one of our 16 standard marketplace categories (e.g. Phones & Tablets, Electronics & Appliances, Fashion & Apparel, Automotive & Spare Parts) categorizes your product in the public Marketplace Directory (/shops). This enables thousands of active buyers searching for specific items to discover your store and product listings instantly.'
+  },
+  {
+    id: 'faq-6c',
+    category: 'SELLERS',
+    question: 'How does the 1-Click WhatsApp Escrow Link Generator work for sellers?',
+    answer: 'When buyers message you on WhatsApp from your public storefront, they send a link that opens your HendAxis link creation view (/create-link) with the item title, price, category, and image URL already pre-filled. All you need to do is agree on the shipping destination with the customer, enter the shipping amount, and click Generate to create the secure escrow payment link.'
   },
   {
     id: 'faq-7',
@@ -92,6 +116,12 @@ const FAQS: FAQItem[] = [
     category: 'LOGISTICS',
     question: 'What is the difference between Formal Courier Delivery and Station / Bus Delivery?',
     answer: 'Path A (Formal Courier) supports DHL Express, FedEx, UPS, EMS / Ghana Post, Speedaf Express, and local couriers with live tracking links and automated 17TRACK delivery webhooks. Path B (Informal Bus / Station) allows recording driver phone, vehicle number, and station location, generating a Secret 6-Digit OTP for the buyer to present upon collection.'
+  },
+  {
+    id: 'faq-12b',
+    category: 'LOGISTICS',
+    question: 'How are location-based shipping fees and delivery timelines agreed upon?',
+    answer: 'Shipping fees in Ghana vary depending on intra-city vs. inter-city transit (e.g. Accra vs. Kumasi or Tamale). Buyers and sellers should confirm the delivery destination and agreed carrier fee before the seller generates the payment link. The official seller dispatch window (default 4 days) starts only after the buyer deposits the escrow funds.'
   },
   {
     id: 'faq-13',

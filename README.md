@@ -28,7 +28,8 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Seller Default Penalty**: The defaulting seller is charged a **Non-Dispatch Default Penalty** equal to the **Platform Fee + 1.95% gateway processing fee**.
 
 ### 3. Payment Link Generation & Dynamic Fee Handling
-- **Link Creation**: Sellers create payment links specifying item price, shipping fee, description, and fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`). Blocked with an interactive appeal modal if seller is suspended.
+- **Link Creation & Category Tagging**: Sellers create payment links specifying item price, shipping fee, description, fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`), and item-specific **Category Tagging** from the 16 standard marketplace categories (e.g. `Phones & Tablets`, `Electronics & Appliances`, `Fashion & Apparel`, `Automotive & Spare Parts`, etc.). Blocked with an interactive appeal modal if seller is suspended.
+- **1-Click WhatsApp Escrow Generator**: Buyers inquiring about products on public seller storefronts can click "Buy via HendAxis Escrow (WhatsApp)". This opens WhatsApp with an interactive inquiry preloading an instant escrow generator link (`/create-link?title=...&price=...&category=...&img=...`). When the seller clicks the link, all item details are prefilled automatically, allowing the seller to adjust location-specific shipping fees and generate the final secure checkout link in one click.
 - **Dynamic Fee Transparency**: Platform fees are calculated transparently in GHS and displayed in real-time across checkout and public tools:
   - **Platform Escrow Protection Fee**: $(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$
   - **Payment Gateway Processing Fee**: $\text{Gross Amount} \times 1.95\%$ (Paystack transfer/processing fee)
@@ -37,6 +38,7 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 
 ### 4. Dual Logistics Verification Engine & Upfront OTP Tracking
 - **Upfront 2-Step OTP Tracking (`/tracking`)**: Both single item tracking ("Track by Order ID") and full order history tracking require upfront 6-digit OTP verification (valid for 2 hours with 60s cooldown). Once verified, the order unlocks completely with zero secondary popups.
+- **Location-Based Shipping & Delivery Agreement**: Delivery timelines and shipping fees must be mutually agreed upon before payment link generation. Delivery windows commence only after successful escrow deposit confirmation.
 - **WebP Package Evidence**: Sellers attach a WebP-optimized package/waybill photo during dispatch.
 - **Path A (Formal Courier API)**: Tracking number assignment with automated webhook status updates.
 - **Path B (Informal Station / Bus OTP)**: Driver phone, vehicle number, station details, and a 6-digit Secret OTP sent to the buyer. OTP verification confirms handoff.
@@ -74,8 +76,16 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **3-Axis Seller Rating**: Speed, Communication, and Overall Satisfaction (1 to 5 stars).
 - **Public Storefronts (`/store/:username`)**: Shows seller rating breakdown, verified review history, edit badges, and seller reply responses.
 
-### 8. Public Marketplace Directory & Paid Advertised Shops (`/shops`)
-- Marketplace directory with category filtering and paid shop promotion options (GHS 50 for 7 Days / GHS 150 for 30 Days).
+### 8. Public Marketplace Directory, Ballpark Search & Paid Advertised Shops (`/shops`)
+- **16-Category Marketplace Taxonomy**: Standardized category directory with horizontal scrolling category pills (`All Categories`, `Phones & Tablets`, `Electronics & Appliances`, `Fashion & Apparel`, `Computing & Accessories`, `Beauty & Personal Care`, `Automotive & Spare Parts`, `Home & Furniture`, `Groceries & Provisions`, `Gaming & Consoles`, `Health & Wellness`, `Real Estate & Land`, `Services & Freelance`, `Solar & Power Systems`, `Agriculture & Foodstuff`, `Sports & Fitness`, `Books & Stationery`).
+- **Ballpark Multi-Token Product Search**: Multi-token search algorithm querying product titles, descriptions, categories, and store names with debounced real-time filtering and category-level cross-matching.
+- **3-Tier Page Structure**:
+  1. **Tier 1 — Sponsored Stores**: Top row dedicated to featured merchants with active paid promotion plans.
+  2. **Tier 2 — Verified Escrow Stores (2 Rows / 6 Stores + Expandable)**: Standard verified stores displayed in two balanced rows with a one-click "View All X Stores" toggle.
+  3. **Tier 3 — Live Reviews Carousel & Matched Products Grid**: Independent, non-filtered verified community reviews carousel positioned above the live search product results grid.
+- **Shop Card Visual Balance**: Standardized footer layout, fallback descriptions, and dynamic "Request Custom Order" cards for stores without active public links.
+- **Paid Store Promotion Packages**: In-platform advertising options (GHS 50 for 7 Days / GHS 150 for 30 Days) with real-time promotion expiration tracking and priority placement.
+- **Brand Identity Integration**: Unified brand styling featuring Brand Orange (`#ff6d1d`) and Brand Blue (`#0363ff`) accents across action buttons and directory highlights.
 
 ### 9. Superuser Platform Funds & Double-Entry Ledger Audit (`/admin-portal`)
 - Real-time double-entry account balances (System Bank Assets, Buyer Escrow Deposits, Platform Fee Revenue, Gateway Fee Expenses, Seller Wallet Liabilities).

@@ -153,7 +153,7 @@ export default function ReferralsView() {
                 onChange={(e) => setPhoneNumber(e.target.value)}
                 placeholder="e.g. 0241234567 or 0501234567"
                 required
-                className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-indigo-500 outline-none transition"
+                className="w-full pl-11 pr-4 py-3.5 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white text-sm font-semibold focus:ring-2 focus:ring-[#ff6d1d] focus:border-[#ff6d1d] outline-none transition"
               />
             </div>
 
@@ -166,7 +166,7 @@ export default function ReferralsView() {
             <button
               type="submit"
               disabled={loading}
-              className="w-full py-3.5 px-6 rounded-2xl bg-indigo-600 hover:bg-indigo-700 text-white font-black text-sm transition shadow-lg shadow-indigo-600/30 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full py-3.5 px-6 rounded-2xl bg-[#ff6d1d] hover:bg-[#e05a10] text-white font-black text-sm transition shadow-lg shadow-orange-500/25 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {loading ? (
                 <>

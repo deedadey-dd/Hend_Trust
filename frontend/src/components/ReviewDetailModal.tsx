@@ -93,7 +93,7 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
           <div
             key={star}
             className={`${starSize} flex items-center justify-center rounded ${
-              star <= rating ? 'bg-emerald-500 text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-400'
+              star <= rating ? 'bg-[#ff6d1d] text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-400'
             }`}
           >
             <Star className="w-3 h-3 fill-current stroke-none" />
@@ -109,13 +109,13 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
         {/* Header */}
         <div className="px-5 sm:px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-900/80 shrink-0">
           <div className="flex items-center gap-2">
-            <span className="bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 font-extrabold text-xs px-2.5 py-1 rounded-full border border-emerald-300 dark:border-emerald-800">
+            <span className="bg-orange-50 dark:bg-orange-950/60 text-[#ff6d1d] dark:text-orange-400 font-extrabold text-xs px-2.5 py-1 rounded-full border border-orange-200 dark:border-orange-800">
               Verified Review
             </span>
           </div>
           <button
             onClick={onClose}
-            className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 transition"
+            className="p-1.5 rounded-full text-gray-400 hover:text-gray-700 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-slate-800 transition cursor-pointer"
           >
             <X className="w-5 h-5" />
           </button>
@@ -126,7 +126,7 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
           {/* Buyer Avatar & Overall Star Rating */}
           <div className="flex items-start justify-between gap-4">
             <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center font-bold text-white text-lg shadow-md ring-4 ring-emerald-500/20">
+              <div className="w-12 h-12 rounded-full bg-gradient-to-br from-[#ff6d1d] to-[#0363ff] flex items-center justify-center font-bold text-white text-lg shadow-md ring-4 ring-[#ff6d1d]/20">
                 {currentReview.buyer_name ? currentReview.buyer_name.charAt(0).toUpperCase() : 'U'}
               </div>
               <div>
@@ -146,7 +146,7 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
 
             <div className="text-right">
               {renderStars(currentReview.rating_overall, 'md')}
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 block mt-1">
+              <span className="text-xs font-bold text-[#ff6d1d] dark:text-orange-400 block mt-1">
                 {currentReview.rating_overall.toFixed(1)} out of 5 Stars
               </span>
             </div>
@@ -238,7 +238,7 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
               <Link
                 to={`/store/${currentReview.shop.seller_username}`}
                 onClick={onClose}
-                className="py-2 px-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold text-xs rounded-xl transition shrink-0 whitespace-nowrap shadow-md"
+                className="py-2 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shrink-0 whitespace-nowrap shadow-md cursor-pointer"
               >
                 Visit Store
               </Link>
@@ -271,10 +271,10 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
             <button
               onClick={() => handleVote('UP')}
               disabled={voting}
-              className={`py-2 px-3.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
+              className={`py-2 px-3.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
                 currentReview.user_voted === 'UP'
-                  ? 'bg-emerald-500 text-white border-emerald-500 shadow-md'
-                  : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-200 border-gray-200 dark:border-slate-700 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 hover:border-emerald-400'
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-md'
+                  : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-200 border-gray-200 dark:border-slate-700 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:border-blue-400'
               }`}
             >
               <ThumbsUp className={`w-4 h-4 ${currentReview.user_voted === 'UP' ? 'fill-white' : ''}`} />
@@ -284,7 +284,7 @@ export default function ReviewDetailModal({ review, onClose, onVoteUpdate, showV
             <button
               onClick={() => handleVote('DOWN')}
               disabled={voting}
-              className={`py-2 px-3.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border ${
+              className={`py-2 px-3.5 rounded-xl text-xs font-bold transition flex items-center gap-1.5 border cursor-pointer ${
                 currentReview.user_voted === 'DOWN'
                   ? 'bg-red-500 text-white border-red-500 shadow-md'
                   : 'bg-white dark:bg-slate-800 text-gray-700 dark:text-slate-200 border-gray-200 dark:border-slate-700 hover:bg-red-50 dark:hover:bg-red-950/40 hover:border-red-400'

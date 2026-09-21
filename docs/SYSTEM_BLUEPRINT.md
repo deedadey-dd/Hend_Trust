@@ -95,27 +95,34 @@ graph TD
    - Embeds interactive seller review cards allowing buyers to read past customer reviews and open the detailed modal.
 
 2. **Marketplace Directory (`/shops`)**:
-   - Searchable directory of all active verified sellers on HendTrust.
-   - Category filtering (Electronics, Fashion, Beauty, Home, Food, Services, etc.).
-   - Search bar filtering by store name or business keywords.
-   - Verified seller badge indicator and Trust Score rating preview.
-   - Prominent **"View All Reviews"** button leading directly to the `/reviews` page.
+   - **Ballpark Multi-Token Search Engine**: Search active products across titles, descriptions, categories, and merchant names. Matches ballpark multi-word queries (e.g., *"iphone pro 256"*, *"bluetooth speaker"*).
+   - **16 Standard Platform Categories**: Phones & Tablets, Computers & Tech, Electronics & Appliances, Fashion & Apparel, Beauty, Hair & Fragrances, Health & Wellness, Home, Furniture & Living, Automotive & Spare Parts, Baby, Kids & Toys, Groceries & Foodstuff, Jewelry & Watches, Sports, Outdoors & Fitness, Industrial, Tools & Hardware, Digital Goods & Gaming, Professional Services, General Marketplace.
+   - **Structured 3-Tier Layout**:
+     1. **Verified Escrow Stores**:
+        - **Row 1**: Featured Sponsored stores (`⚡ Featured Ad` paid placements).
+        - **Rows 2 & 3**: Standard verified merchants (initial 6 shops with expandable *"View All Verified Stores (N)"* toggle).
+        - Direct *"Visit Storefront"* links + WhatsApp / Call quick action icons.
+     2. **Recent Customer Reviews Carousel**: Displays verified buyer feedback and ratings in browsing mode.
+     3. **Matched Products & Escrow Offers**: Product cards displaying price, escrow guarantee badge, category tag, location-based shipping notice, and 1-click WhatsApp inquiry buttons.
+   - **Transparent Hero Search Bar**: Semi-transparent search bar and category filter strip with hidden horizontal scrollbars.
 
 3. **Featured / Sponsored Store Banner**:
-   - Admin-configurable advertisement placement for sponsored sellers (`advertised_until` timestamp).
+   - Paid advertisement placements (`⚡ Featured Ad`) for sponsored sellers (`advertised_until` timestamp).
 
-#### Database Models (`backend/apps/shops/models.py`)
-- Storefront attributes are mapped directly on the `User` model, backed by category choices (`ELECTRONICS`, `FASHION`, `BEAUTY_HEALTH`, `HOME_FURNITURE`, `SERVICES`, etc.).
+#### Database Models
+- `User`: Storefront attributes (`shop_name`, `shop_description`, `shop_category`, `shop_categories`, `profile_picture_url`, `banner_url`, `advertised_until`).
+- `PaymentLink`: `category` (`CharField(max_length=64, blank=True, db_index=True)`).
 
 ---
 
-### Module C: Payment Links Engine
+### Module C: Payment Links Engine & 1-Click WhatsApp Escrow Generator
 
 #### Key Features & Workflows
-1. **Dynamic & Fixed Payment Link Creation (`/links`)**:
-   - **Fixed Price Links**: Pre-set product title, price, description, and item image. Ideal for standard products.
-   - **Dynamic Price Links**: Seller defines title and description; buyer enters custom payment amount at checkout (ideal for custom quotes, services, or invoices).
-   - **Item Catalog Integration**: Optionally attach product stock image URL and custom SKU metadata.
+1. **Dynamic & Fixed Payment Link Creation (`/links` & `/create-link`)**:
+   - **Product-Level Category Selection**: Sellers choose the precise category (from the 16 platform categories) when generating payment links, auto-defaulted to the merchant's store niche.
+   - **WhatsApp 1-Click Escrow Generator**: When buyers inquire on WhatsApp via marketplace product cards, the message contains a prefilled `/create-link?title=...&price=...&category=...&img=...` URL. Sellers tap the link, input the agreed shipping fee for the buyer's destination, tap *"Create Escrow Payment Link"*, and return the checkout link to the buyer.
+   - **Fixed Price Links**: Pre-set product title, category, price, description, and item image. Ideal for standard products.
+   - **Autofill from Past Products**: Suggests and autofills previous products with 1 click.
    - **Delivery Configuration**: Set delivery fee options (Pickup, Fixed Delivery Fee, or Dynamic Courier Delivery).
    - **Fee Handling Preferences**:
      - **`PASS_TO_BUYER` (Default)**: Buyer pays Item Price + Delivery Fee + Platform Escrow Fee. Seller receives 100% of their item and shipping amount upon completion.
@@ -128,7 +135,7 @@ graph TD
    - **Stale Transaction Management & Auto-Archiving**: Unpaid transactions older than the platform's configured duration (`unpaid_auto_archive_days`, default: 3 days) automatically archive (`is_archived = True`). Sellers can click **"Check Payment"** on `AWAITING_PAYMENT` entries to manually query gateway completion before archiving occurs. Confirmed payments automatically restore transactions (`is_archived = False`).
    - **Archiving & Expiration**: Deactivate or archive stale links without breaking existing escrow histories.
 
-2. **Public Checkout Page (`/pay/:slug`)**:
+2. **Public Checkout Page (`/pay/:slug` & `/l/:id`)**:
    - Clean, conversion-focused responsive checkout UI.
    - Real-time transparent fee calculation (Item Price + Delivery Fee + Escrow Protection Fee if passed to buyer).
    - Payment method selection:

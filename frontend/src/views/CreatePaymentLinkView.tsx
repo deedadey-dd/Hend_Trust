@@ -1,12 +1,19 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2, ShieldAlert, Send, Package } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2, ShieldAlert, Send, Package, Tag } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { MARKETPLACE_CATEGORIES } from '../constants/categories';
+import { useAuthStore } from '../store/authStore';
 
 export default function CreatePaymentLinkView() {
+  const { user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+
   const [title, setTitle] = useState('');
+  const [category, setCategory] = useState(user?.shop_category || MARKETPLACE_CATEGORIES[0].name);
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('0');
   const [shipping, setShipping] = useState('0');
@@ -32,6 +39,26 @@ export default function CreatePaymentLinkView() {
   const [selectedPastId, setSelectedPastId] = useState('');
   const [autofillNotice, setAutofillNotice] = useState('');
 
+  // Prefill from inquiry URL parameters if available
+  useEffect(() => {
+    const qTitle = searchParams.get('title');
+    const qPrice = searchParams.get('price');
+    const qCategory = searchParams.get('category');
+    const qDesc = searchParams.get('desc') || searchParams.get('description');
+    const qImg = searchParams.get('img') || searchParams.get('image');
+    const qShipping = searchParams.get('shipping');
+
+    if (qTitle) {
+      setTitle(qTitle);
+      if (qPrice) setPrice(qPrice);
+      if (qCategory) setCategory(qCategory);
+      if (qDesc) setDescription(qDesc);
+      if (qImg) setImageUrl(qImg);
+      if (qShipping) setShipping(qShipping);
+      setAutofillNotice(`Prefilled "${qTitle}" from customer inquiry. Enter agreed shipping fee to generate link.`);
+    }
+  }, [searchParams]);
+
   useEffect(() => {
     apiClient.get('/links/?limit=50')
       .then(res => {
@@ -50,6 +77,9 @@ export default function CreatePaymentLinkView() {
   const handleAutofill = (linkItem: any) => {
     if (!linkItem) return;
     setTitle(linkItem.title || '');
+    if (linkItem.category) {
+      setCategory(linkItem.category);
+    }
     setDescription(linkItem.description || '');
     setPrice(String(linkItem.price_ghs || '0'));
     setShipping(String(linkItem.shipping_fee_ghs || '0'));
@@ -112,7 +142,8 @@ export default function CreatePaymentLinkView() {
         price_ghs: parseFloat(price),
         shipping_fee_ghs: parseFloat(shipping),
         fee_handling: feeHandling,
-        image_url: imageUrl
+        image_url: imageUrl,
+        category: category
       });
       const url = response.data.url.replace('https://pay.hendaxis.com', window.location.origin);
       setCreatedUrl(url);
@@ -257,6 +288,31 @@ export default function CreatePaymentLinkView() {
                   ))}
                 </datalist>
               </div>
+
+              {/* Product Category Selector */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Tag className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    Product Category *
+                  </label>
+                  <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
+                    Helps buyers find your product in search
+                  </span>
+                </div>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border font-medium cursor-pointer"
+                >
+                  {MARKETPLACE_CATEGORIES.map(cat => (
+                    <option key={cat.id} value={cat.name}>
+                      {cat.name} ({cat.shortName})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Description (Optional)</label>
                 <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="mt-1 block w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border"></textarea>

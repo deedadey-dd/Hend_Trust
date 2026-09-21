@@ -206,7 +206,7 @@ export default function RecentReviewsCarousel({
 
           <Link
             to="/reviews"
-            className="py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 whitespace-nowrap shrink-0"
+            className="py-2 px-4 bg-[#ff6d1d] hover:bg-[#e05a10] text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 whitespace-nowrap shrink-0 shadow-orange-500/20 cursor-pointer"
           >
             View All Reviews <ArrowRight className="w-3.5 h-3.5" />
           </Link>

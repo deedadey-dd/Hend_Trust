@@ -32,24 +32,28 @@ You agree to defend, indemnify, and hold harmless HendAxis Trust, its parent com
 
 ---
 
-## 3. Pre-Transaction Due Diligence & User Communication
+## 3. Pre-Transaction Due Diligence, Location-Based Shipping & Direct Communication
 
 ### 3.1 Requirement for Thorough Pre-Purchase Discussion
 Before initiating an escrow transaction or sending payment, **Buyers and Sellers must thoroughly discuss and agree upon all relevant details**, including but not limited to:
 - Precise item condition (brand new, pre-owned, refurbished, minor defects).
 - Specific sizing, color, technical specifications, and model numbers.
-- Delivery options, transit expectations, and courier coverage.
+- **Location-Based Delivery Fees**: Shipping costs in Ghana vary substantially by regional destination, district, and chosen transport method (e.g. Courier or Bus station). Listed marketplace prices exclude destination-specific shipping. Buyers and sellers must agree on the final delivery fee prior to checkout.
+- **Inquiry & Tailored Link Generation**: When buyers inquire on WhatsApp via marketplace product cards, prefilled product parameters are transmitted to the seller. The seller is required to confirm location-specific shipping and generate a customized payment link reflecting the agreed terms.
 
-HendAxis Trust provides public merchant profile scorecards, verified ratings, and category listings to assist Buyers, but the primary duty of item specification verification rests between the transacting parties.
+HendAxis Trust provides public merchant profile scorecards, verified ratings, and 16-category listings to assist Buyers, but the primary duty of item specification and delivery fee agreement rests between the transacting parties.
 
 ---
 
-## 4. Payment Links, Escrow Holds & Fee Policies
+## 4. Payment Links, Product Categorization, Escrow Holds & Fee Policies
 
-### 4.1 Escrow Deposits
+### 4.1 Accurate Product Categorization
+Sellers are required to select the accurate **Product Category** (from the 16 platform categories) when generating payment links. Misrepresenting product categories to circumvent platform policies or mislead buyers constitutes a breach of these Terms.
+
+### 4.2 Escrow Deposits
 Upon payment by the Buyer via Mobile Money (MTN, Telecel, AT Money) or Card, 100% of the funds (item price, shipping fees, and applicable platform charges) are deposited into the **HendAxis System Escrow Account**. Funds remain strictly locked and inaccessible to the Seller until delivery confirmation and inspection expiry.
 
-### 4.2 Fee Allocation Options
+### 4.3 Fee Allocation Options
 When creating a Payment Link, the Seller selects how platform fees are handled:
 - **Absorb Fee**: Platform fees are deducted from the Seller’s item price upon payout. The Buyer pays only the exact item + shipping cost.
 - **Pass to Buyer**: Platform fees are added to the checkout total, resulting in the Buyer paying the item price + shipping + platform fee. The Seller receives 100% of their listed item price upon completion.

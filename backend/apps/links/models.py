@@ -20,6 +20,7 @@ class PaymentLink(models.Model):
     fee_handling = models.CharField(max_length=20, choices=FeeHandling.choices, default=FeeHandling.PASS_TO_BUYER)
     intended_buyer_phone = models.CharField(max_length=20, null=True, blank=True)
     image_url = models.TextField(blank=True, default='')
+    category = models.CharField(max_length=64, blank=True, default='', db_index=True)
     is_active = models.BooleanField(default=True, db_index=True)
     is_archived = models.BooleanField(default=False, db_index=True)
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)

@@ -17,6 +17,7 @@ interface ProductCard {
   description: string;
   price_ghs: number;
   image_url: string;
+  category?: string;
   escrow_url: string;
   seller_id: string;
   seller_username: string;

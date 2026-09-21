@@ -99,6 +99,7 @@ class ProductCardSchema(Schema):
     description: str
     price_ghs: float
     image_url: Optional[str] = ""
+    category: Optional[str] = ""
     escrow_url: str
     seller_id: str
     seller_username: str
@@ -332,14 +333,29 @@ def get_seller_storefront(request, identifier: str):
         is_archived=False
     ).order_by('-created_at')
 
-    # Helper for WhatsApp contact link
-    def _format_whatsapp_url(phone_raw: str, p_title: str, p_price: float, s_name: str, e_url: str) -> str:
+    # Helper for WhatsApp contact link with prefilled create-link URL for the seller
+    def _format_whatsapp_url(phone_raw: str, p_title: str, p_price: float, s_name: str, p_category: str = "", p_img: str = "", p_desc: str = "") -> str:
         clean = (phone_raw or '').strip().replace(' ', '').replace('-', '').replace('+', '')
         if clean.startswith('0'):
             clean = '233' + clean[1:]
+        params = []
+        if p_title:
+            params.append(f"title={urllib.parse.quote(p_title)}")
+        if p_price:
+            params.append(f"price={p_price:.2f}")
+        if p_category:
+            params.append(f"category={urllib.parse.quote(p_category)}")
+        if p_img:
+            params.append(f"img={urllib.parse.quote(p_img)}")
+        if p_desc:
+            params.append(f"desc={urllib.parse.quote(p_desc[:200])}")
+        q_str = "&".join(params)
+        create_link_url = f"{base_frontend_url}/create-link?{q_str}" if q_str else f"{base_frontend_url}/create-link"
         msg = (
             f"Hi {s_name}, I saw your product \"{p_title}\" (GH₵ {p_price:.2f}) on HendAxis Trust.\n\n"
-            f"I would like to purchase via Escrow: {e_url}"
+            f"My delivery location is: [Your Town / Region]\n"
+            f"Could you confirm availability and total price with shipping?\n\n"
+            f"Generate Escrow Link for this order:\n{create_link_url}"
         )
         return f"https://api.whatsapp.com/send?phone={clean}&text={urllib.parse.quote(msg)}" if clean else f"https://api.whatsapp.com/send?text={urllib.parse.quote(msg)}"
 
@@ -350,6 +366,7 @@ def get_seller_storefront(request, identifier: str):
             "description": pl.description or "",
             "price_ghs": float(pl.price_ghs),
             "image_url": pl.image_url or "",
+            "category": pl.category or getattr(seller, 'shop_category', '') or "General Marketplace",
             "escrow_url": f"{base_frontend_url}/l/{pl.id}",
             "seller_id": str(seller.id),
             "seller_username": seller.username or "",
@@ -360,7 +377,7 @@ def get_seller_storefront(request, identifier: str):
             "badge_title": badge_title,
             "seller_avg_rating": avg_overall,
             "seller_total_reviews": total_reviews,
-            "whatsapp_contact_url": _format_whatsapp_url(seller.phone_number, pl.title, float(pl.price_ghs), seller.shop_name or f"@{seller.username}", f"{base_frontend_url}/l/{pl.id}"),
+            "whatsapp_contact_url": _format_whatsapp_url(seller.phone_number, pl.title, float(pl.price_ghs), seller.shop_name or f"@{seller.username}", pl.category or getattr(seller, 'shop_category', ''), pl.image_url or "", pl.description or ""),
             "created_at": pl.created_at.isoformat()
         } for pl in seller_active_links
     ]
@@ -472,14 +489,29 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
     now = timezone.now()
     base_frontend_url = _get_request_frontend_url(request)
 
-    # Helper for WhatsApp contact link
-    def _format_whatsapp_url(phone_raw: str, p_title: str, p_price: float, s_name: str, e_url: str) -> str:
+    # Helper for WhatsApp contact link with prefilled create-link URL for the seller
+    def _format_whatsapp_url(phone_raw: str, p_title: str, p_price: float, s_name: str, p_category: str = "", p_img: str = "", p_desc: str = "") -> str:
         clean = (phone_raw or '').strip().replace(' ', '').replace('-', '').replace('+', '')
         if clean.startswith('0'):
             clean = '233' + clean[1:]
+        params = []
+        if p_title:
+            params.append(f"title={urllib.parse.quote(p_title)}")
+        if p_price:
+            params.append(f"price={p_price:.2f}")
+        if p_category:
+            params.append(f"category={urllib.parse.quote(p_category)}")
+        if p_img:
+            params.append(f"img={urllib.parse.quote(p_img)}")
+        if p_desc:
+            params.append(f"desc={urllib.parse.quote(p_desc[:200])}")
+        q_str = "&".join(params)
+        create_link_url = f"{base_frontend_url}/create-link?{q_str}" if q_str else f"{base_frontend_url}/create-link"
         msg = (
             f"Hi {s_name}, I saw your product \"{p_title}\" (GH₵ {p_price:.2f}) on HendAxis Trust.\n\n"
-            f"I would like to inquire about delivery to my location and purchase via Escrow: {e_url}"
+            f"My delivery location is: [Your Town / Region]\n"
+            f"Could you confirm availability and total price with shipping?\n\n"
+            f"Generate Escrow Link for this order:\n{create_link_url}"
         )
         return f"https://api.whatsapp.com/send?phone={clean}&text={urllib.parse.quote(msg)}" if clean else f"https://api.whatsapp.com/send?text={urllib.parse.quote(msg)}"
 
@@ -493,6 +525,8 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
 
     if category and category.lower() != 'all':
         product_links_qs = product_links_qs.filter(
+            Q(category__iexact=category) |
+            Q(category__icontains=category) |
             Q(seller__shop_category__iexact=category) |
             Q(seller__shop_categories__icontains=category)
         )
@@ -506,6 +540,7 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
                 p_filter &= (
                     Q(title__icontains=token) |
                     Q(description__icontains=token) |
+                    Q(category__icontains=token) |
                     Q(seller__shop_name__icontains=token) |
                     Q(seller__username__icontains=token) |
                     Q(seller__shop_category__icontains=token) |
@@ -516,6 +551,7 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
             product_links_qs = product_links_qs.filter(
                 Q(title__icontains=q_clean) |
                 Q(description__icontains=q_clean) |
+                Q(category__icontains=q_clean) |
                 Q(seller__shop_name__icontains=q_clean) |
                 Q(seller__shop_category__icontains=q_clean)
             )
@@ -544,6 +580,7 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
             s_phone = s.phone_number if s else ""
             s_pic = s.profile_picture_url if s else ""
             link_escrow_url = f"{base_frontend_url}/l/{pl.id}"
+            p_cat = pl.category or (s.shop_category if s else '') or "General Marketplace"
 
             matched_products_list.append({
                 "link_id": str(pl.id),
@@ -551,6 +588,7 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
                 "description": pl.description or "",
                 "price_ghs": float(pl.price_ghs),
                 "image_url": pl.image_url or "",
+                "category": p_cat,
                 "escrow_url": link_escrow_url,
                 "seller_id": str(s.id) if s else "",
                 "seller_username": s_username,
@@ -561,7 +599,7 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
                 "badge_title": b_title,
                 "seller_avg_rating": round(float(s_avg_o or 0.0), 1),
                 "seller_total_reviews": int(s_tot_rev or 0),
-                "whatsapp_contact_url": _format_whatsapp_url(s_phone, pl.title, float(pl.price_ghs), s_name, link_escrow_url),
+                "whatsapp_contact_url": _format_whatsapp_url(s_phone, pl.title, float(pl.price_ghs), s_name, p_cat, pl.image_url or "", pl.description or ""),
                 "created_at": pl.created_at.isoformat()
             })
 

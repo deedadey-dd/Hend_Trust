@@ -14,6 +14,7 @@ export interface SellerPaymentLink {
   fee_handling: 'PASS_TO_BUYER' | 'ABSORB_FEE';
   intended_buyer_phone?: string;
   image_url?: string;
+  category?: string;
   created_at: string;
   url: string;
   is_active: boolean;

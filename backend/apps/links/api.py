@@ -19,6 +19,7 @@ class CreateLinkSchema(Schema):
     fee_handling: str = FeeHandling.PASS_TO_BUYER
     intended_buyer_phone: Optional[str] = None
     image_url: Optional[str] = ""
+    category: Optional[str] = ""
 
 class LinkResponseSchema(Schema):
     id: uuid.UUID
@@ -32,6 +33,7 @@ class LinkDetailSchema(Schema):
     shipping_fee_ghs: Decimal
     fee_handling: str
     image_url: Optional[str] = ""
+    category: Optional[str] = ""
     seller_username: Optional[str] = ""
     shop_name: Optional[str] = ""
     seller_email: Optional[str] = ""
@@ -48,6 +50,7 @@ class SellerLinkSchema(Schema):
     fee_handling: Optional[str] = "PASS_TO_BUYER"
     intended_buyer_phone: Optional[str] = ""
     image_url: Optional[str] = ""
+    category: Optional[str] = ""
     created_at: str
     url: str
     is_active: bool = True
@@ -93,6 +96,7 @@ def list_seller_links(request, search: str = None, status_filter: str = 'all', s
                 "fee_handling": link.fee_handling,
                 "intended_buyer_phone": link.intended_buyer_phone or "",
                 "image_url": link.image_url or "",
+                "category": link.category or getattr(link.seller, 'shop_category', '') or "General Marketplace",
                 "created_at": link.created_at.isoformat(),
                 "url": f"{base_url}/l/{link.id}",
                 "is_active": link.is_active,
@@ -111,6 +115,9 @@ def create_payment_link(request, data: CreateLinkSchema):
     if getattr(request.user, 'is_suspended', False):
         raise HttpError(403, "Your seller account is currently suspended. You cannot create new payment links. Please contact support or management for manual review.")
 
+    seller_cat = getattr(request.user, 'shop_category', '') or 'General Marketplace'
+    chosen_category = (data.category or '').strip() or seller_cat
+
     link = PaymentLink.objects.create(
         seller=request.user,
         title=data.title.strip(),
@@ -119,7 +126,8 @@ def create_payment_link(request, data: CreateLinkSchema):
         shipping_fee_ghs=data.shipping_fee_ghs or Decimal('0.00'),
         fee_handling=data.fee_handling,
         intended_buyer_phone=data.intended_buyer_phone.strip() if data.intended_buyer_phone else None,
-        image_url=data.image_url.strip() if data.image_url else None
+        image_url=data.image_url.strip() if data.image_url else None,
+        category=chosen_category
     )
 
     base_url = _get_request_frontend_url(request)
@@ -188,6 +196,7 @@ def get_link(request, link_id: uuid.UUID):
         "shipping_fee_ghs": link.shipping_fee_ghs,
         "fee_handling": link.fee_handling,
         "image_url": link.image_url or "",
+        "category": link.category or getattr(link.seller, 'shop_category', '') or "General Marketplace",
         "seller_username": link.seller.username or link.seller.email.split('@')[0],
         "shop_name": link.seller.shop_name or f"@{link.seller.username}'s Store",
         "seller_email": getattr(link.seller, 'email', ''),
