@@ -1,11 +1,19 @@
 import { useState, useEffect } from 'react';
-import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2, ShieldAlert, Send, Package } from 'lucide-react';
+import { useSearchParams } from 'react-router-dom';
+import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2, ShieldAlert, Send, Package, Tag } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
+import { useEscapeKey } from '../utils/useEscapeKey';
+import { MARKETPLACE_CATEGORIES } from '../constants/categories';
+import { useAuthStore } from '../store/authStore';
 
 export default function CreatePaymentLinkView() {
+  const { user } = useAuthStore();
+  const [searchParams] = useSearchParams();
+
   const [title, setTitle] = useState('');
+  const [category, setCategory] = useState(user?.shop_category || MARKETPLACE_CATEGORIES[0].name);
   const [description, setDescription] = useState('');
   const [price, setPrice] = useState('0');
   const [shipping, setShipping] = useState('0');
@@ -23,10 +31,33 @@ export default function CreatePaymentLinkView() {
   const [appealSuccess, setAppealSuccess] = useState('');
   const [appealError, setAppealError] = useState('');
 
+  useEscapeKey(() => setShowModal(false), showModal);
+  useEscapeKey(() => setSuspensionError(null), Boolean(suspensionError));
+
   // Past products autosuggestion & quick fill
   const [pastLinks, setPastLinks] = useState<any[]>([]);
   const [selectedPastId, setSelectedPastId] = useState('');
   const [autofillNotice, setAutofillNotice] = useState('');
+
+  // Prefill from inquiry URL parameters if available
+  useEffect(() => {
+    const qTitle = searchParams.get('title');
+    const qPrice = searchParams.get('price');
+    const qCategory = searchParams.get('category');
+    const qDesc = searchParams.get('desc') || searchParams.get('description');
+    const qImg = searchParams.get('img') || searchParams.get('image');
+    const qShipping = searchParams.get('shipping');
+
+    if (qTitle) {
+      setTitle(qTitle);
+      if (qPrice) setPrice(qPrice);
+      if (qCategory) setCategory(qCategory);
+      if (qDesc) setDescription(qDesc);
+      if (qImg) setImageUrl(qImg);
+      if (qShipping) setShipping(qShipping);
+      setAutofillNotice(`Prefilled "${qTitle}" from customer inquiry. Enter agreed shipping fee to generate link.`);
+    }
+  }, [searchParams]);
 
   useEffect(() => {
     apiClient.get('/links/?limit=50')
@@ -46,6 +77,9 @@ export default function CreatePaymentLinkView() {
   const handleAutofill = (linkItem: any) => {
     if (!linkItem) return;
     setTitle(linkItem.title || '');
+    if (linkItem.category) {
+      setCategory(linkItem.category);
+    }
     setDescription(linkItem.description || '');
     setPrice(String(linkItem.price_ghs || '0'));
     setShipping(String(linkItem.shipping_fee_ghs || '0'));
@@ -108,7 +142,8 @@ export default function CreatePaymentLinkView() {
         price_ghs: parseFloat(price),
         shipping_fee_ghs: parseFloat(shipping),
         fee_handling: feeHandling,
-        image_url: imageUrl
+        image_url: imageUrl,
+        category: category
       });
       const url = response.data.url.replace('https://pay.hendaxis.com', window.location.origin);
       setCreatedUrl(url);
@@ -253,6 +288,31 @@ export default function CreatePaymentLinkView() {
                   ))}
                 </datalist>
               </div>
+
+              {/* Product Category Selector */}
+              <div>
+                <div className="flex items-center justify-between">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
+                    <Tag className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                    Product Category *
+                  </label>
+                  <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
+                    Helps buyers find your product in search
+                  </span>
+                </div>
+                <select
+                  value={category}
+                  onChange={e => setCategory(e.target.value)}
+                  className="mt-1 block w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border font-medium cursor-pointer"
+                >
+                  {MARKETPLACE_CATEGORIES.map(cat => (
+                    <option key={cat.id} value={cat.name}>
+                      {cat.name} ({cat.shortName})
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Description (Optional)</label>
                 <textarea value={description} onChange={e => setDescription(e.target.value)} rows={3} className="mt-1 block w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 shadow-sm focus:ring-blue-500 focus:border-blue-500 sm:text-sm p-3 border"></textarea>
@@ -401,8 +461,8 @@ export default function CreatePaymentLinkView() {
 
       {/* Success Modal Pop-up */}
       {showModal && createdUrl && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-gray-100 dark:border-slate-800 max-w-md w-full overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-gray-100 dark:border-slate-800 max-w-md w-full max-h-[90vh] overflow-y-auto animate-in zoom-in-95 duration-200 my-auto">
             <div className="relative p-6 text-center">
               <button 
                 onClick={() => setShowModal(false)}
@@ -435,21 +495,35 @@ export default function CreatePaymentLinkView() {
                 <QRCodeDisplay url={createdUrl} title={title} priceGhs={buyerPays} size={150} />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <button
-                  onClick={() => handleCopy(createdUrl)}
-                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border-2 border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition-all text-xs sm:text-sm"
-                >
-                  {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
-                  {copied ? 'Copied!' : 'Copy Link'}
-                </button>
-                <button
-                  onClick={() => handleShare(createdUrl)}
-                  className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 text-xs sm:text-sm"
+              <div className="space-y-2.5">
+                <a
+                  href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
+                    `Hello! Here is your secure HendAxis Trust escrow checkout link for "${title}" (Total: GHS ${buyerPays.toFixed(2)}).\n\n🔒 Your payment is held safely in escrow until you receive and inspect your package.\n👉 Pay safely here: ${createdUrl}`
+                  )}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full flex items-center justify-center gap-2 py-3 px-4 rounded-xl bg-emerald-600 text-white font-bold hover:bg-emerald-500 transition-all shadow-md shadow-emerald-500/20 text-xs sm:text-sm cursor-pointer"
                 >
                   <Share2 className="h-4 w-4" />
-                  Share Link
-                </button>
+                  <span>Send to Buyer via WhatsApp</span>
+                </a>
+
+                <div className="grid grid-cols-2 gap-2.5">
+                  <button
+                    onClick={() => handleCopy(createdUrl)}
+                    className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-200 font-semibold hover:bg-gray-50 dark:hover:bg-slate-800 transition-all text-xs cursor-pointer"
+                  >
+                    {copied ? <Check className="h-4 w-4 text-green-600" /> : <Copy className="h-4 w-4" />}
+                    {copied ? 'Copied!' : 'Copy Link'}
+                  </button>
+                  <button
+                    onClick={() => handleShare(createdUrl)}
+                    className="flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl bg-blue-600 text-white font-semibold hover:bg-blue-700 transition-all shadow-md shadow-blue-500/20 text-xs cursor-pointer"
+                  >
+                    <Share2 className="h-4 w-4" />
+                    Share Options
+                  </button>
+                </div>
               </div>
             </div>
           </div>
@@ -458,9 +532,9 @@ export default function CreatePaymentLinkView() {
 
       {/* ─── MODAL: ACCOUNT SUSPENDED & APPEAL ─────────────────────────────── */}
       {suspensionError && (
-        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full border border-red-200 dark:border-red-900/60 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-            <div className="p-6 text-center border-b border-red-100 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/30">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col border border-red-200 dark:border-red-900/60 shadow-2xl overflow-hidden animate-in fade-in zoom-in-95 duration-200 my-auto">
+            <div className="p-5 sm:p-6 text-center border-b border-red-100 dark:border-red-900/40 bg-red-50/50 dark:bg-red-950/30 shrink-0">
               <div className="w-16 h-16 bg-red-100 dark:bg-red-900/50 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto mb-3 shadow-inner">
                 <ShieldAlert className="h-8 w-8" />
               </div>
@@ -470,7 +544,7 @@ export default function CreatePaymentLinkView() {
               </p>
             </div>
 
-            <div className="p-6 space-y-4 text-xs">
+            <div className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
               <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 leading-relaxed font-mono">
                 {suspensionError.message}
               </div>

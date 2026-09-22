@@ -7,6 +7,9 @@ interface User {
   email: string;
   name?: string;
   username?: string;
+  shop_name?: string;
+  shop_category?: string;
+  shop_categories?: string[];
   is_superuser?: boolean;
   is_staff?: boolean;
 }

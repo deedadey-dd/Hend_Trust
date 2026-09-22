@@ -9,21 +9,26 @@ Whether you are an Instagram vendor, a marketplace shopper, or an independent co
 ## 1. Seller Profile, Storefront & Identity Verification
 To build trust with buyers, sellers can customize their public store presence and apply for verified status:
 
-- **Store Presentation**: Specify your **Shop Name**, **Shop Description**, and choose **up to 3 Product Categories** (e.g. Electronics, Fashion, Beauty) to display on your public store page (`/store/:username`) and the Marketplace Directory (`/shops`).
+- **Store Presentation & 16-Category Taxonomy**: Specify your **Shop Name**, **Shop Description**, and choose **up to 3 Categories** from the 16 platform categories (Phones & Tablets, Computers & Tech, Electronics & Appliances, Fashion & Apparel, Beauty, Hair & Fragrances, Health & Wellness, Home, Furniture & Living, Automotive & Spare Parts, Baby, Kids & Toys, Groceries & Foodstuff, Jewelry & Watches, Sports, Outdoors & Fitness, Industrial, Tools & Hardware, Digital Goods & Gaming, Professional Services, General Marketplace) to display on your public store page (`/store/:username`) and the Marketplace Directory (`/shops`).
 - **Identity & Business License Submission**: On your Profile page, upload your **Ghana Card / National ID number**, **Ghana Card photo**, and optional **Business Registration License**.
 - **Strict `🛡️ Verified Seller` Badge Rule**: The `🛡️ Verified Seller` badge is **NEVER** granted automatically based on completed escrows alone. Management MUST manually inspect and approve your submitted identity documents in the Manager Portal before your store displays the official Verified badge. Unverified stores are labeled as `🆕 New Shop`.
 
 ---
 
-## 2. Creating a Payment Link & Configurable Seller Dispatch Rule
+## 2. Creating a Payment Link, Product Category Selection & Configurable Seller Dispatch Rule
 Sellers can create secure Payment Links to send to their buyers.
 
 1. **Log in** to your Seller Dashboard and click **Create Payment Link**.
-2. Enter item details: Title, Description, Price in GHS, and Shipping Fee.
+2. **Enter Item Details**: Title, **Product Category** (pre-selected to your shop niche with override options), Description, Price in GHS, and optional Shipping Fee.
 3. **Choose Fee Handling**:
-   - **Absorb Fee**: Seller pays the platform fee. The buyer pays only the exact item price.
-   - **Pass to Buyer**: The buyer pays the item price + platform fee. Seller receives 100% of their item price.
-4. **Configurable Seller Dispatch Guarantee & Progressive Reminders**: Once the buyer pays, the seller must dispatch the package within the platform-configured dispatch window (default: **4 days / 96 hours**, managed via **Gateway & Logistics Settings** in the Admin Portal).
+   - **Platform Fee Formula**: Calculated transparently as $(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$.
+   - **Absorb Fee**: Seller pays the platform fee. The buyer pays only the exact item price + shipping. The fee is deducted from the seller's final wallet payout.
+   - **Pass to Buyer (Default)**: The buyer pays the item price + shipping + platform fee at checkout. Seller receives 100% of their item and shipping amount.
+   - *Tip*: Sellers and buyers can use the **Escrow Fee Calculator** on the home page or `/how-it-works` to simulate exact figures anytime.
+4. **Location-Based Shipping & WhatsApp 1-Click Escrow Generator**:
+   - Because shipping across Ghana varies by destination (e.g. Greater Accra vs. Kumasi or Tamale), buyers inquiring via the marketplace send pre-filled product parameters to the seller on WhatsApp (`/create-link?title=...&price=...&category=...`).
+   - When the seller agrees on delivery terms with the customer, tapping the WhatsApp link opens `/create-link` with product details already filled. The seller enters the agreed shipping fee, taps **Create Escrow Payment Link**, and shares the link back to the buyer.
+5. **Configurable Seller Dispatch Guarantee & Progressive Reminders**: Once the buyer pays, the seller must dispatch the package within the platform-configured dispatch window (default: **4 days / 96 hours**, managed via **Gateway & Logistics Settings** in the Admin Portal).
    - **Progressive Pre-Expiry Reminders**:
      - At **24 Hours Remaining**: Seller receives an SMS & Email reminder outlining the exact itemized penalty (Platform Fee + 1.95% Gateway Processing Fee) charged if they default.
      - At **6 Hours Remaining**: Seller receives an urgent final warning alert.
@@ -31,7 +36,7 @@ Sellers can create secure Payment Links to send to their buyers.
      - The order is automatically cancelled (`auto_cancelled_non_dispatch = True`).
      - The buyer gets an immediate **100% full refund** (including all fees).
      - The defaulting seller is charged the itemized **Non-Dispatch Default Penalty** (Platform Fee + 1.95% gateway charges).
-5. **Stale Transaction Management & Manual Payment Check**: Unpaid transaction entries auto-archive after the platform's configured duration (`unpaid_auto_archive_days`, default: 3 days). Sellers can click the **Check Payment** button to manually query gateway completion before archiving. If payment is confirmed, the transaction auto-unarchives (`is_archived = False`).
+6. **Stale Transaction Management & Manual Payment Check**: Unpaid transaction entries auto-archive after the platform's configured duration (`unpaid_auto_archive_days`, default: 3 days). Sellers can click the **Check Payment** button to manually query gateway completion before archiving. If payment is confirmed, the transaction auto-unarchives (`is_archived = False`).
 
 ---
 
@@ -56,26 +61,36 @@ Sellers must dispatch items promptly after receiving payment notification:
 
 ---
 
-## 5. Tiered Buyer Inspection Period, Full-Screen Lightbox & 60s OTP Cooldown
-Once delivery is confirmed, the buyer inspection timer starts automatically:
+## 5. Upfront 2-Step OTP Tracking & Tiered Buyer Inspection Period
+Once delivery is initiated, buyers can track shipments with full privacy and convenience:
 
+- **Upfront 2-Step OTP Package Tracking**:
+  - Both **Track by Order ID** (single parcel) and **Full Order History** are protected by a secure 6-digit OTP sent to the buyer's phone number.
+  - **2-Hour Token Validity**: Once verified, your tracking session remains unlocked for **2 hours**, allowing instant access to package details and action buttons ("View Full Details & Actions", "+ Add Dispute Details", "Confirm Receipt", "Raise Dispute", "⭐ Rate Seller") without repetitive popups or interruptions.
+  - **60-Second SMS Cooldown**: A cost-saving 60-second cooldown prevents spam while keeping the active OTP code valid.
 - **Inspection Timeframes**:
   - `< GHS 2,000`: **24 Hours**
   - `GHS 2,000 – GHS 9,999.99`: **48 Hours**
   - `>= GHS 10,000`: **72 Hours**
-- **60-Second OTP SMS Cooldown**: Confirmation code requests enforce a 60-second cooldown between SMS dispatches, saving costs while keeping the first generated OTP valid.
-- **Full-Screen Image Lightbox**: Product and parcel inspection photos feature a full-screen zoom lightbox modal with 90° rotation and download controls.
+- **Full-Screen Image Lightbox**: Product, dispatch waybills, and parcel inspection photos feature a full-screen zoom lightbox modal with 90° rotation and download controls.
 - **Automatic Completion & Rating Modal**: Once the buyer confirms receipt via their 6-digit confirmation code, payment is released to the seller, and the **3-Axis Rate Seller Modal** automatically launches on screen so the buyer can instantly leave a review.
 
 ---
 
-## 6. How Disputes, 24-Hour Settlement & Manager Extra Fees Work
-If a buyer receives a damaged or incorrect item during the inspection period:
+## 6. How Disputes, Dialogue Trail, Retraction & 24-Hour Settlement Work
+If a buyer receives a damaged, defective, or incorrect item during the inspection period:
 
-- **Buyer Claim & Evidence Modal**: Clicking **Raise Dispute** opens an interactive modal where the buyer enters their claim description and uploads up to **5 evidence photos**.
-- **Seller Counter Response**: The seller receives SMS & Email notifications and can submit a counter statement with up to **5 seller evidence photos**.
-- **Dispute Review Suppression**: Raising a dispute automatically suppresses and clears any reviews or star ratings submitted for that transaction.
-- **24-Hour Dispute Settlement**: Rulings execute payouts within **24 hours**:
+- **Dispute Initiation & Evidence Upload**: Clicking **Raise Dispute** opens an interactive modal where the buyer enters their claim description and uploads up to **5 WebP evidence photos**.
+- **Continuous Dialogue & Evidence Appending**: Both buyers and sellers can append ongoing follow-up messages and additional photos to active disputes. Every message is timestamped (`--- [Buyer Update (Timestamp)] ---` and `--- [Seller Response (Timestamp)] ---`), preserving the complete historical record without overwriting previous evidence (up to 5 cumulative photos).
+- **WhatsApp-Style Dispute Dialogue Trail**:
+  - Displays messages in a conversational timeline across the buyer tracking portal (`/l/:id`), Tracking Modal, Seller Dashboard, and Admin Portal.
+  - **Color-Coded Bubbles**: Buyer statements are styled on the left (Rose badge/background), Seller statements on the right (Emerald badge/background), Arbitrator notes in the center (Purple card), and Dispatch Waybill / Retraction cards prominently highlighted.
+  - **Interactive Features**: Long statements (> 260 characters) include a clean `Read more / Show less` toggle, and long conversation trails (> 4 messages) collapse neatly with an expandable banner.
+- **Dispute Retraction & 24-Hour Private Settlement**:
+  - If a buyer and seller resolve their issue amicably outside arbitration (e.g. seller sends a direct replacement or discount), the buyer can click **Retract Dispute / Settle Privately**.
+  - **24-Hour Delay Hold**: Upon retraction, escrow funds enter a 24-hour grace period (`RETRACTED_SETTLING`) before releasing to the seller's wallet, ensuring protection against accidental or forced retractions.
+  - **Rating Voidance**: Once a dispute has been opened, the rating capability is permanently voided (`rating_voided = True`) to prevent review manipulation or coercive settlement tactics.
+- **24-Hour Dispute Settlement (Arbitration)**: Platform support reviews all submitted evidence and dialogue, issuing a binding ruling within **24 hours**:
   - **Buyer Refund**: Issued via the **same payment medium** (MoMo/Card) used at checkout.
   - **Seller Payout**: Sent to seller's registered payout details or credited to seller's HendAxis Trust wallet.
 - **Dispute Rulings & Buyer Item Returns (`REQUIRE_RETURN_FROM_BUYER`)**:
@@ -86,21 +101,37 @@ If a buyer receives a damaged or incorrect item during the inspection period:
 - **Dispute Fund Allocation & Extra Fee Rules**:
   - Incurred shipping costs are non-refundable if shipping was performed.
   - Managers can specify platform retained fees or levy custom extra penalty fees for damaged/incorrect items. Any unallocated split funds accrue to platform fee revenue.
+- **Arbitration 360° Buyer & Seller Intelligence Dossiers**:
+  - **Buyer Intelligence**: Arbiters can inspect the complete buyer profile by querying their **phone number, email address, or user ID**, retrieving total lifetime orders, GMV spent, active escrow holds, dispute frequency rate %, serial disputer alerts, retracted dispute history, verified Ghana Card KYC status, and known physical delivery destinations.
+  - **Seller Intelligence**: Arbiters can inspect the complete merchant store dossier with 1-click, reviewing active payment links, lifetime revenue, wallet balance & payout details, customer review breakdown (speed & communication), and automated escrow health triggers.
 - **1MB Image Compression**: Accumulated dispute photos are compressed server-side to $\le 1\text{MB}$ total per transaction post-resolution.
 
 ---
 
-## 7. Escrow-Gated Reviews, Hardened Security & Rating Lock
-- **1 Review Per Transaction**: Enforced via a `SellerReview.transaction` `OneToOneField` constraint. Submitting feedback again for an existing order updates the original review.
+## 7. Escrow-Gated Reviews, Edit Auditing & Rating Lock
+- **1 Review Per Transaction**: Enforced via a `SellerReview.transaction` `OneToOneField` constraint.
+- **Dedicated "Your Verified Review" Card**: Once a buyer rates a seller, the order tracking page (`/l/:id` and Tracking Modal) replaces the generic rating button with a structured card displaying the buyer's overall star score, speed and communication breakdown, review comment, initial submission date, and seller's public reply.
+- **Brand Palette (#ff6d1d & #0363ff)**: Star rating cards, verified badges, and active rating chips match the HendAxis Trust brand palette.
+- **Transparent Edit Counter & Timestamps (`edit_count`)**:
+  - Buyers can click **"✏️ Edit Review"** to update their ratings or comments anytime.
+  - Every update increments an internal `edit_count` and updates the timestamp (`updated_at`).
+  - The review card and modal transparently display: `Edited X times • Last edited on [Date]` (or `(Edited Xx)` in public store feeds), preventing silent replacement and maintaining review integrity.
 - **Transit Rating Lock**: Rating a seller is locked while a package is in transit (`AWAITING_PAYMENT`, `PAYMENT_RECEIVED`, `DELIVERY_IN_PROGRESS`) with a clear tooltip/badge (`🔒 Rate Seller (Unlocks upon delivery)`). Rating unlocks upon delivery and inspection.
 - **Cryptographic Review Token (`buyer_review_token`)**: Auto-generated upon purchase and returned strictly in buyer-facing checkout responses. Sellers never receive or see this token, preventing sellers from forging or altering buyer reviews.
 - **$0-Cost Email Magic Link Fallback**: Buyers editing a review from a new device can request a free magic link emailed to `buyer_email` (`/reviews/request-edit-link`).
-- **Public Storefront (`/store/:username`)**: Shows seller ratings, public review feedback, and seller replies.
+- **Public Storefront (`/store/:username`)**: Shows seller ratings, public review feedback, edit badges, and seller replies.
 
 ---
 
-## 8. Marketplace Directory & Paid Shop Promotion (`/shops`)
-- **Public Marketplace**: Buyers can explore seller shops, filter by product categories, and search products.
+## 8. Marketplace Directory, Ballpark Search & Verified Stores (`/shops`)
+- **Ballpark Multi-Token Search Engine**: Search active products across titles, descriptions, categories, and merchant names. Matches ballpark multi-word queries (e.g., *"iphone pro 256"*, *"bluetooth speaker"*).
+- **Structured 3-Tier Layout**:
+  1. **Verified Escrow Stores**:
+     - **Row 1**: Featured Sponsored stores (`⚡ Featured Ad`).
+     - **Rows 2 & 3**: Standard verified merchants with direct *"Visit Storefront"* links and WhatsApp/Phone contact icons.
+     - Expandable *"View All Verified Stores (N)"* toggle.
+  2. **Recent Customer Reviews Carousel**: Displays verified buyer feedback when browsing.
+  3. **Matched Products & Escrow Offers**: Product cards displaying price, escrow guarantee badge, category tag, location-based shipping notice, and 1-click WhatsApp inquiry buttons.
 - **Paid Shop Promotions (`⚡ Featured Ad`)**: Sellers can feature their store at the top of the directory (GHS 50 for 7 Days / GHS 150 for 30 Days).
 
 ---

@@ -18,6 +18,8 @@ export interface RecentReview {
   seller_reply?: string;
   seller_replied_at?: string;
   created_at: string;
+  updated_at?: string;
+  edit_count?: number;
   item_title: string;
   item_image_url?: string;
   upvotes_count: number;
@@ -32,7 +34,7 @@ interface TrustpilotReviewCardProps {
 }
 
 export default function TrustpilotReviewCard({ review, onOpenModal }: TrustpilotReviewCardProps) {
-  // Green Star Rating Box
+  // Brand Star Rating Box
   const renderStars = (rating: number) => {
     return (
       <div className="flex items-center gap-1">
@@ -40,7 +42,7 @@ export default function TrustpilotReviewCard({ review, onOpenModal }: Trustpilot
           <div
             key={star}
             className={`w-5 h-5 flex items-center justify-center rounded ${
-              star <= rating ? 'bg-emerald-500 text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-400'
+              star <= rating ? 'bg-[#ff6d1d] text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-400'
             }`}
           >
             <Star className="w-3 h-3 fill-current stroke-none" />
@@ -57,12 +59,12 @@ export default function TrustpilotReviewCard({ review, onOpenModal }: Trustpilot
   return (
     <div
       onClick={() => onOpenModal(review)}
-      className="bg-white dark:bg-slate-900 border border-gray-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-lg hover:border-emerald-500/40 dark:hover:border-emerald-500/40 transition-all duration-200 cursor-pointer flex flex-col justify-between group h-full select-none"
+      className="bg-white dark:bg-slate-900 border border-gray-200/90 dark:border-slate-800 rounded-2xl p-5 shadow-sm hover:shadow-lg hover:border-[#ff6d1d]/40 dark:hover:border-[#ff6d1d]/40 transition-all duration-200 cursor-pointer flex flex-col justify-between group h-full select-none"
     >
       <div>
         {/* Buyer Header: Avatar + Display Name + Rating Stars */}
         <div className="flex items-center gap-3 mb-3.5">
-          <div className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center font-bold text-white text-base shadow-sm ring-2 ring-emerald-500/20">
+          <div className="w-11 h-11 min-w-[44px] min-h-[44px] rounded-full bg-gradient-to-br from-[#ff6d1d] to-[#0363ff] flex items-center justify-center font-bold text-white text-base shadow-sm ring-2 ring-[#ff6d1d]/20">
             {getInitial(review.buyer_name)}
           </div>
 
@@ -72,6 +74,11 @@ export default function TrustpilotReviewCard({ review, onOpenModal }: Trustpilot
             </h3>
             <div className="mt-1 flex items-center gap-2">
               {renderStars(review.rating_overall)}
+              {(review.edit_count || 0) > 0 && (
+                <span className="text-[10px] font-semibold text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-1.5 py-0.2 rounded border border-blue-200 dark:border-blue-800">
+                  Edited {review.edit_count}x
+                </span>
+              )}
             </div>
           </div>
         </div>
@@ -86,7 +93,7 @@ export default function TrustpilotReviewCard({ review, onOpenModal }: Trustpilot
             />
           )}
           {review.item_title && (
-            <div className="text-[11px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full inline-block truncate max-w-full">
+            <div className="text-[11px] font-semibold text-[#0363ff] dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 px-2.5 py-0.5 rounded-full inline-block truncate max-w-full border border-blue-100 dark:border-blue-900/40">
               {review.item_title}
             </div>
           )}
@@ -117,7 +124,7 @@ export default function TrustpilotReviewCard({ review, onOpenModal }: Trustpilot
             </div>
           )}
           <div className="min-w-0">
-            <span className="block text-xs font-bold text-gray-900 dark:text-slate-100 truncate group-hover/shop:text-emerald-600 dark:group-hover/shop:text-emerald-400 transition">
+            <span className="block text-xs font-bold text-gray-900 dark:text-slate-100 truncate group-hover/shop:text-[#0363ff] dark:group-hover/shop:text-blue-400 transition">
               {review.shop.shop_name}
             </span>
             <span className="block text-[10px] text-gray-400 dark:text-slate-500 truncate">
@@ -128,11 +135,11 @@ export default function TrustpilotReviewCard({ review, onOpenModal }: Trustpilot
 
         {/* Upvote & Downvote Count Pill */}
         <div className="flex items-center gap-2 shrink-0 text-[11px] text-gray-500 dark:text-slate-400">
-          <span className="flex items-center gap-1 font-semibold hover:text-emerald-600">
-            <ThumbsUp className={`w-3.5 h-3.5 ${review.user_voted === 'UP' ? 'text-emerald-600 fill-emerald-500' : ''}`} />
+          <span className="flex items-center gap-1 font-semibold hover:text-[#0363ff] transition">
+            <ThumbsUp className={`w-3.5 h-3.5 ${review.user_voted === 'UP' ? 'text-[#0363ff] fill-[#0363ff]' : ''}`} />
             {review.upvotes_count || 0}
           </span>
-          <span className="flex items-center gap-1 font-semibold hover:text-red-500">
+          <span className="flex items-center gap-1 font-semibold hover:text-red-500 transition">
             <ThumbsDown className={`w-3.5 h-3.5 ${review.user_voted === 'DOWN' ? 'text-red-500 fill-red-500' : ''}`} />
             {review.downvotes_count || 0}
           </span>

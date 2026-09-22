@@ -29,6 +29,13 @@ def confirm_transaction_payment(transaction: Transaction) -> bool:
         except Exception as e:
             logger.error(f"Ledger record_buyer_deposit error for tx {transaction.id}: {e}")
 
+        # Process promotional code redemptions and finalize buyer loyalty credits
+        from apps.escrow.services_promo import apply_transaction_promotions_on_payment
+        try:
+            apply_transaction_promotions_on_payment(transaction)
+        except Exception as e:
+            logger.error(f"Error processing promotions on payment for tx {transaction.id}: {e}")
+
         from apps.core.tasks import notify_buyer_payment_received_task, notify_seller_payment_received_task
         notify_buyer_payment_received_task.delay(transaction.id)
         notify_seller_payment_received_task.delay(transaction.id)

@@ -3,14 +3,17 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import axios from 'axios';
 import {
   ShieldCheck, Truck, ArrowRight, Loader2,
-  CheckCircle, Clock, AlertTriangle, X, KeyRound, Store, ZoomIn
+  CheckCircle, Clock, AlertTriangle, X, KeyRound, Store, ZoomIn,
+  Gift, Sparkles, Tag, RefreshCw, Check
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import SEOHead from '../components/SEOHead';
 import TermsModal from '../components/TermsModal';
 import ImageLightboxModal from '../components/ImageLightboxModal';
+import DisputeChatTimeline from '../components/DisputeChatTimeline';
 import { saveReviewToken } from '../utils/reviewStorage';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 
 interface LinkData {
@@ -33,6 +36,7 @@ interface TxnDetail {
   id: string;
   status: string;
   total_amount_ghs: number;
+  buyer_refund_amount_ghs?: number;
   buyer_email: string;
   shipping_address: string;
   title: string;
@@ -40,6 +44,14 @@ interface TxnDetail {
   created_at: string;
   paystack_reference: string;
   inspection_starts_at?: string;
+  dispute_retracted_at?: string;
+  dispute_retraction_release_hours?: number;
+  buyer_dispute_reason?: string;
+  buyer_dispute_photos?: string[];
+  seller_dispute_response?: string;
+  seller_dispute_photos?: string[];
+  manager_dispute_notes?: string;
+  manager_dispute_photos?: string[];
   seller_username?: string;
   shop_name?: string;
   seller_email?: string;
@@ -49,6 +61,24 @@ interface TxnDetail {
   shipping_timeout_days?: number;
   inspection_hours_allowed?: number;
   buyer_review_token?: string;
+  has_reviewed?: boolean;
+  review_overall?: number;
+  review_speed?: number;
+  review_communication?: number;
+  review_comment?: string;
+  review_created_at?: string;
+  review_updated_at?: string;
+  review_edit_count?: number;
+  review_seller_reply?: string;
+  review_seller_replied_at?: string;
+  price_ghs?: number;
+  shipping_fee_ghs?: number;
+  platform_fee_ghs?: number;
+  base_platform_fee_ghs?: number;
+  promo_discount_ghs?: number;
+  credit_discount_ghs?: number;
+  promo_code_applied?: string;
+  fee_handling?: string;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -59,12 +89,14 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const Icon = cfg.icon;
 
   const canConfirm = txn.status === 'DELIVERY_IN_PROGRESS';
-  let canDispute = txn.status === 'INSPECTION_PERIOD' || txn.status === 'DELIVERY_IN_PROGRESS';
+  let canDispute = (txn.status === 'INSPECTION_PERIOD' || txn.status === 'DELIVERY_IN_PROGRESS') && !txn.dispute_retracted_at;
   const isInspection = txn.status === 'INSPECTION_PERIOD';
+  const isDisputed = txn.status === 'DISPUTED';
+  const hasDisputeRecord = Boolean(txn.buyer_dispute_reason || txn.dispute_retracted_at || txn.status === 'DISPUTED');
 
   // Calculate inspection remaining time
   let inspectionRemaining = "";
-  if (isInspection && txn.inspection_starts_at) {
+  if (isInspection && txn.inspection_starts_at && !txn.dispute_retracted_at) {
     const start = new Date(txn.inspection_starts_at).getTime();
     const now = new Date().getTime();
     
@@ -80,6 +112,23 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     } else {
       inspectionRemaining = "Expired (processing)";
       canDispute = false;
+    }
+  }
+
+  // Calculate dispute retraction remaining time
+  let retractionRemaining = "";
+  if (txn.dispute_retracted_at) {
+    const start = new Date(txn.dispute_retracted_at).getTime();
+    const now = new Date().getTime();
+    const hoursAllowed = txn.dispute_retraction_release_hours || 24;
+    const end = start + (hoursAllowed * 60 * 60 * 1000);
+    const diff = end - now;
+    if (diff > 0) {
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      retractionRemaining = `${hours}h ${mins}m`;
+    } else {
+      retractionRemaining = "Releasing funds to seller...";
     }
   }
 
@@ -101,8 +150,18 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const [disputeError, setDisputeError] = useState('');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
 
+  // Retract Dispute Modal state
+  const [showRetractModal, setShowRetractModal] = useState(false);
+  const [isRetracting, setIsRetracting] = useState(false);
+  const [retractError, setRetractError] = useState('');
+
   // OTP Resend Cooldown (60 seconds)
   const [resendCooldown, setResendCooldown] = useState(0);
+
+  useEscapeKey(() => setShowConfirmModal(false), showConfirmModal);
+  useEscapeKey(() => setShowDisputeModal(false), showDisputeModal);
+  useEscapeKey(() => setShowRetractModal(false), showRetractModal);
+  useEscapeKey(() => setShowRatingModal(false), showRatingModal);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -190,6 +249,21 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     }
   };
 
+  const handleRetractDispute = async () => {
+    setRetractError('');
+    setIsRetracting(true);
+    try {
+      const res = await axios.post(`/api/v1/escrow/${txn.id}/retract-dispute`);
+      alert(res.data?.message || 'Dispute retracted successfully. Funds will be released to the seller as scheduled.');
+      setShowRetractModal(false);
+      window.location.reload();
+    } catch (err: any) {
+      setRetractError(err.response?.data?.message || err.response?.data?.detail || 'Failed to retract dispute.');
+    } finally {
+      setIsRetracting(false);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-10 px-4 font-sans transition-colors">
       <div className="max-w-lg mx-auto space-y-4">
@@ -217,9 +291,57 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
           </div>
 
           <div className="p-6 space-y-3 text-sm">
+            {txn.price_ghs !== undefined && (
+              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-2xl border border-slate-200/70 dark:border-slate-800 space-y-2.5 text-xs mb-3">
+                <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                  <span className="font-medium">Item Price</span>
+                  <span className="font-bold text-slate-900 dark:text-white">GHS {Number(txn.price_ghs).toFixed(2)}</span>
+                </div>
+                {Number(txn.shipping_fee_ghs || 0) > 0 && (
+                  <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                    <span className="flex items-center gap-1 font-medium"><Truck className="h-3.5 w-3.5 text-blue-500" /> Shipping Fee</span>
+                    <span className="font-bold text-slate-900 dark:text-white">GHS {Number(txn.shipping_fee_ghs).toFixed(2)}</span>
+                  </div>
+                )}
+                {txn.fee_handling === 'PASS_TO_BUYER' ? (
+                  <div className="space-y-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-700">
+                    <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
+                      <span className="flex items-center gap-1 font-medium"><ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection Fee</span>
+                      <span className={(txn.promo_discount_ghs || 0) > 0 || (txn.credit_discount_ghs || 0) > 0 ? 'line-through text-slate-400 text-[11px]' : 'font-bold'}>
+                        GHS {Number(txn.base_platform_fee_ghs || (Number(txn.price_ghs + (txn.shipping_fee_ghs || 0)) * 0.015 + 10)).toFixed(2)}
+                      </span>
+                    </div>
+                    {(txn.promo_discount_ghs || 0) > 0 && (
+                      <div className="flex justify-between items-center text-purple-600 dark:text-purple-400 pl-4 font-semibold text-[11px]">
+                        <span className="flex items-center gap-1"><Tag className="h-3 w-3" /> Promo Code ({txn.promo_code_applied})</span>
+                        <span>- GHS {Number(txn.promo_discount_ghs).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {(txn.credit_discount_ghs || 0) > 0 && (
+                      <div className="flex justify-between items-center text-amber-600 dark:text-amber-400 pl-4 font-semibold text-[11px]">
+                        <span className="flex items-center gap-1"><Sparkles className="h-3 w-3" /> Loyalty Reward Credit Absorbed</span>
+                        <span>- GHS {Number(txn.credit_discount_ghs).toFixed(2)}</span>
+                      </div>
+                    )}
+                    {((txn.promo_discount_ghs || 0) > 0 || (txn.credit_discount_ghs || 0) > 0) && (
+                      <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 pl-4 font-bold text-[11px] pt-0.5">
+                        <span>Net Escrow Fee Paid</span>
+                        <span>{Number(txn.platform_fee_ghs || 0) === 0 ? 'GHS 0.00 (100% Subsidized)' : `GHS ${Number(txn.platform_fee_ghs).toFixed(2)}`}</span>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 pt-2 border-t border-slate-200/70 dark:border-slate-700 font-semibold text-xs">
+                    <span className="flex items-center gap-1"><ShieldCheck className="h-3.5 w-3.5" /> Escrow Protection</span>
+                    <span className="bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800 text-[10px]">Covered by Seller</span>
+                  </div>
+                )}
+              </div>
+            )}
+
             <div className="flex justify-between py-2 border-b border-gray-100 dark:border-slate-800">
-              <span className="text-gray-500 dark:text-slate-400">Amount Paid</span>
-              <span className="font-semibold text-gray-900 dark:text-slate-100">GHS {Number(txn.total_amount_ghs || 0).toFixed(2)}</span>
+              <span className="text-gray-500 dark:text-slate-400 font-medium">Total Paid</span>
+              <span className="font-extrabold text-emerald-700 dark:text-emerald-400 text-base">GHS {Number(txn.total_amount_ghs || 0).toFixed(2)}</span>
             </div>
             <div className="flex justify-between py-2 border-b border-gray-100 dark:border-slate-800">
               <span className="text-gray-500 dark:text-slate-400">Email</span>
@@ -303,12 +425,12 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         )}
 
         {/* Refund & Dispute Settlement Audit Card */}
-        {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED') && (
+        {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED' || txn.buyer_dispute_reason || txn.dispute_retracted_at) && (
           <div className="bg-red-50/80 dark:bg-red-950/40 border border-red-200 dark:border-red-800/60 rounded-2xl p-5 space-y-3 text-xs">
             <div className="flex justify-between items-center border-b border-red-200/80 dark:border-red-800/50 pb-3">
               <span className="font-bold text-red-700 dark:text-red-300 text-sm flex items-center gap-2">
                 <AlertTriangle className="h-5 w-5 text-red-600 dark:text-red-400" />
-                {txn.status === 'REFUNDED' ? 'Dispute Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : 'Dispute Under Review'}
+                {txn.status === 'REFUNDED' ? 'Dispute Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : txn.dispute_retracted_at ? 'Dispute Retracted & Settling' : 'Dispute Under Review'}
               </span>
               {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED') && (
                 <span className="font-mono font-black text-emerald-800 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-3 py-1 rounded-lg text-sm shadow-sm">
@@ -321,41 +443,69 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
               ⏱ <strong>24-Hour Settlement Guarantee:</strong> All refunds are automatically returned via your original payment channel (Paystack MoMo/Card) within 24 hours.
             </p>
 
-            {(txn as any).manager_dispute_notes && (
-              <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-red-200 dark:border-red-800/60 space-y-1.5 shadow-sm">
-                <span className="font-mono text-red-600 dark:text-red-400 font-bold uppercase text-[10px] block">Manager Resolution Notes:</span>
-                <p className="text-gray-800 dark:text-slate-200 text-xs font-sans leading-relaxed">{(txn as any).manager_dispute_notes}</p>
-                {(txn as any).manager_dispute_photos && (txn as any).manager_dispute_photos.length > 0 && (
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {(txn as any).manager_dispute_photos.map((url: string, idx: number) => (
-                      <div 
-                        key={idx} 
-                        className="relative group cursor-pointer"
-                        onClick={() => setLightboxImage(url)}
-                        title="Click to enlarge"
-                      >
-                        <img src={url} alt="Manager ruling proof" className="w-14 h-14 object-cover rounded-lg border border-gray-200 dark:border-slate-700 transition-transform group-hover:scale-105" />
-                        <div className="absolute inset-0 bg-black/30 rounded-lg opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                          <ZoomIn className="w-4 h-4 text-white drop-shadow" />
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
-
-            {(txn as any).buyer_dispute_reason && (
-              <div className="bg-white dark:bg-slate-800 p-3.5 rounded-xl border border-red-200 dark:border-red-800/60 space-y-1 shadow-sm">
-                <span className="font-mono text-gray-500 dark:text-slate-400 font-bold uppercase text-[10px] block">Your Dispute Claim:</span>
-                <p className="text-gray-800 dark:text-slate-200 text-xs font-sans">{(txn as any).buyer_dispute_reason}</p>
-              </div>
-            )}
+            <DisputeChatTimeline
+              buyerReason={txn.buyer_dispute_reason}
+              buyerPhotos={txn.buyer_dispute_photos}
+              buyerName="You (Buyer)"
+              sellerResponse={txn.seller_dispute_response}
+              sellerPhotos={txn.seller_dispute_photos}
+              sellerName={txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller')}
+              managerNotes={txn.manager_dispute_notes}
+              managerPhotos={txn.manager_dispute_photos}
+              disputeRetractedAt={txn.dispute_retracted_at}
+            />
           </div>
         )}
 
-        {/* Buyer Actions */}
-        {(canConfirm || canDispute || isInspection) && (
+        {/* Retraction & Settlement Progress Banner */}
+        {txn.dispute_retracted_at && (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl p-5 text-xs text-amber-900 dark:text-amber-200 space-y-2 shadow-sm">
+            <div className="flex items-center justify-between">
+              <span className="font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5 text-sm">
+                <CheckCircle className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                Dispute Retracted — Settlement in Progress
+              </span>
+              <span className="font-mono font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/60 px-2 py-0.5 rounded text-xs">
+                Auto-Release in: {retractionRemaining}
+              </span>
+            </div>
+            <p className="text-amber-800 dark:text-amber-300 leading-relaxed">
+              You retracted this dispute to settle privately with the seller. Funds will be automatically released to the seller once the {txn.dispute_retraction_release_hours || 24}-hour grace window completes.
+            </p>
+          </div>
+        )}
+
+        {/* Active Dispute Actions Card */}
+        {isDisputed && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-rose-200 dark:border-rose-900/60 p-6 space-y-3">
+            <div>
+              <h3 className="text-sm font-bold text-rose-600 dark:text-rose-400 flex items-center gap-1.5">
+                <AlertTriangle className="h-4 w-4" />
+                Active Dispute Under Review
+              </h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400 mt-1">
+                You can add more details or evidence photos (up to 5 total), or retract this dispute to settle privately with the seller.
+              </p>
+            </div>
+            <div className="flex flex-col sm:flex-row gap-3 pt-1">
+              <button
+                onClick={() => { setShowDisputeModal(true); setDisputeReason(''); setBuyerPhotos([]); setDisputeError(''); }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 text-xs font-bold hover:bg-rose-100 dark:hover:bg-rose-900/50 transition flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                + Add More Details / Photos
+              </button>
+              <button
+                onClick={() => { setShowRetractModal(true); setRetractError(''); }}
+                className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-sm flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                Retract Dispute & Settle Privately
+              </button>
+            </div>
+          </div>
+        )}
+
+        {/* Buyer Inspection & Confirmation Actions */}
+        {(canConfirm || canDispute) && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-6">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-200 mb-1">
               {isInspection ? "Inspection Mode" : "Item received?"}
@@ -388,33 +538,128 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         )}
 
         {/* Rating Section */}
-        {txn.status !== 'AWAITING_PAYMENT' && txn.status !== 'CANCELLED' && txn.status !== 'DISPUTED' && (
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
-                ⭐ Seller Experience Rating
-              </h3>
-              <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED')
-                  ? "Share your feedback on product quality, shipping speed, and seller communication."
-                  : "Seller rating unlocks once package is delivered and inspection begins."}
-              </p>
-            </div>
-            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') ? (
-              <button
-                onClick={() => setShowRatingModal(true)}
-                className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition whitespace-nowrap shadow-sm cursor-pointer"
-              >
-                ⭐ Rate Seller
-              </button>
+        {txn.status !== 'AWAITING_PAYMENT' && txn.status !== 'CANCELLED' && (
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-6 space-y-4">
+            {hasDisputeRecord ? (
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
+                    ⭐ Seller Experience Rating
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                    Seller rating is permanently disabled because a dispute was initiated for this transaction.
+                  </p>
+                </div>
+                <button
+                  disabled
+                  title="Rating disabled due to dispute history"
+                  className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80 whitespace-nowrap"
+                >
+                  🔒 Rating Voided
+                </button>
+              </div>
+            ) : txn.has_reviewed ? (
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-sm font-bold text-gray-900 dark:text-white flex items-center gap-1.5">
+                      ⭐ Your Verified Review
+                    </h3>
+                    {(txn.review_edit_count || 0) > 0 ? (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-blue-50 dark:bg-blue-950/50 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800">
+                        Edited {txn.review_edit_count} time{(txn.review_edit_count || 0) > 1 ? 's' : ''}
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-600 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800">
+                        Published
+                      </span>
+                    )}
+                  </div>
+                  <button
+                    onClick={() => setShowRatingModal(true)}
+                    className="self-start sm:self-auto py-1.5 px-3.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 text-xs font-bold hover:bg-blue-100 dark:hover:bg-blue-900/50 transition shadow-sm cursor-pointer flex items-center gap-1"
+                  >
+                    ✏️ Edit Review
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-3 gap-2 py-1">
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 text-center">
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400 block font-semibold">Overall</span>
+                    <span className="text-amber-500 font-bold text-xs sm:text-sm">{txn.review_overall || 5} / 5 ⭐</span>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 text-center">
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400 block font-semibold">Speed</span>
+                    <span className="text-amber-500 font-bold text-xs sm:text-sm">{txn.review_speed || 5} / 5 ⭐</span>
+                  </div>
+                  <div className="bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800 text-center">
+                    <span className="text-[10px] text-gray-500 dark:text-slate-400 block font-semibold">Service</span>
+                    <span className="text-amber-500 font-bold text-xs sm:text-sm">{txn.review_communication || 5} / 5 ⭐</span>
+                  </div>
+                </div>
+
+                {txn.review_comment && (
+                  <p className="text-xs text-gray-700 dark:text-slate-300 italic bg-gray-50 dark:bg-slate-800/40 p-3 rounded-xl border border-gray-100 dark:border-slate-800">
+                    "{txn.review_comment}"
+                  </p>
+                )}
+
+                <div className="flex flex-wrap items-center justify-between text-[11px] text-gray-400 dark:text-slate-500 pt-1">
+                  <span>
+                    Submitted: {txn.review_created_at ? new Date(txn.review_created_at).toLocaleDateString() : 'Recently'}
+                  </span>
+                  {(txn.review_edit_count || 0) > 0 && txn.review_updated_at && (
+                    <span className="text-blue-500 dark:text-blue-400">
+                      Last edited: {new Date(txn.review_updated_at).toLocaleString()}
+                    </span>
+                  )}
+                </div>
+
+                {txn.review_seller_reply && (
+                  <div className="mt-2 bg-emerald-50/70 dark:bg-emerald-950/30 border border-emerald-200/80 dark:border-emerald-900/50 p-3 rounded-xl space-y-1">
+                    <div className="flex items-center justify-between text-[11px] font-bold text-emerald-800 dark:text-emerald-300">
+                      <span>Store Reply ({txn.shop_name || `@${txn.seller_username}`}):</span>
+                      {txn.review_seller_replied_at && (
+                        <span className="font-normal text-emerald-600 dark:text-emerald-400">
+                          {new Date(txn.review_seller_replied_at).toLocaleDateString()}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-emerald-900 dark:text-emerald-200 leading-relaxed">
+                      "{txn.review_seller_reply}"
+                    </p>
+                  </div>
+                )}
+              </div>
             ) : (
-              <button
-                disabled
-                title="Unlocks after delivery"
-                className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80 whitespace-nowrap"
-              >
-                🔒 Rate Seller
-              </button>
+              <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  <h3 className="text-sm font-semibold text-gray-900 dark:text-white flex items-center gap-1.5">
+                    ⭐ Seller Experience Rating
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                    {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED')
+                      ? "Share your feedback on product quality, shipping speed, and seller communication."
+                      : "Seller rating unlocks once package is delivered and inspection begins."}
+                  </p>
+                </div>
+                {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') ? (
+                  <button
+                    onClick={() => setShowRatingModal(true)}
+                    className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-[#ff6d1d]/10 hover:bg-[#ff6d1d] text-[#ff6d1d] hover:text-white border border-[#ff6d1d]/30 text-xs font-bold transition whitespace-nowrap shadow-xs cursor-pointer"
+                  >
+                    ⭐ Rate Seller
+                  </button>
+                ) : (
+                  <button
+                    disabled
+                    title="Unlocks after delivery"
+                    className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80 whitespace-nowrap"
+                  >
+                    🔒 Rate Seller
+                  </button>
+                )}
+              </div>
             )}
           </div>
         )}
@@ -437,10 +682,38 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
             </ul>
 
             <p className="text-xs text-amber-600 dark:text-amber-400 italic">
-              Once you confirm receipt, a {txn.total_amount_ghs >= 10000 ? '72' : txn.total_amount_ghs >= 2000 ? '48' : '24'}-hour inspection window opens. Raise a dispute before it expires if there is a problem.
+              Once you confirm receipt, an inspection window opens. Raise a dispute before it expires if there is a problem.
             </p>
           </div>
         )}
+
+        {/* Refer & Earn Callout for Buyers */}
+        <div className="bg-gradient-to-r from-[#0363ff]/15 via-slate-900 to-[#ff6d1d]/15 border border-[#0363ff]/30 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+          <div className="flex items-center gap-3.5">
+            <div className="w-12 h-12 rounded-xl bg-[#0363ff]/20 border border-[#0363ff]/40 flex items-center justify-center text-[#0363ff] shrink-0">
+              <Gift className="w-6 h-6 text-[#ff6d1d]" />
+            </div>
+            <div>
+              <h4 className="text-sm font-black text-white flex items-center gap-2">
+                Refer Friends & Get GH₵ 10.00 Credits!
+                <span className="bg-[#ff6d1d]/20 text-[#ff6d1d] border border-[#ff6d1d]/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                  Zero Spam
+                </span>
+              </h4>
+              <p className="text-xs text-slate-300 mt-0.5">
+                Protect fellow buyers in Ghana with HendAxis Trust escrow and earn fee discounts on your future orders.
+              </p>
+            </div>
+          </div>
+          <a
+            href="/referrals"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="w-full sm:w-auto py-2.5 px-4 bg-[#ff6d1d] hover:bg-[#e05b11] text-white font-bold text-xs rounded-xl transition shadow-md shadow-[#ff6d1d]/25 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+          >
+            <Sparkles className="w-3.5 h-3.5" /> Claim Your Referral Link
+          </a>
+        </div>
 
         <p className="text-center text-xs text-gray-400 dark:text-slate-500 pb-4">
           Bookmark this page to track your delivery status. Reference: {txRef}
@@ -449,8 +722,8 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
 
       {/* Confirm Receipt Modal */}
       {showConfirmModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full overflow-hidden p-6 relative border border-gray-100 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-sm w-full max-h-[90vh] overflow-y-auto p-5 sm:p-6 relative border border-gray-100 dark:border-slate-800 my-auto">
             <button 
               onClick={() => setShowConfirmModal(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 transition"
@@ -462,13 +735,13 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                 <CheckCircle className="h-6 w-6 text-green-600 dark:text-emerald-400" />
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">Confirm Delivery</h3>
-              <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">
+              <p className="text-xs sm:text-sm text-gray-500 dark:text-slate-400 mt-2">
                 We've sent a 6-digit code to your phone (and email if provided). Enter it below to release payment to the seller.
               </p>
             </div>
 
             {confirmError && (
-              <div className="mb-4 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-lg text-sm font-medium border border-red-100 dark:border-red-900/50 text-center">
+              <div className="mb-4 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 p-3 rounded-lg text-xs sm:text-sm font-medium border border-red-100 dark:border-red-900/50 text-center">
                 {confirmError}
               </div>
             )}
@@ -503,7 +776,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                   if (resendCooldown === 0) handleOpenConfirmModal();
                 }}
                 disabled={isSendingCode || resendCooldown > 0}
-                className="w-full text-sm font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                className="w-full text-xs sm:text-sm font-medium text-green-600 hover:text-green-800 dark:text-green-400 dark:hover:text-green-300 transition-colors mt-2 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {isSendingCode 
                   ? 'Sending...' 
@@ -516,33 +789,39 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         </div>
       )}
 
-      {/* Raise Dispute Sub-Modal */}
+      {/* Raise / Add Dispute Sub-Modal */}
       {showDisputeModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl relative space-y-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-5 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl relative space-y-4 my-auto">
             <button onClick={() => setShowDisputeModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
               <X className="h-5 w-5" />
             </button>
-            <h4 className="text-base font-bold text-gray-900 dark:text-white">Raise Transaction Dispute</h4>
+            <h4 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
+              {isDisputed ? "Add More Details & Evidence Photos" : "Raise Transaction Dispute"}
+            </h4>
             {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-100 dark:border-red-900/50">{disputeError}</p>}
             <form onSubmit={handleRaiseDisputeSubmit} className="space-y-4">
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Reason for Dispute *</label>
+                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
+                  {isDisputed ? "Additional Details / Clarification *" : "Reason for Dispute *"}
+                </label>
                 <textarea
                   required
                   rows={3}
                   value={disputeReason}
                   onChange={e => setDisputeReason(e.target.value)}
-                  placeholder="Describe the issue with your item..."
+                  placeholder={isDisputed ? "Provide additional details, respond to seller, or report further defects..." : "Describe the issue with your item..."}
                   className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-xl p-3 text-xs focus:ring-2 focus:ring-red-500 outline-none"
                 />
               </div>
 
               <div>
                 <div className="flex justify-between items-center mb-1">
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Evidence Photos (Max 5)</label>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">
+                    Evidence Photos (Max 5 total)
+                  </label>
                   <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
-                    {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length}/5 photos`}
+                    {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length + (txn.buyer_dispute_photos?.length || 0)}/5 photos`}
                   </span>
                 </div>
                 <input
@@ -550,7 +829,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                   accept="image/*"
                   multiple
                   onChange={handleBuyerPhotoUpload}
-                  disabled={buyerPhotos.length >= 5 || isCompressingBuyerPhotos}
+                  disabled={(buyerPhotos.length + (txn.buyer_dispute_photos?.length || 0)) >= 5 || isCompressingBuyerPhotos}
                   className="block w-full text-xs text-gray-500 dark:text-slate-400 file:mr-2 file:py-1.5 file:px-3 file:rounded-xl file:border-0 file:text-xs file:font-semibold file:bg-gray-100 dark:file:bg-slate-800 file:text-gray-700 dark:file:text-slate-200 hover:file:bg-gray-200 dark:hover:file:bg-slate-700 cursor-pointer disabled:opacity-50"
                 />
                 {isCompressingBuyerPhotos && (
@@ -581,9 +860,50 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                 disabled={isSubmittingDispute || isCompressingBuyerPhotos}
                 className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-red-500/20 disabled:opacity-70 flex justify-center items-center cursor-pointer"
               >
-                {isSubmittingDispute ? <Loader2 className="h-4 w-4 animate-spin" /> : "Submit Dispute & Evidence"}
+                {isSubmittingDispute ? <Loader2 className="h-4 w-4 animate-spin" /> : (isDisputed ? "Submit Additional Details" : "Submit Dispute & Evidence")}
               </button>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* Retract Dispute Sub-Modal */}
+      {showRetractModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl p-5 sm:p-6 max-w-md w-full max-h-[90vh] overflow-y-auto shadow-2xl relative space-y-4 my-auto">
+            <button onClick={() => setShowRetractModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
+              <X className="h-5 w-5" />
+            </button>
+            <div className="flex items-center gap-2.5 text-emerald-600 dark:text-emerald-400 font-bold text-sm sm:text-base">
+              <ShieldCheck className="h-5 w-5" />
+              <h4>Retract Dispute & Settle Privately</h4>
+            </div>
+            {retractError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-100 dark:border-red-900/50">{retractError}</p>}
+            <p className="text-xs text-gray-600 dark:text-slate-300 leading-relaxed">
+              Are you sure you want to retract your dispute? By retracting:
+            </p>
+            <ul className="text-xs text-gray-600 dark:text-slate-300 list-disc list-inside space-y-1 bg-gray-50 dark:bg-slate-800/50 p-3 rounded-xl border border-gray-200 dark:border-slate-700">
+              <li>The order will transition to standard completion mode.</li>
+              <li>Funds will be automatically released to the seller after the platform grace window ({txn.dispute_retraction_release_hours || 24} hours).</li>
+              <li>Seller ratings will remain permanently disabled for this transaction.</li>
+            </ul>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowRetractModal(false)}
+                className="flex-1 py-2.5 bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 font-bold rounded-xl text-xs hover:bg-gray-200 dark:hover:bg-slate-700 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleRetractDispute}
+                disabled={isRetracting}
+                className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 disabled:opacity-70 cursor-pointer"
+              >
+                {isRetracting ? <Loader2 className="h-4 w-4 animate-spin" /> : "Confirm Retraction"}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -596,6 +916,13 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
           reviewToken={txn.buyer_review_token}
           sellerName={txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller')}
           itemTitle={txn.title}
+          initialOverall={txn.review_overall}
+          initialSpeed={txn.review_speed}
+          initialCommunication={txn.review_communication}
+          initialComment={txn.review_comment}
+          initialEditCount={txn.review_edit_count}
+          initialCreatedAt={txn.review_created_at}
+          initialUpdatedAt={txn.review_updated_at}
           onClose={() => { setShowRatingModal(false); window.location.reload(); }}
         />
       )}
@@ -630,10 +957,21 @@ export default function PublicCheckoutView() {
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
 
+  // Platform Settings & Promotions state
+  const [publicSettings, setPublicSettings] = useState<any>(null);
+  const [promoCode, setPromoCode] = useState('');
+  const [applyBuyerCredit, setApplyBuyerCredit] = useState(false);
+  const [promoSimulation, setPromoSimulation] = useState<any>(null);
+  const [isValidatingPromo, setIsValidatingPromo] = useState(false);
+  const [promoMessage, setPromoMessage] = useState('');
+  const [promoError, setPromoError] = useState('');
+
   // OTP state
   const [showOtpModal, setShowOtpModal] = useState(false);
   const [otp, setOtp] = useState('');
   const [isProcessing, setIsProcessing] = useState(false);
+
+  useEscapeKey(() => setShowOtpModal(false), showOtpModal);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -645,8 +983,14 @@ export default function PublicCheckoutView() {
             saveReviewToken(res.data.paystack_reference, res.data.buyer_review_token);
           }
         } else {
-          const res = await axios.get(`/api/v1/links/${linkId}`);
-          setLink(res.data);
+          const [linkRes, settingsRes] = await Promise.all([
+            axios.get(`/api/v1/links/${linkId}`),
+            axios.get('/api/v1/escrow/public-settings').catch(() => ({ data: null }))
+          ]);
+          setLink(linkRes.data);
+          if (settingsRes?.data) {
+            setPublicSettings(settingsRes.data);
+          }
         }
       } catch (err: any) {
         const backendMessage = err.response?.data?.message || err.response?.data?.detail;
@@ -657,6 +1001,56 @@ export default function PublicCheckoutView() {
     };
     if (linkId) fetchData();
   }, [linkId, txRef]);
+
+  const validatePromoDiscount = async (codeToUse?: string, useCredit?: boolean, phoneToUse?: string) => {
+    if (!linkId) return;
+    const code = codeToUse !== undefined ? codeToUse : promoCode;
+    const credit = useCredit !== undefined ? useCredit : applyBuyerCredit;
+    const targetPhone = phoneToUse !== undefined ? phoneToUse : phone;
+    
+    if (!code.trim() && !credit && !targetPhone.trim()) {
+      setPromoSimulation(null);
+      setPromoMessage('');
+      setPromoError('');
+      return;
+    }
+
+    setIsValidatingPromo(true);
+    setPromoError('');
+    setPromoMessage('');
+
+    try {
+      const res = await axios.post('/api/v1/checkout/validate-promo', {
+        link_id: linkId,
+        promo_code: code.trim() || undefined,
+        phone_number: targetPhone.trim() || undefined,
+        apply_buyer_credit: credit,
+        redeem_credit_ghs: credit ? 999999.0 : 0.0
+      });
+
+      setPromoSimulation(res.data);
+
+      if (res.data.promo_error) {
+        setPromoError(res.data.promo_error);
+        if (res.data.promo_discount_ghs <= 0 && res.data.credit_discount_ghs <= 0) {
+          setPromoMessage('');
+        }
+      } else if (res.data.promo_discount_ghs > 0 || res.data.credit_discount_ghs > 0) {
+        if (res.data.promo_code_applied && res.data.credit_discount_ghs > 0) {
+          setPromoMessage(`Promo code "${res.data.promo_code_applied}" (-GHS ${res.data.promo_discount_ghs.toFixed(2)}) and loyalty credit (-GHS ${res.data.credit_discount_ghs.toFixed(2)}) applied!`);
+        } else if (res.data.promo_code_applied) {
+          setPromoMessage(`Promo code "${res.data.promo_code_applied}" applied (-GHS ${res.data.promo_discount_ghs.toFixed(2)})!`);
+        } else {
+          setPromoMessage(`Buyer loyalty credit applied (-GHS ${res.data.credit_discount_ghs.toFixed(2)})!`);
+        }
+      }
+    } catch (err: any) {
+      setPromoError(err.response?.data?.detail || err.response?.data?.message || 'Failed to validate promo code.');
+      setPromoSimulation(null);
+    } finally {
+      setIsValidatingPromo(false);
+    }
+  };
 
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -677,11 +1071,19 @@ export default function PublicCheckoutView() {
     setIsProcessing(true);
     try {
       const res = await axios.post('/api/v1/checkout/verify-and-initialize', {
-        link_id: linkId, name, phone_number: phone, otp_code: otp, email, shipping_address: address
+        link_id: linkId,
+        name,
+        phone_number: phone,
+        otp_code: otp,
+        email,
+        shipping_address: address,
+        promo_code: promoSimulation?.promo_code_applied || (promoCode.trim() ? promoCode.trim().toUpperCase() : undefined),
+        apply_buyer_credit: Boolean(applyBuyerCredit),
+        redeem_credit_ghs: applyBuyerCredit ? (promoSimulation?.credit_discount_ghs || 999999.0) : 0.0
       });
       window.location.href = res.data.authorization_url;
-    } catch {
-      alert('Invalid OTP or verification failed.');
+    } catch (err: any) {
+      alert(err.response?.data?.detail || err.response?.data?.message || 'Invalid OTP or verification failed.');
       setIsProcessing(false);
     }
   };
@@ -727,8 +1129,25 @@ export default function PublicCheckoutView() {
   if (!link) return null;
 
   const grossTotal = parseFloat(link.price_ghs) + parseFloat(link.shipping_fee_ghs);
-  const platformFee = (grossTotal * 0.015) + 10;
-  const totalToPay = link.fee_handling === 'PASS_TO_BUYER' ? grossTotal + platformFee : grossTotal;
+  const basePlatformFee = (grossTotal * 0.015) + 10;
+  const standardTotalToPay = link.fee_handling === 'PASS_TO_BUYER' ? grossTotal + basePlatformFee : grossTotal;
+
+  const finalPlatformFee = promoSimulation?.effective_platform_fee !== undefined
+    ? promoSimulation.effective_platform_fee
+    : (promoSimulation?.final_platform_fee_ghs !== undefined ? promoSimulation.final_platform_fee_ghs : basePlatformFee);
+
+  const totalToPay = promoSimulation?.total_buyer_pays !== undefined
+    ? promoSimulation.total_buyer_pays
+    : (promoSimulation?.net_total_to_pay_ghs !== undefined ? promoSimulation.net_total_to_pay_ghs : standardTotalToPay);
+
+  const promoDiscountGhs = promoSimulation?.promo_discount_ghs || 0;
+  const creditDiscountGhs = promoSimulation?.credit_discount_ghs || 0;
+
+  const isPromoExpired = Boolean(
+    publicSettings?.promotions_expires_at &&
+    new Date(publicSettings.promotions_expires_at).getTime() <= Date.now()
+  );
+  const isPromotionsActive = Boolean(publicSettings?.promotions_active && !isPromoExpired);
 
   const productTitle = link ? `${link.title} — Buy with Escrow Protection on HendAxis Trust` : 'Secure Payment Link — HendAxis Trust';
   const productDesc = link ? `Buy ${link.title} for GHS ${link.price_ghs} safely with HendAxis Trust escrow protection.` : 'Secure escrow checkout powered by HendAxis Trust.';
@@ -748,7 +1167,7 @@ export default function PublicCheckoutView() {
   } : undefined;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 font-sans transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 font-sans transition-colors selection:bg-[#ff6d1d]/20 selection:text-[#ff6d1d]">
       <SEOHead
         title={productTitle}
         description={productDesc}
@@ -756,23 +1175,28 @@ export default function PublicCheckoutView() {
         ogImage={link?.image_url || 'https://trust.hendaxis.com/og_preview_banner.jpg'}
         jsonLd={productJsonLd}
       />
-      <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-slate-800">
+      <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 relative">
 
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-900 p-6 sm:p-8 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl pointer-events-none" />
+        <div className="bg-gradient-to-br from-[#0363ff] via-[#0147c4] to-slate-950 p-6 sm:p-8 text-white relative overflow-hidden">
+          {/* Ambient Brand Accents */}
+          <div className="absolute top-0 right-0 -mt-8 -mr-8 w-48 h-48 bg-[#ff6d1d]/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-10 -mb-8 w-44 h-44 bg-[#0363ff]/30 rounded-full blur-2xl pointer-events-none" />
           
           {(link.shop_name || link.seller_username) && (
             <div className="inline-flex items-center gap-2 text-sm text-blue-100 bg-white/10 px-3.5 py-1.5 rounded-xl backdrop-blur-sm mb-4 border border-white/10 flex-wrap">
               {link.seller_profile_picture_url ? (
                 <img src={link.seller_profile_picture_url} alt={link.shop_name || link.seller_username} className="h-5 w-5 rounded-lg object-cover border border-white/20" />
               ) : (
-                <Store className="h-4 w-4 text-blue-200" />
+                <Store className="h-4 w-4 text-[#ff6d1d]" />
               )}
               <span>
                 Sold by: <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-white font-bold hover:underline">
                   {link.shop_name || `@${link.seller_username}`}
                 </a> {link.shop_name && link.seller_username && <span className="text-blue-200 text-xs">(@{link.seller_username})</span>}
+              </span>
+              <span className="inline-flex items-center gap-1 bg-[#ff6d1d] text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-md shadow-xs ml-0.5">
+                Escrow Protected
               </span>
               <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-xs text-blue-200 bg-white/10 px-2 py-0.5 rounded-md hover:bg-white/20 transition ml-1 font-medium">
                 View Store Ratings ↗
@@ -791,9 +1215,14 @@ export default function PublicCheckoutView() {
                     {link.description}
                   </p>
                 )}
-                <div className="text-3xl sm:text-4xl font-black pt-2">
-                  <span className="text-blue-200 text-lg mr-1 font-bold">GHS</span>
-                  {totalToPay.toFixed(2)}
+                <div className="text-3xl sm:text-4xl font-black pt-2 flex items-baseline gap-2">
+                  <span className="text-blue-200 text-lg font-bold">GHS</span>
+                  <span>{totalToPay.toFixed(2)}</span>
+                  {totalToPay < standardTotalToPay && (
+                    <span className="text-sm font-normal line-through text-orange-200/80">
+                      GHS {standardTotalToPay.toFixed(2)}
+                    </span>
+                  )}
                 </div>
               </div>
 
@@ -801,7 +1230,7 @@ export default function PublicCheckoutView() {
               <div className="sm:col-span-5 flex justify-center">
                 <div 
                   onClick={() => setLightboxImage(link.image_url || null)}
-                  className="w-full max-w-[260px] sm:max-w-none h-60 sm:h-64 rounded-2xl overflow-hidden border border-white/20 shadow-xl bg-slate-950/60 p-2 flex items-center justify-center backdrop-blur-xs cursor-pointer group relative hover:border-blue-400/50 transition-all"
+                  className="w-full max-w-[260px] sm:max-w-none h-60 sm:h-64 rounded-2xl overflow-hidden border border-white/20 shadow-xl bg-slate-950/60 p-2 flex items-center justify-center backdrop-blur-xs cursor-pointer group relative hover:border-[#ff6d1d]/80 hover:shadow-[#ff6d1d]/20 transition-all duration-200"
                   title="Click to view full screen"
                 >
                   <img
@@ -823,9 +1252,14 @@ export default function PublicCheckoutView() {
               {link.description && (
                 <p className="text-blue-100/90 text-sm leading-relaxed">{link.description}</p>
               )}
-              <div className="text-3xl sm:text-4xl font-black pt-2">
-                <span className="text-blue-200 text-lg mr-1 font-bold">GHS</span>
-                {totalToPay.toFixed(2)}
+              <div className="text-3xl sm:text-4xl font-black pt-2 flex items-baseline gap-2">
+                <span className="text-blue-200 text-lg font-bold">GHS</span>
+                <span>{totalToPay.toFixed(2)}</span>
+                {totalToPay < standardTotalToPay && (
+                  <span className="text-sm font-normal line-through text-orange-200/80">
+                    GHS {standardTotalToPay.toFixed(2)}
+                  </span>
+                )}
               </div>
             </div>
           )}
@@ -839,14 +1273,51 @@ export default function PublicCheckoutView() {
           </div>
           {parseFloat(link.shipping_fee_ghs) > 0 && (
             <div className="flex justify-between items-center text-slate-700 dark:text-slate-200">
-              <span className="flex items-center font-medium"><Truck className="h-4 w-4 mr-1.5 text-blue-600 dark:text-blue-400" /> Shipping Fee</span>
+              <span className="flex items-center font-medium"><Truck className="h-4 w-4 mr-1.5 text-[#0363ff] dark:text-[#3b82f6]" /> Shipping Fee</span>
               <span className="font-extrabold text-slate-900 dark:text-white text-base">GHS {parseFloat(link.shipping_fee_ghs).toFixed(2)}</span>
             </div>
           )}
           {link.fee_handling === 'PASS_TO_BUYER' && (
+            <div className="space-y-1 pt-1">
+              <div className="flex justify-between items-center text-slate-700 dark:text-slate-200">
+                <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-[#ff6d1d]" /> Escrow Protection Fee</span>
+                <span className={`font-extrabold text-base ${promoDiscountGhs > 0 || creditDiscountGhs > 0 ? 'text-slate-400 line-through text-xs' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                  GHS {basePlatformFee.toFixed(2)}
+                </span>
+              </div>
+
+              {promoDiscountGhs > 0 && (
+                <div className="flex justify-between items-center text-purple-600 dark:text-purple-400 text-xs font-semibold pl-6">
+                  <span className="flex items-center gap-1">
+                    <Tag className="h-3 w-3" /> Promo Code ({promoSimulation?.promo_code_applied})
+                  </span>
+                  <span>- GHS {promoDiscountGhs.toFixed(2)}</span>
+                </div>
+              )}
+
+              {creditDiscountGhs > 0 && (
+                <div className="flex justify-between items-center text-amber-600 dark:text-amber-400 text-xs font-semibold pl-6">
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="h-3 w-3" /> Loyalty Reward Credit Absorbed
+                  </span>
+                  <span>- GHS {creditDiscountGhs.toFixed(2)}</span>
+                </div>
+              )}
+
+              {(promoDiscountGhs > 0 || creditDiscountGhs > 0) && (
+                <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 font-bold text-xs pl-6 pt-0.5">
+                  <span>Net Escrow Fee</span>
+                  <span>{finalPlatformFee === 0 ? 'GHS 0.00 (100% Subsidized)' : `GHS ${finalPlatformFee.toFixed(2)}`}</span>
+                </div>
+              )}
+            </div>
+          )}
+          {link.fee_handling !== 'PASS_TO_BUYER' && (
             <div className="flex justify-between items-center text-slate-700 dark:text-slate-200">
-              <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection Fee</span>
-              <span className="font-extrabold text-emerald-700 dark:text-emerald-400 text-base">GHS {platformFee.toFixed(2)}</span>
+              <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-[#0363ff] dark:text-[#3b82f6]" /> Escrow Protection</span>
+              <span className="font-semibold text-[#0363ff] dark:text-blue-400 text-xs bg-[#0363ff]/10 dark:bg-[#0363ff]/20 px-2.5 py-0.5 rounded-full border border-[#0363ff]/30">
+                Covered by Seller
+              </span>
             </div>
           )}
         </div>
@@ -857,29 +1328,140 @@ export default function PublicCheckoutView() {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Full Name</label>
               <input required type="text" value={name} onChange={e => setName(e.target.value)}
-                className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+                className="w-full rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border transition"
                 placeholder="John Doe" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Phone Number</label>
-              <input required type="tel" value={phone} onChange={e => setPhone(e.target.value)}
-                className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+              <input required type="tel" value={phone}
+                onChange={e => {
+                  const newPhone = e.target.value;
+                  setPhone(newPhone);
+                  if (newPhone.trim().length >= 10 || applyBuyerCredit) {
+                    validatePromoDiscount(promoCode, applyBuyerCredit, newPhone);
+                  }
+                }}
+                onBlur={() => {
+                  if (phone.trim().length >= 9) {
+                    validatePromoDiscount(promoCode, applyBuyerCredit, phone);
+                  }
+                }}
+                className="w-full rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border transition"
                 placeholder="e.g., 0241234567" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Email Address</label>
               <input required type="email" value={email} onChange={e => setEmail(e.target.value)}
-                className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+                className="w-full rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border transition"
                 placeholder="receipt@example.com" />
             </div>
             {parseFloat(link.shipping_fee_ghs) > 0 && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Delivery Address</label>
                 <textarea required value={address} onChange={e => setAddress(e.target.value)}
-                  rows={2} className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+                  rows={2} className="w-full rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border transition"
                   placeholder="Street, City, Landmark" />
               </div>
             )}
+
+            {/* Promotions & Loyalty Rewards Accordion */}
+            {isPromotionsActive && (
+              <div className="bg-gradient-to-br from-purple-500/5 via-blue-500/5 to-pink-500/5 border border-purple-200 dark:border-purple-900/40 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <Gift className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                    <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      Have a Promo Code or Reward Credit?
+                    </span>
+                  </div>
+                  {promoSimulation && (promoDiscountGhs > 0 || creditDiscountGhs > 0) && (
+                    <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      -GHS {(promoDiscountGhs + creditDiscountGhs).toFixed(2)} Applied
+                    </span>
+                  )}
+                </div>
+
+                <div className="flex gap-2">
+                  <div className="relative flex-1">
+                    <Tag className="h-3.5 w-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={promoCode}
+                      onChange={e => {
+                        const val = e.target.value.toUpperCase();
+                        setPromoCode(val);
+                        if (!val && !applyBuyerCredit) setPromoSimulation(null);
+                      }}
+                      placeholder="ENTER PROMO CODE"
+                      className="w-full pl-8 pr-3 py-2 text-xs font-mono font-bold uppercase rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:normal-case placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-[#0363ff]"
+                    />
+                  </div>
+                  <button
+                    type="button"
+                    disabled={isValidatingPromo || !promoCode.trim()}
+                    onClick={() => validatePromoDiscount(promoCode, applyBuyerCredit, phone)}
+                    className="px-4 py-2 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition disabled:opacity-50 flex items-center gap-1 cursor-pointer shadow-sm"
+                  >
+                    {isValidatingPromo ? <RefreshCw className="h-3 w-3 animate-spin" /> : 'Apply'}
+                  </button>
+                </div>
+
+                {/* Loyalty Credit Teaser / Checkbox */}
+                {phone.trim() && (
+                  <div className="pt-1 bg-white/70 dark:bg-slate-800/70 p-3 rounded-xl border border-slate-200/80 dark:border-slate-700/80 space-y-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-amber-500 shrink-0" />
+                        <div>
+                          <span className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                            Redeem Buyer Reward Credits
+                          </span>
+                          <span className="text-[11px] text-slate-600 dark:text-slate-400">
+                            {promoSimulation?.available_buyer_credit_ghs !== undefined
+                              ? (promoSimulation.available_buyer_credit_ghs > 0
+                                  ? `🌟 Available Reward Balance: GHS ${promoSimulation.available_buyer_credit_ghs.toFixed(2)}`
+                                  : 'No active reward credits on this phone number.')
+                              : 'Enter phone number to check available reward credits'}
+                          </span>
+                        </div>
+                      </div>
+                      <input
+                        type="checkbox"
+                        checked={applyBuyerCredit}
+                        disabled={promoSimulation?.available_buyer_credit_ghs === 0}
+                        onChange={e => {
+                          const checked = e.target.checked;
+                          setApplyBuyerCredit(checked);
+                          validatePromoDiscount(promoCode, checked, phone);
+                        }}
+                        className="h-4 w-4 text-purple-600 rounded border-slate-300 dark:border-slate-700 focus:ring-purple-500 cursor-pointer disabled:opacity-40"
+                      />
+                    </div>
+                    {creditDiscountGhs > 0 && (
+                      <div className="text-[11px] font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 p-2 rounded-lg border border-amber-200/80 dark:border-amber-900/50 flex items-center justify-between">
+                        <span>Applied to Escrow Fee:</span>
+                        <span className="font-bold">- GHS {creditDiscountGhs.toFixed(2)} (Remaining: GHS {(Number(promoSimulation?.available_buyer_credit_ghs || 0) - creditDiscountGhs).toFixed(2)})</span>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {promoMessage && (
+                  <div className="p-2.5 rounded-xl bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-semibold flex items-center gap-1.5">
+                    <Check className="h-3.5 w-3.5 shrink-0" />
+                    {promoMessage}
+                  </div>
+                )}
+
+                {promoError && (
+                  <div className="p-2.5 rounded-xl bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30 text-[11px] font-semibold flex items-center gap-1.5">
+                    <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                    {promoError}
+                  </div>
+                )}
+              </div>
+            )}
+
             {/* Mandatory Terms Acceptance Checkbox */}
             <div className="flex items-start gap-2 pt-2">
               <input
@@ -888,14 +1470,14 @@ export default function PublicCheckoutView() {
                 required
                 checked={acceptedTerms}
                 onChange={e => setAcceptedTerms(e.target.checked)}
-                className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-blue-500 cursor-pointer shrink-0"
+                className="mt-1 h-4 w-4 text-[#ff6d1d] rounded border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-[#ff6d1d] cursor-pointer shrink-0"
               />
               <label htmlFor="buyer-agree-terms" className="text-xs text-gray-600 dark:text-slate-400">
                 I agree to the{' '}
                 <button
                   type="button"
                   onClick={() => setShowTermsModal(true)}
-                  className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer inline-flex items-center gap-1"
+                  className="text-[#0363ff] dark:text-blue-400 hover:text-[#ff6d1d] dark:hover:text-[#ff6d1d] font-bold hover:underline cursor-pointer inline-flex items-center gap-1 transition-colors"
                 >
                   Terms of Service & Inspection Expiry Rules 📜
                 </button>
@@ -903,12 +1485,14 @@ export default function PublicCheckoutView() {
             </div>
 
             <button disabled={isProcessing || !acceptedTerms} type="submit"
-              className="mt-4 w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all cursor-pointer">
+              className="mt-4 w-full flex justify-center items-center py-3.5 px-4 rounded-xl shadow-lg shadow-[#ff6d1d]/25 text-sm sm:text-base font-black text-white bg-gradient-to-r from-[#ff6d1d] via-[#ff7c33] to-[#ff6d1d] hover:brightness-110 active:scale-[0.99] focus:outline-none focus:ring-4 focus:ring-[#ff6d1d]/30 disabled:opacity-50 disabled:pointer-events-none transition-all cursor-pointer">
               {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Continue to Payment'}
               <ArrowRight className="ml-2 h-4 w-4" />
             </button>
             <p className="text-center text-xs text-gray-500 dark:text-slate-400 flex items-center justify-center mt-4">
-              <ShieldCheck className="h-4 w-4 mr-1 text-gray-400 dark:text-slate-500" /> Secure Escrow Checkout
+              <ShieldCheck className="h-4 w-4 mr-1 text-[#0363ff]" />
+              <span className="font-semibold text-slate-700 dark:text-slate-300">100% Protected Escrow Vault</span>
+              <span className="text-slate-400 dark:text-slate-500 ml-1">— HendAxis Trust</span>
             </p>
           </form>
         </div>
@@ -917,7 +1501,7 @@ export default function PublicCheckoutView() {
         <div className="bg-gray-50 dark:bg-slate-900/60 border-t border-gray-100 dark:border-slate-800 p-4 text-center text-xs">
           <p className="text-gray-500 dark:text-slate-400">
             Already placed an order?{' '}
-            <a href="/track" className="text-blue-600 dark:text-blue-400 font-bold hover:underline inline-flex items-center gap-1">
+            <a href="/track" className="text-[#0363ff] dark:text-blue-400 hover:text-[#ff6d1d] dark:hover:text-[#ff6d1d] font-bold hover:underline inline-flex items-center gap-1 transition-colors">
               Track your package status here <ArrowRight className="h-3 w-3" />
             </a>
           </p>
@@ -926,21 +1510,21 @@ export default function PublicCheckoutView() {
 
       {/* OTP Modal */}
       {showOtpModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center px-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl p-8 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-slate-800">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-slate-800 max-h-[90vh] my-auto overflow-y-auto">
             <div className="text-center mb-6">
-              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-950/60 mb-4">
-                <ShieldCheck className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-[#0363ff]/10 dark:bg-[#0363ff]/20 mb-4 border border-[#0363ff]/30">
+                <ShieldCheck className="h-6 w-6 text-[#0363ff] dark:text-blue-400" />
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">Verify your phone</h3>
               <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">We sent a 6-digit code to {phone}</p>
             </div>
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <input required type="text" maxLength={6} value={otp} onChange={e => setOtp(e.target.value)}
-                className="w-full text-center tracking-widest text-2xl font-mono rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+                className="w-full text-center tracking-widest text-2xl font-mono rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border"
                 placeholder="000000" />
               <button disabled={isProcessing} type="submit"
-                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-70 transition-all cursor-pointer">
+                className="w-full flex justify-center items-center py-3 px-4 rounded-xl shadow-lg shadow-[#ff6d1d]/25 text-sm font-extrabold text-white bg-gradient-to-r from-[#ff6d1d] to-[#ff8033] hover:brightness-110 active:scale-[0.99] disabled:opacity-70 transition-all cursor-pointer">
                 {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Confirm & Pay'}
               </button>
               <button type="button" onClick={() => setShowOtpModal(false)}

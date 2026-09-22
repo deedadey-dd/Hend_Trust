@@ -82,80 +82,29 @@
     border-color: rgba(255, 255, 255, 0.4) !important;
   }
 
-  /* Explicit white text on primary blue/indigo CTA buttons, hero search, and explicit white text in all modes */
-  button.bg-blue-600,
-  button.bg-indigo-600,
-  a.bg-blue-600,
-  a.bg-indigo-600,
-  button.bg-blue-700,
-  button.bg-indigo-700,
-  a.bg-blue-700,
-  a.bg-indigo-700,
-  .hero-search-input,
-  .hero-glass-btn,
-  .\!text-white,
-  .text-white {
-    color: #ffffff !important;
-  }
-
-  /* When Light Mode is active, adapt dark container background sections gracefully */
-  html.light .bg-slate-950:not([class*="bg-gradient"]):not(section.relative):not(div.relative.min-h-\[320px\]) {
-    background-color: #ffffff !important;
-    color: #0f172a !important;
-  }
-  html.light .bg-slate-900:not([class*="bg-gradient"]):not(a):not(button):not([class*="bg-slate-900\/"]):not(.hero-search-input):not(.hero-glass-btn) {
-    background-color: #f8fafc !important;
-    color: #0f172a !important;
-  }
-  html.light .border-slate-800, html.light .border-slate-700 {
-    border-color: #e2e8f0 !important;
-  }
-  /* Ensure blue and dark primary action buttons ALWAYS retain white text in all themes */
+  /* Nav CTA explicit white text */
   a.nav-blue-btn,
   button.nav-blue-btn,
   .nav-blue-btn {
     color: #ffffff !important;
   }
 
-  /* High-contrast Light Mode Text Legibility Fixes for headings and body text */
-  html.light .text-slate-100:not(.text-white):not(.\!text-white),
-  html.light .text-slate-200:not(.text-white):not(.\!text-white) {
-    color: #0f172a !important;
-  }
-
-  html.light .text-slate-400:not(.text-white):not(.\!text-white),
-  html.light .text-gray-400:not(.text-white):not(.\!text-white) {
-    color: #475569 !important;
-  }
-
-  html.light .text-slate-500:not(.text-white):not(.\!text-white),
-  html.light .text-gray-500:not(.text-white):not(.\!text-white) {
-    color: #334155 !important;
-  }
-
-  html.light .text-slate-600:not(.text-white):not(.\!text-white),
-  html.light .text-gray-600:not(.text-white):not(.\!text-white) {
-    color: #1e293b !important;
-  }
-
-  html.light .text-slate-300:not(.text-white):not(.\!text-white),
-  html.light .text-gray-300:not(.text-white):not(.\!text-white) {
-    color: #475569 !important;
-  }
-
-  /* Explicit white text for solid buttons and hero elements in light mode */
-  html.light button.bg-blue-600,
-  html.light button.bg-blue-600 *,
-  html.light a.bg-blue-600,
-  html.light a.bg-blue-600 *,
-  html.light .hero-glass-btn,
-  html.light .hero-glass-btn * {
-    color: #ffffff !important;
-  }
-
   html.light input:not(.hero-search-input)::placeholder,
   html.light textarea::placeholder {
     color: #64748b !important;
+  }
+
+  /* Hide scrollbar for Chrome, Safari, Edge, Firefox while preserving smooth scrolling */
+  .no-scrollbar::-webkit-scrollbar,
+  .scrollbar-none::-webkit-scrollbar {
+    display: none !important;
+    width: 0 !important;
+    height: 0 !important;
+  }
+  .no-scrollbar,
+  .scrollbar-none {
+    -ms-overflow-style: none !important;
+    scrollbar-width: none !important;
   }
 
   /* Comprehensive Dark Mode Rules for All Pages, Cards, Tables & Modals */

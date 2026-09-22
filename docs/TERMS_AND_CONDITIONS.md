@@ -32,24 +32,28 @@ You agree to defend, indemnify, and hold harmless HendAxis Trust, its parent com
 
 ---
 
-## 3. Pre-Transaction Due Diligence & User Communication
+## 3. Pre-Transaction Due Diligence, Location-Based Shipping & Direct Communication
 
 ### 3.1 Requirement for Thorough Pre-Purchase Discussion
 Before initiating an escrow transaction or sending payment, **Buyers and Sellers must thoroughly discuss and agree upon all relevant details**, including but not limited to:
 - Precise item condition (brand new, pre-owned, refurbished, minor defects).
 - Specific sizing, color, technical specifications, and model numbers.
-- Delivery options, transit expectations, and courier coverage.
+- **Location-Based Delivery Fees**: Shipping costs in Ghana vary substantially by regional destination, district, and chosen transport method (e.g. Courier or Bus station). Listed marketplace prices exclude destination-specific shipping. Buyers and sellers must agree on the final delivery fee prior to checkout.
+- **Inquiry & Tailored Link Generation**: When buyers inquire on WhatsApp via marketplace product cards, prefilled product parameters are transmitted to the seller. The seller is required to confirm location-specific shipping and generate a customized payment link reflecting the agreed terms.
 
-HendAxis Trust provides public merchant profile scorecards, verified ratings, and category listings to assist Buyers, but the primary duty of item specification verification rests between the transacting parties.
+HendAxis Trust provides public merchant profile scorecards, verified ratings, and 16-category listings to assist Buyers, but the primary duty of item specification and delivery fee agreement rests between the transacting parties.
 
 ---
 
-## 4. Payment Links, Escrow Holds & Fee Policies
+## 4. Payment Links, Product Categorization, Escrow Holds & Fee Policies
 
-### 4.1 Escrow Deposits
+### 4.1 Accurate Product Categorization
+Sellers are required to select the accurate **Product Category** (from the 16 platform categories) when generating payment links. Misrepresenting product categories to circumvent platform policies or mislead buyers constitutes a breach of these Terms.
+
+### 4.2 Escrow Deposits
 Upon payment by the Buyer via Mobile Money (MTN, Telecel, AT Money) or Card, 100% of the funds (item price, shipping fees, and applicable platform charges) are deposited into the **HendAxis System Escrow Account**. Funds remain strictly locked and inaccessible to the Seller until delivery confirmation and inspection expiry.
 
-### 4.2 Fee Allocation Options
+### 4.3 Fee Allocation Options
 When creating a Payment Link, the Seller selects how platform fees are handled:
 - **Absorb Fee**: Platform fees are deducted from the Seller’s item price upon payout. The Buyer pays only the exact item + shipping cost.
 - **Pass to Buyer**: Platform fees are added to the checkout total, resulting in the Buyer paying the item price + shipping + platform fee. The Seller receives 100% of their listed item price upon completion.
@@ -110,19 +114,27 @@ Once delivery is verified, the Buyer Inspection Period commences:
 
 ---
 
-## 8. Disputes, 24-Hour Arbitration & Item Returns
+## 8. Disputes, Dialogue Trail, Retraction & Item Returns
 
-### 8.1 Dispute Initiation
-If a Buyer receives a damaged, defective, or incorrect item, they must click **Raise Dispute** on their tracking page **before the Inspection Period expires**. Raising a dispute freezes escrow funds and halts automated payouts.
+### 8.1 Dispute Initiation & Subsequent Evidence Appending
+If a Buyer receives a damaged, defective, or incorrect item, they must click **Raise Dispute** on their tracking page **before the Inspection Period expires**. Raising a dispute immediately freezes escrow funds and halts automated payouts.
+- **Continuous Dialogue & Evidence Trail**: Both Buyers and Sellers can append subsequent statements, clarifications, and photo evidence to active disputes without overwriting existing history.
+- **Evidence Limit**: Parties can accumulate up to **5 WebP photographic evidence files** throughout the dispute lifecycle.
+- **Transparent Audit**: All statements are recorded with chronological timestamps in the unified WhatsApp-style dispute timeline.
 
 ### 8.2 Arbitration & 24-Hour Settlement
-HendAxis Trust support management will review all uploaded evidence (photos, description, dispatch proof) and issue a **final binding ruling within 24 hours**.
+HendAxis Trust support management will review all uploaded evidence (photos, description, dispatch proof, and dialogue history) and issue a **final binding ruling within 24 hours**.
 
 ### 8.3 Buyer Item Return Obligations (`REQUIRE_RETURN_FROM_BUYER`)
 Where a dispute ruling requires the Buyer to return the item to the Seller:
 1. **Return Dispatch**: The Buyer must ship the item back within the specified return window via Courier (with waybill & tracking number) or Bus transport (with driver phone, car registration, and station details).
 2. **Reverse Pickup OTP**: For bus returns, a **Secret 6-Digit Reverse OTP** is generated. The Seller must inspect the returned parcel and verify the Reverse OTP (or confirm receipt in app) to unlock the full refund payout to the Buyer.
 3. **Auto-Refund Window**: If the Seller receives the returned item but fails to object within 48 hours of return delivery, the system will automatically process the Buyer’s refund.
+
+### 8.4 Dispute Retraction & Private Settlement Policy
+If a Buyer and Seller resolve their grievances privately (e.g., replacement sent, direct discount, or technical assistance), the Buyer may elect to **Retract Dispute** directly via their tracking portal.
+1. **24-Hour Delayed Settlement Window**: Upon dispute retraction, the transaction transitions into `RETRACTED_SETTLING` status. Escrow funds are held for **24 hours** (or the administrative configured settlement period) before releasing to the Seller's wallet. This grace period prevents accidental or coerced retractions.
+2. **Rating Permanently Voided**: Once a dispute is raised—even if subsequently retracted—the Buyer forfeits the ability to submit a merchant satisfaction rating (`rating_voided = True`). This prevents coercive settlement deals made under the threat of negative reviews.
 
 ---
 

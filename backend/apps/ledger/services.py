@@ -118,6 +118,32 @@ def release_escrow_to_seller_wallet(reference_id: str, seller_user_id, gross_amo
     )
     _apply_entry_to_balances(escrow, seller_wallet, net_amount)
 
+
+@transaction.atomic()
+def record_promotions_subsidy(reference_id: str, subsidy_amount: Decimal):
+    """
+    Records promotional platform fee subsidy funded by platform marketing budget:
+    Debit PROMOTIONS_EXPENSE (subsidy_amount)
+    Credit PLATFORM_FEE_REVENUE (subsidy_amount)
+    """
+    subsidy = Decimal(str(subsidy_amount))
+    if subsidy <= Decimal('0.00'):
+        return
+
+    promo_expense = _get_system_account('PROMOTIONS_EXPENSE', AccountType.EXPENSE)
+    revenue = _get_system_account('PLATFORM_FEE_REVENUE', AccountType.REVENUE)
+
+    entry = LedgerEntry.objects.create(
+        reference_id=reference_id,
+        debit_account=promo_expense,
+        credit_account=revenue,
+        amount_ghs=subsidy,
+        entry_type="PROMOTIONS_FEE_SUBSIDY"
+    )
+    _apply_entry_to_balances(promo_expense, revenue, subsidy)
+    return entry
+
+
 @transaction.atomic()
 def execute_full_refund(reference_id: str, seller_user_id, gross_amount: Decimal, platform_fee: Decimal):
     """

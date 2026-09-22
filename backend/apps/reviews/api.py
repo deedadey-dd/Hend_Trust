@@ -39,6 +39,9 @@ class TransactionReviewDetailSchema(Schema):
     rating_overall: int = 5
     comment: str = ""
     review_id: Optional[str] = None
+    edit_count: int = 0
+    created_at: Optional[str] = None
+    updated_at: Optional[str] = None
 
 class SellerReplySchema(Schema):
     reply: str
@@ -62,6 +65,8 @@ class RecentReviewItemSchema(Schema):
     seller_reply: Optional[str] = ""
     seller_replied_at: Optional[str] = None
     created_at: str
+    updated_at: Optional[str] = None
+    edit_count: int = 0
     item_title: str
     item_image_url: Optional[str] = ""
     upvotes_count: int
@@ -79,6 +84,8 @@ class ReviewItemSchema(Schema):
     seller_reply: Optional[str] = ""
     seller_replied_at: Optional[str] = None
     created_at: str
+    updated_at: Optional[str] = None
+    edit_count: int = 0
     item_title: str
     item_image_url: Optional[str] = ""
     upvotes_count: int = 0
@@ -86,10 +93,34 @@ class ReviewItemSchema(Schema):
     user_voted: Optional[str] = None
 
 
+class ProductCardSchema(Schema):
+    link_id: str
+    title: str
+    description: str
+    price_ghs: float
+    image_url: Optional[str] = ""
+    category: Optional[str] = ""
+    escrow_url: str
+    seller_id: str
+    seller_username: str
+    seller_shop_name: str
+    seller_phone: Optional[str] = ""
+    seller_profile_picture_url: Optional[str] = ""
+    badge_verified_seller: bool = False
+    badge_title: Optional[str] = None
+    seller_avg_rating: float = 0.0
+    seller_total_reviews: int = 0
+    whatsapp_contact_url: str
+    created_at: str
+
+
 class SellerStorefrontSchema(Schema):
     seller_id: uuid.UUID
     seller_username: str
     shop_name: Optional[str] = ""
+    shop_description: Optional[str] = ""
+    shop_category: Optional[str] = "General Marketplace"
+    shop_categories: List[str] = []
     profile_picture_url: Optional[str] = ""
     banner_url: Optional[str] = ""
     joined_at: str
@@ -101,6 +132,7 @@ class SellerStorefrontSchema(Schema):
     badge_verified_seller: bool
     badge_top_rated: bool
     badge_title: Optional[str] = None
+    active_products: List[ProductCardSchema] = []
     reviews: List[ReviewItemSchema]
 
 @reviews_router.post("/submit", response=dict)
@@ -113,8 +145,8 @@ def submit_seller_review(request, data: SubmitReviewSchema):
     if transaction.status in [TransactionStatus.CANCELLED, TransactionStatus.REFUNDED]:
         raise HttpError(400, "Cannot review a cancelled or refunded transaction.")
         
-    if transaction.status == TransactionStatus.DISPUTED:
-        raise HttpError(400, "Cannot submit review while transaction is in dispute.")
+    if transaction.status == TransactionStatus.DISPUTED or bool(transaction.buyer_dispute_reason) or transaction.dispute_retracted_at:
+        raise HttpError(400, "Seller reviews are permanently disabled for transactions where a dispute was initiated.")
 
     if transaction.status not in [TransactionStatus.INSPECTION_PERIOD, TransactionStatus.COMPLETED]:
         raise HttpError(400, "Reviews unlock once the package is delivered and inspection begins.")
@@ -123,26 +155,45 @@ def submit_seller_review(request, data: SubmitReviewSchema):
         if val < 1 or val > 5:
             raise HttpError(400, f"{field} must be between 1 and 5 stars.")
 
-    review, created = SellerReview.objects.update_or_create(
-        transaction=transaction,
-        defaults={
-            'seller': transaction.link.seller,
-            'buyer_name': transaction.buyer_name,
-            'buyer_phone': transaction.buyer_phone,
-            'rating_speed': data.rating_speed,
-            'rating_communication': data.rating_communication,
-            'rating_overall': data.rating_overall,
-            'comment': data.comment or "",
-            'image_url': data.image_url or "",
-            'is_active': True
-        }
-    )
+    existing_review = SellerReview.objects.filter(transaction=transaction).first()
+    if existing_review:
+        existing_review.seller = transaction.link.seller
+        existing_review.buyer_name = transaction.buyer_name
+        existing_review.buyer_phone = transaction.buyer_phone
+        existing_review.rating_speed = data.rating_speed
+        existing_review.rating_communication = data.rating_communication
+        existing_review.rating_overall = data.rating_overall
+        existing_review.comment = data.comment or ""
+        existing_review.image_url = data.image_url or ""
+        existing_review.is_active = True
+        existing_review.edit_count = (existing_review.edit_count or 0) + 1
+        existing_review.save()
+        review = existing_review
+        created = False
+    else:
+        review = SellerReview.objects.create(
+            transaction=transaction,
+            seller=transaction.link.seller,
+            buyer_name=transaction.buyer_name,
+            buyer_phone=transaction.buyer_phone,
+            rating_speed=data.rating_speed,
+            rating_communication=data.rating_communication,
+            rating_overall=data.rating_overall,
+            comment=data.comment or "",
+            image_url=data.image_url or "",
+            is_active=True,
+            edit_count=0
+        )
+        created = True
 
-    action = "created" if created else "updated"
+    action = "created" if created else f"updated ({review.edit_count} time{'s' if review.edit_count > 1 else ''})"
     return {
         "message": f"Thank you! Your rating and review have been {action} on the seller's storefront profile.",
         "review_id": str(review.id),
-        "review_token": transaction.buyer_review_token
+        "review_token": transaction.buyer_review_token,
+        "edit_count": review.edit_count,
+        "created_at": review.created_at.isoformat(),
+        "updated_at": review.updated_at.isoformat()
     }
 
 @reviews_router.get("/transaction-review/{paystack_reference}", response=TransactionReviewDetailSchema, auth=None)
@@ -168,6 +219,9 @@ def get_transaction_review_detail(request, paystack_reference: str, token: Optio
         "rating_overall": review.rating_overall if review else 5,
         "comment": review.comment if review else "",
         "review_id": str(review.id) if review else None,
+        "edit_count": review.edit_count if review else 0,
+        "created_at": review.created_at.isoformat() if review and review.created_at else None,
+        "updated_at": review.updated_at.isoformat() if review and review.updated_at else None,
     }
 
 @reviews_router.post("/request-edit-link", response=dict, auth=None)
@@ -257,6 +311,8 @@ def get_seller_storefront(request, identifier: str):
             "seller_reply": r.seller_reply,
             "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
             "created_at": r.created_at.isoformat(),
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "edit_count": r.edit_count or 0,
             "item_title": r.transaction.link.title if (r.transaction and r.transaction.link) else "Item Purchase",
             "item_image_url": r.image_url or (r.transaction.link.image_url if (r.transaction and r.transaction.link) else ""),
             "upvotes_count": r.upvotes_count,
@@ -265,10 +321,78 @@ def get_seller_storefront(request, identifier: str):
         } for r in active_reviews
     ]
 
+    from apps.links.models import PaymentLink
+    from apps.users.api import _get_request_frontend_url
+    import urllib.parse
+
+    base_frontend_url = _get_request_frontend_url(request)
+
+    seller_active_links = PaymentLink.objects.filter(
+        seller=seller,
+        is_active=True,
+        is_archived=False
+    ).order_by('-created_at')
+
+    # Helper for WhatsApp contact link with prefilled create-link URL for the seller
+    def _format_whatsapp_url(phone_raw: str, p_title: str, p_price: float, s_name: str, p_category: str = "", p_img: str = "", p_desc: str = "") -> str:
+        clean = (phone_raw or '').strip().replace(' ', '').replace('-', '').replace('+', '')
+        if clean.startswith('0'):
+            clean = '233' + clean[1:]
+        params = []
+        if p_title:
+            params.append(f"title={urllib.parse.quote(p_title)}")
+        if p_price:
+            params.append(f"price={p_price:.2f}")
+        if p_category:
+            params.append(f"category={urllib.parse.quote(p_category)}")
+        if p_img:
+            params.append(f"img={urllib.parse.quote(p_img)}")
+        if p_desc:
+            params.append(f"desc={urllib.parse.quote(p_desc[:200])}")
+        q_str = "&".join(params)
+        create_link_url = f"{base_frontend_url}/create-link?{q_str}" if q_str else f"{base_frontend_url}/create-link"
+        msg = (
+            f"Hi {s_name}, I saw your product \"{p_title}\" (GH₵ {p_price:.2f}) on HendAxis Trust.\n\n"
+            f"My delivery location is: [Your Town / Region]\n"
+            f"Could you confirm availability and total price with shipping?\n\n"
+            f"Generate Escrow Link for this order:\n{create_link_url}"
+        )
+        return f"https://api.whatsapp.com/send?phone={clean}&text={urllib.parse.quote(msg)}" if clean else f"https://api.whatsapp.com/send?text={urllib.parse.quote(msg)}"
+
+    active_products_list = [
+        {
+            "link_id": str(pl.id),
+            "title": pl.title,
+            "description": pl.description or "",
+            "price_ghs": float(pl.price_ghs),
+            "image_url": pl.image_url or "",
+            "category": pl.category or getattr(seller, 'shop_category', '') or "General Marketplace",
+            "escrow_url": f"{base_frontend_url}/l/{pl.id}",
+            "seller_id": str(seller.id),
+            "seller_username": seller.username or "",
+            "seller_shop_name": seller.shop_name or f"@{seller.username}'s Store",
+            "seller_phone": seller.phone_number or "",
+            "seller_profile_picture_url": seller.profile_picture_url or "",
+            "badge_verified_seller": badge_verified_seller,
+            "badge_title": badge_title,
+            "seller_avg_rating": avg_overall,
+            "seller_total_reviews": total_reviews,
+            "whatsapp_contact_url": _format_whatsapp_url(seller.phone_number, pl.title, float(pl.price_ghs), seller.shop_name or f"@{seller.username}", pl.category or getattr(seller, 'shop_category', ''), pl.image_url or "", pl.description or ""),
+            "created_at": pl.created_at.isoformat()
+        } for pl in seller_active_links
+    ]
+
+    cats = seller.shop_categories if isinstance(seller.shop_categories, list) else []
+    if not cats and seller.shop_category:
+        cats = [seller.shop_category]
+
     return {
         "seller_id": seller.id,
         "seller_username": seller.username or seller.email.split('@')[0],
         "shop_name": seller.shop_name or f"@{seller.username}'s Store",
+        "shop_description": seller.shop_description or f"Escrow Merchant on HendAxis Trust.",
+        "shop_category": seller.shop_category or "General Marketplace",
+        "shop_categories": cats,
         "profile_picture_url": seller.profile_picture_url or "",
         "banner_url": seller.banner_url or "",
         "joined_at": seller.date_joined.isoformat(),
@@ -280,6 +404,7 @@ def get_seller_storefront(request, identifier: str):
         "badge_verified_seller": badge_verified_seller,
         "badge_top_rated": badge_top_rated,
         "badge_title": badge_title,
+        "active_products": active_products_list,
         "reviews": reviews_list
     }
 
@@ -344,9 +469,11 @@ class ShopCardSchema(Schema):
     badge_title: Optional[str] = None
     is_featured: bool
     advertised_until: Optional[str] = None
+    seller_phone: Optional[str] = ""
     featured_products: List[ShopProductSchema]
 
 class MarketplaceDirectorySchema(Schema):
+    matched_products: List[ProductCardSchema] = []
     featured_shops: List[ShopCardSchema]
     standard_shops: List[ShopCardSchema]
 
@@ -356,14 +483,131 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
     from django.db.models import Q, Prefetch, Count, Avg
     from apps.links.models import PaymentLink
     from apps.users.models import VerificationStatus
+    from apps.users.api import _get_request_frontend_url
+    import urllib.parse
 
     now = timezone.now()
+    base_frontend_url = _get_request_frontend_url(request)
+
+    # Helper for WhatsApp contact link with prefilled create-link URL for the seller
+    def _format_whatsapp_url(phone_raw: str, p_title: str, p_price: float, s_name: str, p_category: str = "", p_img: str = "", p_desc: str = "") -> str:
+        clean = (phone_raw or '').strip().replace(' ', '').replace('-', '').replace('+', '')
+        if clean.startswith('0'):
+            clean = '233' + clean[1:]
+        params = []
+        if p_title:
+            params.append(f"title={urllib.parse.quote(p_title)}")
+        if p_price:
+            params.append(f"price={p_price:.2f}")
+        if p_category:
+            params.append(f"category={urllib.parse.quote(p_category)}")
+        if p_img:
+            params.append(f"img={urllib.parse.quote(p_img)}")
+        if p_desc:
+            params.append(f"desc={urllib.parse.quote(p_desc[:200])}")
+        q_str = "&".join(params)
+        create_link_url = f"{base_frontend_url}/create-link?{q_str}" if q_str else f"{base_frontend_url}/create-link"
+        msg = (
+            f"Hi {s_name}, I saw your product \"{p_title}\" (GH₵ {p_price:.2f}) on HendAxis Trust.\n\n"
+            f"My delivery location is: [Your Town / Region]\n"
+            f"Could you confirm availability and total price with shipping?\n\n"
+            f"Generate Escrow Link for this order:\n{create_link_url}"
+        )
+        return f"https://api.whatsapp.com/send?phone={clean}&text={urllib.parse.quote(msg)}" if clean else f"https://api.whatsapp.com/send?text={urllib.parse.quote(msg)}"
+
+    # ── 1. Matched Products Search ────────────────────────────────────────────
+    matched_products_list = []
     
-    # Select all sellers or users with links, shop details, or non-unsubmitted verification
+    product_links_qs = PaymentLink.objects.filter(
+        is_active=True,
+        is_archived=False
+    ).select_related('seller')
+
+    if category and category.lower() != 'all':
+        product_links_qs = product_links_qs.filter(
+            Q(category__iexact=category) |
+            Q(category__icontains=category) |
+            Q(seller__shop_category__iexact=category) |
+            Q(seller__shop_categories__icontains=category)
+        )
+
+    if query and query.strip():
+        q_clean = query.strip()
+        tokens = [t for t in q_clean.split() if len(t) >= 2]
+        if tokens:
+            p_filter = Q()
+            for token in tokens:
+                p_filter &= (
+                    Q(title__icontains=token) |
+                    Q(description__icontains=token) |
+                    Q(category__icontains=token) |
+                    Q(seller__shop_name__icontains=token) |
+                    Q(seller__username__icontains=token) |
+                    Q(seller__shop_category__icontains=token) |
+                    Q(seller__shop_categories__icontains=token)
+                )
+            product_links_qs = product_links_qs.filter(p_filter)
+        else:
+            product_links_qs = product_links_qs.filter(
+                Q(title__icontains=q_clean) |
+                Q(description__icontains=q_clean) |
+                Q(category__icontains=q_clean) |
+                Q(seller__shop_name__icontains=q_clean) |
+                Q(seller__shop_category__icontains=q_clean)
+            )
+
+    matched_product_links = list(product_links_qs.order_by('-created_at')[:40])
+
+    if matched_product_links:
+        p_seller_ids = list({pl.seller_id for pl in matched_product_links})
+        
+        p_review_stats = {
+            row[0]: (float(row[1] or 0.0), int(row[2]))
+            for row in SellerReview.objects.filter(seller_id__in=p_seller_ids, is_active=True)
+            .values('seller_id')
+            .annotate(avg_o=Avg('rating_overall'), total=Count('id'))
+            .values_list('seller_id', 'avg_o', 'total')
+        }
+
+        for pl in matched_product_links:
+            s = pl.seller
+            s_avg_o, s_tot_rev = p_review_stats.get(s.id, (0.0, 0)) if s else (0.0, 0)
+            is_verified = (s.verification_status == VerificationStatus.APPROVED) if s else False
+            b_title = "🛡️ Verified Seller" if is_verified else None
+
+            s_name = (s.shop_name or f"@{s.username}'s Store") if s else "Merchant"
+            s_username = s.username if s else ""
+            s_phone = s.phone_number if s else ""
+            s_pic = s.profile_picture_url if s else ""
+            link_escrow_url = f"{base_frontend_url}/l/{pl.id}"
+            p_cat = pl.category or (s.shop_category if s else '') or "General Marketplace"
+
+            matched_products_list.append({
+                "link_id": str(pl.id),
+                "title": pl.title,
+                "description": pl.description or "",
+                "price_ghs": float(pl.price_ghs),
+                "image_url": pl.image_url or "",
+                "category": p_cat,
+                "escrow_url": link_escrow_url,
+                "seller_id": str(s.id) if s else "",
+                "seller_username": s_username,
+                "seller_shop_name": s_name,
+                "seller_phone": s_phone,
+                "seller_profile_picture_url": s_pic or "",
+                "badge_verified_seller": is_verified,
+                "badge_title": b_title,
+                "seller_avg_rating": round(float(s_avg_o or 0.0), 1),
+                "seller_total_reviews": int(s_tot_rev or 0),
+                "whatsapp_contact_url": _format_whatsapp_url(s_phone, pl.title, float(pl.price_ghs), s_name, p_cat, pl.image_url or "", pl.description or ""),
+                "created_at": pl.created_at.isoformat()
+            })
+
+    # ── 2. Matched Shops & Sellers Search ─────────────────────────────────────
     sellers_qs = User.objects.filter(
         Q(role='SELLER') | Q(payment_links__isnull=False) | ~Q(shop_name='') | ~Q(verification_status='UNSUBMITTED')
     ).distinct().prefetch_related(
-        Prefetch('payment_links', queryset=PaymentLink.objects.filter(is_active=True), to_attr='active_links')
+        Prefetch('payment_links', queryset=PaymentLink.objects.filter(is_active=True, is_archived=False), to_attr='active_links')
     )
 
     if category and category.lower() != 'all':
@@ -373,17 +617,40 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
 
     if query and query.strip():
         q_str = query.strip()
-        matching_link_seller_ids = PaymentLink.objects.filter(
-            Q(title__icontains=q_str) | Q(description__icontains=q_str),
-            is_active=True
-        ).values_list('seller_id', flat=True)
+        tokens = [t for t in q_str.split() if len(t) >= 2]
+        if tokens:
+            s_filter = Q()
+            for token in tokens:
+                matching_link_seller_ids = PaymentLink.objects.filter(
+                    Q(title__icontains=token) | Q(description__icontains=token),
+                    is_active=True,
+                    is_archived=False
+                ).values_list('seller_id', flat=True)
 
-        sellers_qs = sellers_qs.filter(
-            Q(username__icontains=q_str) |
-            Q(shop_name__icontains=q_str) |
-            Q(shop_description__icontains=q_str) |
-            Q(id__in=matching_link_seller_ids)
-        )
+                s_filter &= (
+                    Q(username__icontains=token) |
+                    Q(shop_name__icontains=token) |
+                    Q(shop_description__icontains=token) |
+                    Q(shop_category__icontains=token) |
+                    Q(shop_categories__icontains=token) |
+                    Q(id__in=matching_link_seller_ids)
+                )
+            sellers_qs = sellers_qs.filter(s_filter)
+        else:
+            matching_link_seller_ids = PaymentLink.objects.filter(
+                Q(title__icontains=q_str) | Q(description__icontains=q_str),
+                is_active=True,
+                is_archived=False
+            ).values_list('seller_id', flat=True)
+
+            sellers_qs = sellers_qs.filter(
+                Q(username__icontains=q_str) |
+                Q(shop_name__icontains=q_str) |
+                Q(shop_description__icontains=q_str) |
+                Q(shop_category__icontains=q_str) |
+                Q(shop_categories__icontains=q_str) |
+                Q(id__in=matching_link_seller_ids)
+            )
 
     sellers = list(sellers_qs)
     seller_ids = [s.id for s in sellers]
@@ -453,7 +720,7 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
             "seller_username": seller.username or seller.email.split('@')[0],
             "shop_name": seller.shop_name or f"@{seller.username}'s Store",
             "shop_description": seller.shop_description or f"Escrow Merchant on HendAxis Trust.",
-            "shop_category": seller.shop_category or "General",
+            "shop_category": seller.shop_category or "General Marketplace",
             "shop_categories": cats[:3],
             "profile_picture_url": seller.profile_picture_url or "",
             "banner_url": seller.banner_url or "",
@@ -464,6 +731,7 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
             "badge_title": badge_title,
             "is_featured": is_featured,
             "advertised_until": seller.advertised_until.isoformat() if seller.advertised_until else None,
+            "seller_phone": seller.phone_number or "",
             "featured_products": products
         }
 
@@ -473,6 +741,7 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
             standard_list.append(shop_data)
 
     return {
+        "matched_products": matched_products_list,
         "featured_shops": featured_list,
         "standard_shops": standard_list
     }
@@ -658,6 +927,8 @@ def get_recent_reviews_feed(request, limit: int = 15):
             "seller_reply": r.seller_reply,
             "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
             "created_at": r.created_at.isoformat(),
+            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+            "edit_count": r.edit_count or 0,
             "item_title": item_title,
             "item_image_url": item_image_url,
             "upvotes_count": r.upvotes_count,

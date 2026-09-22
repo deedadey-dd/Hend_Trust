@@ -6,6 +6,7 @@ import {
   AlertOctagon, UserCheck
 } from 'lucide-react';
 import { useAdminSellerDetailsQuery } from '../hooks/api/useAdminPortal';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 interface AdminSellerDetailsModalProps {
   sellerId: string | null;
@@ -20,6 +21,7 @@ export const AdminSellerDetailsModal: React.FC<AdminSellerDetailsModalProps> = (
   onSuspend,
   onReinstate,
 }) => {
+  useEscapeKey(onClose, Boolean(sellerId));
   const { data, isLoading, error, refetch } = useAdminSellerDetailsQuery(sellerId);
   const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'LINKS' | 'REVIEWS' | 'HEALTH'>('OVERVIEW');
   const [copiedLink, setCopiedLink] = useState(false);
@@ -48,15 +50,15 @@ export const AdminSellerDetailsModal: React.FC<AdminSellerDetailsModalProps> = (
 
   return (
     <div 
-      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200"
+      className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 md:p-6 bg-slate-950/80 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
     >
-      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl w-full max-w-4xl max-h-[90vh] sm:max-h-[85vh] flex flex-col shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100 my-auto">
         
         {/* MODAL HEADER WITH BANNER */}
-        <div className="relative border-b border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950">
+        <div className="relative border-b border-slate-200 dark:border-slate-800/80 bg-slate-50 dark:bg-slate-950 shrink-0">
           {/* Banner Image or Gradient */}
           <div className="h-28 sm:h-32 w-full overflow-hidden bg-gradient-to-r from-blue-600 via-indigo-700 to-slate-800 dark:from-blue-900 dark:via-indigo-950 dark:to-slate-900 relative">
             {seller?.banner_url && (

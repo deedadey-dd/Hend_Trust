@@ -2,7 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { 
   BarChart3, Package, ShieldAlert, Users, PhoneCall, Send, Search, Filter, 
   TrendingUp, DollarSign, Lock, Eye, X, Zap, Clock,
-  RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck
+  RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck, Store,
+  Coins, UserPlus, Scale, History, UserCog, Gift, Menu, ChevronLeft, ChevronRight,
+  ExternalLink
 } from 'lucide-react';
 import { 
   useAdminMetricsQuery, 
@@ -17,6 +19,8 @@ import {
   useCancelBroadcastCampaignMutation,
   useAdminAppealsQuery,
   useReviewAppealMutation,
+  useAssignDisputeArbiterMutation,
+  useAdminStaffQuery,
   type SuspensionAppealItem
 } from '../hooks/api/useAdminPortal';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -25,6 +29,13 @@ import { useAuthStore } from '../store/authStore';
 import { ExportButton } from '../components/ExportButton';
 import type { ExportColumn } from '../utils/exportUtils';
 import { AdminSellerDetailsModal } from '../components/AdminSellerDetailsModal';
+import { AdminBuyerDetailsModal, type AdminBuyerTarget } from '../components/AdminBuyerDetailsModal';
+import DisputeChatTimeline from '../components/DisputeChatTimeline';
+import { AdminDisputeAuditModal } from '../components/AdminDisputeAuditModal';
+import { AdminStaffManagement } from '../components/AdminStaffManagement';
+import { AdminArbiterPayouts } from '../components/AdminArbiterPayouts';
+import { AdminPromotionsManager } from '../components/AdminPromotionsManager';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 const adminTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -121,7 +132,7 @@ const adInvoicesExportHeaders: ExportColumn[] = [
   { label: 'Active Until', key: 'advertised_until' },
 ];
 
-type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'APPEALS' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'AD_INVOICES' | 'SETTINGS';
+type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'APPEALS' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'AD_INVOICES' | 'SETTINGS' | 'STAFF' | 'ARBITER_PAYOUTS' | 'PROMOTIONS';
 
 interface ShopAdInvoiceAdminRecord {
   id: string;
@@ -209,16 +220,31 @@ interface PlatformSettings {
   dispute_alert_threshold?: number;
   dispute_warning_threshold?: number;
   dispute_suspension_threshold?: number;
+  dispute_retraction_release_hours?: number;
   dispatch_expiry_warning_threshold?: number;
   dispatch_expiry_suspension_threshold?: number;
   unpaid_auto_archive_days?: number;
+  arbiter_fee_per_dispute?: number;
   django_admin_url?: string;
+  promotions_active?: boolean;
+  promotions_expires_at?: string | null;
+  buyer_reward_rate_percent?: number;
+  buyer_credit_validity_days?: number;
+  seller_reward_per_completed_order_ghs?: number;
+  seller_credit_validity_days?: number;
+  max_promo_discount_cap_ghs?: number;
 }
 
 
 export const AdminDashboardView: React.FC = () => {
   const { user } = useAuthStore();
   const isSuperUser = Boolean(user?.is_superuser);
+  const userRole = user?.role || 'ADMIN';
+  const isAdminManager = isSuperUser || userRole === 'ADMIN';
+  const isArbiter = isSuperUser || userRole === 'ARBITER' || userRole === 'ADMIN';
+  const isCompliance = isSuperUser || userRole === 'COMPLIANCE_OFFICER' || userRole === 'ADMIN';
+  const isFinance = isSuperUser || userRole === 'FINANCE_ADMIN' || userRole === 'ADMIN';
+  const isSupport = isSuperUser || userRole === 'SUPPORT_AGENT' || userRole === 'ADMIN';
 
   useEffect(() => {
     if (user && user.is_superuser === undefined) {
@@ -238,12 +264,20 @@ export const AdminDashboardView: React.FC = () => {
   }, [user]);
 
   const [activeTab, setActiveTab] = useState<AdminTab>('OVERVIEW');
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
     if (!isSuperUser && activeTab === 'SETTINGS') {
       setActiveTab('TRANSACTIONS');
     }
-  }, [isSuperUser, activeTab]);
+    if (!isAdminManager && activeTab === 'STAFF') {
+      setActiveTab('OVERVIEW');
+    }
+    if (!isAdminManager && !isFinance && activeTab === 'PROMOTIONS') {
+      setActiveTab('OVERVIEW');
+    }
+  }, [isSuperUser, isAdminManager, isFinance, activeTab]);
 
   // Platform Settings State
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
@@ -265,6 +299,7 @@ export const AdminDashboardView: React.FC = () => {
     dispute_alert_threshold: 20.0,
     dispute_warning_threshold: 30.0,
     dispute_suspension_threshold: 40.0,
+    dispute_retraction_release_hours: 24,
     dispatch_expiry_warning_threshold: 20.0,
     dispatch_expiry_suspension_threshold: 35.0,
   });
@@ -530,6 +565,15 @@ export const AdminDashboardView: React.FC = () => {
   const [adminNotes, setAdminNotes] = useState<string>('');
   const [resolveMsg, setResolveMsg] = useState<string>('');
 
+  // Dispute Arbiter Assignment & Audit Trail State
+  const [selectedDisputeAuditTxnId, setSelectedDisputeAuditTxnId] = useState<string | null>(null);
+  const [assigningDispute, setAssigningDispute] = useState<any | null>(null);
+  const [selectedArbiterId, setSelectedArbiterId] = useState<string>('');
+  const [assignMsg, setAssignMsg] = useState<string>('');
+  const assignArbiterMutation = useAssignDisputeArbiterMutation();
+  const { data: staffList } = useAdminStaffQuery();
+  const arbitersList = staffList?.filter(s => s.role === 'ARBITER' || s.role === 'ADMIN' || s.is_superuser) || [];
+
   // Partial Refund Breakdown States
   const [refundAmountGhs, setRefundAmountGhs] = useState<number>(0);
   const [sellerAmountGhs, setSellerAmountGhs] = useState<number>(0);
@@ -589,7 +633,18 @@ export const AdminDashboardView: React.FC = () => {
 
   // Buyers State & Query
   const [buyerSearch, setBuyerSearch] = useState<string>('');
+  const [selectedBuyerModal, setSelectedBuyerModal] = useState<AdminBuyerTarget | null>(null);
   const { data: buyers, isLoading: buyersLoading } = useAdminBuyersQuery(buyerSearch);
+
+  // Wire ESC key to dismiss any active modal dialog
+  useEscapeKey(() => setGatewayConfirm(null), Boolean(gatewayConfirm));
+  useEscapeKey(() => setSelectedTxnId(null), Boolean(selectedTxnId));
+  useEscapeKey(() => setSelectedDisputeAuditTxnId(null), Boolean(selectedDisputeAuditTxnId));
+  useEscapeKey(() => setAssigningDispute(null), Boolean(assigningDispute));
+  useEscapeKey(() => { setRejectUserId(null); setRejectReason(''); }, Boolean(rejectUserId));
+  useEscapeKey(() => setPreviewImage(null), Boolean(previewImage));
+  useEscapeKey(() => setSelectedSellerIdModal(null), Boolean(selectedSellerIdModal));
+  useEscapeKey(() => setSelectedBuyerModal(null), Boolean(selectedBuyerModal));
 
   // Broadcast Messaging State
   const [targetGroup, setTargetGroup] = useState<string>('ALL_USERS');
@@ -707,91 +762,219 @@ export const AdminDashboardView: React.FC = () => {
     }
   };
 
-  return (
+  interface NavItem {
+    id: AdminTab;
+    label: string;
+    icon: React.ComponentType<{ className?: string }>;
+    badge?: string | number;
+    alert?: boolean;
+    visible: boolean;
+  }
 
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16 transition-colors">
-      {/* Header Banner */}
-      <div className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 px-6 py-6 shadow-sm transition-colors">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <div className="flex items-center gap-2">
-              <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-500/20 text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider">
-                Platform Operations
-              </span>
-              <span className="text-slate-500 dark:text-slate-400 text-sm">Manager Portal v1.0</span>
+  interface NavGroup {
+    category: string;
+    items: NavItem[];
+  }
+
+  const navGroups: NavGroup[] = [
+    {
+      category: 'Operations',
+      items: [
+        { id: 'OVERVIEW', label: 'Overview & Metrics', icon: BarChart3, visible: true },
+        { id: 'TRANSACTIONS', label: 'Transactions', icon: Package, badge: txnsData?.total_count, visible: true },
+        { id: 'DISPUTES', label: 'Disputes Center', icon: ShieldAlert, badge: metrics?.active_disputes, alert: (metrics?.active_disputes || 0) > 0, visible: isArbiter || isCompliance || isAdminManager || isSupport },
+        { id: 'APPEALS', label: 'Suspension Appeals', icon: ShieldAlert, badge: appealsData?.filter(a => a.status === 'PENDING').length, alert: (appealsData?.filter(a => a.status === 'PENDING').length || 0) > 0, visible: isCompliance || isAdminManager },
+        { id: 'VERIFICATIONS', label: 'Seller Verifications', icon: FileCheck, badge: verifications.filter(v => v.verification_status === 'PENDING').length, alert: verifications.filter(v => v.verification_status === 'PENDING').length > 0, visible: isCompliance || isAdminManager },
+      ]
+    },
+    {
+      category: 'Finance & Ledger',
+      items: [
+        { id: 'FUNDS', label: 'Platform Funds & Ledger', icon: DollarSign, badge: fundsSummary ? `GHS ${fundsSummary.system_bank_asset_ghs.toLocaleString()}` : undefined, visible: isFinance || isAdminManager },
+        { id: 'ARBITER_PAYOUTS', label: 'Arbiter Compensation', icon: Coins, visible: isArbiter || isFinance || isAdminManager },
+        { id: 'AD_INVOICES', label: 'Ad Invoices', icon: Zap, badge: adInvoicesCount || undefined, visible: isFinance || isAdminManager },
+      ]
+    },
+    {
+      category: 'Users & Community',
+      items: [
+        { id: 'SELLERS', label: 'Sellers Directory', icon: Users, visible: isCompliance || isAdminManager || isSupport },
+        { id: 'BUYERS', label: 'Buyer Registry', icon: PhoneCall, visible: isCompliance || isAdminManager || isSupport },
+        { id: 'BROADCAST', label: 'Broadcast Studio', icon: Send, visible: isAdminManager || isSupport },
+      ]
+    },
+    {
+      category: 'System & Config',
+      items: [
+        { id: 'PROMOTIONS', label: 'Promotions & Rewards', icon: Gift, badge: platformSettings.promotions_active ? 'Active' : undefined, visible: isAdminManager || isFinance },
+        { id: 'STAFF', label: 'Staff & Roles', icon: UserCog, badge: staffList?.length || undefined, visible: isAdminManager },
+        { id: 'SETTINGS', label: 'Platform Settings', icon: Layers, visible: isSuperUser },
+      ]
+    }
+  ];
+
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors flex flex-col">
+      {/* ─── STICKY TOP HEADER ────────────────────────────────────────────── */}
+      <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800 px-4 sm:px-6 py-3 shadow-sm transition-colors">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex items-center gap-3">
+            {/* Mobile menu toggle */}
+            <button
+              onClick={() => setMobileSidebarOpen(!mobileSidebarOpen)}
+              className="lg:hidden p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition"
+              aria-label="Toggle navigation menu"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+
+            {/* Desktop collapse toggle */}
+            <button
+              onClick={() => setIsSidebarCollapsed(!isSidebarCollapsed)}
+              className="hidden lg:flex p-2 rounded-xl bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition cursor-pointer"
+              title={isSidebarCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+            >
+              {isSidebarCollapsed ? <ChevronRight className="h-4 w-4" /> : <ChevronLeft className="h-4 w-4" />}
+            </button>
+
+            <div>
+              <div className="flex items-center gap-2">
+                <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-500/20 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                  Platform Operations
+                </span>
+                <span className="text-slate-400 text-xs hidden sm:inline">Manager Portal</span>
+              </div>
+              <h1 className="text-base sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                HendAxis Trust <span className="text-blue-600 dark:text-blue-400">Admin</span>
+              </h1>
             </div>
-            <h1 className="text-2xl md:text-3xl font-extrabold text-slate-900 dark:text-white mt-1">HendAxis Trust Management Center</h1>
-            <p className="text-slate-600 dark:text-slate-400 text-xs md:text-sm mt-0.5">Real-time surveillance, transaction escrow controls, dispute arbitration, and targeted broadcast engine.</p>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 sm:gap-3">
             <button 
               onClick={() => { refetchMetrics(); refetchTxns(); refetchDisputes(); }}
-              className="flex items-center justify-center gap-2 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-sm font-semibold transition shadow-sm cursor-pointer"
+              className="flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs sm:text-sm font-semibold transition shadow-sm cursor-pointer"
             >
-              <RefreshCw className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-              Refresh Data
+              <RefreshCw className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              <span className="hidden sm:inline">Refresh Data</span>
             </button>
             {isSuperUser && (
               <a
                 href={djangoAdminFullUrl}
                 target="_blank"
                 rel="noopener noreferrer"
-                className="flex items-center justify-center gap-2 bg-amber-50 dark:bg-amber-600/20 hover:bg-amber-100 dark:hover:bg-amber-600/30 text-amber-800 dark:text-amber-300 px-4 py-2.5 rounded-xl border border-amber-300 dark:border-amber-500/30 text-sm font-semibold transition shadow-sm cursor-pointer"
+                className="flex items-center justify-center gap-1.5 bg-amber-50 dark:bg-amber-600/20 hover:bg-amber-100 dark:hover:bg-amber-600/30 text-amber-800 dark:text-amber-300 px-3 py-2 rounded-xl border border-amber-300 dark:border-amber-500/30 text-xs sm:text-sm font-semibold transition shadow-sm cursor-pointer"
                 title="Open native Django backend database administration panel"
               >
-                <ShieldCheck className="h-4 w-4 text-amber-600 dark:text-amber-400" />
-                Django Database Admin ↗
+                <ShieldCheck className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                <span className="hidden md:inline">Django Database Admin ↗</span>
+                <span className="md:hidden">Django DB ↗</span>
               </a>
             )}
           </div>
         </div>
+      </header>
 
-        {/* Tab Navigation */}
-        <div className="max-w-7xl mx-auto mt-6 flex overflow-x-auto gap-2 border-b border-slate-200 dark:border-slate-800 scrollbar-none pb-px">
-          {[
-            { id: 'OVERVIEW', label: 'Overview', icon: BarChart3 },
-            { id: 'TRANSACTIONS', label: 'Transactions', icon: Package, badge: txnsData?.total_count },
-            { id: 'DISPUTES', label: 'Disputes Center', icon: ShieldAlert, badge: metrics?.active_disputes, alert: (metrics?.active_disputes || 0) > 0 },
-            { id: 'APPEALS', label: 'Suspension Appeals', icon: ShieldAlert, badge: appealsData?.filter(a => a.status === 'PENDING').length, alert: (appealsData?.filter(a => a.status === 'PENDING').length || 0) > 0 },
-            { id: 'VERIFICATIONS', label: 'Seller Verifications', icon: FileCheck, badge: verifications.filter(v => v.verification_status === 'PENDING').length, alert: verifications.filter(v => v.verification_status === 'PENDING').length > 0 },
-            { id: 'FUNDS', label: 'Platform Funds & Ledger', icon: DollarSign, badge: fundsSummary ? `GHS ${fundsSummary.system_bank_asset_ghs.toLocaleString()}` : undefined },
-            { id: 'SELLERS', label: 'Sellers Directory', icon: Users },
-            { id: 'BUYERS', label: 'Buyer Registry', icon: PhoneCall },
-            { id: 'BROADCAST', label: 'Broadcast Studio', icon: Send },
-            { id: 'AD_INVOICES', label: 'Ad Invoices', icon: Zap, badge: adInvoicesCount || undefined },
-            { id: 'SETTINGS', label: '⚙️ Settings', icon: Layers, superuserOnly: true },
-          ].filter(tab => !tab.superuserOnly || isSuperUser).map(tab => {
-            const Icon = tab.icon;
-            const isActive = activeTab === tab.id;
-            return (
-              <button
-                key={tab.id}
-                onClick={() => setActiveTab(tab.id as AdminTab)}
-                className={`flex items-center gap-2.5 px-4 py-3 text-sm font-bold border-b-2 transition whitespace-nowrap rounded-t-lg ${
-                  isActive 
-                    ? 'border-blue-600 dark:border-blue-500 text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-slate-800/90 shadow-sm' 
-                    : 'border-transparent text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/50 hover:border-slate-300 dark:hover:border-slate-700'
-                }`}
-              >
-                <Icon className={`h-4 w-4 ${isActive ? 'text-blue-600 dark:text-blue-400' : 'text-slate-500 dark:text-slate-400'}`} />
-                {tab.label}
-                {tab.badge !== undefined && (
-                  <span className={`text-xs px-2 py-0.5 rounded-full ${
-                    tab.alert 
-                      ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 font-extrabold border border-rose-300 dark:border-rose-500/40' 
-                      : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-700'
-                  }`}>
-                    {tab.badge}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-      </div>
+      {/* ─── MAIN LAYOUT WITH SIDEBAR + CONTENT ───────────────────────────── */}
+      <div className="flex-1 flex min-w-0">
+        {/* Mobile Navigation Drawer Backdrop */}
+        {mobileSidebarOpen && (
+          <div 
+            onClick={() => setMobileSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-slate-950/60 backdrop-blur-sm lg:hidden transition-opacity"
+          />
+        )}
 
-      {/* Main Content Area */}
-      <div className="max-w-7xl mx-auto px-6 mt-8">
+        {/* Sidebar Navigation */}
+        <aside className={`
+          fixed lg:sticky top-[57px] sm:top-[61px] h-[calc(100vh-57px)] sm:h-[calc(100vh-61px)] z-40 lg:z-20
+          bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800 flex flex-col justify-between
+          transition-all duration-300 shadow-xl lg:shadow-none
+          ${mobileSidebarOpen ? 'translate-x-0 w-72' : '-translate-x-full lg:translate-x-0'}
+          ${isSidebarCollapsed ? 'lg:w-20' : 'lg:w-68'}
+        `}>
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-6 scrollbar-thin">
+            {navGroups.map((group, groupIdx) => {
+              const visibleItems = group.items.filter(item => item.visible);
+              if (visibleItems.length === 0) return null;
+
+              return (
+                <div key={groupIdx} className="space-y-1.5">
+                  {!isSidebarCollapsed && (
+                    <div className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 px-3 py-1">
+                      {group.category}
+                    </div>
+                  )}
+                  {isSidebarCollapsed && (
+                    <div className="w-full border-t border-slate-200 dark:border-slate-800 my-2" />
+                  )}
+                  <div className="space-y-1">
+                    {visibleItems.map(item => {
+                      const Icon = item.icon;
+                      const isActive = activeTab === item.id;
+                      return (
+                        <button
+                          key={item.id}
+                          onClick={() => {
+                            setActiveTab(item.id);
+                            setMobileSidebarOpen(false);
+                          }}
+                          title={isSidebarCollapsed ? item.label : undefined}
+                          className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition group cursor-pointer ${
+                            isActive
+                              ? 'bg-blue-600 text-white shadow-md shadow-blue-500/25'
+                              : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white hover:bg-slate-100 dark:hover:bg-slate-800/70'
+                          } ${isSidebarCollapsed ? 'justify-center px-2' : ''}`}
+                        >
+                          <Icon className={`h-4 w-4 shrink-0 ${isActive ? 'text-white' : 'text-slate-500 dark:text-slate-400 group-hover:text-blue-500'}`} />
+                          {!isSidebarCollapsed && (
+                            <span className="truncate flex-1 text-left">{item.label}</span>
+                          )}
+                          {!isSidebarCollapsed && item.badge !== undefined && (
+                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full shrink-0 ${
+                              isActive
+                                ? 'bg-white/20 text-white'
+                                : item.alert
+                                  ? 'bg-rose-100 dark:bg-rose-500/20 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-500/40'
+                                  : 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700'
+                            }`}>
+                              {item.badge}
+                            </span>
+                          )}
+                          {isSidebarCollapsed && item.alert && (
+                            <span className="absolute top-2 right-2 w-2 h-2 bg-rose-500 rounded-full" />
+                          )}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* User profile / session footer in sidebar */}
+          <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
+            <div className={`flex items-center gap-2.5 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
+              <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
+                {user?.name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || 'A'}
+              </div>
+              {!isSidebarCollapsed && (
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
+                    {user?.name || user?.username || 'Administrator'}
+                  </p>
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate uppercase font-mono">
+                    {userRole}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+        </aside>
+
+        {/* ─── MAIN CONTENT VIEWPORT ───────────────────────────────────────── */}
+        <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8 space-y-6">
 
         {/* ─── TAB 1: OVERVIEW & ANALYTICS ────────────────────────────────────── */}
         {activeTab === 'OVERVIEW' && (
@@ -967,14 +1150,42 @@ export const AdminDashboardView: React.FC = () => {
                     ) : (
                       txnsData?.items.map(t => (
                         <tr key={t.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
-                          <td className="px-5 py-4 font-mono font-bold text-blue-600 dark:text-blue-400">{t.paystack_reference}</td>
+                          <td className="px-5 py-4">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedTxnId(t.id)}
+                              className="group/tx inline-flex items-center gap-1 font-mono font-bold text-blue-600 dark:text-blue-400 hover:text-blue-700 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                              title="Click to open Transaction Deep Inspection"
+                            >
+                              <span>{t.paystack_reference}</span>
+                              <ExternalLink className="h-3 w-3 opacity-60 group-hover/tx:opacity-100 transition" />
+                            </button>
+                          </td>
                           <td className="px-5 py-4">
                             <p className="font-semibold text-slate-900 dark:text-white">{t.title}</p>
                             <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Seller: <strong className="text-slate-900 dark:text-white">{(t as any).shop_name || `@${t.seller_username}`}</strong> {(t as any).shop_name && <span className="text-slate-500 font-normal">(@{t.seller_username})</span>}</p>
                           </td>
                           <td className="px-5 py-4">
-                            <p className="font-semibold text-slate-800 dark:text-slate-200">{t.buyer_name}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{t.buyer_phone}</p>
+                            {(t.buyer_phone || t.buyer_name) ? (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedBuyerModal({ phone: t.buyer_phone, email: (t as any).buyer_email, name: t.buyer_name })}
+                                className="text-left group cursor-pointer"
+                                title="Inspect buyer intelligence, orders & dispute rate"
+                              >
+                                <p className="font-semibold text-slate-800 dark:text-slate-200 group-hover:text-teal-600 dark:group-hover:text-teal-400 group-hover:underline transition">
+                                  {t.buyer_name}
+                                </p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 font-mono group-hover:text-teal-600 dark:group-hover:text-teal-400 transition">
+                                  {t.buyer_phone}
+                                </p>
+                              </button>
+                            ) : (
+                              <>
+                                <p className="font-semibold text-slate-800 dark:text-slate-200">{t.buyer_name}</p>
+                                <p className="text-xs text-slate-500 dark:text-slate-400 font-mono">{t.buyer_phone}</p>
+                              </>
+                            )}
                           </td>
                           <td className="px-5 py-4 font-extrabold text-slate-900 dark:text-white">
                             GHS {t.total_amount_ghs.toFixed(2)}
@@ -1046,115 +1257,89 @@ export const AdminDashboardView: React.FC = () => {
                   <div key={d.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row justify-between gap-6">
                     <div className="space-y-3 flex-1">
                       <div className="flex items-center gap-3">
-                        <span className="font-mono text-sm font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 px-2.5 py-1 rounded-md border border-rose-500/20">
-                          {d.paystack_reference}
-                        </span>
+                        <button
+                          type="button"
+                          onClick={() => setSelectedTxnId(d.id || d.transaction_id)}
+                          className="group/tx inline-flex items-center gap-1.5 font-mono text-sm font-bold text-rose-600 dark:text-rose-400 bg-rose-500/10 hover:bg-rose-500/20 px-2.5 py-1 rounded-md border border-rose-500/20 transition cursor-pointer"
+                          title="Click to open Transaction Deep Inspection"
+                        >
+                          <span>{d.paystack_reference}</span>
+                          <ExternalLink className="h-3.5 w-3.5 opacity-70 group-hover/tx:opacity-100 transition" />
+                        </button>
                         <h4 className="text-lg font-bold text-slate-900 dark:text-white">{d.link_title}</h4>
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
                         <div>
-                          <p className="text-slate-500 font-mono">SELLER DETAILS</p>
-                          <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">{(d as any).shop_name ? `${(d as any).shop_name} (@${d.seller_username})` : `@${d.seller_username}`}</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-slate-500 font-mono">SELLER DETAILS</p>
+                            {d.seller_id && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedSellerIdModal(d.seller_id)}
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                                title="View seller summary, storefront, transaction history, ratings & compliance"
+                              >
+                                <Store className="h-3.5 w-3.5" />
+                                <span>Store & History</span>
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => d.seller_id && setSelectedSellerIdModal(d.seller_id)}
+                            className="font-bold text-slate-900 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mt-1 text-left block cursor-pointer group"
+                            title="Open seller summary & intelligence modal"
+                          >
+                            <span className="group-hover:underline">
+                              {(d as any).shop_name ? `${(d as any).shop_name} (@${d.seller_username})` : `@${d.seller_username}`}
+                            </span>
+                          </button>
                           <p className="text-slate-600 dark:text-slate-400">{d.seller_phone || 'No phone'}</p>
                           <p className="text-slate-600 dark:text-slate-400">{d.seller_email || 'No email'}</p>
                         </div>
                         <div>
-                          <p className="text-slate-500 font-mono">BUYER DETAILS</p>
-                          <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">{d.buyer_name}</p>
+                          <div className="flex items-center justify-between">
+                            <p className="text-slate-500 font-mono">BUYER DETAILS</p>
+                            {(d.buyer_phone || d.buyer_email) && (
+                              <button
+                                type="button"
+                                onClick={() => setSelectedBuyerModal({ phone: d.buyer_phone, email: d.buyer_email, name: d.buyer_name })}
+                                className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300 hover:underline cursor-pointer"
+                                title="Inspect buyer orders, total spend, dispute history, registered account & compliance"
+                              >
+                                <UserCheck className="h-3.5 w-3.5" />
+                                <span>Buyer History & Risk</span>
+                              </button>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => (d.buyer_phone || d.buyer_email) && setSelectedBuyerModal({ phone: d.buyer_phone, email: d.buyer_email, name: d.buyer_name })}
+                            className="font-bold text-slate-900 dark:text-slate-200 hover:text-teal-600 dark:hover:text-teal-400 transition-colors mt-1 text-left block cursor-pointer group"
+                            title="Open buyer intelligence modal"
+                          >
+                            <span className="group-hover:underline">{d.buyer_name}</span>
+                          </button>
                           <p className="text-slate-600 dark:text-slate-400 font-mono">{d.buyer_phone}</p>
                           <p className="text-slate-600 dark:text-slate-400">{d.buyer_email || 'No email'}</p>
                         </div>
                       </div>
 
-                      {/* Dispute Evidence Photos & Text */}
-                      <div className="space-y-3 bg-slate-50 dark:bg-slate-950/60 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
-                        {d.buyer_dispute_reason && (
-                          <div>
-                            <span className="font-mono text-rose-600 dark:text-rose-400 font-bold uppercase block mb-1">BUYER CLAIM REASON:</span>
-                            <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">{d.buyer_dispute_reason}</p>
-                          </div>
-                        )}
-
-                        {d.buyer_dispute_photos && d.buyer_dispute_photos.length > 0 && (
-                          <div>
-                            <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] block mb-1.5">BUYER EVIDENCE PHOTOS ({d.buyer_dispute_photos.length}/5):</span>
-                            <div className="flex flex-wrap gap-2">
-                              {d.buyer_dispute_photos.map((url: string, idx: number) => (
-                                <img
-                                  key={idx}
-                                  src={url}
-                                  alt={`Buyer evidence ${idx + 1}`}
-                                  onClick={() => setPreviewImage(url)}
-                                  className="w-16 h-16 object-cover rounded-lg border border-slate-300 dark:border-slate-700 hover:border-rose-500 hover:scale-105 transition cursor-pointer"
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {d.waybill_photo_url && (
-                          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                            <span className="font-mono text-emerald-600 dark:text-emerald-400 font-bold uppercase block mb-1">DISPATCH / WAYBILL PHOTO (FROM SELLER):</span>
-                            <div className="flex items-center gap-3">
-                              <img
-                                src={d.waybill_photo_url}
-                                alt="Dispatch waybill evidence"
-                                onClick={() => setPreviewImage(d.waybill_photo_url)}
-                                className="w-20 h-20 object-cover rounded-lg border border-emerald-500/40 hover:border-emerald-400 hover:scale-105 transition cursor-pointer"
-                              />
-                              <span className="text-[11px] text-slate-500 dark:text-slate-400">Click photo to zoom. Submitted by seller during dispatch.</span>
-                            </div>
-                          </div>
-                        )}
-
-                        {d.seller_dispute_response && (
-                          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                            <span className="font-mono text-blue-600 dark:text-blue-400 font-bold uppercase block mb-1">SELLER RESPONSE:</span>
-                            <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">{d.seller_dispute_response}</p>
-                          </div>
-                        )}
-
-                        {d.seller_dispute_photos && d.seller_dispute_photos.length > 0 && (
-                          <div>
-                            <span className="font-mono text-slate-500 dark:text-slate-400 text-[11px] block mb-1.5">SELLER EVIDENCE PHOTOS ({d.seller_dispute_photos.length}/5):</span>
-                            <div className="flex flex-wrap gap-2">
-                              {d.seller_dispute_photos.map((url: string, idx: number) => (
-                                <img
-                                  key={idx}
-                                  src={url}
-                                  alt={`Seller evidence ${idx + 1}`}
-                                  onClick={() => setPreviewImage(url)}
-                                  className="w-16 h-16 object-cover rounded-lg border border-slate-300 dark:border-slate-700 hover:border-blue-500 hover:scale-105 transition cursor-pointer"
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {d.manager_dispute_notes && (
-                          <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                            <span className="font-mono text-amber-600 dark:text-amber-400 font-bold uppercase block mb-1">MANAGER RULING NOTES:</span>
-                            <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">{d.manager_dispute_notes}</p>
-                          </div>
-                        )}
-
-                        {d.manager_dispute_photos && d.manager_dispute_photos.length > 0 && (
-                          <div>
-                            <span className="font-mono text-amber-400 text-[11px] block mb-1.5">MANAGER RULING PHOTOS ({d.manager_dispute_photos.length}/5):</span>
-                            <div className="flex flex-wrap gap-2">
-                              {d.manager_dispute_photos.map((url: string, idx: number) => (
-                                <img
-                                  key={idx}
-                                  src={url}
-                                  alt={`Manager photo ${idx + 1}`}
-                                  onClick={() => setPreviewImage(url)}
-                                  className="w-16 h-16 object-cover rounded-lg border border-slate-700 hover:border-amber-500 hover:scale-105 transition cursor-pointer"
-                                />
-                              ))}
-                            </div>
-                          </div>
-                        )}
+                      {/* WhatsApp-Style Unified Dispute Dialogue Trail */}
+                      <div className="pt-1">
+                        <DisputeChatTimeline
+                          buyerReason={d.buyer_dispute_reason}
+                          buyerPhotos={d.buyer_dispute_photos}
+                          buyerName={d.buyer_name || 'Buyer'}
+                          sellerResponse={d.seller_dispute_response}
+                          sellerPhotos={d.seller_dispute_photos}
+                          sellerName={d.shop_name ? `${d.shop_name} (@${d.seller_username})` : `@${d.seller_username}`}
+                          managerNotes={d.manager_dispute_notes}
+                          managerPhotos={d.manager_dispute_photos}
+                          disputeRetractedAt={d.dispute_retracted_at}
+                          waybillPhotoUrl={d.waybill_photo_url}
+                        />
                       </div>
 
                       {d.delivery_method && (
@@ -1165,6 +1350,48 @@ export const AdminDashboardView: React.FC = () => {
                           {d.driver_phone && <span>(Driver: {d.driver_phone} @ {d.destination_station})</span>}
                         </div>
                       )}
+
+                      {/* Arbiter Assignment & Resolution Audit Banner */}
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 dark:border-slate-800/80 flex-wrap">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {d.assigned_arbiter ? (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-purple-50 dark:bg-purple-950/50 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800 rounded-lg text-xs font-semibold">
+                              <Scale className="h-3.5 w-3.5 text-purple-500" />
+                              Arbiter: <strong>@{d.assigned_arbiter.username}</strong>
+                            </span>
+                          ) : (
+                            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-500 rounded-lg text-xs font-semibold">
+                              <Scale className="h-3.5 w-3.5 text-slate-400" />
+                              Unassigned Arbiter
+                            </span>
+                          )}
+
+                          {isAdminManager && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setAssigningDispute(d);
+                                setSelectedArbiterId(d.assigned_arbiter?.id || '');
+                                setAssignMsg('');
+                              }}
+                              className="text-xs font-bold text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 hover:underline flex items-center gap-1 cursor-pointer"
+                            >
+                              <UserPlus className="h-3.5 w-3.5" />
+                              {d.assigned_arbiter ? 'Reassign' : 'Assign Arbiter'}
+                            </button>
+                          )}
+                        </div>
+
+                        <button
+                          type="button"
+                          onClick={() => setSelectedDisputeAuditTxnId(d.id)}
+                          className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer border border-slate-200 dark:border-slate-700 shadow-sm"
+                          title="View complete multi-arbiter decision history and rulings"
+                        >
+                          <History className="h-3.5 w-3.5 text-blue-500" />
+                          Audit Trail
+                        </button>
+                      </div>
                     </div>
 
                     <div className="flex flex-col justify-between items-end gap-4 min-w-[220px]">
@@ -1173,13 +1400,15 @@ export const AdminDashboardView: React.FC = () => {
                         <p className="text-2xl font-black text-rose-400">GHS {d.total_amount_ghs.toFixed(2)}</p>
                       </div>
 
-                      <button
-                        onClick={() => { setResolvingTxnId(d.id); setResolveMsg(''); }}
-                        className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-500/10"
-                      >
-                        <ShieldAlert className="h-4 w-4" />
-                        Resolve Dispute
-                      </button>
+                      {isArbiter && (
+                        <button
+                          onClick={() => { setResolvingTxnId(d.id); setResolveMsg(''); }}
+                          className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-500/10 cursor-pointer"
+                        >
+                          <ShieldAlert className="h-4 w-4" />
+                          Resolve Dispute
+                        </button>
+                      )}
                     </div>
                   </div>
                 ))
@@ -1455,8 +1684,8 @@ export const AdminDashboardView: React.FC = () => {
 
         {/* ─── MODAL: REJECT VERIFICATION ────────────────────────────────────────── */}
         {rejectUserId && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm">
-            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-6 max-w-md w-full shadow-2xl space-y-4">
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+            <div className="bg-slate-900 border border-slate-800 rounded-2xl p-5 sm:p-6 max-w-md w-full shadow-2xl space-y-4 max-h-[90vh] my-auto overflow-y-auto">
               <h4 className="text-base font-bold text-white">Reject Seller Verification</h4>
               <form onSubmit={handleRejectVerification} className="space-y-4">
                 <div>
@@ -2016,33 +2245,44 @@ export const AdminDashboardView: React.FC = () => {
                       <th className="px-5 py-4">Active Escrow Holds</th>
                       <th className="px-5 py-4">Disputed Orders</th>
                       <th className="px-5 py-4">Total Lifetime Spend</th>
+                      <th className="px-5 py-4 text-right">Actions</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60">
                     {buyersLoading ? (
-                      <tr><td colSpan={6} className="text-center py-12 text-slate-500">Loading buyers registry…</td></tr>
+                      <tr><td colSpan={7} className="text-center py-12 text-slate-500">Loading buyers registry…</td></tr>
                     ) : buyers?.length === 0 ? (
-                      <tr><td colSpan={6} className="text-center py-12 text-slate-500">No buyers found matching search.</td></tr>
+                      <tr><td colSpan={7} className="text-center py-12 text-slate-500">No buyers found matching search.</td></tr>
                     ) : (
                       buyers?.map(b => (
                         <tr key={b.buyer_phone} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition">
                           <td className="px-5 py-4 font-mono font-bold">
                             {b.buyer_phone ? (
-                              <a 
-                                href={`tel:${b.buyer_phone}`}
-                                className="text-blue-600 dark:text-blue-400 hover:underline font-mono font-bold flex items-center gap-1.5"
-                                title={`Click to dial ${b.buyer_phone}`}
+                              <button 
+                                type="button"
+                                onClick={() => setSelectedBuyerModal({ phone: b.buyer_phone, email: b.buyer_email, name: b.buyer_name })}
+                                className="text-blue-600 dark:text-blue-400 hover:underline font-mono font-bold flex items-center gap-1.5 cursor-pointer text-left"
+                                title={`Inspect profile for ${b.buyer_phone}`}
                               >
-                                <PhoneCall className="h-3.5 w-3.5 text-blue-500" />
-                                {b.buyer_phone}
-                              </a>
+                                <PhoneCall className="h-3.5 w-3.5 text-blue-500 flex-shrink-0" />
+                                <span>{b.buyer_phone}</span>
+                              </button>
                             ) : (
                               <span className="text-slate-500 dark:text-slate-400 font-mono text-xs">No Phone</span>
                             )}
                           </td>
                           <td className="px-5 py-4">
-                            <p className="font-semibold text-slate-900 dark:text-white">{b.buyer_name}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">{b.buyer_email || 'No email'}</p>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedBuyerModal({ phone: b.buyer_phone, email: b.buyer_email, name: b.buyer_name })}
+                              className="text-left group cursor-pointer"
+                              title="Inspect buyer profile"
+                            >
+                              <p className="font-semibold text-slate-900 dark:text-white group-hover:text-teal-600 dark:group-hover:text-teal-400 group-hover:underline transition">
+                                {b.buyer_name}
+                              </p>
+                              <p className="text-xs text-slate-500 dark:text-slate-400">{b.buyer_email || 'No email'}</p>
+                            </button>
                           </td>
                           <td className="px-5 py-4 font-bold text-slate-900 dark:text-slate-200">{b.total_orders} orders</td>
                           <td className="px-5 py-4">
@@ -2056,7 +2296,7 @@ export const AdminDashboardView: React.FC = () => {
                           </td>
                           <td className="px-5 py-4">
                             {b.disputed_orders > 0 ? (
-                              <span className="px-2.5 py-1 bg-rose-500/20 text-rose-700 dark:text-rose-300 font-bold text-xs rounded-full border border-rose-500/30">
+                              <span className="px-2.5 py-1 bg-rose-500/20 text-rose-700 dark:text-rose-300 font-bold text-xs rounded-full border border-rose-500/30 font-bold">
                                 {b.disputed_orders} Disputed
                               </span>
                             ) : (
@@ -2064,6 +2304,17 @@ export const AdminDashboardView: React.FC = () => {
                             )}
                           </td>
                           <td className="px-5 py-4 font-extrabold text-emerald-600 dark:text-emerald-400">GHS {b.total_spent_ghs.toFixed(2)}</td>
+                          <td className="px-5 py-4 text-right">
+                            <button
+                              type="button"
+                              onClick={() => setSelectedBuyerModal({ phone: b.buyer_phone, email: b.buyer_email, name: b.buyer_name })}
+                              className="px-3 py-1.5 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-700 dark:text-teal-300 border border-teal-200 dark:border-teal-800 rounded-xl text-xs font-bold transition inline-flex items-center gap-1.5 cursor-pointer shadow-sm"
+                              title="Inspect full buyer order history, dispute rate & intelligence"
+                            >
+                              <UserCheck className="h-3.5 w-3.5" />
+                              <span>Inspect</span>
+                            </button>
+                          </td>
                         </tr>
                       ))
                     )}
@@ -3008,6 +3259,30 @@ export const AdminDashboardView: React.FC = () => {
                       <span className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold">Live impact — sellers at this threshold will be auto-suspended immediately upon next health check. Communicate policy changes before adjusting.</span>
                     </div>
                   </div>
+
+                  {/* Retraction Auto-Release Grace Window */}
+                  <div className="bg-white dark:bg-slate-900/80 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 md:col-span-2 lg:col-span-1">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 uppercase font-mono block">
+                        Retraction Grace Release Window
+                      </span>
+                      <span className="text-[10px] font-mono text-slate-400">Default: 24 hrs</span>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                      When a buyer retracts an active dispute to settle privately, funds are automatically released to the seller after this window.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        min="1"
+                        max="168"
+                        value={platformSettings.dispute_retraction_release_hours ?? 24}
+                        onChange={(e) => handleUpdateSettings({ dispute_retraction_release_hours: parseInt(e.target.value) || 24 })}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded px-2.5 py-1.5 w-20 font-mono font-bold text-emerald-600 dark:text-emerald-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                      />
+                      <span className="text-xs text-slate-600 dark:text-slate-400 font-bold">Hours before payout</span>
+                    </div>
+                  </div>
                 </div>
               </div>
 
@@ -3080,15 +3355,38 @@ export const AdminDashboardView: React.FC = () => {
                 </div>
               </div>
             </div>
+
           </div>
         )}
 
+        {/* ─── TAB: PROMOTIONS, REWARD TOKENS & PROMO ENGINE ───────────────── */}
+        {activeTab === 'PROMOTIONS' && (
+          <div className="max-w-6xl mx-auto space-y-6">
+            <AdminPromotionsManager
+              platformSettings={platformSettings}
+              onUpdateSettings={handleUpdateSettings}
+              onInspectTransaction={(txnId) => setSelectedTxnId(txnId)}
+            />
+          </div>
+        )}
+
+        {/* ─── TAB: ARBITER COMPENSATION & PAYOUTS ────────────────────────────── */}
+        {activeTab === 'ARBITER_PAYOUTS' && (
+          <AdminArbiterPayouts />
+        )}
+
+        {/* ─── TAB: STAFF & ROLE MANAGEMENT ────────────────────────────────────── */}
+        {activeTab === 'STAFF' && (
+          <AdminStaffManagement />
+        )}
+
+        </main>
       </div>
 
       {/* ─── MODAL: GATEWAY SWITCH CONFIRMATION ─────────────────────────────── */}
       {gatewayConfirm && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white dark:bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full shadow-2xl overflow-hidden text-slate-900 dark:text-slate-100">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-amber-500/40 rounded-2xl max-w-md w-full shadow-2xl overflow-y-auto max-h-[90vh] my-auto text-slate-900 dark:text-slate-100">
             {/* Header */}
             <div className="px-6 py-4 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-500/20 flex items-center gap-3">
               <div className="h-9 w-9 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center shrink-0">
@@ -3142,9 +3440,9 @@ export const AdminDashboardView: React.FC = () => {
 
       {/* ─── MODAL: INSPECT TRANSACTION DETAIL ───────────────────────────────── */}
       {selectedTxnId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] overflow-hidden flex flex-col shadow-2xl text-slate-900 dark:text-slate-100">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+        <div className="fixed inset-0 z-[70] flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-2xl w-full max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col shadow-2xl text-slate-900 dark:text-slate-100 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">Transaction Deep Inspection</h3>
                 <p className="text-xs font-mono text-blue-600 dark:text-blue-400">{txnDetail?.paystack_reference}</p>
@@ -3185,16 +3483,66 @@ export const AdminDashboardView: React.FC = () => {
                   {/* Buyer & Seller */}
                   <div className="grid grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm">
                     <div>
-                      <span className="text-slate-500 font-mono">SELLER ACCOUNT</span>
-                      <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">@{txnDetail?.seller?.username || 'seller'}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-mono">SELLER ACCOUNT</span>
+                        {txnDetail?.seller?.id && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedSellerIdModal(txnDetail.seller.id)}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 hover:text-blue-500 dark:text-blue-400 dark:hover:text-blue-300 hover:underline cursor-pointer"
+                            title="View seller summary, storefront, transaction history & ratings"
+                          >
+                            <Store className="h-3.5 w-3.5" />
+                            <span>Store & History</span>
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => txnDetail?.seller?.id && setSelectedSellerIdModal(txnDetail.seller.id)}
+                        className="font-bold text-slate-900 dark:text-slate-200 hover:text-blue-600 dark:hover:text-blue-400 transition-colors mt-1 text-left block cursor-pointer group"
+                        title="Open seller summary modal"
+                      >
+                        <span className="group-hover:underline">
+                          {txnDetail?.seller?.shop_name || `@${txnDetail?.seller?.username || 'seller'}`}
+                        </span>
+                      </button>
                       <p className="text-slate-600 dark:text-slate-400">{txnDetail?.seller?.phone_number || 'No phone'}</p>
                       <p className="text-slate-500 text-[10px]">{txnDetail?.seller?.email || 'No email'}</p>
                     </div>
                     <div>
-                      <span className="text-slate-500 font-mono">BUYER DETAILS</span>
-                      <p className="font-bold text-slate-900 dark:text-slate-200 mt-1">{txnDetail?.buyer?.name || 'Guest Buyer'}</p>
-                      <p className="text-slate-600 dark:text-slate-400 font-mono">{txnDetail?.buyer?.phone}</p>
-                      <p className="text-slate-600 dark:text-slate-400 mt-0.5">{txnDetail?.buyer?.shipping_address || 'No shipping address'}</p>
+                      <div className="flex items-center justify-between">
+                        <span className="text-slate-500 font-mono">BUYER DETAILS</span>
+                        {(txnDetail?.buyer?.phone || txnDetail?.buyer_phone || txnDetail?.buyer_email) && (
+                          <button
+                            type="button"
+                            onClick={() => setSelectedBuyerModal({
+                              phone: txnDetail.buyer?.phone || txnDetail.buyer_phone,
+                              email: txnDetail.buyer_email,
+                              name: txnDetail.buyer?.name || txnDetail.buyer_name,
+                            })}
+                            className="inline-flex items-center gap-1 text-[11px] font-bold text-teal-600 hover:text-teal-500 dark:text-teal-400 dark:hover:text-teal-300 hover:underline cursor-pointer"
+                            title="View buyer orders, total spend, dispute history, registered account & compliance"
+                          >
+                            <UserCheck className="h-3.5 w-3.5" />
+                            <span>Buyer History</span>
+                          </button>
+                        )}
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => (txnDetail?.buyer?.phone || txnDetail?.buyer_phone || txnDetail?.buyer_email) && setSelectedBuyerModal({
+                          phone: txnDetail.buyer?.phone || txnDetail.buyer_phone,
+                          email: txnDetail.buyer_email,
+                          name: txnDetail.buyer?.name || txnDetail.buyer_name,
+                        })}
+                        className="font-bold text-slate-900 dark:text-slate-200 hover:text-teal-600 dark:hover:text-teal-400 transition-colors mt-1 text-left block cursor-pointer group"
+                        title="Open buyer intelligence modal"
+                      >
+                        <span className="group-hover:underline">{txnDetail?.buyer?.name || txnDetail?.buyer_name || 'Guest Buyer'}</span>
+                      </button>
+                      <p className="text-slate-600 dark:text-slate-400 font-mono">{txnDetail?.buyer?.phone || txnDetail?.buyer_phone}</p>
+                      <p className="text-slate-600 dark:text-slate-400 mt-0.5">{txnDetail?.buyer?.shipping_address || txnDetail?.shipping_address || 'No shipping address'}</p>
                     </div>
                   </div>
 
@@ -3211,24 +3559,21 @@ export const AdminDashboardView: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Dispute Evidence if present */}
-                  {txnDetail?.buyer_dispute_reason && (
-                    <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2 shadow-sm">
-                      <span className="font-mono text-rose-600 dark:text-rose-400 font-bold uppercase block">BUYER CLAIM REASON:</span>
-                      <p className="text-slate-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800">{txnDetail.buyer_dispute_reason}</p>
-                      {txnDetail.buyer_dispute_photos?.length > 0 && (
-                        <div className="flex flex-wrap gap-2 pt-1">
-                          {txnDetail.buyer_dispute_photos.map((url: string, idx: number) => (
-                            <img
-                              key={idx}
-                              src={url}
-                              alt="Buyer evidence"
-                              onClick={() => setPreviewImage(url)}
-                              className="w-16 h-16 object-cover rounded-lg border border-slate-200 dark:border-slate-700 hover:border-rose-500 transition cursor-pointer"
-                            />
-                          ))}
-                        </div>
-                      )}
+                  {/* Dispute Evidence & Dialogue Trail if present */}
+                  {(txnDetail?.buyer_dispute_reason || txnDetail?.seller_dispute_response || txnDetail?.manager_dispute_notes || txnDetail?.dispute_retracted_at) && (
+                    <div className="pt-2">
+                      <DisputeChatTimeline
+                        buyerReason={txnDetail.buyer_dispute_reason}
+                        buyerPhotos={txnDetail.buyer_dispute_photos}
+                        buyerName={txnDetail.buyer_name || 'Buyer'}
+                        sellerResponse={txnDetail.seller_dispute_response}
+                        sellerPhotos={txnDetail.seller_dispute_photos}
+                        sellerName={txnDetail.shop_name ? `${txnDetail.shop_name} (@${txnDetail.seller_username})` : (txnDetail.seller_username ? `@${txnDetail.seller_username}` : 'Seller')}
+                        managerNotes={txnDetail.manager_dispute_notes}
+                        managerPhotos={txnDetail.manager_dispute_photos}
+                        disputeRetractedAt={txnDetail.dispute_retracted_at}
+                        waybillPhotoUrl={txnDetail.waybill_photo_url}
+                      />
                     </div>
                   )}
 
@@ -3330,9 +3675,9 @@ export const AdminDashboardView: React.FC = () => {
 
       {/* ─── MODAL: RESOLVE DISPUTE ──────────────────────────────────────────── */}
       {resolvingTxnId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full shadow-2xl flex flex-col max-h-[90vh] overflow-hidden text-slate-900 dark:text-slate-100">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 flex-shrink-0">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] overflow-hidden text-slate-900 dark:text-slate-100 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 shrink-0">
               <h3 className="text-base font-bold text-rose-600 dark:text-rose-400 flex items-center gap-2">
                 <ShieldAlert className="h-5 w-5" />
                 Arbitrate Dispute Claim
@@ -3343,6 +3688,53 @@ export const AdminDashboardView: React.FC = () => {
             </div>
 
             <form onSubmit={handleResolveDispute} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+              {activeDisputeTxn && (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-sm">
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-slate-500 uppercase font-mono block">Seller Profile</span>
+                      <span className="font-bold text-slate-900 dark:text-white truncate block text-xs">
+                        {activeDisputeTxn.shop_name || `@${activeDisputeTxn.seller_username}`}
+                      </span>
+                    </div>
+                    {activeDisputeTxn.seller_id && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedSellerIdModal(activeDisputeTxn.seller_id)}
+                        className="px-2.5 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900 text-blue-600 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+                        title="Inspect seller storefront, transaction history, ratings & compliance"
+                      >
+                        <Store className="h-3.5 w-3.5" />
+                        <span>Seller History</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 shadow-sm">
+                    <div className="min-w-0">
+                      <span className="text-[10px] text-slate-500 uppercase font-mono block">Buyer Intelligence</span>
+                      <span className="font-bold text-slate-900 dark:text-white truncate block text-xs">
+                        {activeDisputeTxn.buyer_name || activeDisputeTxn.buyer_phone}
+                      </span>
+                    </div>
+                    {(activeDisputeTxn.buyer_phone || activeDisputeTxn.buyer_email) && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedBuyerModal({
+                          phone: activeDisputeTxn.buyer_phone,
+                          email: activeDisputeTxn.buyer_email,
+                          name: activeDisputeTxn.buyer_name,
+                        })}
+                        className="px-2.5 py-1.5 bg-teal-50 dark:bg-teal-950/60 hover:bg-teal-100 dark:hover:bg-teal-900 text-teal-600 dark:text-teal-400 border border-teal-200 dark:border-teal-800 rounded-lg text-xs font-bold transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+                        title="Inspect buyer orders, dispute rate, registered account & spend"
+                      >
+                        <UserCheck className="h-3.5 w-3.5" />
+                        <span>Buyer History</span>
+                      </button>
+                    )}
+                  </div>
+                </div>
+              )}
               <div>
                 <label className="block text-slate-600 dark:text-slate-400 font-mono uppercase mb-1">Arbitration Resolution Action *</label>
                 <select
@@ -3542,9 +3934,9 @@ export const AdminDashboardView: React.FC = () => {
 
       {/* ─── MODAL: REVIEW SUSPENSION APPEAL ─────────────────────────────────── */}
       {reviewingAppeal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-md">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200">
-            <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 shrink-0">
               <div>
                 <h3 className="text-base font-bold text-slate-900 dark:text-white">
                   {reviewDecision === 'APPROVE' ? 'Approve Appeal & Reinstate Seller' : 'Reject Suspension Appeal'}
@@ -3556,7 +3948,7 @@ export const AdminDashboardView: React.FC = () => {
               </button>
             </div>
 
-            <form onSubmit={handleReviewAppeal} className="p-6 space-y-4 text-xs">
+            <form onSubmit={handleReviewAppeal} className="p-5 sm:p-6 space-y-4 text-xs overflow-y-auto flex-1">
               <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1">
                 <span className="font-bold text-slate-800 dark:text-slate-200 block">Appeal Justification:</span>
                 <p className="text-slate-600 dark:text-slate-400 italic">"{reviewingAppeal.reason}"</p>
@@ -3674,6 +4066,118 @@ export const AdminDashboardView: React.FC = () => {
             setSelectedSellerIdModal(null);
           }}
         />
+      )}
+
+      {/* ─── MODAL: BUYER DETAILS INTELLIGENCE ────────────────────────────────── */}
+      {selectedBuyerModal && (
+        <AdminBuyerDetailsModal
+          target={selectedBuyerModal}
+          onClose={() => setSelectedBuyerModal(null)}
+          onInspectTxn={(txnId) => {
+            setSelectedTxnId(txnId);
+          }}
+          onInspectSeller={(sellerId) => {
+            setSelectedSellerIdModal(sellerId);
+          }}
+        />
+      )}
+
+      {/* ─── MODAL: DISPUTE ACTION AUDIT TRAIL ───────────────────────────────── */}
+      {selectedDisputeAuditTxnId && (
+        <AdminDisputeAuditModal
+          transactionId={selectedDisputeAuditTxnId}
+          onClose={() => setSelectedDisputeAuditTxnId(null)}
+        />
+      )}
+
+      {/* ─── MODAL: ARBITER ASSIGNMENT ───────────────────────────────────────── */}
+      {assigningDispute && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full shadow-2xl p-6 space-y-4 my-auto">
+            <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                <Scale className="h-5 w-5 text-purple-600 dark:text-purple-400" />
+                Assign Dispute Arbiter
+              </h3>
+              <button 
+                onClick={() => setAssigningDispute(null)} 
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Assign an accredited platform arbiter or manager to arbitrate and resolve <strong>{assigningDispute.link_title}</strong> ({assigningDispute.paystack_reference}).
+            </p>
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                Select Platform Arbiter *
+              </label>
+              <select
+                value={selectedArbiterId}
+                onChange={e => setSelectedArbiterId(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-medium outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">-- Select an Arbiter / Manager --</option>
+                {arbitersList.map(s => (
+                  <option key={s.id} value={s.id}>
+                    @{s.username} ({s.first_name} {s.last_name || ''}) - {s.role}
+                  </option>
+                ))}
+              </select>
+            </div>
+
+            {assignMsg && (
+              <div className={`p-2.5 rounded-lg text-xs font-semibold ${
+                assignMsg.includes('success') 
+                  ? 'bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800' 
+                  : 'bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800'
+              }`}>
+                {assignMsg}
+              </div>
+            )}
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setAssigningDispute(null)}
+                className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={!selectedArbiterId || assignArbiterMutation.isPending}
+                onClick={async () => {
+                  try {
+                    await assignArbiterMutation.mutateAsync({
+                      transactionId: assigningDispute.id,
+                      arbiterId: selectedArbiterId
+                    });
+                    setAssignMsg('Arbiter assigned successfully.');
+                    refetchDisputes();
+                    setTimeout(() => setAssigningDispute(null), 1200);
+                  } catch (err: any) {
+                    setAssignMsg(err.response?.data?.detail || 'Failed to assign arbiter.');
+                  }
+                }}
+                className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs shadow disabled:opacity-50 flex items-center justify-center gap-1.5 cursor-pointer"
+              >
+                {assignArbiterMutation.isPending ? (
+                  <>
+                    <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Assigning...
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="h-3.5 w-3.5" /> Confirm Assignment
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -29,11 +29,44 @@ def execute_payout_for_transaction(transaction: Transaction):
         platform_fee=platform_fee
     )
 
-    # 2. Check seller's payout mode
-    seller = transaction.link.seller
-    payout_mode = getattr(seller, 'payout_mode', 'INSTANT')
+    # 1b. Record promotional fee subsidy in ledger if platform fee was discounted
+    total_subsidy = (
+        (transaction.promo_discount_ghs or Decimal('0.00')) +
+        (transaction.credit_discount_ghs or Decimal('0.00')) +
+        (transaction.seasonal_fee_discount_ghs or Decimal('0.00')) +
+        (transaction.seller_fee_offset_applied_ghs or Decimal('0.00'))
+    )
+    if total_subsidy > Decimal('0.00'):
+        try:
+            from apps.ledger.services import record_promotions_subsidy
+            record_promotions_subsidy(reference_id=str(transaction.id), subsidy_amount=total_subsidy)
+        except Exception as promo_ledger_err:
+            print(f"[PROMO LEDGER ERROR] tx {transaction.id}: {promo_ledger_err}")
 
-    if payout_mode == 'INSTANT':
+    # 1c. If seller fee offset was applied, debit seller bonus credit ledger
+    seller = getattr(getattr(transaction, 'link', None), 'seller', None)
+    if seller and transaction.seller_fee_offset_applied_ghs > Decimal('0.00'):
+        try:
+            from apps.escrow.models import SellerRewardLedgerEntry, SellerRewardEntryType
+            from apps.users.models import User
+            s_locked = User.objects.get(id=seller.id)
+            s_locked.wallet_bonus_credits_ghs = max(Decimal('0.00'), (s_locked.wallet_bonus_credits_ghs or Decimal('0.00')) - transaction.seller_fee_offset_applied_ghs)
+            s_locked.save(update_fields=['wallet_bonus_credits_ghs'])
+
+            SellerRewardLedgerEntry.objects.create(
+                seller=s_locked,
+                amount_ghs=transaction.seller_fee_offset_applied_ghs,
+                entry_type=SellerRewardEntryType.REDEEMED,
+                reference_id=str(transaction.id),
+                notes=f"Offset platform fee by GHS {transaction.seller_fee_offset_applied_ghs:.2f} on Order {transaction.paystack_reference}"
+            )
+        except Exception as offset_err:
+            print(f"[SELLER OFFSET LEDGER ERROR] tx {transaction.id}: {offset_err}")
+
+    # 2. Check seller's payout mode
+    payout_mode = getattr(seller, 'payout_mode', 'INSTANT') if seller else 'INSTANT'
+
+    if payout_mode == 'INSTANT' and seller:
         # Immediately transfer to seller's external account, minus Paystack's 1.95% fee
         from apps.wallet.api import get_user_wallet
         from apps.wallet.services import execute_instant_payout
@@ -47,9 +80,25 @@ def execute_payout_for_transaction(transaction: Transaction):
         print(f"[INSTANT PAYOUT] Dispatched {net_payout:.2f} GHS payout for tx {transaction.paystack_reference}")
     else:
         # MANUAL mode: funds sit in wallet until seller withdraws
-        print(f"[MANUAL PAYOUT] Funds held in wallet for seller {seller.username}. Balance updated.")
+        print(f"[MANUAL PAYOUT] Funds held in wallet for seller {getattr(seller, 'username', 'N/A')}. Balance updated.")
 
-    # 3. Notify Seller & Buyer
+    # 3. Process any pending referral rewards
+    try:
+        from apps.users.referrals import process_transaction_referral_rewards
+        process_transaction_referral_rewards(transaction)
+    except Exception as ref_err:
+        print(f"[REFERRAL PROCESSING ERROR] tx {transaction.id}: {ref_err}")
+
+    # 3b. Process Buyer Loyalty Reward & Seller Milestone Reward Grants & Active Reward Campaigns
+    try:
+        from apps.escrow.services_promo import award_buyer_loyalty_reward, award_seller_milestone_reward, award_transaction_reward_campaigns
+        award_buyer_loyalty_reward(transaction)
+        award_seller_milestone_reward(transaction)
+        award_transaction_reward_campaigns(transaction)
+    except Exception as reward_err:
+        print(f"[PROMO REWARD ERROR] tx {transaction.id}: {reward_err}")
+
+    # 4. Notify Seller & Buyer
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
     seller_msg = (
         f"Payout Released! GHS {net_payout:.2f} for order {transaction.paystack_reference} ({transaction.link.title}) "

@@ -5,6 +5,8 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
+import { useEscapeKey } from '../utils/useEscapeKey';
+import { MARKETPLACE_CATEGORIES } from '../constants/categories';
 
 interface ProfileData {
   id: string;
@@ -39,8 +41,6 @@ interface ProfileData {
   is_2fa_enabled?: boolean;
 }
 
-const CATEGORY_OPTIONS = ['Electronics', 'Fashion', 'Beauty', 'Home & Living', 'Services', 'General'];
-
 export default function ProfileView() {
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -61,6 +61,9 @@ export default function ProfileView() {
   const [totpLoading, setTotpLoading] = useState(false);
   const [totpError, setTotpError] = useState('');
   const [copiedSecret, setCopiedSecret] = useState(false);
+
+  useEscapeKey(() => setShow2FASetupModal(false), show2FASetupModal);
+  useEscapeKey(() => setShow2FADisableModal(false), show2FADisableModal);
 
   // Editable Profile fields
   const [firstName, setFirstName] = useState('');
@@ -170,6 +173,8 @@ export default function ProfileView() {
   const [sendingOtp, setSendingOtp] = useState(false);
   const [verifyingOtp, setVerifyingOtp] = useState(false);
   const [otpError, setOtpError] = useState('');
+
+  useEscapeKey(() => setShowOtpModal(false), showOtpModal);
 
   const requestMomoOtpCode = async (targetNumber: string) => {
     setSendingOtp(true);
@@ -676,25 +681,30 @@ export default function ProfileView() {
             <div>
               <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-2">Product Categories (Select at most 3)</label>
               <div className="flex items-center gap-2 flex-wrap">
-                {CATEGORY_OPTIONS.map(cat => {
-                  const isSelected = selectedCategories.includes(cat);
+                {MARKETPLACE_CATEGORIES.map(cat => {
+                  const isSelected = selectedCategories.includes(cat.name);
+                  const Icon = cat.icon;
                   return (
                     <button
-                      key={cat}
+                      key={cat.id}
                       type="button"
-                      onClick={() => handleCategoryToggle(cat)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer ${
+                      onClick={() => handleCategoryToggle(cat.name)}
+                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
                         isSelected
-                          ? 'bg-blue-600 text-white shadow-sm'
-                          : 'bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
+                          ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-500 ring-offset-1'
+                          : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
                       }`}
                     >
-                      {cat} {isSelected && '✓'}
+                      <Icon className="h-3.5 w-3.5 shrink-0" />
+                      <span>{cat.name}</span>
+                      {isSelected && <span>✓</span>}
                     </button>
                   );
                 })}
               </div>
-              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-1 block">Selected: {selectedCategories.length} / 3 categories</span>
+              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-2 block">
+                Selected: <strong className="text-blue-600 dark:text-blue-400 font-bold">{selectedCategories.length}</strong> / 3 allowed categories
+              </span>
             </div>
 
             <button
@@ -1012,8 +1022,8 @@ export default function ProfileView() {
 
       {/* 2FA Setup Modal */}
       {show2FASetupModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5 relative text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-5 relative text-slate-900 dark:text-white max-h-[90vh] sm:max-h-[85vh] overflow-y-auto my-auto">
             <button
               onClick={() => setShow2FASetupModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
@@ -1111,8 +1121,8 @@ export default function ProfileView() {
 
       {/* 2FA Disable Modal */}
       {show2FADisableModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white max-h-[90vh] my-auto overflow-y-auto">
             <button
               onClick={() => setShow2FADisableModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"
@@ -1189,8 +1199,8 @@ export default function ProfileView() {
 
       {/* MoMo OTP Verification Modal */}
       {showOtpModal && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white">
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-md w-full p-5 sm:p-6 shadow-2xl space-y-4 relative text-slate-900 dark:text-white max-h-[90vh] my-auto overflow-y-auto">
             <button
               onClick={() => setShowOtpModal(false)}
               className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-white"

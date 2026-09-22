@@ -95,35 +95,49 @@ graph TD
    - Embeds interactive seller review cards allowing buyers to read past customer reviews and open the detailed modal.
 
 2. **Marketplace Directory (`/shops`)**:
-   - Searchable directory of all active verified sellers on HendTrust.
-   - Category filtering (Electronics, Fashion, Beauty, Home, Food, Services, etc.).
-   - Search bar filtering by store name or business keywords.
-   - Verified seller badge indicator and Trust Score rating preview.
-   - Prominent **"View All Reviews"** button leading directly to the `/reviews` page.
+   - **Ballpark Multi-Token Search Engine**: Search active products across titles, descriptions, categories, and merchant names. Matches ballpark multi-word queries (e.g., *"iphone pro 256"*, *"bluetooth speaker"*).
+   - **16 Standard Platform Categories**: Phones & Tablets, Computers & Tech, Electronics & Appliances, Fashion & Apparel, Beauty, Hair & Fragrances, Health & Wellness, Home, Furniture & Living, Automotive & Spare Parts, Baby, Kids & Toys, Groceries & Foodstuff, Jewelry & Watches, Sports, Outdoors & Fitness, Industrial, Tools & Hardware, Digital Goods & Gaming, Professional Services, General Marketplace.
+   - **Structured 3-Tier Layout**:
+     1. **Verified Escrow Stores**:
+        - **Row 1**: Featured Sponsored stores (`⚡ Featured Ad` paid placements).
+        - **Rows 2 & 3**: Standard verified merchants (initial 6 shops with expandable *"View All Verified Stores (N)"* toggle).
+        - Direct *"Visit Storefront"* links + WhatsApp / Call quick action icons.
+     2. **Recent Customer Reviews Carousel**: Displays verified buyer feedback and ratings in browsing mode.
+     3. **Matched Products & Escrow Offers**: Product cards displaying price, escrow guarantee badge, category tag, location-based shipping notice, and 1-click WhatsApp inquiry buttons.
+   - **Transparent Hero Search Bar**: Semi-transparent search bar and category filter strip with hidden horizontal scrollbars.
 
 3. **Featured / Sponsored Store Banner**:
-   - Admin-configurable advertisement placement for sponsored sellers (`advertised_until` timestamp).
+   - Paid advertisement placements (`⚡ Featured Ad`) for sponsored sellers (`advertised_until` timestamp).
 
-#### Database Models (`backend/apps/shops/models.py`)
-- Storefront attributes are mapped directly on the `User` model, backed by category choices (`ELECTRONICS`, `FASHION`, `BEAUTY_HEALTH`, `HOME_FURNITURE`, `SERVICES`, etc.).
+#### Database Models
+- `User`: Storefront attributes (`shop_name`, `shop_description`, `shop_category`, `shop_categories`, `profile_picture_url`, `banner_url`, `advertised_until`).
+- `PaymentLink`: `category` (`CharField(max_length=64, blank=True, db_index=True)`).
 
 ---
 
-### Module C: Payment Links Engine
+### Module C: Payment Links Engine & 1-Click WhatsApp Escrow Generator
 
 #### Key Features & Workflows
-1. **Dynamic & Fixed Payment Link Creation (`/links`)**:
-   - **Fixed Price Links**: Pre-set product title, price, description, and item image. Ideal for standard products.
-   - **Dynamic Price Links**: Seller defines title and description; buyer enters custom payment amount at checkout (ideal for custom quotes, services, or invoices).
-   - **Item Catalog Integration**: Optionally attach product stock image URL and custom SKU metadata.
+1. **Dynamic & Fixed Payment Link Creation (`/links` & `/create-link`)**:
+   - **Product-Level Category Selection**: Sellers choose the precise category (from the 16 platform categories) when generating payment links, auto-defaulted to the merchant's store niche.
+   - **WhatsApp 1-Click Escrow Generator**: When buyers inquire on WhatsApp via marketplace product cards, the message contains a prefilled `/create-link?title=...&price=...&category=...&img=...` URL. Sellers tap the link, input the agreed shipping fee for the buyer's destination, tap *"Create Escrow Payment Link"*, and return the checkout link to the buyer.
+   - **Fixed Price Links**: Pre-set product title, category, price, description, and item image. Ideal for standard products.
+   - **Autofill from Past Products**: Suggests and autofills previous products with 1 click.
    - **Delivery Configuration**: Set delivery fee options (Pickup, Fixed Delivery Fee, or Dynamic Courier Delivery).
+   - **Fee Handling Preferences**:
+     - **`PASS_TO_BUYER` (Default)**: Buyer pays Item Price + Delivery Fee + Platform Escrow Fee. Seller receives 100% of their item and shipping amount upon completion.
+     - **`ABSORB_FEE`**: Buyer pays only Item Price + Delivery Fee. The platform escrow fee is automatically deducted from the seller's gross payout.
+   - **Mathematical Fee Formula**:
+     $$\text{Gross Transaction Value} = \text{Item Price (GHS)} + \text{Delivery Fee (GHS)}$$
+     $$\text{Platform Escrow Protection Fee} = (\text{Gross Transaction Value} \times 1.5\%) + \text{GHS } 10.00$$
+     $$\text{Gateway Processing / Transfer Fee} = \text{Disbursed Amount} \times 1.95\%$$
    - **Custom Checkout Fields**: Collect buyer delivery address, landmark, phone number, and optional notes.
    - **Stale Transaction Management & Auto-Archiving**: Unpaid transactions older than the platform's configured duration (`unpaid_auto_archive_days`, default: 3 days) automatically archive (`is_archived = True`). Sellers can click **"Check Payment"** on `AWAITING_PAYMENT` entries to manually query gateway completion before archiving occurs. Confirmed payments automatically restore transactions (`is_archived = False`).
    - **Archiving & Expiration**: Deactivate or archive stale links without breaking existing escrow histories.
 
-2. **Public Checkout Page (`/pay/:slug`)**:
+2. **Public Checkout Page (`/pay/:slug` & `/l/:id`)**:
    - Clean, conversion-focused responsive checkout UI.
-   - Real-time total calculation (Item Price + Delivery Fee + Buyer Service Fee if applicable).
+   - Real-time transparent fee calculation (Item Price + Delivery Fee + Escrow Protection Fee if passed to buyer).
    - Payment method selection:
      - **Mobile Money (MoMo)**: MTN Mobile Money, Telecel Cash, AT Money.
      - **Debit / Credit Card**: Visa, Mastercard.
@@ -132,7 +146,7 @@ graph TD
    - Upon successful payment verification, the transaction instantly transitions into an active **Held in Escrow** state.
 
 #### Database Models (`backend/apps/links/models.py`)
-- `PaymentLink`: Holds `title`, `slug`, `amount`, `is_dynamic_amount`, `description`, `image_url`, `delivery_fee`, `is_archived`, `created_at`.
+- `PaymentLink`: Holds `title`, `slug`, `price_ghs`, `shipping_fee_ghs`, `fee_handling` (`PASS_TO_BUYER` / `ABSORB_FEE`), `is_dynamic_amount`, `description`, `image_url`, `is_archived`, `created_at`.
 
 ---
 
@@ -197,12 +211,26 @@ stateDiagram-v2
 ### Module E: Dispute Resolution & Seller Health Governance Subsystem
 
 #### Key Features & Workflows
-1. **Dispute Initiation (`/dashboard`)**:
+1. **Dispute Initiation & Subsequent Detail Appending (`/dashboard`, `/l/:id`, `/tracking`)**:
    - Either party (Buyer or Seller) can open a dispute if an issue arises (e.g., non-delivery, damaged goods, wrong item).
-   - Requires selecting a dispute reason and providing a detailed explanation.
-   - Supports uploading up to 5 evidence files (photos, receipts, delivery slips, chat screenshots).
+   - **Subsequent Dialogue & Reason Appends**:
+     - Buyers can add further clarification notes and photos to an ongoing dispute without overwriting past submissions. Updates are appended with audit timestamps: `--- [Buyer Update (Timestamp)] ---`.
+     - Sellers can add multiple counter-responses and additional evidence over time (`--- [Seller Response (Timestamp)] ---`).
+   - **Multi-Photo Accumulation**: Each party can upload up to **5 WebP-compressed evidence photos** across their dispute updates.
+   - **WhatsApp-Style Chronological Dialogue Trail (`DisputeChatTimeline`)**:
+     - Unifies all claim descriptions, seller statements, dispatch waybill proofs, arbitrator resolution notes, and retraction system events into a single, color-coded, WhatsApp-style conversation stream.
+     - **Buyer messages**: Left-aligned, dark slate/white bubble, rose accent header (`text-rose-600`), user icon.
+     - **Seller responses**: Right-aligned, soft mint/emerald background (`bg-emerald-50/90 dark:bg-emerald-950/40`), store icon.
+     - **Arbitrator rulings**: Centered purple resolution card (`bg-purple-50 dark:bg-purple-950/40`), scale icon (`⚖️`).
+     - **Retraction events**: Centered amber status card (`bg-amber-100 dark:bg-amber-950/60`), shield check icon.
+     - **Read More / Collapsible Trail**: Long text (> 260 characters) includes `Read more...` / `Read less` toggles; large dialogues (> 4 updates) feature a top `Show Earlier Updates (N)` / `Collapse Trail` banner with smooth scrolling.
 
-2. **Automated Seller Dispute Health Monitoring & Account Suspension**:
+2. **Dispute Retraction & Private Settlement (`/l/:id`)**:
+   - **Buyer Self-Retraction**: Buyers who reach a mutual agreement with the seller outside formal arbitration can retract their dispute directly from their order page (`/l/:id`).
+   - **Automated Delayed Settlement (Default 24 Hours)**: Upon retraction (`dispute_retracted_at = timezone.now()`), the dispute is closed, and escrow funds are scheduled for automatic release to the seller after 24 hours (governed by the configurable platform setting `dispute_retraction_release_hours`).
+   - **Permanent Rating Voidance**: To protect system integrity and prevent retaliatory or coerced review manipulation, any transaction that experienced a dispute permanently loses review eligibility—the rating capability remains voided even after retraction.
+
+3. **Automated Seller Dispute Health Monitoring & Account Suspension**:
    - **Multi-Window Calculation**: System computes seller dispute percentage across (1) Last 30 Days, (2) Last 15 Sales, and (3) Lifetime Sales, selecting the highest dispute rate among sets with `paid_transactions >= dispute_min_sample_size` (default: 5) to prevent low-volume sample distortion.
    - **Configurable Platform Thresholds (`/admin/settings`)**:
      - **Dispute Minimum Sample Size (Default: 5 Txns)**: Number of paid transactions required before dispute rate evaluation begins.
@@ -212,30 +240,30 @@ stateDiagram-v2
    - **Suspension Enforcement**: Deactivates all active payment links, blocks payment link creation, and returns HTTP 403 Forbidden on public checkout for suspended seller links.
    - **In-Flight Order Continuity**: In-flight orders that were already paid prior to suspension remain active and proceed through the full fulfillment, delivery, inspection, dispute, and payout lifecycle.
 
-3. **Automated Seller Rating Governance & Thresholds**:
+4. **Automated Seller Rating Governance & Thresholds**:
    - **Aggregated Rating Calculation**: Computes average star rating from active customer reviews (`SellerReview.objects.filter(seller=seller_user, is_active=True)`).
    - **Rating Warning Banner (Default < 3.0 Stars)**: Triggers an inline warning notice on seller dashboard and sends a caution email to the seller.
    - **Rating Auto-Suspension (Default < 2.0 Stars with min 3 reviews)**: Automatically sets `is_suspended = True`, deactivates active payment links, and sends suspension alert email.
 
-4. **Automated Dispatch Expiry Governance & Thresholds**:
+5. **Automated Dispatch Expiry Governance & Thresholds**:
    - **Non-Dispatch Rate Calculation**: Computes the ratio of non-dispatch cancelled orders (`auto_cancelled_non_dispatch = True`) to total paid transactions.
    - **Dispatch Expiry Warning Banner (Default ≥ 20% Expiry Rate)**: Triggers an amber warning banner on the seller dashboard detailing non-dispatch metrics.
    - **Dispatch Expiry Auto-Suspension (Default ≥ 35% Expiry Rate with min sample size >= 5)**: Automatically sets `is_suspended = True`, deactivates all active links, records the suspension reason, and alerts the seller.
 
-5. **Post-Reinstatement Clean Slate & Immunity Protection**:
+6. **Post-Reinstatement Clean Slate & Immunity Protection**:
    - When an administrator manually reinstates a seller or approves an appeal, `seller.reinstated_at = timezone.now()` is recorded.
    - `compute_seller_dispute_health` filters evaluated transactions strictly to `created_at__gte=seller.reinstated_at`.
    - This gives reinstated merchants a clean slate and ensures they are not immediately re-suspended by historical transactions during the next Celery health check cycle, requiring 5 new paid transactions before thresholds are evaluated again.
 
-6. **Account Suspension Appeals & Admin Appeals Desk (`/admin-portal`)**:
+7. **Account Suspension Appeals & Admin Appeals Desk (`/admin-portal`)**:
    - **Payment Link Creation Modal UX**: Attempting to generate a payment link while suspended renders a dedicated modal explaining the exact suspension cause and offering an inline appeal form.
    - **Seller Appeal Submission (`POST /api/profile/appeal-suspension`)**: Suspended sellers submit a formal justification with remediation steps.
    - **Stale Appeal Status Isolation (`GET /api/profile/appeal-status`)**: Only appeals created after the current suspension timestamp are evaluated, preventing old rejected appeals from blocking new appeals.
    - **Admin Suspension Appeals Desk (`/admin-portal/dashboard` Tab 4)**: Administrators inspect appeals, review seller metrics, and approve (reinstating the account with `reinstated_at` set) or reject with notes.
 
-7. **Admin Mediation Desk & Resolution Notifications (`/admin-portal`)**:
+8. **Admin Mediation Desk & Resolution Notifications (`/admin-portal`)**:
    - Dedicated interface displaying all active and past disputes.
-   - Side-by-side comparison of buyer claim vs. seller evidence.
+   - Embedded `DisputeChatTimeline` showing full chronological conversation stream and uploaded evidence.
    - Direct action buttons for Admin Resolution (Full Refund, Release to Seller, Split Settlement, Require Item Return).
    - Personalized Email & SMS notifications addressing buyers by First Name and sellers by Shop Name with exact Transaction Reference IDs.
 
@@ -246,15 +274,23 @@ stateDiagram-v2
 
 ---
 
-### Module F: Logistics, Delivery Tracking & Image Inspection
+### Module F: Logistics, Delivery Tracking & Upfront OTP Verification
 
 #### Key Features & Workflows
-1. **Tracking View (`/tracking`)**:
-   - Universal order tracking page accessible by entering a unique Transaction Reference or Delivery Tracking ID.
-   - Displays visual timeline of order progression (Payment Received ➔ Order Processing ➔ Dispatched ➔ In Transit ➔ Delivered).
+1. **Universal Upfront 2-Step OTP Package Tracking (`/tracking`, `TrackingModal.tsx`)**:
+   - **Track by Order ID (Single Item)**:
+     - **Step 1 (`INPUT`)**: Buyer inputs Transaction Reference ID and Phone Number &rarr; Clicks *"Send Verification OTP Code"*.
+     - **Step 2 (`OTP`)**: Buyer enters the 6-digit OTP code sent via SMS &rarr; Order status details and actions unlock immediately.
+   - **Full Order History (Multi-Item)**:
+     - **Step 1 (`INPUT`)**: Buyer inputs Phone Number or Email &rarr; Clicks *"Send Verification OTP Code"*.
+     - **Step 2 (`OTP`)**: Buyer enters 6-digit OTP &rarr; Returns all associated transactions.
+   - **2-Hour OTP Validity & 60-Second Cooldown**:
+     - Tracking OTPs are cryptographically hashed in Redis with a 2-hour TTL (`_OTP_TTL = 7200s`).
+     - Includes a 60-second client/server resend cooldown timer and a *"← Change Reference/Phone"* back navigation button.
+   - **Zero Secondary Auth Popups**: Once verified upfront, all order card actions (**View Full Details & Actions**, **+ Add Dispute Details**, **Manage / Retract**, **Confirm Receipt**, **Raise Dispute**, **⭐ Rate Seller**) are immediately unlocked and fully functional with no secondary OTP challenges.
 
-2. **Logistics Gateway Integrations & 60s OTP Cooldown**:
-   - Supports Webhook listeners for automated status updates from courier partners (Hubtel Logistics, Yango Delivery, local dispatch API).
+2. **Logistics Gateway Integrations & Webhook Tracing**:
+   - Webhook listeners for automated status updates from courier partners (Hubtel Logistics, Yango Delivery, local dispatch API).
    - **60-Second OTP SMS Cooldown**: Delivery confirmation OTP requests (`send_confirmation_code`) enforce a 60-second cooldown period, preventing duplicate SMS dispatches while retaining active codes for confirmation.
    - **Full-Screen Image Lightbox**: Product photos and delivery proof thumbnails feature a full-screen zoom lightbox modal (`ImageLightboxModal.tsx`) with 90° rotation and download controls.
 
@@ -268,6 +304,7 @@ stateDiagram-v2
 #### Key Features & Workflows
 1. **Verified Review Submission & 1 Review Per Transaction**:
    - **1 Review Per Transaction**: Enforced via `SellerReview.transaction` `OneToOneField`. Submitting feedback again for an order updates the original review.
+   - **Transparent Edit Counter & Timestamps (`edit_count`)**: Every review update increments an internal `edit_count` and updates `updated_at`. Storefront and review feeds transparently display `Edited X times • Last edited on [Date]`.
    - **Transit Rating Lock**: Rating a seller is locked while a package is in transit (`AWAITING_PAYMENT`, `PAYMENT_RECEIVED`, `DELIVERY_IN_PROGRESS`) displaying `🔒 Rate Seller (Unlocks upon delivery)` and unlocks upon delivery/inspection.
    - **Cryptographic Review Token (`buyer_review_token`)**: Returned strictly in buyer checkout responses; excluded from seller API endpoints to prevent seller review tampering/forgery.
    - **$0-Cost Email Magic Link Fallback**: Buyers editing a review from a new device can request a free magic link emailed to `buyer_email` (`/reviews/request-edit-link`).
@@ -286,7 +323,7 @@ stateDiagram-v2
    - Visual carousels embedded on Home (`/`) and Shops (`/shops`) showcasing top reviews with **"Verified Rating"** headers and **"View All Reviews"** navigation buttons.
 
 #### Database Models (`backend/apps/reviews/models.py`)
-- `SellerReview`: Holds `transaction` (`OneToOneField`), `seller`, `buyer`, `rating`, `quality_rating`, `speed_rating`, `communication_rating`, `comment`, `image_url`, `created_at`.
+- `SellerReview`: Holds `transaction` (`OneToOneField`), `seller`, `buyer`, `rating`, `quality_rating`, `speed_rating`, `communication_rating`, `comment`, `image_url`, `edit_count`, `created_at`, `updated_at`.
 - `ReviewVote`: Tracks user votes (`UPVOTE` / `DOWNVOTE`) to prevent duplicate voting.
 
 ---
@@ -344,37 +381,56 @@ stateDiagram-v2
 
 ---
 
-### Module J: Admin Operations Portal
+### Module J: Admin Operations & Multi-Party Intelligence Portal
 
 #### Key Features & Workflows
 1. **Master Overview Dashboard (`/admin-portal`)**:
    - High-level KPIs: Total Platform Volume (GHS), Active Escrows, Total Platform Revenue, Total Registered Users, Active Sellers.
    - Real-time Ledger Balance & Platform Funds status.
 
-2. **All Transactions Management**:
+2. **All Transactions Management & Deep Inspection**:
    - Filterable datatable of all transactions across the system with status filters (Pending, Escrow Held, Delivered, Released, Disputed, Refunded).
+   - Deep Inspection Modal (`selectedTxnId`) providing direct access to double-entry ledger audits, delivery logs, waybill inspection photos, and 1-click links to Buyer and Seller intelligence profiles.
    - One-click export to **PDF** and **Excel** formats.
 
-3. **Dispute Resolution Desk**:
+3. **Dispute Resolution & Arbitration Intelligence Desk**:
    - Centralized queue for resolving open buyer/seller disputes.
+   - Side-by-side **Seller Storefront Dossier** (`<AdminSellerDetailsModal>`) and **Buyer Intelligence Dossier** (`<AdminBuyerDetailsModal>`) cards inside the arbitration modal so arbiters can inspect past histories before ruling.
+   - Embedded `DisputeChatTimeline` showing full chronological conversation stream and uploaded evidence.
 
-4. **User & Identity Verification Desk**:
-   - Review pending Ghana Card submissions, view documents, approve/reject identity verification.
+4. **360° Buyer / User Intelligence Engine (`GET /admin/buyers/intelligence`)**:
+   - Arbiters can query any buyer or user by **Phone Number, Email Address, or User ID**.
+   - Comprehensive multi-tab profile:
+     - **Identity & KYC**: Registered user status, verified Ghana Card status, phone/email verification badges.
+     - **Spend & Escrow Volume**: Lifetime orders, total GMV spent (GHS), active orders in escrow.
+     - **Dispute Health & Serial Disputer Profiling**: Total disputes raised, dispute rate %, retracted dispute tally, refunded/cancelled order tallies.
+     - **Known Shipping Addresses**: Unique list of historical delivery addresses with 1-click copy.
+     - **Full Order Trail & Dispute Records**: Chronological orders placed across all sellers with direct audit links.
+     - **Submitted Seller Reviews**: All ratings and written feedback left for merchants.
 
-5. **Seller Directory & Dual Health Risk Status**:
+5. **Seller Storefront & Compliance Intelligence Engine (`GET /admin/sellers/:id/details`)**:
+   - 1-click administrative summary displaying store banners, avatar, verified KYC status, active/archived payment links, lifetime revenue, wallet balance, customer review metrics (overall, speed, communication), and automated compliance health flags.
+
+6. **User & Identity Verification Desk**:
+   - Review pending Ghana Card submissions, view documents, approve/reject identity verification with instant badge synchronization.
+
+7. **Seller Directory & Dual Health Risk Status**:
    - Full list of all registered sellers displaying verified transaction metrics and dual risk badges (`Disputes: X.X%` and `Expiry: X.X%`).
    - Manual admin actions to Suspend or Reinstate seller accounts.
 
-6. **Suspension Appeals Desk (Tab 4)**:
+8. **Suspension Appeals Desk (Tab 4)**:
    - Centralized interface displaying all seller account suspension appeals with real-time status (`PENDING`, `APPROVED`, `REJECTED`).
    - Side-by-side view of seller justification and remediation proposal.
    - Administrative review actions to Approve (with automatic clean-slate reinstatement `seller.reinstated_at = timezone.now()`) or Reject with notes.
 
-7. **Dynamic Platform & Governance Settings (Tab 7)**:
+9. **Dynamic Platform & Governance Settings (Tab 7)**:
    - Superuser live configuration for Payment Gateway, Carrier providers, Shipping Timelines, Return Windows, Dispute Governance Thresholds (Min Sample, Alert, Warning, Suspension), and Dispatch Expiry Governance Thresholds (`dispatch_expiry_warning_threshold`, `dispatch_expiry_suspension_threshold`).
 
-#### Frontend Component
+#### Frontend Components
 - [`AdminDashboardView.tsx`](file:///d:/PROJECTS/Hend_Trust/frontend/src/views/AdminDashboardView.tsx)
+- [`AdminSellerDetailsModal.tsx`](file:///d:/PROJECTS/Hend_Trust/frontend/src/components/AdminSellerDetailsModal.tsx)
+- [`AdminBuyerDetailsModal.tsx`](file:///d:/PROJECTS/Hend_Trust/frontend/src/components/AdminBuyerDetailsModal.tsx)
+
 
 ---
 
@@ -413,24 +469,29 @@ stateDiagram-v2
 
 | Path | View Component | Access Level | Description |
 | :--- | :--- | :--- | :--- |
-| `/` | `HomeView.tsx` | Public | Homepage showcasing hero section, how escrow works, recent verified reviews carousel, and CTA buttons. |
+| `/` | `HomeView.tsx` | Public | Homepage showcasing hero banner, interactive Escrow Fee Calculator, floating calculator widget, how escrow works, reviews carousel, and CTA. |
+| `/for-buyers` | `ForBuyersView.tsx` | Public | Dedicated buyer landing page highlighting 100% money-back guarantee, MoMo escrow protection, OTP delivery, and inspection windows. |
+| `/for-sellers` | `ForSellersView.tsx` | Public | Dedicated seller landing page detailing zero payment defaults, instant payment links, bus/courier dispatch options, and fee handling. |
+| `/how-it-works` | `HowItWorksView.tsx` | Public | Step-by-step visual escrow walkthrough with integrated interactive live Escrow Fee Calculator. |
+| `/trust-center` | `TrustCenterView.tsx` | Public | Trust, safety, bank-grade ledger security, KYC compliance, and buyer/seller dispute rules. |
+| `/guides` | `GuidesHubView.tsx` | Public | Visual step-by-step educational guides hub for buyers and sellers in Ghana social commerce. |
 | `/shops` | `ShopsDirectoryView.tsx` | Public | Directory of verified sellers with category filters, search bar, and recent reviews carousel. |
 | `/store/:username` | `SellerStoreView.tsx` | Public | Individual seller storefront displaying store banner, bio, social links, products, and customer review cards. |
 | `/reviews` | `ReviewsView.tsx` | Public | Dedicated All Reviews page with star-rating filter chips (1★-5★) and live search bar. |
-| `/pay/:slug` | `PublicCheckoutView.tsx` | Public | Secure checkout page for buyers to pay via MoMo, Card, or GhanaQR. |
-| `/tracking` | `TrackingView.tsx` | Public | Order tracking page for inspecting order progress using reference number. |
-| `/help` | `HelpView.tsx` | Public | Help Center & FAQ page. |
+| `/pay/:slug` | `PublicCheckoutView.tsx` | Public | Secure checkout page for buyers to pay via MoMo, Card, or GhanaQR with real-time fee calculation. |
+| `/tracking` | `TrackingView.tsx` | Public | Order tracking page for inspecting order progress using reference number and upfront 2-step OTP verification. |
+| `/help` | `HelpView.tsx` | Public | Help Center & FAQ platform guide. |
 | `/contact` | `ContactView.tsx` | Public | Customer support contact page. |
 | `/login` | `LoginView.tsx` | Public | Account login page. |
-| `/register` | `RegisterView.tsx` | Public | Buyer & Seller registration page. |
+| `/register` | `RegisterView.tsx` | Public | Buyer & Seller registration page with referral code tracking. |
 | `/forgot-password` | `ForgotPasswordView.tsx` | Public | Password recovery request page. |
 | `/reset-password` | `ResetPasswordView.tsx` | Public | Password reset entry page. |
 | `/activate` | `ActivateAccountView.tsx` | Public | Email OTP activation page. |
-| `/dashboard` | `DashboardView.tsx` | Authenticated | Buyer & Seller main dashboard for managing orders, payment links, and disputes. |
+| `/dashboard` | `DashboardView.tsx` | Authenticated | Buyer & Seller main dashboard for managing orders, payment links, referral rewards, and disputes. |
 | `/links` | `LinksView.tsx` | Authenticated (Seller) | Payment link creation and management interface. |
 | `/links/create` | `CreatePaymentLinkView.tsx` | Authenticated (Seller) | Form for building dynamic or fixed price payment links with Account Suspended modal appeal integration. |
 | `/ledger` | `LedgerView.tsx` | Authenticated (Seller) | Financial wallet, balance breakdown, and withdrawal requests. |
-| `/profile` | `ProfileView.tsx` | Authenticated | User profile management, security settings, and Ghana Card KYC upload. |
+| `/profile` | `ProfileView.tsx` | Authenticated | User profile management, security settings, embeddable trust badges, and Ghana Card KYC upload. |
 | `/developer` | `DeveloperView.tsx` | Authenticated (Seller) | Developer documentation, API overview, and webhook configuration. |
 | `/developer/keys` | `DeveloperKeysView.tsx` | Authenticated (Seller) | API Key management portal (Live vs Sandbox keys). |
 | `/admin-portal` | `AdminDashboardView.tsx` | Admin Only | Master operations dashboard, disputes desk, KYC approvals, suspension appeals desk, ledger audits, and platform settings. |

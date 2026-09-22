@@ -5,12 +5,28 @@ import { Link as RouterLink } from 'react-router-dom';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
 import { useEscapeKey } from '../utils/useEscapeKey';
 
+export interface SellerPaymentLink {
+  id: string;
+  title: string;
+  description: string;
+  price_ghs: number | string;
+  shipping_fee_ghs: number | string;
+  fee_handling: 'PASS_TO_BUYER' | 'ABSORB_FEE';
+  intended_buyer_phone?: string;
+  image_url?: string;
+  category?: string;
+  created_at: string;
+  url: string;
+  is_active: boolean;
+  is_archived: boolean;
+}
+
 export const LinksView: React.FC = () => {
-  const [links, setLinks] = useState<any[]>([]);
+  const [links, setLinks] = useState<SellerPaymentLink[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [copiedId, setCopiedId] = useState<string | null>(null);
-  const [selectedLink, setSelectedLink] = useState<any | null>(null);
+  const [selectedLink, setSelectedLink] = useState<SellerPaymentLink | null>(null);
 
   useEscapeKey(() => setSelectedLink(null), Boolean(selectedLink));
 
@@ -361,11 +377,11 @@ export const LinksView: React.FC = () => {
 
       {/* Link Detail & QR Code Modal */}
       {selectedLink && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200 dark:border-slate-800 max-h-[90vh] flex flex-col animate-in zoom-in-95 duration-200">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl max-w-lg w-full overflow-hidden border border-gray-200 dark:border-slate-800 max-h-[90vh] sm:max-h-[85vh] flex flex-col animate-in zoom-in-95 duration-200 my-auto">
             
             {/* Header */}
-            <div className="p-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/60 dark:bg-slate-900/60">
+            <div className="p-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/60 dark:bg-slate-900/60 shrink-0">
               <div>
                 <h3 className="text-lg font-bold text-gray-900 dark:text-white">Payment Link Details</h3>
                 <p className="text-xs text-gray-500 dark:text-slate-400">Created on {new Date(selectedLink.created_at).toLocaleDateString(undefined, { dateStyle: 'medium' })}</p>
@@ -402,8 +418,12 @@ export const LinksView: React.FC = () => {
                     <span className="text-xs font-mono font-bold text-blue-700 dark:text-blue-300 bg-white dark:bg-slate-800 px-2 py-0.5 rounded-md border border-blue-200 dark:border-slate-700">
                       GHS {Number(selectedLink.price_ghs).toFixed(2)}
                     </span>
-                    <span className="text-[10px] font-bold uppercase tracking-wider text-slate-600 dark:text-slate-300 bg-slate-200/80 dark:bg-slate-800 px-2 py-0.5 rounded-md">
-                      {selectedLink.fee_handling === 'PASS_TO_BUYER' ? 'Fee Passed to Buyer' : 'Fee Absorbed'}
+                    <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-md ${
+                      selectedLink.fee_handling === 'ABSORB_FEE'
+                        ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800'
+                        : 'bg-blue-100 dark:bg-blue-950/60 text-blue-800 dark:text-blue-300 border border-blue-200 dark:border-blue-800'
+                    }`}>
+                      {selectedLink.fee_handling === 'ABSORB_FEE' ? 'Fee Absorbed (Seller Pays)' : 'Fee Passed to Buyer'}
                     </span>
                   </div>
                 </div>
@@ -442,33 +462,47 @@ export const LinksView: React.FC = () => {
               </div>
 
               {/* Financial Breakdown Table */}
-              <div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-gray-200 dark:border-slate-800 text-xs space-y-2">
-                <p className="font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">Fee & Payout Breakdown</p>
-                <div className="flex justify-between text-gray-600 dark:text-slate-400">
-                  <span>Item Price:</span>
-                  <span className="font-mono font-semibold text-gray-900 dark:text-slate-200">GHS {Number(selectedLink.price_ghs).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-gray-600 dark:text-slate-400">
-                  <span>Shipping Fee:</span>
-                  <span className="font-mono font-semibold text-gray-900 dark:text-slate-200">GHS {Number(selectedLink.shipping_fee_ghs || 0).toFixed(2)}</span>
-                </div>
-                <div className="flex justify-between text-gray-600 dark:text-slate-400">
-                  <span>Escrow Fee (1.5% + GHS 10):</span>
-                  <span className="font-mono font-semibold text-gray-900 dark:text-slate-200">
-                    GHS {(((Number(selectedLink.price_ghs) + Number(selectedLink.shipping_fee_ghs || 0)) * 0.015) + 10).toFixed(2)}
-                  </span>
-                </div>
-                <div className="flex justify-between text-blue-700 dark:text-blue-400 font-bold border-t border-gray-200 dark:border-slate-700 pt-2 text-sm">
-                  <span>Total Buyer Payment:</span>
-                  <span className="font-mono">
-                    GHS {(
-                      selectedLink.fee_handling === 'PASS_TO_BUYER'
-                        ? (Number(selectedLink.price_ghs) + Number(selectedLink.shipping_fee_ghs || 0)) + (((Number(selectedLink.price_ghs) + Number(selectedLink.shipping_fee_ghs || 0)) * 0.015) + 10)
-                        : (Number(selectedLink.price_ghs) + Number(selectedLink.shipping_fee_ghs || 0))
-                    ).toFixed(2)}
-                  </span>
-                </div>
-              </div>
+              {(() => {
+                const itemPrice = Number(selectedLink.price_ghs) || 0;
+                const shippingFee = Number(selectedLink.shipping_fee_ghs) || 0;
+                const gross = itemPrice + shippingFee;
+                const escrowFee = (gross * 0.015) + 10;
+                const isAbsorbed = selectedLink.fee_handling === 'ABSORB_FEE';
+                const totalBuyerPays = isAbsorbed ? gross : gross + escrowFee;
+                const netSellerPayout = isAbsorbed ? gross - escrowFee : gross;
+
+                return (
+                  <div className="bg-gray-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-gray-200 dark:border-slate-800 text-xs space-y-2">
+                    <p className="font-bold text-gray-700 dark:text-slate-300 uppercase tracking-wider text-[10px]">Fee & Payout Breakdown</p>
+                    <div className="flex justify-between text-gray-600 dark:text-slate-400">
+                      <span>Item Price:</span>
+                      <span className="font-mono font-semibold text-gray-900 dark:text-slate-200">GHS {itemPrice.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600 dark:text-slate-400">
+                      <span>Shipping Fee:</span>
+                      <span className="font-mono font-semibold text-gray-900 dark:text-slate-200">GHS {shippingFee.toFixed(2)}</span>
+                    </div>
+                    <div className="flex justify-between text-gray-600 dark:text-slate-400">
+                      <span>Escrow Protection Fee (1.5% + GHS 10):</span>
+                      <span className="font-mono font-semibold text-gray-900 dark:text-slate-200">
+                        GHS {escrowFee.toFixed(2)} <span className="text-[10px] text-gray-500">({isAbsorbed ? 'Seller pays' : 'Buyer pays'})</span>
+                      </span>
+                    </div>
+                    {isAbsorbed && (
+                      <div className="flex justify-between text-emerald-700 dark:text-emerald-400 font-semibold border-t border-gray-200 dark:border-slate-700 pt-1.5">
+                        <span>Net Seller Payout (Item + Ship − Fee):</span>
+                        <span className="font-mono font-bold">GHS {netSellerPayout.toFixed(2)}</span>
+                      </div>
+                    )}
+                    <div className="flex justify-between text-blue-700 dark:text-blue-400 font-bold border-t border-gray-200 dark:border-slate-700 pt-2 text-sm">
+                      <span>Total Buyer Payment:</span>
+                      <span className="font-mono">
+                        GHS {totalBuyerPays.toFixed(2)}
+                      </span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Direct Checkout Link Bar */}
               <div>

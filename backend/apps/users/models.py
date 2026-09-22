@@ -5,7 +5,10 @@ from django.contrib.auth.models import AbstractUser, UserManager
 class Role(models.TextChoices):
     SELLER = 'SELLER', 'Seller'
     BUYER = 'BUYER', 'Buyer'
-    ADMIN = 'ADMIN', 'Admin'
+    ADMIN = 'ADMIN', 'Admin / HR Manager'
+    ARBITER = 'ARBITER', 'Dispute Arbiter'
+    COMPLIANCE_OFFICER = 'COMPLIANCE_OFFICER', 'KYC / Compliance Officer'
+    FINANCE_ADMIN = 'FINANCE_ADMIN', 'Finance Admin / Accountant'
     SUPPORT_AGENT = 'SUPPORT_AGENT', 'Support Agent'
 
 class PayoutMode(models.TextChoices):
@@ -75,13 +78,52 @@ class User(AbstractUser):
     suspended_at = models.DateTimeField(null=True, blank=True)
     reinstated_at = models.DateTimeField(null=True, blank=True)
 
+    # Referral & Growth Engine
+    referral_code = models.CharField(max_length=30, unique=True, blank=True, null=True, db_index=True)
+    referred_by = models.ForeignKey('self', on_delete=models.SET_NULL, null=True, blank=True, related_name='direct_referees')
+    wallet_bonus_credits_ghs = models.DecimalField(max_digits=12, decimal_places=2, default=0.00, help_text="Referral discount & promotional credit balance")
+
     def save(self, *args, **kwargs):
-        if (self.is_superuser or self.is_staff) and self.role == Role.BUYER:
+        admin_roles = [Role.ADMIN, Role.ARBITER, Role.COMPLIANCE_OFFICER, Role.FINANCE_ADMIN, Role.SUPPORT_AGENT]
+        if (self.is_superuser or self.is_staff) and self.role not in admin_roles and self.role == Role.BUYER:
             self.role = Role.ADMIN
+        
+        if not self.referral_code:
+            import secrets
+            clean_uname = "".join(c for c in (self.username or 'HT') if c.isalnum()).upper()[:8]
+            rand_suffix = secrets.token_hex(3).upper()
+            self.referral_code = f"{clean_uname or 'HT'}-{rand_suffix}"
+
         super().save(*args, **kwargs)
 
     def __str__(self):
         return f"{self.username} ({self.get_role_display()})"
+
+
+class ReferralStatus(models.TextChoices):
+    PENDING = 'PENDING', 'Pending First Transaction'
+    COMPLETED = 'COMPLETED', 'Completed & Rewarded'
+    EXPIRED = 'EXPIRED', 'Expired'
+
+
+class Referral(models.Model):
+    objects = models.Manager()
+    id = models.UUIDField(primary_key=True, default=generate_uuid7, editable=False)
+    referrer = models.ForeignKey(User, on_delete=models.CASCADE, related_name='referrals_sent')
+    referred_user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='referral_source')
+    code_used = models.CharField(max_length=30, db_index=True)
+    status = models.CharField(max_length=20, choices=ReferralStatus.choices, default=ReferralStatus.PENDING, db_index=True)
+    reward_amount_ghs = models.DecimalField(max_digits=10, decimal_places=2, default=15.00)
+    referee_discount_ghs = models.DecimalField(max_digits=10, decimal_places=2, default=10.00)
+    completed_transaction = models.ForeignKey('escrow.Transaction', on_delete=models.SET_NULL, null=True, blank=True, related_name='referral_awards')
+    rewarded_at = models.DateTimeField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)
+
+    class Meta:
+        ordering = ['-created_at']
+
+    def __str__(self):
+        return f"Referral: {self.referrer.username} -> {self.referred_user.username} ({self.status})"
 
 
 class AppealStatus(models.TextChoices):

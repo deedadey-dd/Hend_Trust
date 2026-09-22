@@ -9,33 +9,36 @@ import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.webp';
 import SEOHead from '../components/SEOHead';
 import RecentReviewsCarousel from '../components/RecentReviewsCarousel';
+import EscrowFeeCalculator from '../components/EscrowFeeCalculator';
+import FloatingCalculatorWidget from '../components/FloatingCalculatorWidget';
+import { MARKETPLACE_CATEGORIES } from '../constants/categories';
 
 const STEPS = [
   {
     icon: Link2,
-    color: 'text-blue-600',
-    bg: 'bg-blue-50',
+    color: 'text-[#0363ff]',
+    bg: 'bg-blue-50 dark:bg-blue-950/40',
     title: '1. Seller Creates Payment Link',
     desc: 'Set your item price, shipping cost, and choose whether to absorb or pass the platform escrow fee.'
   },
   {
     icon: Shield,
-    color: 'text-indigo-600',
-    bg: 'bg-indigo-50',
+    color: 'text-[#ff6d1d]',
+    bg: 'bg-orange-50 dark:bg-orange-950/40',
     title: '2. Buyer Pays into Escrow',
     desc: 'Pay via Mobile Money (MTN, Telecel, AT) or Card. Funds are held safely in system escrow.'
   },
   {
     icon: Truck,
-    color: 'text-purple-600',
-    bg: 'bg-purple-50',
+    color: 'text-slate-700 dark:text-slate-300',
+    bg: 'bg-slate-100 dark:bg-slate-800',
     title: '3. Multi-Channel Dispatch',
     desc: 'Ship via formal courier (DHL, Speedaf, FedEx) with live tracking links or informal bus station with Secret 6-Digit OTP.'
   },
   {
     icon: CheckCircle,
     color: 'text-emerald-600',
-    bg: 'bg-emerald-50',
+    bg: 'bg-emerald-50 dark:bg-emerald-950/40',
     title: '4. Tiered Inspection & Payout',
     desc: 'Buyer inspects during a 24h, 48h, or 72h window. Upon confirmation, funds release instantly to seller wallet.'
   },
@@ -127,43 +130,24 @@ export default function HomeView() {
         jsonLd={homeJsonLd}
       />
 
-      {/* ── Hero ── */}
-      <section className="relative overflow-hidden bg-slate-950 text-white min-h-[560px] sm:min-h-[640px] flex flex-col justify-between border-b border-slate-800">
+      {/* ── Hero Banner (100% Unobstructed Artwork & Value Proposition) ── */}
+      <section className="relative overflow-hidden bg-slate-950 text-white min-h-[500px] sm:min-h-[580px] md:min-h-[640px] flex flex-col justify-between border-b border-slate-800">
         <div className="absolute inset-0 z-0">
           <img src={heroBanner} alt="Hero Banner" className="w-full h-full object-cover opacity-100" fetchPriority="high" decoding="async" loading="eager" />
         </div>
-        <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-2 flex flex-col justify-between flex-1">
-          {/* Bottom: Marketplace Search Box & Action Buttons */}
-          <div className="text-center space-y-1 mt-auto pt-6">
-            {/* Marketplace Search Box */}
-            <form onSubmit={handleSearchSubmit} className="relative max-w-xl mx-auto shadow-2xl">
-              <Search className="h-5 w-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" />
-              <input
-                type="text"
-                value={searchQuery}
-                onChange={e => setSearchQuery(e.target.value)}
-                placeholder="Search verified shops, sellers, or products (e.g. 'iPhone 15', 'Accra Tech')..."
-                className="w-full pl-10 sm:pl-12 pr-32 py-3.5 hero-search-input rounded-2xl text-sm sm:text-base outline-none font-medium transition-all shadow-2xl"
-              />
-              <button
-                type="submit"
-                className="absolute right-1.5 top-1.5 bottom-1.5 px-2 sm:px-2 bg-blue-600/90 hover:bg-blue-500 text-white font-bold text-sm sm:text-base rounded-xl transition shadow-lg flex items-center gap-1.5"
-              >
-                <Store className="h-4 w-4" /> Search Shops
-              </button>
-            </form>
-
-            {/* Action Buttons: 2 Buttons in 1 Row on Mobile */}
-            <div className="flex flex-row gap-3 justify-center items-center pt-1">
+        <div className="relative z-10 max-w-5xl w-full mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-6 flex flex-col justify-between flex-1">
+          {/* Action Buttons: Clean & Unobstructed at bottom of hero banner */}
+          <div className="text-center mt-auto pt-6">
+            <div className="flex flex-row gap-3 justify-center items-center flex-wrap">
               {isAuthenticated ? (
                 <Link to="/dashboard/create-link"
-                  className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
+                  className="inline-flex items-center justify-center gap-2 px-6 sm:px-8 py-3.5 rounded-xl bg-blue-600/95 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
                   Create Payment Link <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                 </Link>
               ) : (
                 <>
                   <Link to="/register"
-                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-blue-600/90 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
+                    className="inline-flex items-center justify-center gap-2 px-5 sm:px-8 py-3.5 rounded-xl bg-blue-600/95 hover:bg-blue-500 text-white font-extrabold text-sm sm:text-base transition-all shadow-xl shadow-blue-600/30 hover:shadow-blue-500/40 hover:-translate-y-0.5 shrink-0">
                     Start Selling Free <ArrowRight className="h-4 w-4 sm:h-5 sm:w-5" />
                   </Link>
                   <Link to="/login"
@@ -177,6 +161,61 @@ export default function HomeView() {
                 <HelpCircle className="h-4 w-4 text-amber-300" /> Platform Guide
               </Link>
             </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ── Compact Marketplace & Product Discovery Strip ── */}
+      <section className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 py-6 sm:py-7 px-4 sm:px-6 transition-colors shadow-2xs">
+        <div className="max-w-4xl mx-auto space-y-3 sm:space-y-3.5">
+          {/* Single Line Header Above Search Bar */}
+          <div className="flex items-center justify-between gap-2">
+            <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+              <Store className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+              <span>Search Marketplace & Products</span>
+            </h2>
+            <Link
+              to="/shops"
+              className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 shrink-0"
+            >
+              Browse all shops <ArrowRight className="h-3 w-3" />
+            </Link>
+          </div>
+
+          {/* Search Box */}
+          <form onSubmit={handleSearchSubmit} className="relative shadow-xs rounded-xl sm:rounded-2xl">
+            <Search className="h-4 w-4 sm:h-5 sm:w-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10" />
+            <input
+              type="text"
+              value={searchQuery}
+              onChange={e => setSearchQuery(e.target.value)}
+              aria-label="Search verified shops"
+              placeholder="Search verified shops, products, descriptions, or categories (e.g. 'iPhone 15', 'Sneakers', 'Solar')..."
+              className="w-full pl-10 sm:pl-12 pr-28 sm:pr-32 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all"
+            />
+            <button
+              type="submit"
+              className="absolute right-1 top-1 bottom-1 px-3.5 sm:px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-lg sm:rounded-xl transition shadow-xs flex items-center gap-1 cursor-pointer"
+            >
+              <Search className="h-3.5 w-3.5" /> Search
+            </button>
+          </form>
+
+          {/* Strictly 2-Line Horizontal Category Matrix */}
+          <div className="grid grid-rows-2 grid-flow-col auto-cols-max gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar py-0.5 sm:justify-center">
+            {MARKETPLACE_CATEGORIES.map(cat => {
+              const Icon = cat.icon;
+              return (
+                <Link
+                  key={cat.id}
+                  to={`/shops?category=${encodeURIComponent(cat.name)}`}
+                  className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-lg bg-slate-100 dark:bg-slate-800/90 hover:bg-blue-50 hover:text-blue-700 hover:border-blue-300 dark:hover:bg-blue-950/40 dark:hover:text-blue-300 dark:hover:border-blue-700 text-slate-700 dark:text-slate-300 text-xs font-semibold border border-slate-200/80 dark:border-slate-700 transition-all shadow-2xs whitespace-nowrap shrink-0"
+                >
+                  <Icon className="h-3 w-3 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <span>{cat.shortName || cat.name}</span>
+                </Link>
+              );
+            })}
           </div>
         </div>
       </section>
@@ -258,6 +297,23 @@ export default function HomeView() {
         </div>
       </section>
 
+      {/* ── Fee Calculator Section ── */}
+      <section className="max-w-5xl mx-auto px-6 py-16 text-slate-900 dark:text-white">
+        <div className="text-center mb-10">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-blue-100 text-blue-800 dark:bg-blue-900/50 dark:text-blue-300 mb-3">
+            Transparent Pricing
+          </div>
+          <h2 className="text-3xl sm:text-4xl font-black mb-3 text-slate-900 dark:text-white">Estimate Your Escrow Fees</h2>
+          <p className="text-slate-600 dark:text-slate-400 max-w-xl mx-auto text-sm sm:text-base font-medium">
+            Know exactly what you pay or receive upfront. Platform protection fee is 1.5% + GHS 10.00 calculated on the item price plus delivery.
+          </p>
+        </div>
+
+        <div className="max-w-4xl mx-auto">
+          <EscrowFeeCalculator defaultAmount={250} />
+        </div>
+      </section>
+
       {/* ── CTA ── */}
       <section className="bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-950 text-white border-t border-slate-800">
         <div className="max-w-3xl mx-auto px-6 py-20 text-center">
@@ -298,6 +354,9 @@ export default function HomeView() {
           </div>
         </div>
       </footer>
+
+      {/* ── Floating Escrow Calculator Widget ── */}
+      <FloatingCalculatorWidget />
     </div>
   );
 }

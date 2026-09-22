@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { Wallet, Filter, Loader2, ArrowUpRight, ArrowDownLeft, Send, AlertTriangle, CheckCircle, X } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { useEscapeKey } from '../utils/useEscapeKey';
 
 const PAYSTACK_FEE_RATE = 0.0195;
 
@@ -116,6 +117,7 @@ export const LedgerView: React.FC = () => {
   };
 
   const [selectedEntry, setSelectedEntry] = useState<any | null>(null);
+  useEscapeKey(() => setSelectedEntry(null), Boolean(selectedEntry));
 
   const ENTRY_TYPE_LABELS: Record<string, string> = {
     ESCROW_RELEASE_NET: 'Sale Payout Credit',
@@ -486,11 +488,11 @@ export const LedgerView: React.FC = () => {
 
       {/* Transaction & Ledger Entry Inspection Modal */}
       {selectedEntry && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden relative">
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm animate-in fade-in duration-200 overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-lg w-full max-h-[90vh] sm:max-h-[85vh] flex flex-col overflow-hidden relative my-auto">
             
             {/* Header */}
-            <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/80 dark:bg-slate-900/80">
+            <div className="px-5 sm:px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/80 dark:bg-slate-900/80 shrink-0">
               <div className="flex items-center gap-2.5">
                 <div className="p-2 bg-blue-100 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 rounded-xl">
                   <Wallet className="h-5 w-5" />

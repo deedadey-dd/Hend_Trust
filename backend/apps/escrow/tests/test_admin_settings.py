@@ -64,18 +64,18 @@ def test_admin_settings_endpoint_forbidden_non_superuser(db):
 
 @pytest.mark.django_db
 def test_admin_settings_endpoint_forbidden_regular_admin(db):
-    normal_admin = User.objects.create_user(
-        username="normal_admin",
-        email="admin_staff@example.com",
+    normal_staff = User.objects.create_user(
+        username="normal_staff",
+        email="support_staff@example.com",
         password="password123",
-        role=Role.ADMIN,
+        role=Role.SUPPORT_AGENT,
         is_staff=True,
         is_superuser=False
     )
     client = TestClient(escrow_router)
     auth_headers = {"Authorization": "Bearer test_token"}
 
-    with patch('ninja_jwt.authentication.JWTAuth.__call__', return_value=normal_admin):
+    with patch('ninja_jwt.authentication.JWTAuth.__call__', return_value=normal_staff):
         get_res = client.get("/admin/settings", headers=auth_headers)
         assert get_res.status_code == 403
         post_res = client.post("/admin/settings", json={"active_payment_gateway": "HUBTEL"}, headers=auth_headers)

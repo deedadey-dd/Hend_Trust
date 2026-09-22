@@ -65,6 +65,7 @@ class RegisterSchema(Schema):
     password: str
     phone_number: str
     role: Optional[str] = 'SELLER'
+    referral_code: Optional[str] = None
 
 class LoginSchema(Schema):
     username: str
@@ -279,6 +280,14 @@ def register(request, data: RegisterSchema):
         role=data.role or 'SELLER',
         is_email_verified=False
     )
+
+    if data.referral_code:
+        try:
+            from apps.users.referrals import apply_referral_code
+            apply_referral_code(user, data.referral_code)
+        except Exception as ref_err:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to link referral code on registration for {user.username}: {ref_err}")
 
     try:
         send_account_activation_email(user, request)
@@ -1010,5 +1019,227 @@ def get_appeal_status(request):
         "created_at": appeal.created_at.isoformat(),
         "reviewed_at": appeal.reviewed_at.isoformat() if appeal.reviewed_at else None,
     }
+
+
+class ApplyReferralSchema(Schema):
+    referral_code: str
+
+
+class BuyerReferralHubSchema(Schema):
+    phone_number: str
+
+
+@auth_router.get("/validate-referral", response=dict)
+def validate_referral_endpoint(request, code: str):
+    """
+    Validates a referral code or referrer username/phone and returns welcome reward metadata.
+    """
+    from apps.users.referrals import validate_public_referral_code
+    return validate_public_referral_code(code)
+
+
+@auth_router.post("/buyer-referral", response=dict)
+def buyer_referral_endpoint(request, data: BuyerReferralHubSchema):
+    """
+    Retrieves or generates buyer referral link, reward stats, and credit history by phone number.
+    """
+    from apps.users.referrals import get_buyer_phone_referral_stats
+    res = get_buyer_phone_referral_stats(data.phone_number)
+    if not res.get("success"):
+        raise HttpError(400, res.get("message", "Failed to retrieve referral profile."))
+    return res
+
+
+@profile_router.get("/referrals/stats", response=dict)
+def get_referral_stats_endpoint(request):
+    """
+    Returns referral dashboard statistics and recent referrals for the logged-in user.
+    """
+    from apps.users.referrals import get_user_referral_stats
+    return get_user_referral_stats(request.user)
+
+
+@profile_router.get("/rewards-breakdown", response=dict)
+def get_rewards_breakdown_endpoint(request):
+    """
+    Returns itemized promotional earnings and platform fee offset redemption breakdown for the logged-in user.
+    """
+    from apps.users.referrals import get_seller_rewards_breakdown
+    return get_seller_rewards_breakdown(request.user)
+
+
+@profile_router.post("/referrals/apply", response=dict)
+def apply_referral_endpoint(request, data: ApplyReferralSchema):
+    """
+    Applies a referral code to the logged-in user's account if not already attributed.
+    """
+    from apps.users.referrals import apply_referral_code
+    res = apply_referral_code(request.user, data.referral_code)
+    if not res.get("success"):
+        raise HttpError(400, res.get("message", "Failed to apply referral code."))
+    return res
+
+
+# ─── ADMIN REFERRAL PROGRAM MANAGEMENT & AUDIT ENDPOINTS ─────────────────────
+
+class ReferralSettingsSchema(Schema):
+    referral_program_active: bool
+    referrer_reward_ghs: float
+    referee_reward_ghs: float
+    min_order_amount_for_referral_ghs: float
+    max_referrals_per_user: int
+
+
+class AdminReferralItemSchema(Schema):
+    id: str
+    referrer_id: str
+    referrer_username: str
+    referrer_phone: Optional[str] = None
+    referee_id: str
+    referee_username: str
+    referee_phone: Optional[str] = None
+    code_used: str
+    status: str
+    reward_amount_ghs: float
+    referee_discount_ghs: float
+    completed_transaction_id: Optional[str] = None
+    completed_transaction_reference: Optional[str] = None
+    created_at: str
+    rewarded_at: Optional[str] = None
+
+
+class AdminReferralMetricsSchema(Schema):
+    total_referrals: int
+    completed_count: int
+    pending_count: int
+    total_payout_ghs: float
+
+
+class AdminReferralsResponseSchema(Schema):
+    count: int
+    metrics: AdminReferralMetricsSchema
+    items: List[AdminReferralItemSchema]
+
+
+@profile_router.get("/admin/referral-settings", response=ReferralSettingsSchema)
+def get_admin_referral_settings_endpoint(request):
+    if not (request.user.is_staff or getattr(request.user, 'role', '') in ['ADMIN', 'FINANCE_ADMIN']):
+        raise HttpError(403, "Access restricted to administrators.")
+    from apps.users.referrals import get_referral_config
+    cfg = get_referral_config()
+    return {
+        "referral_program_active": cfg["referral_program_active"],
+        "referrer_reward_ghs": float(cfg["referrer_reward_ghs"]),
+        "referee_reward_ghs": float(cfg["referee_reward_ghs"]),
+        "min_order_amount_for_referral_ghs": float(cfg["min_order_amount_for_referral_ghs"]),
+        "max_referrals_per_user": cfg["max_referrals_per_user"],
+    }
+
+
+@profile_router.put("/admin/referral-settings", response=ReferralSettingsSchema)
+def update_admin_referral_settings_endpoint(request, data: ReferralSettingsSchema):
+    if not (request.user.is_staff or getattr(request.user, 'role', '') in ['ADMIN', 'FINANCE_ADMIN']):
+        raise HttpError(403, "Access restricted to administrators.")
+    from apps.users.referrals import save_referral_config
+    cfg = save_referral_config(data.dict())
+    return {
+        "referral_program_active": cfg["referral_program_active"],
+        "referrer_reward_ghs": float(cfg["referrer_reward_ghs"]),
+        "referee_reward_ghs": float(cfg["referee_reward_ghs"]),
+        "min_order_amount_for_referral_ghs": float(cfg["min_order_amount_for_referral_ghs"]),
+        "max_referrals_per_user": cfg["max_referrals_per_user"],
+    }
+
+
+@profile_router.get("/admin/referrals", response=AdminReferralsResponseSchema)
+def get_admin_referrals_endpoint(
+    request,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+):
+    from decimal import Decimal
+    if not (request.user.is_staff or getattr(request.user, 'role', '') in ['ADMIN', 'FINANCE_ADMIN', 'SUPPORT_AGENT']):
+        raise HttpError(403, "Access restricted to administrators.")
+    
+    from apps.users.models import Referral
+    qs = Referral.objects.select_related('referrer', 'referred_user', 'completed_transaction').order_by('-created_at')
+
+    if status and status != 'ALL':
+        qs = qs.filter(status=status)
+
+    if search:
+        s = search.strip()
+        qs = qs.filter(
+            Q(code_used__icontains=s) |
+            Q(referrer__username__icontains=s) |
+            Q(referrer__phone_number__icontains=s) |
+            Q(referred_user__username__icontains=s) |
+            Q(referred_user__phone_number__icontains=s) |
+            Q(completed_transaction__paystack_reference__icontains=s)
+        )
+
+    if start_date:
+        try:
+            from django.utils.dateparse import parse_date
+            sd = parse_date(start_date)
+            if sd:
+                qs = qs.filter(created_at__date__gte=sd)
+        except Exception:
+            pass
+
+    if end_date:
+        try:
+            from django.utils.dateparse import parse_date
+            ed = parse_date(end_date)
+            if ed:
+                qs = qs.filter(created_at__date__lte=ed)
+        except Exception:
+            pass
+
+    total_count = qs.count()
+    completed_count = qs.filter(status='COMPLETED').count()
+    pending_count = qs.filter(status='PENDING').count()
+    total_payout = sum(
+        (r.reward_amount_ghs + r.referee_discount_ghs for r in qs if r.status == 'COMPLETED'),
+        Decimal('0.00')
+    )
+
+    page_items = qs[offset:offset + limit]
+
+    items = []
+    for r in page_items:
+        items.append({
+            "id": str(r.id),
+            "referrer_id": str(r.referrer.id),
+            "referrer_username": r.referrer.username,
+            "referrer_phone": r.referrer.phone_number,
+            "referee_id": str(r.referred_user.id),
+            "referee_username": r.referred_user.username,
+            "referee_phone": r.referred_user.phone_number,
+            "code_used": r.code_used,
+            "status": r.status,
+            "reward_amount_ghs": float(r.reward_amount_ghs),
+            "referee_discount_ghs": float(r.referee_discount_ghs),
+            "completed_transaction_id": str(r.completed_transaction.id) if r.completed_transaction else None,
+            "completed_transaction_reference": r.completed_transaction.paystack_reference if r.completed_transaction else None,
+            "created_at": r.created_at.isoformat(),
+            "rewarded_at": r.rewarded_at.isoformat() if r.rewarded_at else None,
+        })
+
+    return {
+        "count": total_count,
+        "metrics": {
+            "total_referrals": total_count,
+            "completed_count": completed_count,
+            "pending_count": pending_count,
+            "total_payout_ghs": float(total_payout),
+        },
+        "items": items,
+    }
+
 
 

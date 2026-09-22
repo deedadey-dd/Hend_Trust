@@ -1,20 +1,58 @@
-import { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import { ShieldCheck, User, Lock, Phone, Mail, Loader2, CheckCircle2, Scale } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useNavigate, Link, useSearchParams } from 'react-router-dom';
+import { ShieldCheck, User, Lock, Phone, Mail, Loader2, CheckCircle2, Scale, Gift, Sparkles, AlertCircle } from 'lucide-react';
 import { apiClient, getErrorMessage } from '../api/client';
 import TermsModal from '../components/TermsModal';
 
 export default function RegisterView() {
+  const [searchParams] = useSearchParams();
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [phone, setPhone] = useState('');
+  const [referralCode, setReferralCode] = useState(searchParams.get('ref') || searchParams.get('referral') || '');
+  const [referralValidation, setReferralValidation] = useState<{
+    valid: boolean;
+    referrer_name?: string;
+    referrer_username?: string;
+    welcome_bonus_ghs?: number;
+    message?: string;
+  } | null>(null);
+  const [validatingRef, setValidatingRef] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [registeredEmail, setRegisteredEmail] = useState('');
   const navigate = useNavigate();
+
+  // Validate referral code when it changes
+  useEffect(() => {
+    const trimmed = referralCode.trim();
+    if (!trimmed) {
+      setReferralValidation(null);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setValidatingRef(true);
+      try {
+        const res = await apiClient.get('/auth/validate-referral', {
+          params: { code: trimmed }
+        });
+        setReferralValidation(res.data);
+      } catch (err) {
+        setReferralValidation({
+          valid: false,
+          message: 'Invalid referral code'
+        });
+      } finally {
+        setValidatingRef(false);
+      }
+    }, 400);
+
+    return () => clearTimeout(timer);
+  }, [referralCode]);
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -53,7 +91,8 @@ export default function RegisterView() {
         email: email.trim(),
         password,
         phone_number: phone.trim(),
-        role: 'SELLER'
+        role: 'SELLER',
+        referral_code: referralCode.trim() || undefined
       });
       setRegisteredEmail(email.trim());
     } catch (err: any) {
@@ -150,6 +189,58 @@ export default function RegisterView() {
                   </div>
                   <input required type="password" value={password} onChange={e => setPassword(e.target.value)} className="block w-full pl-10 sm:text-sm border-gray-300 dark:border-slate-700 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 p-3 border bg-white/50 dark:bg-slate-800/80 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 transition-colors" placeholder="••••••••" />
                 </div>
+              </div>
+
+              {/* Referral Code (Optional) */}
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
+                    Referral Code <span className="text-xs text-gray-400 font-normal">(Optional)</span>
+                  </label>
+                  {referralCode && validatingRef && (
+                    <span className="text-xs text-indigo-500 flex items-center gap-1">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Checking code...
+                    </span>
+                  )}
+                </div>
+                <div className="relative rounded-lg shadow-sm">
+                  <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                    <Gift className="h-5 w-5 text-indigo-500 dark:text-indigo-400" />
+                  </div>
+                  <input
+                    type="text"
+                    value={referralCode}
+                    onChange={e => setReferralCode(e.target.value)}
+                    className="block w-full pl-10 pr-10 sm:text-sm uppercase tracking-wider font-mono border-gray-300 dark:border-slate-700 rounded-lg focus:ring-indigo-500 focus:border-indigo-500 p-3 border bg-white/50 dark:bg-slate-800/80 text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 transition-colors"
+                    placeholder="E.G. HT-8K9X2 OR PHONE"
+                  />
+                  {referralValidation && (
+                    <div className="absolute inset-y-0 right-0 pr-3 flex items-center">
+                      {referralValidation.valid ? (
+                        <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                      ) : (
+                        <AlertCircle className="h-5 w-5 text-amber-500" />
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {referralValidation && referralValidation.valid && (
+                  <div className="mt-2 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-300 flex items-center gap-2">
+                    <Sparkles className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                    <div>
+                      <span>Referred by <strong>{referralValidation.referrer_name || referralValidation.referrer_username || 'a partner'}</strong>.</span>
+                      {referralValidation.welcome_bonus_ghs ? (
+                        <span className="font-semibold ml-1">You will receive GH₵ {referralValidation.welcome_bonus_ghs.toFixed(2)} in fee offset credits!</span>
+                      ) : null}
+                    </div>
+                  </div>
+                )}
+                {referralValidation && !referralValidation.valid && referralCode.trim() && (
+                  <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                    {referralValidation.message || 'Code not recognized. You can still register without a code.'}
+                  </p>
+                )}
               </div>
 
               <div className="flex items-start gap-2 pt-1">

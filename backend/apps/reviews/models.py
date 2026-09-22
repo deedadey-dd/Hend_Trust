@@ -42,6 +42,11 @@ class SellerReview(models.Model):
         help_text="Automatically set to False if a dispute is raised for this transaction."
     )
     
+    edit_count = models.PositiveIntegerField(
+        default=0,
+        help_text="Tracks the number of times the review has been edited/updated."
+    )
+    
     created_at = models.DateTimeField(auto_now_add=True, db_index=True)
     updated_at = models.DateTimeField(auto_now=True)
 

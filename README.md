@@ -28,10 +28,17 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Seller Default Penalty**: The defaulting seller is charged a **Non-Dispatch Default Penalty** equal to the **Platform Fee + 1.95% gateway processing fee**.
 
 ### 3. Payment Link Generation & Dynamic Fee Handling
-- **Link Creation**: Sellers create payment links specifying price, shipping fee, description, and fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`). Blocked with an interactive appeal modal if seller is suspended.
-- **Dynamic Fee Transparency**: Platform fees are calculated transparently in GHS and displayed in real-time.
+- **Link Creation & Category Tagging**: Sellers create payment links specifying item price, shipping fee, description, fee preference (`ABSORB_FEE` vs `PASS_TO_BUYER`), and item-specific **Category Tagging** from the 16 standard marketplace categories (e.g. `Phones & Tablets`, `Electronics & Appliances`, `Fashion & Apparel`, `Automotive & Spare Parts`, etc.). Blocked with an interactive appeal modal if seller is suspended.
+- **1-Click WhatsApp Escrow Generator**: Buyers inquiring about products on public seller storefronts can click "Buy via HendAxis Escrow (WhatsApp)". This opens WhatsApp with an interactive inquiry preloading an instant escrow generator link (`/create-link?title=...&price=...&category=...&img=...`). When the seller clicks the link, all item details are prefilled automatically, allowing the seller to adjust location-specific shipping fees and generate the final secure checkout link in one click.
+- **Dynamic Fee Transparency**: Platform fees are calculated transparently in GHS and displayed in real-time across checkout and public tools:
+  - **Platform Escrow Protection Fee**: $(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$
+  - **Payment Gateway Processing Fee**: $\text{Gross Amount} \times 1.95\%$ (Paystack transfer/processing fee)
+- **Interactive Fee Calculator & Floating Widget**: Public users and merchants can calculate exact buyer costs and net seller payouts on `/how-it-works` or via the interactive floating widget on the home page.
+- **Embeddable Trust Badges & Referral System**: Merchants can embed live JS/React trust badges (`/badge/:username.js`) on their external sites and earn referral rewards via `/dashboard` referrals tab.
 
-### 4. Dual Logistics Verification Engine
+### 4. Dual Logistics Verification Engine & Upfront OTP Tracking
+- **Upfront 2-Step OTP Tracking (`/tracking`)**: Both single item tracking ("Track by Order ID") and full order history tracking require upfront 6-digit OTP verification (valid for 2 hours with 60s cooldown). Once verified, the order unlocks completely with zero secondary popups.
+- **Location-Based Shipping & Delivery Agreement**: Delivery timelines and shipping fees must be mutually agreed upon before payment link generation. Delivery windows commence only after successful escrow deposit confirmation.
 - **WebP Package Evidence**: Sellers attach a WebP-optimized package/waybill photo during dispatch.
 - **Path A (Formal Courier API)**: Tracking number assignment with automated webhook status updates.
 - **Path B (Informal Station / Bus OTP)**: Driver phone, vehicle number, station details, and a 6-digit Secret OTP sent to the buyer. OTP verification confirms handoff.
@@ -44,8 +51,10 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
   - `GHS 2,000 – 9,999.99`: **48 Hours**
   - `>= GHS 10,000`: **72 Hours**
 
-### 6. Dispute Resolution, 24-Hour Settlement & Manager Extra Fees
-- **5-Image Evidence**: Buyers and sellers can upload up to **5 WebP evidence photos** per party.
+### 6. Dispute Resolution, Subsequent Dialogue Appends & Retraction Policy
+- **Subsequent Dialogue & 5-Photo Trail**: Buyers and sellers can append further updates/evidence photos (`--- [Update (Timestamp)] ---`) over time without overwriting past history (up to **5 WebP photos** total per party).
+- **WhatsApp-Style Chat Timeline**: Unifies buyer claims, seller responses, dispatch waybills, and arbitrator rulings in a color-coded chronological chat stream with expandable "Read more..." text and collapsible trail controls.
+- **Dispute Retraction & Private Settlement**: Buyers can retract their raised dispute on `/l/:id` to settle privately with the seller. Upon retraction, escrow funds are scheduled for release to the seller after 24 hours. Any transaction that entered dispute permanently forfeits customer rating permissions.
 - **Automated Review Suppression**: Raising a dispute automatically suppresses and clears any review ratings submitted for that transaction.
 - **24-Hour Settlement Guarantee**: All dispute rulings execute payouts within **24 hours**:
   - **Buyer Refund**: Returned via the **same payment medium** (Paystack MoMo/Card) used during checkout.
@@ -58,15 +67,25 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Dispute Fund Allocation & Manager Extra Penalty**:
   - **Incurred Shipping**: Non-refundable if item was dispatched (shipping cost incurred).
   - **Platform Retained Fee & Manager Extra Fee**: Managers can specify platform retained fees or levy extra penalty fees for damaged/incorrect items. Any unallocated split funds accrue to platform fee revenue.
+- **Arbitration 360° Buyer & Seller Intelligence Dossiers**: Arbiters can inspect deep intelligence dossiers on both parties (querying buyers by phone, email, or user ID to inspect lifetime orders, dispute rate %, serial disputer indicators, and historical claim trails; and inspecting seller storefronts, review ratings, GMV, and dispute health flags).
 - **1MB Image Compression**: Post-resolution evidence images are compressed server-side to $\le 1\text{MB}$ total per transaction.
 
 ### 7. Escrow-Gated Reviews & Trustpilot Rating System
-- **Verified Buyer Reviews**: Reviews can **ONLY** be submitted by buyers who have completed an escrow purchase.
+- **Verified Buyer Reviews & 1 Review Per Transaction**: Reviews can **ONLY** be submitted by buyers who have completed an escrow purchase.
+- **Review Edit Tracking & Timestamps**: Buyers can edit ratings and comments; all updates stamp transparent edit counters (`edit_count`) and audit timestamps.
 - **3-Axis Seller Rating**: Speed, Communication, and Overall Satisfaction (1 to 5 stars).
-- **Public Storefronts (`/store/:username`)**: Shows seller rating breakdown, verified review history, and seller reply responses.
+- **Public Storefronts (`/store/:username`)**: Shows seller rating breakdown, verified review history, edit badges, and seller reply responses.
 
-### 8. Public Marketplace Directory & Paid Advertised Shops (`/shops`)
-- Marketplace directory with category filtering and paid shop promotion options (GHS 50 for 7 Days / GHS 150 for 30 Days).
+### 8. Public Marketplace Directory, Ballpark Search & Paid Advertised Shops (`/shops`)
+- **16-Category Marketplace Taxonomy**: Standardized category directory with horizontal scrolling category pills (`All Categories`, `Phones & Tablets`, `Electronics & Appliances`, `Fashion & Apparel`, `Computing & Accessories`, `Beauty & Personal Care`, `Automotive & Spare Parts`, `Home & Furniture`, `Groceries & Provisions`, `Gaming & Consoles`, `Health & Wellness`, `Real Estate & Land`, `Services & Freelance`, `Solar & Power Systems`, `Agriculture & Foodstuff`, `Sports & Fitness`, `Books & Stationery`).
+- **Ballpark Multi-Token Product Search**: Multi-token search algorithm querying product titles, descriptions, categories, and store names with debounced real-time filtering and category-level cross-matching.
+- **3-Tier Page Structure**:
+  1. **Tier 1 — Sponsored Stores**: Top row dedicated to featured merchants with active paid promotion plans.
+  2. **Tier 2 — Verified Escrow Stores (2 Rows / 6 Stores + Expandable)**: Standard verified stores displayed in two balanced rows with a one-click "View All X Stores" toggle.
+  3. **Tier 3 — Live Reviews Carousel & Matched Products Grid**: Independent, non-filtered verified community reviews carousel positioned above the live search product results grid.
+- **Shop Card Visual Balance**: Standardized footer layout, fallback descriptions, and dynamic "Request Custom Order" cards for stores without active public links.
+- **Paid Store Promotion Packages**: In-platform advertising options (GHS 50 for 7 Days / GHS 150 for 30 Days) with real-time promotion expiration tracking and priority placement.
+- **Brand Identity Integration**: Unified brand styling featuring Brand Orange (`#ff6d1d`) and Brand Blue (`#0363ff`) accents across action buttons and directory highlights.
 
 ### 9. Superuser Platform Funds & Double-Entry Ledger Audit (`/admin-portal`)
 - Real-time double-entry account balances (System Bank Assets, Buyer Escrow Deposits, Platform Fee Revenue, Gateway Fee Expenses, Seller Wallet Liabilities).

@@ -45,7 +45,7 @@ class PaystackAdapter:
 
 # ─── OTP constants ────────────────────────────────────────────────────────────
 
-_OTP_TTL = 300           # 5 minutes
+_OTP_TTL = 7200          # 2 hours (7200 seconds)
 _OTP_SEND_COOLDOWN = 60  # 60 seconds between resends
 _OTP_MAX_ATTEMPTS = 5    # auto-invalidate after 5 wrong tries
 
@@ -87,7 +87,7 @@ def generate_and_send_otp(phone_number: str) -> str:
     else:
         logger.info("OTP generated for phone %s***", phone_number[:5])
 
-    msg = f"Your HendAxis Trust Checkout OTP is {otp}. Valid for 5 minutes. Do not share this code."
+    msg = f"Your HendAxis Trust Checkout OTP is {otp}. Valid for 2 hours. Do not share this code."
     from apps.core.tasks import dispatch_sms_task
     dispatch_sms_task.delay(phone_number, msg)
     return otp
@@ -117,7 +117,7 @@ def generate_and_send_email_otp(email: str) -> str:
     else:
         logger.info("Email OTP generated for %s***", email[:4])
 
-    msg = f"Your HendAxis Trust Tracking OTP is {otp}. Valid for 5 minutes. Do not share this code."
+    msg = f"Your HendAxis Trust Tracking OTP is {otp}. Valid for 2 hours. Do not share this code."
     from apps.core.tasks import dispatch_email_task
     dispatch_email_task.delay(email, "HendAxis Trust - Tracking OTP", msg)
     return otp

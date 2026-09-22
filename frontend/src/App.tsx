@@ -36,6 +36,14 @@ const DeveloperView = lazy(() => import('./views/DeveloperView'));
 const DeveloperKeysView = lazy(() => import('./views/DeveloperKeysView'));
 const AdInvoiceView = lazy(() => import('./views/AdInvoiceView').then(m => ({ default: m.AdInvoiceView })));
 
+// GTM Trust & Growth Pages
+const ForBuyersView = lazy(() => import('./views/ForBuyersView'));
+const ForSellersView = lazy(() => import('./views/ForSellersView'));
+const HowItWorksView = lazy(() => import('./views/HowItWorksView'));
+const TrustCenterView = lazy(() => import('./views/TrustCenterView'));
+const GuidesHubView = lazy(() => import('./views/GuidesHubView'));
+const ReferralsView = lazy(() => import('./views/ReferralsView'));
+
 function PageLoader() {
   return (
     <div className="min-h-screen bg-slate-950 flex flex-col items-center justify-center text-white space-y-3">
@@ -119,6 +127,17 @@ function App() {
             <Route path="/developers" element={<DeveloperView />} />
             <Route path="/docs/api" element={<DeveloperView />} />
             <Route path="/ad-invoice/:invoice_id" element={<AdInvoiceView />} />
+
+            {/* GTM Marketing, Trust & Growth Pages */}
+            <Route path="/for-buyers" element={<ForBuyersView />} />
+            <Route path="/for-sellers" element={<ForSellersView />} />
+            <Route path="/how-it-works" element={<HowItWorksView />} />
+            <Route path="/trust-center" element={<TrustCenterView />} />
+            <Route path="/security" element={<TrustCenterView />} />
+            <Route path="/guides" element={<GuidesHubView />} />
+            <Route path="/scam-prevention" element={<GuidesHubView />} />
+            <Route path="/referrals" element={<ReferralsView />} />
+            <Route path="/refer" element={<ReferralsView />} />
 
             {/* Public Checkout (no navbar shown) */}
             <Route path="/l/:linkId" element={<PublicCheckoutView />} />

@@ -233,6 +233,83 @@ export const useAdminSellerDetailsQuery = (sellerId?: string | null) => {
   });
 };
 
+export interface AdminBuyerIntelligence {
+  buyer_name: string;
+  buyer_phone: string;
+  buyer_email: string;
+  is_registered_user: boolean;
+  user_account?: {
+    id: string;
+    username: string;
+    email: string;
+    phone_number: string;
+    role: string;
+    is_active: boolean;
+    is_suspended: boolean;
+    verification_status: string;
+    is_email_verified: boolean;
+    is_phone_verified: boolean;
+    date_joined?: string | null;
+  } | null;
+  summary: {
+    total_orders: number;
+    completed_orders: number;
+    active_escrow_orders: number;
+    disputed_orders: number;
+    all_disputes_raised_count: number;
+    retracted_disputes_count: number;
+    refunded_orders: number;
+    cancelled_orders: number;
+    dispute_rate_pct: number;
+    total_spent_ghs: number;
+    first_order_at?: string | null;
+    last_order_at?: string | null;
+    known_shipping_addresses: string[];
+  };
+  recent_transactions: Array<{
+    id: string;
+    paystack_reference: string;
+    title: string;
+    seller_id: string;
+    seller_username: string;
+    shop_name: string;
+    amount_ghs: number;
+    status: string;
+    has_dispute: boolean;
+    dispute_retracted: boolean;
+    created_at: string;
+    shipping_address?: string | null;
+    delivery_method?: string | null;
+    courier_name?: string | null;
+  }>;
+  disputes_history: Array<{
+    id: string;
+    paystack_reference: string;
+    title: string;
+    seller_id: string;
+    seller_username: string;
+    shop_name: string;
+    amount_ghs: number;
+    status: string;
+    buyer_dispute_reason?: string | null;
+    seller_dispute_response?: string | null;
+    manager_dispute_notes?: string | null;
+    dispute_retracted_at?: string | null;
+    created_at: string;
+  }>;
+  reviews_given: Array<{
+    id: string;
+    seller_username: string;
+    shop_name: string;
+    rating_overall: number;
+    rating_speed: number;
+    rating_communication: number;
+    comment?: string | null;
+    created_at: string;
+    edit_count: number;
+  }>;
+}
+
 export const useAdminBuyersQuery = (search?: string) => {
   return useQuery<AdminBuyerItem[]>({
     queryKey: ['admin-buyers', search],
@@ -242,6 +319,26 @@ export const useAdminBuyersQuery = (search?: string) => {
       const { data } = await apiClient.get('/admin/buyers', { params });
       return data;
     },
+  });
+};
+
+export const useAdminBuyerIntelligenceQuery = (params?: { phone?: string | null; email?: string | null; userId?: string | null }) => {
+  const phone = params?.phone?.trim();
+  const email = params?.email?.trim();
+  const userId = params?.userId?.trim();
+  const hasParam = !!(phone || email || userId);
+
+  return useQuery<AdminBuyerIntelligence>({
+    queryKey: ['admin-buyer-intelligence', phone, email, userId],
+    queryFn: async () => {
+      const qParams: any = {};
+      if (phone) qParams.phone = phone;
+      if (email) qParams.email = email;
+      if (userId) qParams.user_id = userId;
+      const { data } = await apiClient.get('/admin/buyers/intelligence', { params: qParams });
+      return data;
+    },
+    enabled: hasParam,
   });
 };
 
@@ -377,4 +474,194 @@ export const useReviewAppealMutation = () => {
     },
   });
 };
+
+// ─── Staff & Role Management Hooks ──────────────────────────────────────────
+
+export interface StaffMember {
+  id: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone_number: string;
+  role: string;
+  is_staff: boolean;
+  is_superuser: boolean;
+  is_active: boolean;
+  date_joined: string | null;
+}
+
+export const useAdminStaffQuery = () => {
+  return useQuery<StaffMember[]>({
+    queryKey: ['admin-staff'],
+    queryFn: async () => {
+      const { data } = await apiClient.get('/admin/staff');
+      return data;
+    },
+  });
+};
+
+export const useUpdateStaffRoleMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ userId, role, is_staff }: { userId: string; role: string; is_staff?: boolean }) => {
+      const { data } = await apiClient.post(`/admin/staff/${userId}/role`, { role, is_staff });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
+    },
+  });
+};
+
+export const useCreateStaffMemberMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: { email: string; phone_number: string; role: string; first_name?: string; last_name?: string }) => {
+      const { data } = await apiClient.post('/admin/staff/create', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-staff'] });
+    },
+  });
+};
+
+// ─── Finance: Arbiter Compensation & Payout Accounting Hooks ──────────────────
+
+export interface ArbiterActivityItem {
+  id: string;
+  arbiter: {
+    id: string;
+    username: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    phone_number: string;
+    role: string;
+  };
+  transaction_id?: string | null;
+  order_reference?: string | null;
+  activity_type: string;
+  fee_rate_ghs: number;
+  payout_status: string;
+  payout_batch_id?: string | null;
+  payout_batch_reference?: string | null;
+  notes?: string;
+  paid_at?: string | null;
+  created_at: string;
+}
+
+export interface ArbiterActivitiesResponse {
+  total_count: number;
+  items: ArbiterActivityItem[];
+}
+
+export interface ArbiterBalanceItem {
+  arbiter_id: string;
+  username: string;
+  first_name: string;
+  last_name: string;
+  email: string;
+  phone_number: string;
+  role: string;
+  unpaid_count: number;
+  unpaid_balance_ghs: number;
+  paid_balance_ghs: number;
+  total_earned_ghs: number;
+}
+
+export const useArbiterActivitiesQuery = (arbiterId?: string, payoutStatus?: string) => {
+  return useQuery<ArbiterActivitiesResponse>({
+    queryKey: ['admin-arbiter-activities', arbiterId, payoutStatus],
+    queryFn: async () => {
+      const params: any = {};
+      if (arbiterId && arbiterId !== 'ALL') params.arbiter_id = arbiterId;
+      if (payoutStatus && payoutStatus !== 'ALL') params.payout_status = payoutStatus;
+      const { data } = await apiClient.get('/admin/finance/arbiter-activities', { params });
+      return data;
+    },
+  });
+};
+
+export const useArbiterBalancesQuery = () => {
+  return useQuery<ArbiterBalanceItem[]>({
+    queryKey: ['admin-arbiter-balances'],
+    queryFn: async () => {
+      const { data } = await apiClient.get('/admin/finance/arbiter-balances');
+      return data;
+    },
+  });
+};
+
+export const useCreateArbiterPayoutBatchMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      arbiter_id: string;
+      payout_method?: string;
+      payout_account_details?: Record<string, any>;
+      payment_reference?: string;
+      notes?: string;
+    }) => {
+      const { data } = await apiClient.post('/admin/finance/arbiter-payouts/create-batch', payload);
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-arbiter-balances'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-arbiter-activities'] });
+    },
+  });
+};
+
+// ─── Dispute Resolution Action Audit Hooks ────────────────────────────────────
+
+export interface DisputeActionItem {
+  id: string;
+  action_type: string;
+  admin_notes: string;
+  manager_photos: string[];
+  refund_amount_ghs: number;
+  seller_amount_ghs: number;
+  platform_retained_fee_ghs: number;
+  created_at: string;
+  arbiter?: {
+    id: string;
+    username: string;
+    first_name: string;
+    last_name: string;
+    email: string;
+    role: string;
+  } | null;
+}
+
+export const useDisputeActionsQuery = (transactionId: string | null) => {
+  return useQuery<DisputeActionItem[]>({
+    queryKey: ['admin-dispute-actions', transactionId],
+    queryFn: async () => {
+      if (!transactionId) return [];
+      const { data } = await apiClient.get(`/admin/disputes/${transactionId}/actions`);
+      return data;
+    },
+    enabled: !!transactionId,
+  });
+};
+
+export const useAssignDisputeArbiterMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ transactionId, arbiterId, notes }: { transactionId: string; arbiterId?: string; notes?: string }) => {
+      const { data } = await apiClient.post(`/admin/disputes/${transactionId}/assign`, {
+        arbiter_id: arbiterId || null,
+        notes: notes || '',
+      });
+      return data;
+    },
+    onSuccess: (_, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['admin-disputes'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-dispute-actions', variables.transactionId] });
+    },
+  });
+};
+
 
