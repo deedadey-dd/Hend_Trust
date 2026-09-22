@@ -164,19 +164,58 @@ export default function ShopsDirectoryView() {
   useEffect(() => {
     const timer = setTimeout(() => {
       fetchDirectory();
+
+      // Sync browser URL parameters with current search state smoothly
+      const params = new URLSearchParams(window.location.search);
+      if (query.trim()) {
+        params.set('query', query.trim());
+        params.delete('search');
+      } else {
+        params.delete('query');
+        params.delete('search');
+      }
+      if (selectedCategory && selectedCategory !== 'All') {
+        params.set('category', selectedCategory);
+      } else {
+        params.delete('category');
+      }
+
+      const currentSearch = window.location.search.replace(/^\?/, '');
+      const newSearch = params.toString();
+      if (currentSearch !== newSearch) {
+        setSearchParams(params, { replace: true });
+      }
     }, 300);
     return () => clearTimeout(timer);
   }, [query, selectedCategory]);
 
   const handleCategorySelect = (catName: string) => {
     setSelectedCategory(catName);
-    const params = new URLSearchParams(searchParams);
-    if (catName === 'All') {
-      params.delete('category');
-    } else {
+    setQuery(''); // Reset query text so user browses the selected category directly
+    const params = new URLSearchParams();
+    if (catName !== 'All') {
       params.set('category', catName);
     }
-    setSearchParams(params);
+    setSearchParams(params, { replace: true });
+  };
+
+  const handleSearchSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    fetchDirectory();
+    const params = new URLSearchParams(window.location.search);
+    if (query.trim()) {
+      params.set('query', query.trim());
+      params.delete('search');
+    } else {
+      params.delete('query');
+      params.delete('search');
+    }
+    if (selectedCategory && selectedCategory !== 'All') {
+      params.set('category', selectedCategory);
+    } else {
+      params.delete('category');
+    }
+    setSearchParams(params, { replace: true });
   };
 
   const handlePromoteSubmit = async (
@@ -548,26 +587,43 @@ export default function ShopsDirectoryView() {
               <Sparkles className="w-4 h-4 text-amber-400" />
               Ghana's Escrow Marketplace
             </div>
-            <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
+            {/* <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
               Search Products & Verified Stores
             </h1>
             <p className="text-xs sm:text-sm text-slate-200 max-w-xl mx-auto drop-shadow">
               Find products by name or description. Buy directly with escrow protection or message the merchant on WhatsApp.
-            </p>
+            </p> */}
           </div>
 
           {/* Transparent Search Bar & Category Scroller (NO solid outer card) */}
           <div className="space-y-3 mt-4 w-full">
             {/* Search Input Box */}
-            <form onSubmit={(e) => { e.preventDefault(); fetchDirectory(); }} className="relative max-w-2xl mx-auto">
+            <form onSubmit={handleSearchSubmit} className="relative max-w-2xl mx-auto">
               <Search className="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" />
               <input
                 type="text"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 placeholder="Search products or stores (e.g. 'iPhone 15', 'Bone straight wig', 'Sneakers', 'Solar')..."
-                className="w-full pl-12 pr-28 py-3.5 bg-black/40 hover:bg-black/50 focus:bg-black/60 backdrop-blur-md rounded-2xl text-xs sm:text-sm border border-white/20 shadow-xl focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all text-white placeholder-slate-300"
+                className="w-full pl-12 pr-32 sm:pr-36 py-3.5 bg-black/40 hover:bg-black/50 focus:bg-black/60 backdrop-blur-md rounded-2xl text-xs sm:text-sm border border-white/20 shadow-xl focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all text-white placeholder-slate-300"
               />
+              {query.trim() && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setQuery('');
+                    const params = new URLSearchParams(window.location.search);
+                    params.delete('query');
+                    params.delete('search');
+                    setSearchParams(params, { replace: true });
+                  }}
+                  className="absolute right-24 sm:right-28 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-1 rounded-full transition cursor-pointer"
+                  title="Clear search"
+                  aria-label="Clear search"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              )}
               <button
                 type="submit"
                 className="absolute right-1.5 top-1.5 bottom-1.5 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer"

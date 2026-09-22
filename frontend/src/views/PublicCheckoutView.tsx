@@ -646,7 +646,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                 {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') ? (
                   <button
                     onClick={() => setShowRatingModal(true)}
-                    className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold hover:bg-amber-100 dark:hover:bg-amber-900/50 transition whitespace-nowrap shadow-sm cursor-pointer"
+                    className="w-full sm:w-auto py-2.5 px-5 rounded-xl bg-[#ff6d1d]/10 hover:bg-[#ff6d1d] text-[#ff6d1d] hover:text-white border border-[#ff6d1d]/30 text-xs font-bold transition whitespace-nowrap shadow-xs cursor-pointer"
                   >
                     ⭐ Rate Seller
                   </button>
@@ -688,15 +688,15 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         )}
 
         {/* Refer & Earn Callout for Buyers */}
-        <div className="bg-gradient-to-r from-indigo-900/40 via-purple-900/30 to-indigo-950/50 border border-indigo-500/30 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="bg-gradient-to-r from-[#0363ff]/15 via-slate-900 to-[#ff6d1d]/15 border border-[#0363ff]/30 rounded-2xl p-5 shadow-lg flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-indigo-500/20 border border-indigo-400/30 flex items-center justify-center text-indigo-400 shrink-0">
-              <Gift className="w-6 h-6 text-amber-400" />
+            <div className="w-12 h-12 rounded-xl bg-[#0363ff]/20 border border-[#0363ff]/40 flex items-center justify-center text-[#0363ff] shrink-0">
+              <Gift className="w-6 h-6 text-[#ff6d1d]" />
             </div>
             <div>
               <h4 className="text-sm font-black text-white flex items-center gap-2">
                 Refer Friends & Get GH₵ 10.00 Credits!
-                <span className="bg-amber-400/20 text-amber-300 border border-amber-400/30 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
+                <span className="bg-[#ff6d1d]/20 text-[#ff6d1d] border border-[#ff6d1d]/40 text-[9px] font-bold px-2 py-0.5 rounded-full uppercase">
                   Zero Spam
                 </span>
               </h4>
@@ -709,7 +709,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
             href="/referrals"
             target="_blank"
             rel="noopener noreferrer"
-            className="w-full sm:w-auto py-2.5 px-4 bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
+            className="w-full sm:w-auto py-2.5 px-4 bg-[#ff6d1d] hover:bg-[#e05b11] text-white font-bold text-xs rounded-xl transition shadow-md shadow-[#ff6d1d]/25 flex items-center justify-center gap-1.5 whitespace-nowrap cursor-pointer"
           >
             <Sparkles className="w-3.5 h-3.5" /> Claim Your Referral Link
           </a>
@@ -1167,7 +1167,7 @@ export default function PublicCheckoutView() {
   } : undefined;
 
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 font-sans transition-colors">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 font-sans transition-colors selection:bg-[#ff6d1d]/20 selection:text-[#ff6d1d]">
       <SEOHead
         title={productTitle}
         description={productDesc}
@@ -1175,23 +1175,28 @@ export default function PublicCheckoutView() {
         ogImage={link?.image_url || 'https://trust.hendaxis.com/og_preview_banner.jpg'}
         jsonLd={productJsonLd}
       />
-      <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-3xl shadow-xl overflow-hidden border border-gray-100 dark:border-slate-800">
+      <div className="max-w-2xl mx-auto bg-white dark:bg-slate-900 rounded-3xl shadow-2xl overflow-hidden border border-slate-200/80 dark:border-slate-800 relative">
 
         {/* Header */}
-        <div className="bg-gradient-to-r from-blue-700 via-indigo-800 to-slate-900 p-6 sm:p-8 text-white relative overflow-hidden">
-          <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-white opacity-10 rounded-full blur-2xl pointer-events-none" />
+        <div className="bg-gradient-to-br from-[#0363ff] via-[#0147c4] to-slate-950 p-6 sm:p-8 text-white relative overflow-hidden">
+          {/* Ambient Brand Accents */}
+          <div className="absolute top-0 right-0 -mt-8 -mr-8 w-48 h-48 bg-[#ff6d1d]/20 rounded-full blur-3xl pointer-events-none" />
+          <div className="absolute bottom-0 left-10 -mb-8 w-44 h-44 bg-[#0363ff]/30 rounded-full blur-2xl pointer-events-none" />
           
           {(link.shop_name || link.seller_username) && (
             <div className="inline-flex items-center gap-2 text-sm text-blue-100 bg-white/10 px-3.5 py-1.5 rounded-xl backdrop-blur-sm mb-4 border border-white/10 flex-wrap">
               {link.seller_profile_picture_url ? (
                 <img src={link.seller_profile_picture_url} alt={link.shop_name || link.seller_username} className="h-5 w-5 rounded-lg object-cover border border-white/20" />
               ) : (
-                <Store className="h-4 w-4 text-blue-200" />
+                <Store className="h-4 w-4 text-[#ff6d1d]" />
               )}
               <span>
                 Sold by: <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-white font-bold hover:underline">
                   {link.shop_name || `@${link.seller_username}`}
                 </a> {link.shop_name && link.seller_username && <span className="text-blue-200 text-xs">(@{link.seller_username})</span>}
+              </span>
+              <span className="inline-flex items-center gap-1 bg-[#ff6d1d] text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-md shadow-xs ml-0.5">
+                Escrow Protected
               </span>
               <a href={`/store/${link.seller_username}`} target="_blank" rel="noreferrer" className="text-xs text-blue-200 bg-white/10 px-2 py-0.5 rounded-md hover:bg-white/20 transition ml-1 font-medium">
                 View Store Ratings ↗
@@ -1214,7 +1219,7 @@ export default function PublicCheckoutView() {
                   <span className="text-blue-200 text-lg font-bold">GHS</span>
                   <span>{totalToPay.toFixed(2)}</span>
                   {totalToPay < standardTotalToPay && (
-                    <span className="text-sm font-normal line-through text-blue-300/70">
+                    <span className="text-sm font-normal line-through text-orange-200/80">
                       GHS {standardTotalToPay.toFixed(2)}
                     </span>
                   )}
@@ -1225,7 +1230,7 @@ export default function PublicCheckoutView() {
               <div className="sm:col-span-5 flex justify-center">
                 <div 
                   onClick={() => setLightboxImage(link.image_url || null)}
-                  className="w-full max-w-[260px] sm:max-w-none h-60 sm:h-64 rounded-2xl overflow-hidden border border-white/20 shadow-xl bg-slate-950/60 p-2 flex items-center justify-center backdrop-blur-xs cursor-pointer group relative hover:border-blue-400/50 transition-all"
+                  className="w-full max-w-[260px] sm:max-w-none h-60 sm:h-64 rounded-2xl overflow-hidden border border-white/20 shadow-xl bg-slate-950/60 p-2 flex items-center justify-center backdrop-blur-xs cursor-pointer group relative hover:border-[#ff6d1d]/80 hover:shadow-[#ff6d1d]/20 transition-all duration-200"
                   title="Click to view full screen"
                 >
                   <img
@@ -1251,7 +1256,7 @@ export default function PublicCheckoutView() {
                 <span className="text-blue-200 text-lg font-bold">GHS</span>
                 <span>{totalToPay.toFixed(2)}</span>
                 {totalToPay < standardTotalToPay && (
-                  <span className="text-sm font-normal line-through text-blue-300/70">
+                  <span className="text-sm font-normal line-through text-orange-200/80">
                     GHS {standardTotalToPay.toFixed(2)}
                   </span>
                 )}
@@ -1268,14 +1273,14 @@ export default function PublicCheckoutView() {
           </div>
           {parseFloat(link.shipping_fee_ghs) > 0 && (
             <div className="flex justify-between items-center text-slate-700 dark:text-slate-200">
-              <span className="flex items-center font-medium"><Truck className="h-4 w-4 mr-1.5 text-blue-600 dark:text-blue-400" /> Shipping Fee</span>
+              <span className="flex items-center font-medium"><Truck className="h-4 w-4 mr-1.5 text-[#0363ff] dark:text-[#3b82f6]" /> Shipping Fee</span>
               <span className="font-extrabold text-slate-900 dark:text-white text-base">GHS {parseFloat(link.shipping_fee_ghs).toFixed(2)}</span>
             </div>
           )}
           {link.fee_handling === 'PASS_TO_BUYER' && (
             <div className="space-y-1 pt-1">
               <div className="flex justify-between items-center text-slate-700 dark:text-slate-200">
-                <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection Fee</span>
+                <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-[#ff6d1d]" /> Escrow Protection Fee</span>
                 <span className={`font-extrabold text-base ${promoDiscountGhs > 0 || creditDiscountGhs > 0 ? 'text-slate-400 line-through text-xs' : 'text-emerald-700 dark:text-emerald-400'}`}>
                   GHS {basePlatformFee.toFixed(2)}
                 </span>
@@ -1309,8 +1314,8 @@ export default function PublicCheckoutView() {
           )}
           {link.fee_handling !== 'PASS_TO_BUYER' && (
             <div className="flex justify-between items-center text-slate-700 dark:text-slate-200">
-              <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection</span>
-              <span className="font-semibold text-emerald-600 dark:text-emerald-400 text-xs bg-emerald-50 dark:bg-emerald-950/40 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-800">
+              <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-[#0363ff] dark:text-[#3b82f6]" /> Escrow Protection</span>
+              <span className="font-semibold text-[#0363ff] dark:text-blue-400 text-xs bg-[#0363ff]/10 dark:bg-[#0363ff]/20 px-2.5 py-0.5 rounded-full border border-[#0363ff]/30">
                 Covered by Seller
               </span>
             </div>
@@ -1323,7 +1328,7 @@ export default function PublicCheckoutView() {
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Full Name</label>
               <input required type="text" value={name} onChange={e => setName(e.target.value)}
-                className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+                className="w-full rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border transition"
                 placeholder="John Doe" />
             </div>
             <div>
@@ -1341,20 +1346,20 @@ export default function PublicCheckoutView() {
                     validatePromoDiscount(promoCode, applyBuyerCredit, phone);
                   }
                 }}
-                className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+                className="w-full rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border transition"
                 placeholder="e.g., 0241234567" />
             </div>
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Email Address</label>
               <input required type="email" value={email} onChange={e => setEmail(e.target.value)}
-                className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+                className="w-full rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border transition"
                 placeholder="receipt@example.com" />
             </div>
             {parseFloat(link.shipping_fee_ghs) > 0 && (
               <div>
                 <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Delivery Address</label>
                 <textarea required value={address} onChange={e => setAddress(e.target.value)}
-                  rows={2} className="w-full rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+                  rows={2} className="w-full rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border transition"
                   placeholder="Street, City, Landmark" />
               </div>
             )}
@@ -1388,7 +1393,7 @@ export default function PublicCheckoutView() {
                         if (!val && !applyBuyerCredit) setPromoSimulation(null);
                       }}
                       placeholder="ENTER PROMO CODE"
-                      className="w-full pl-8 pr-3 py-2 text-xs font-mono font-bold uppercase rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:normal-case placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-purple-500"
+                      className="w-full pl-8 pr-3 py-2 text-xs font-mono font-bold uppercase rounded-xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-900 dark:text-white placeholder:normal-case placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-[#0363ff]"
                     />
                   </div>
                   <button
@@ -1465,14 +1470,14 @@ export default function PublicCheckoutView() {
                 required
                 checked={acceptedTerms}
                 onChange={e => setAcceptedTerms(e.target.checked)}
-                className="mt-1 h-4 w-4 text-blue-600 rounded border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-blue-500 cursor-pointer shrink-0"
+                className="mt-1 h-4 w-4 text-[#ff6d1d] rounded border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 focus:ring-[#ff6d1d] cursor-pointer shrink-0"
               />
               <label htmlFor="buyer-agree-terms" className="text-xs text-gray-600 dark:text-slate-400">
                 I agree to the{' '}
                 <button
                   type="button"
                   onClick={() => setShowTermsModal(true)}
-                  className="text-blue-600 dark:text-blue-400 font-bold hover:underline cursor-pointer inline-flex items-center gap-1"
+                  className="text-[#0363ff] dark:text-blue-400 hover:text-[#ff6d1d] dark:hover:text-[#ff6d1d] font-bold hover:underline cursor-pointer inline-flex items-center gap-1 transition-colors"
                 >
                   Terms of Service & Inspection Expiry Rules 📜
                 </button>
@@ -1480,12 +1485,14 @@ export default function PublicCheckoutView() {
             </div>
 
             <button disabled={isProcessing || !acceptedTerms} type="submit"
-              className="mt-4 w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 transition-all cursor-pointer">
+              className="mt-4 w-full flex justify-center items-center py-3.5 px-4 rounded-xl shadow-lg shadow-[#ff6d1d]/25 text-sm sm:text-base font-black text-white bg-gradient-to-r from-[#ff6d1d] via-[#ff7c33] to-[#ff6d1d] hover:brightness-110 active:scale-[0.99] focus:outline-none focus:ring-4 focus:ring-[#ff6d1d]/30 disabled:opacity-50 disabled:pointer-events-none transition-all cursor-pointer">
               {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Continue to Payment'}
               <ArrowRight className="ml-2 h-4 w-4" />
             </button>
             <p className="text-center text-xs text-gray-500 dark:text-slate-400 flex items-center justify-center mt-4">
-              <ShieldCheck className="h-4 w-4 mr-1 text-gray-400 dark:text-slate-500" /> Secure Escrow Checkout
+              <ShieldCheck className="h-4 w-4 mr-1 text-[#0363ff]" />
+              <span className="font-semibold text-slate-700 dark:text-slate-300">100% Protected Escrow Vault</span>
+              <span className="text-slate-400 dark:text-slate-500 ml-1">— HendAxis Trust</span>
             </p>
           </form>
         </div>
@@ -1494,7 +1501,7 @@ export default function PublicCheckoutView() {
         <div className="bg-gray-50 dark:bg-slate-900/60 border-t border-gray-100 dark:border-slate-800 p-4 text-center text-xs">
           <p className="text-gray-500 dark:text-slate-400">
             Already placed an order?{' '}
-            <a href="/track" className="text-blue-600 dark:text-blue-400 font-bold hover:underline inline-flex items-center gap-1">
+            <a href="/track" className="text-[#0363ff] dark:text-blue-400 hover:text-[#ff6d1d] dark:hover:text-[#ff6d1d] font-bold hover:underline inline-flex items-center gap-1 transition-colors">
               Track your package status here <ArrowRight className="h-3 w-3" />
             </a>
           </p>
@@ -1506,18 +1513,18 @@ export default function PublicCheckoutView() {
         <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
           <div className="bg-white dark:bg-slate-900 rounded-2xl p-6 sm:p-8 max-w-sm w-full shadow-2xl border border-gray-100 dark:border-slate-800 max-h-[90vh] my-auto overflow-y-auto">
             <div className="text-center mb-6">
-              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-blue-100 dark:bg-blue-950/60 mb-4">
-                <ShieldCheck className="h-6 w-6 text-blue-600 dark:text-blue-400" />
+              <div className="mx-auto flex items-center justify-center h-12 w-12 rounded-full bg-[#0363ff]/10 dark:bg-[#0363ff]/20 mb-4 border border-[#0363ff]/30">
+                <ShieldCheck className="h-6 w-6 text-[#0363ff] dark:text-blue-400" />
               </div>
               <h3 className="text-lg font-bold text-gray-900 dark:text-white">Verify your phone</h3>
               <p className="text-sm text-gray-500 dark:text-slate-400 mt-2">We sent a 6-digit code to {phone}</p>
             </div>
             <form onSubmit={handleVerifyOtp} className="space-y-4">
               <input required type="text" maxLength={6} value={otp} onChange={e => setOtp(e.target.value)}
-                className="w-full text-center tracking-widest text-2xl font-mono rounded-lg border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-blue-500 focus:border-blue-500 p-3 border"
+                className="w-full text-center tracking-widest text-2xl font-mono rounded-xl border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white shadow-sm focus:ring-2 focus:ring-[#0363ff] focus:border-[#0363ff] p-3 border"
                 placeholder="000000" />
               <button disabled={isProcessing} type="submit"
-                className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-bold text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-70 transition-all cursor-pointer">
+                className="w-full flex justify-center items-center py-3 px-4 rounded-xl shadow-lg shadow-[#ff6d1d]/25 text-sm font-extrabold text-white bg-gradient-to-r from-[#ff6d1d] to-[#ff8033] hover:brightness-110 active:scale-[0.99] disabled:opacity-70 transition-all cursor-pointer">
                 {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Confirm & Pay'}
               </button>
               <button type="button" onClick={() => setShowOtpModal(false)}

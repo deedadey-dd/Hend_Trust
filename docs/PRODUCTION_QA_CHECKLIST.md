@@ -8,31 +8,50 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 
 ### 1.1 Homepage (`/`)
 - [ ] **Theme Switcher**: Click the top navbar theme button (`Sun` ☀️ / `Moon` 🌙 / `Laptop` 💻). Confirm smooth background & text transition without visual glitches.
-- [ ] **Hero Search Bar**: Type a query (e.g. "electronics" or "accra") and verify search results.
-- [ ] **Escrow Trust Guide & CTA**: Verify feature cards, 3-axis escrow breakdown, and action buttons ("Explore Shops", "Create Link", "Track Order").
+- [ ] **100% Unobstructed Hero Banner**: Confirm hero artwork, headline, and call-to-action buttons (*"Start Selling Free"*, *"Log in"*, *"Platform Guide"*) are fully visible with zero overlays.
+- [ ] **Compact Discovery Strip & Category Matrix**: Verify compact search input and the strictly **2-Line Horizontal Category Matrix** displaying all 16 platform categories with smooth horizontal scrolling.
 - [ ] **Navbar Hover Contrast**: Hover over navbar links in **Light Mode**. Confirm text turns clear blue/dark (`#2563eb` / `#0f172a`), **not white on white**.
+- [ ] **Floating Fee Calculator Widget**: Verify the interactive escrow fee calculator widget calculates transparent buyer & seller payouts in real-time.
 
-### 1.2 Shops Directory (`/shops`)
-- [ ] **Category Filtering**: Click category pills (e.g., *Fashion*, *Electronics*, *General*). Verify shop cards update accordingly.
-- [ ] **Marketplace Search**: Search by merchant shop name or location.
-- [ ] **Merchant Cards**: Confirm verified escrow badges, star rating averages, and sponsored advertisement cards render correctly.
+### 1.2 Shops Directory & Ballpark Product Search (`/shops`)
+- [ ] **Transparent Hero Search Bar**: Confirm search bar and category scroller render over hero artwork with semi-transparent backdrops (`bg-black/40` with `backdrop-blur-md`).
+- [ ] **16-Category Horizontal Scroller**: Click various category pills (e.g. *Phones & Tablets*, *Fashion & Apparel*, *Electronics & Appliances*, *Automotive*). Confirm scroller has hidden scrollbars (`.no-scrollbar`), active pills highlight in Brand Blue, and clicking a category clears previous search text to browse the selected category cleanly.
+- [ ] **Ballpark Multi-Token Product Search**: Search for multi-word queries (e.g. *"iPhone 15 pro"*, *"straight wig"*, *"solar battery"*). Confirm debounced real-time filtering matches product titles, descriptions, categories, and store names.
+- [ ] **Browser URL Synchronization**: Verify typing in the search box updates the browser URL (`/shops?query=...&category=...`) in real-time.
+- [ ] **One-Click Clear (`X`) Button**: Test clicking the clear button inside the search box. Confirm query resets and URL parameter is removed.
+- [ ] **3-Tier Directory Layout**:
+  - [ ] **Tier 1 (Sponsored Stores)**: Verify top row displays featured/promoted merchants with active ad badges.
+  - [ ] **Tier 2 (Verified Stores)**: Confirm 6 verified stores render in 2 balanced rows, with a functional *"View All Verified Stores (N)"* toggle.
+  - [ ] **Tier 3 (Reviews Carousel & Product Grid)**: Confirm the live verified customer reviews carousel appears above matched product cards when browsing.
+- [ ] **Shop Card Visual Balance (Option A)**: Inspect shop cards without active links to confirm the *"Escrow Ready — Accepts custom escrow orders"* fallback container renders cleanly with standardized contact icons (Phone & WhatsApp).
+- [ ] **1-Click WhatsApp Product Inquiry**: Click the WhatsApp icon on a product card. Confirm pre-filled message contains item details and an instant 1-click escrow link generator URL (`/create-link?title=...&price=...&category=...&img=...`).
 
 ### 1.3 Public Seller Storefront (`/store/:username`)
 - [ ] **Store Header**: Verify shop banner, avatar photo, category badges, and description.
 - [ ] **Trust Score Breakdown**: Inspect 3-axis ratings (Delivery Speed, Item Accuracy, Communication).
-- [ ] **Customer Reviews**: Verify list of verified buyer reviews and owner responses.
+- [ ] **Product Catalog**: Confirm active payment links render with transparent location-based shipping notice (`📦 Shipping cost is based on your location`).
+- [ ] **WhatsApp 1-Click Escrow Generator**: Click **"Buy via HendAxis Escrow (WhatsApp)"**. Confirm prefilled inquiry with instant escrow link generator opens WhatsApp.
+- [ ] **Customer Reviews**: Verify list of verified buyer reviews and store owner replies.
 
-### 1.4 Developer Hub & API Docs (`/developers`)
+### 1.4 Reviews & Trust Center (`/reviews`, `/trust-center`)
+- [ ] **Brand Theme Color Alignment**: Confirm star rating badges, metrics, and filter buttons use HendAxis Brand Orange (`#ff6d1d`) and Royal Blue (`#0363ff`) with high-contrast light/dark themes.
+- [ ] **Filter Reviews by Rating**: Filter by 5★, 4★, 3★, 2★, 1★. Confirm verified purchase badges render on every review.
+
+### 1.5 Referrals & Rewards Hub (`/referrals`)
+- [ ] **Guest Referral Link Generator**: Enter a valid Ghana phone number (`0241234567`). Click **"Generate / View My Referral Hub"** (styled in `#ff6d1d` brand orange). Confirm unique referral link and sharing buttons appear.
+- [ ] **Reward Rules**: Confirm GH₵ 15 fee credit for referrer and GH₵ 10 welcome credit for friend are documented clearly.
+
+### 1.6 Developer Hub & API Docs (`/developers`)
 - [ ] **Code Snippets**: Toggle between **cURL**, **Node.js**, **Python**, and **PHP** tabs.
-- [ ] **API Endpoint Table**: Verify REST endpoints (`/api/v1/checkout/initialize`, `/api/v1/links`, `/api/v1/checkout/validate-promo`, etc.).
+- [ ] **API Endpoint Table**: Verify REST endpoints (`/api/v1/checkout/initialize`, `/api/v1/links`, `/api/v1/checkout/validate-promo`, `/api/v1/reviews/shops`).
 - [ ] **Webhook Signature Guide**: Confirm HMAC-SHA256 signature verification documentation is rendered clearly.
 
-### 1.5 Help & Contact (`/help`, `/contact`)
-- [ ] **FAQ Accordion**: Expand/collapse FAQ categories. Confirm platform fee is listed as **1.5% + GHS 10.00** on gross amount (Item Price + Shipping Fee).
+### 1.7 Help & Contact (`/help`, `/contact`)
+- [ ] **FAQ Knowledge Base**: Expand FAQ categories (Buyers, Sellers, Logistics, Disputes, Referrals, Developers). Verify FAQs covering 16 categories, product category tagging, 1-click WhatsApp link generation, and location-based shipping.
 - [ ] **Contact Form**: Fill out and submit the Contact Us form. Confirm success confirmation toast.
 
-### 1.6 Order Tracking (`Track Order` Modal)
-- [ ] **Tracking Search**: Click **"Track Order"** in navbar. Enter a sample or fake tracking code.
+### 1.8 Order Tracking (`/tracking`)
+- [ ] **Upfront 2-Step OTP Verification**: Enter Order ID or Phone Number. Confirm 6-digit OTP prompt before accessing full order details.
 - [ ] **Parcel Progress Timeline**: Verify courier status milestones (Order Placed ➔ Dispatched ➔ In Transit ➔ Delivered).
 
 ---
@@ -63,19 +82,21 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [x] **Export Report**: Download transaction reports in PDF (`.pdf`) and Excel (`.xlsx`) formats (available on `/dashboard` and `/admin-portal` tabs).
 - [x] **Stale Transaction Verification**: Click **"Check Payment"** on `AWAITING_PAYMENT` orders to manually poll payment status before auto-archiving. Confirm payment auto-restores transaction.
 - [x] **Dispute Health & Risk Banners**: Verify Dispute Banners (Yellow Alert ≥20%, Orange Warning ≥30%, Red Suspension ≥40%), Rating Caution (<3.0★), and Non-Dispatch Expiry Warning (≥20% non-dispatch rate).
-- [ ] **Seller Reward Balance Display**: Confirm seller wallet shows promotional fee offset credits earned from sales milestones and promotions.
+- [ ] **Merchant Trust Badges (`/dashboard?tab=badges`)**: Test copying embeddable JavaScript widget code (`/badge/:username.js`) and downloading shareable proof cards.
 
 ### 3.2 Payment Link Creation (`/create-link`)
-- [ ] **Create Link**: Fill in Item Title, Amount (GHS), Description, and Delivery Fee settings.
+- [ ] **Product Category Selection**: Verify dropdown contains all 16 standardized platform categories, pre-defaulting to seller's primary store niche.
+- [ ] **1-Click WhatsApp Prefill Flow**: Open `/create-link?title=iPhone%2015&price=6500&category=Phones%20%26%20Tablets`. Confirm title, price, and category are auto-prefilled with an informational banner prompting seller to enter agreed shipping fee.
 - [ ] **Authoritative Fee Calculation**: Verify platform fee is calculated transparently as $(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$.
+- [ ] **Fee Preference Toggle**: Test toggling between `PASS_TO_BUYER` and `ABSORB_FEE`.
 - [ ] **QR Code Generator**: Click **"Generate QR Poster"**. Download PNG poster.
 - [x] **Suspension Modal & Inline Appeal**: Confirm suspended sellers attempting to create links receive the dedicated **Account Suspended Modal** with exact suspension reason and inline justification appeal submission form.
 
 ### 3.3 My Payment Links (`/links`)
-- [ ] **Link Management**: Copy payment link URL. Verify status toggle (Active / Deactivated).
+- [ ] **Link Management**: Copy payment link URL. Verify status toggle (Active / Deactivated) and category badges.
 
 ### 3.4 Store & KYC Verification (`/profile`)
-- [ ] **Profile Updates**: Update shop description, upload banner and profile photo.
+- [ ] **16-Category Multi-Selection**: Select up to 3 store categories from the 16 platform categories. Confirm changes save to profile.
 - [x] **KYC Document Submission**: Submit Ghana Card (`GHA-XXXXXXXXX-X`) and ID photo. Confirm instant auto-verification via Paystack/NIA API, or fallback to **Pending Approval** for manual manager review.
 - [ ] **Payout Configuration**: Toggle between **Instant MoMo Payout** and **Manual Withdrawal**.
 
@@ -83,23 +104,22 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Ledger Inspection**: Verify Available Balance vs. Escrow Locked Balance.
 - [x] **Withdrawal Request**: Request payout to Mobile Money or Commercial Bank with real-time NIP account resolution, name matching, and immutable transaction audit logging.
 - [ ] **Settlement Audit**: Click transaction row to inspect platform fee deduction, courier payout, and net seller payout.
-- [ ] **Seller Reward Ledger**: Confirm milestone reward credits (e.g. GHS 5.00 per 5 completed sales) appear in ledger history.
 
 ---
 
 ## 🛒 Phase 4: Buyer Persona (Public Checkout, Delivery & Promotions)
 
-### 4.1 Public Escrow Checkout & Promo Simulation (`/l/:link_code`)
-- [ ] **Link Access**: Open seller payment link in incognito or guest browser. Confirm HTTP 403 page if link belongs to a suspended seller.
-- [ ] **Order Breakdown**: Confirm item name, image, description, escrow badge, and total price.
+### 4.1 Public Escrow Checkout & Brand Theme (`/l/:link_code`)
+- [ ] **Brand Theme Styling**: Confirm page features Brand Blue (`#0363ff`) gradient header, glowing ambient accents, Brand Orange (`#ff6d1d`) "Continue to Payment" button, and `"Escrow Protected"` badges.
+- [ ] **Link Access & Security**: Open seller payment link in incognito or guest browser. Confirm HTTP 403 page if link belongs to a suspended seller.
 - [ ] **Authoritative Pricing Breakdown**: Verify Item Price + Delivery Fee + Platform Escrow Fee ($(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$).
+- [ ] **Location-Based Shipping Agreement**: Confirm delivery agreement rules and fee breakdown.
 - [ ] **Promotions & Discount Engine**:
   - [ ] **Promo Code Application**: Expand the **"Have a Promo Code or Reward Credit?"** accordion. Enter a valid promo code (e.g. `WELCOME10`).
   - [ ] **Live Simulation (`/api/v1/checkout/validate-promo`)**: Verify real-time calculation shows discounted platform fee and net total. Confirm item price and shipping are untouched.
-  - [ ] **Guest Buyer Credit Lookup**: Enter phone number (`+233XXXXXXXXX`) with existing credits. Confirm available credit is detected and can be applied up to `max_promo_discount_cap_ghs` (default GHS 50.00).
-  - [ ] **Invalid Promo Handling**: Enter an expired or non-existent promo code. Confirm inline error message without breaking checkout.
-  - [ ] **Inactive Engine Graceful Hide**: When `promotions_active = False` in Admin, confirm promo entry field does not render at all.
-- [ ] **Buyer Details Form**: Input delivery address, region, full name, and mobile number.
+  - [ ] **Guest Buyer Credit Lookup**: Enter phone number (`024XXXXXXX`) with existing credits. Confirm available credit is detected and can be applied up to `max_promo_discount_cap_ghs` (default GHS 50.00).
+- [ ] **Buyer Details Form**: Input delivery address, full name, and mobile number.
+- [ ] **OTP Phone Verification Modal**: Verify 6-digit OTP prompt styled with Brand Blue shield and Brand Orange CTA button before redirection to Paystack.
 - [ ] **Payment Processing**: Select Payment Method (MoMo / Card via Paystack). Complete test transaction.
 
 ### 4.2 Order Tracking & Parcel Handover
@@ -111,7 +131,7 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Confirm Delivery**: Enter delivery OTP upon receiving parcel. Confirm escrow status transitions to **Completed**.
 - [ ] **Post-Payout Loyalty Reward**: Confirm guest buyer identity automatically accrues 1% loyalty credit (valid for 90 days) on completed transaction.
 - [x] **60-Second OTP SMS Cooldown**: Re-click **"Resend Code"** within 60 seconds. Verify countdown timer button (`Resend Code (58s)`), disabled state, and zero duplicate SMS dispatches.
-- [x] **Transit Rating Lock**: Verify rating button shows `🔒 Rate Seller (Unlocks upon delivery)` during transit (`DELIVERY_IN_PROGRESS`) and unlocks upon delivery.
+- [x] **Transit Rating Lock**: Verify rating button shows `🔒 Rate Seller (Unlocks upon delivery)` during transit (`DELIVERY_IN_PROGRESS`) and unlocks upon delivery with `#ff6d1d` brand accent.
 - [x] **1 Review Per Transaction**: Verify submitting feedback again updates the initial review instead of creating duplicate records.
 - [x] **$0-Cost Email Edit Link**: Test `/reviews/request-edit-link` fallback for buyers editing feedback from a new device or browser.
 - [ ] **Dispute Flow Test**: On a test order, click **"Raise Dispute"**, select reason (*Damaged / Wrong Item*), upload photo, and submit.

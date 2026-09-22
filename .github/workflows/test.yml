@@ -10,11 +10,26 @@ env:
   SECRET_KEY: 'ci-testing-secret-key-32-chars-long-hendaxis-trust-ci-test'
   DEBUG: 'True'
   DJANGO_SETTINGS_MODULE: 'hendaxis_trust.settings'
+  REDIS_URL: 'redis://127.0.0.1:6379/0'
+  CELERY_BROKER_URL: 'redis://127.0.0.1:6379/0'
+  CELERY_RESULT_BACKEND: 'redis://127.0.0.1:6379/0'
 
 jobs:
   backend-tests:
     name: Backend Pytest & Django Checks
     runs-on: ubuntu-latest
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
@@ -30,6 +45,11 @@ jobs:
           python -m pip install --upgrade pip
           pip install -r backend/requirements.txt
           pip install -r backend/requirements-dev.txt
+
+      - name: Verify Redis Connection
+        run: |
+          cd backend
+          python -c "import redis; r = redis.Redis.from_url('redis://127.0.0.1:6379/0'); r.ping(); print('Redis is healthy and reachable')"
 
       - name: Run Django System Check
         run: |
@@ -74,6 +94,18 @@ jobs:
     name: Playwright End-to-End Tests
     runs-on: ubuntu-latest
     needs: [backend-tests, frontend-tests]
+
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
