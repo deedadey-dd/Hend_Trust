@@ -135,9 +135,27 @@ jobs:
 
       - name: Start Backend & Frontend Servers
         run: |
-          cd backend && python manage.py migrate && python manage.py runserver 8000 &
-          cd frontend && npm run dev -- --port 5173 --host &
-          sleep 5
+          cd backend
+          python manage.py migrate
+          python manage.py runserver 8000 > /tmp/backend.log 2>&1 &
+
+          cd ../frontend
+          npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/frontend.log 2>&1 &
+
+          for i in {1..30}; do
+            if curl --fail --silent http://127.0.0.1:5173/ > /dev/null; then
+              echo "Frontend is ready!"
+              break
+            fi
+
+            if [ "$i" -eq 30 ]; then
+              echo "Frontend did not become ready in 30 seconds"
+              cat /tmp/frontend.log
+              exit 1
+            fi
+
+            sleep 1
+          done
 
       - name: Run Playwright E2E Tests
         run: |

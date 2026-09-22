@@ -189,7 +189,8 @@ export default function HomeView() {
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search products, descriptions, shops, or categories (e.g. 'iPhone 15', 'Sneakers', 'Solar')..."
+              aria-label="Search verified shops"
+              placeholder="Search verified shops, products, descriptions, or categories (e.g. 'iPhone 15', 'Sneakers', 'Solar')..."
               className="w-full pl-10 sm:pl-12 pr-28 sm:pr-32 py-2.5 sm:py-3 rounded-xl sm:rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white text-xs sm:text-sm outline-none focus:ring-2 focus:ring-blue-500 transition-all"
             />
             <button
