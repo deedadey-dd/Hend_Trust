@@ -143,8 +143,8 @@ jobs:
           npm run dev -- --host 127.0.0.1 --port 5173 > /tmp/frontend.log 2>&1 &
 
           for i in {1..30}; do
-            if curl --fail --silent http://127.0.0.1:5173/ > /dev/null; then
-              echo "Frontend is ready!"
+            if curl -k --fail --silent https://127.0.0.1:5173/ > /dev/null; then
+              echo "Frontend is ready at https://127.0.0.1:5173!"
               break
             fi
 
