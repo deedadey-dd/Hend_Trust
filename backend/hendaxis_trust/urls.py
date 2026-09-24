@@ -3,11 +3,13 @@ from django.contrib import admin
 from django.urls import path
 from .api import api
 from apps.core.seo import robots_view, sitemap_view
-from apps.core.views import admin_honeypot_view
+from apps.core.views import admin_honeypot_view, health_check_view
 
 admin_url_path = getattr(settings, 'DJANGO_ADMIN_URL', 'admin/').strip('/') + '/'
 
 urlpatterns = [
+    path('health/', health_check_view, name='health_root'),
+    path('api/health/', health_check_view, name='health_check'),
     path('robots.txt', robots_view, name='robots'),
     path('sitemap.xml', sitemap_view, name='sitemap'),
     path(admin_url_path, admin.site.urls),

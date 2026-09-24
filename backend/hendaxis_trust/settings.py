@@ -22,15 +22,37 @@ if os.path.exists(env_backend):
 elif os.path.exists(env_parent):
     environ.Env.read_env(env_parent)
 
-# Sentry Error Tracking
+# Sentry Error Tracking & Performance Monitoring
 sentry_dsn = env('SENTRY_DSN', default='')
 if sentry_dsn:
     from django.core.exceptions import DisallowedHost
+    from sentry_sdk.integrations.django import DjangoIntegration
+    from sentry_sdk.integrations.celery import CeleryIntegration
+    from sentry_sdk.integrations.redis import RedisIntegration
+
+    sentry_env = env('SENTRY_ENVIRONMENT', default='development' if env.bool('DEBUG', default=False) else 'production')
+    sentry_release = env('SENTRY_RELEASE', default='')
+    traces_rate = float(env('SENTRY_TRACES_SAMPLE_RATE', default=0.1))
+    profiles_rate = float(env('SENTRY_PROFILES_SAMPLE_RATE', default=0.0))
+
     sentry_sdk.init(
         dsn=sentry_dsn,
-        traces_sample_rate=1.0,
-        profiles_sample_rate=1.0,
-        ignore_errors=[DisallowedHost]
+        environment=sentry_env,
+        release=sentry_release or None,
+        traces_sample_rate=traces_rate,
+        profiles_sample_rate=profiles_rate,
+        send_default_pii=False,
+        integrations=[
+            DjangoIntegration(
+                transaction_style='url',
+                middleware_spans=True,
+            ),
+            CeleryIntegration(
+                monitor_beat_tasks=True,
+            ),
+            RedisIntegration(),
+        ],
+        ignore_errors=[DisallowedHost],
     )
 
 SECRET_KEY = env('SECRET_KEY', default='django-insecure-replace-me-with-a-secure-key-in-production')
@@ -227,6 +249,10 @@ CELERY_RESULT_BACKEND = env('CELERY_RESULT_BACKEND', default=env('REDIS_URL', de
 CELERY_TIMEZONE = TIME_ZONE
 
 CELERY_BEAT_SCHEDULE = {
+    'celery-heartbeat-ping-every-5-mins': {
+        'task': 'apps.core.tasks.celery_heartbeat_ping',
+        'schedule': 300.0, # 5 minutes in seconds
+    },
     'check-expired-inspections-every-5-mins': {
         'task': 'apps.escrow.tasks.check_expired_inspections',
         'schedule': 300.0, # 5 minutes in seconds
