@@ -563,3 +563,30 @@ def notify_seller_payout_completed_task(transaction_id, amount_ghs: float):
     except Transaction.DoesNotExist:
         pass
 
+
+@shared_task(name='apps.core.tasks.celery_heartbeat_ping', ignore_result=True)
+def celery_heartbeat_ping():
+    """
+    Periodic Celery heartbeat task confirming Celery Beat schedules and Celery Worker executes.
+    1. Writes latest timestamp to Redis cache (key 'celery:last_heartbeat_timestamp').
+    2. Pings Better Stack Heartbeat URL if configured via BETTERSTACK_CELERY_HEARTBEAT_URL.
+    """
+    import os
+    import requests
+    from django.utils import timezone
+    from django.core.cache import cache
+
+    now_iso = timezone.now().isoformat()
+    try:
+        cache.set('celery:last_heartbeat_timestamp', now_iso, timeout=1800)
+    except Exception as exc:
+        logger.warning(f"Could not record Celery heartbeat timestamp to cache: {exc}")
+
+    heartbeat_url = os.environ.get('BETTERSTACK_CELERY_HEARTBEAT_URL', '').strip()
+    if heartbeat_url:
+        try:
+            resp = requests.get(heartbeat_url, timeout=8)
+            logger.info(f"Better Stack Celery heartbeat pinged successfully (HTTP {resp.status_code})")
+        except Exception as exc:
+            logger.error(f"Failed to ping Better Stack Celery heartbeat URL ({heartbeat_url}): {exc}")
+
