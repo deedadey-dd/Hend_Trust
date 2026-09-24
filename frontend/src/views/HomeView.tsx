@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import {
   Shield, Link2, Truck, CheckCircle, ArrowRight,
   Lock, Zap, Search, Store,
-  ShieldCheck, Star, HelpCircle
+  ShieldCheck, Star
 } from 'lucide-react';
 import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.webp';
@@ -156,10 +156,10 @@ export default function HomeView() {
                   </Link>
                 </>
               )}
-              <Link to="/help"
+              {/* <Link to="/help"
                 className="inline-flex items-center justify-center gap-1.5 px-4 sm:px-6 py-3.5 rounded-xl hero-glass-btn !text-amber-300 font-bold text-sm sm:text-base transition-all shrink-0">
                 <HelpCircle className="h-4 w-4 text-amber-300" /> Platform Guide
-              </Link>
+              </Link> */}
             </div>
           </div>
         </div>
@@ -172,7 +172,7 @@ export default function HomeView() {
           <div className="flex items-center justify-between gap-2">
             <h2 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
               <Store className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
-              <span>Search Marketplace & Products</span>
+              <span>Search Marketplace</span>
             </h2>
             <Link
               to="/shops"

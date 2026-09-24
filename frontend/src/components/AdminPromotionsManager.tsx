@@ -443,7 +443,10 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
   const fetchReferralSettings = async () => {
     try {
       const res = await apiClient.get('/users/admin/referral-settings');
-      if (res.data) setReferralSettings(res.data);
+      const data = res.data?.settings || res.data;
+      if (data && typeof data.referral_program_active !== 'undefined') {
+        setReferralSettings(data);
+      }
     } catch (err) {
       console.error('Failed to fetch referral settings:', err);
     }
@@ -456,7 +459,10 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       setActionMsg('');
       setActionError('');
       const res = await apiClient.put('/users/admin/referral-settings', referralSettings);
-      setReferralSettings(res.data.settings);
+      const savedData = res.data?.settings || res.data;
+      if (savedData && typeof savedData.referral_program_active !== 'undefined') {
+        setReferralSettings(savedData);
+      }
       setActionMsg('Referral program settings saved successfully!');
       setTimeout(() => setActionMsg(''), 4000);
     } catch (err: any) {
@@ -1301,7 +1307,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div>
                 <h5 className="text-sm font-bold text-slate-900 dark:text-white flex items-center gap-2">
-                  <UserPlus className="h-4 w-4 text-purple-600 dark:text-purple-400" />
+                  <UserPlus className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                   Referral Program Configuration & Reward Incentives
                 </h5>
                 <p className="text-xs text-slate-500">
@@ -1310,24 +1316,24 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
               </div>
 
               <span className={`px-3 py-1 rounded-full text-xs font-bold font-mono border self-start sm:self-auto ${
-                referralSettings.referral_program_active
-                  ? 'bg-purple-500/10 text-purple-700 dark:text-purple-400 border-purple-500/30'
+                referralSettings?.referral_program_active
+                  ? 'bg-blue-500/10 text-blue-700 dark:text-blue-400 border-blue-500/30'
                   : 'bg-slate-500/10 text-slate-500 border-slate-500/20'
               }`}>
-                {referralSettings.referral_program_active ? 'PROGRAM ACTIVE' : 'PROGRAM DISABLED'}
+                {referralSettings?.referral_program_active ? 'PROGRAM ACTIVE' : 'PROGRAM DISABLED'}
               </span>
             </div>
 
-            <form onSubmit={handleSaveReferralSettings} className="bg-purple-50/40 dark:bg-purple-950/20 p-5 rounded-2xl border border-purple-200/80 dark:border-purple-900/40 space-y-4">
+            <form onSubmit={handleSaveReferralSettings} className="bg-blue-50/40 dark:bg-blue-950/20 p-5 rounded-2xl border border-blue-200/80 dark:border-blue-900/40 space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4 text-xs">
                 <div>
                   <label className="block font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                     Program Status
                   </label>
                   <select
-                    value={referralSettings.referral_program_active ? 'ACTIVE' : 'DISABLED'}
+                    value={referralSettings?.referral_program_active ? 'ACTIVE' : 'DISABLED'}
                     onChange={e => setReferralSettings({ ...referralSettings, referral_program_active: e.target.value === 'ACTIVE' })}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-bold font-mono outline-none focus:ring-2 focus:ring-blue-500"
                   >
                     <option value="ACTIVE">Enabled (Active)</option>
                     <option value="DISABLED">Disabled (Paused)</option>
@@ -1342,9 +1348,9 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                     type="number"
                     step="0.5"
                     min="0"
-                    value={referralSettings.referrer_reward_ghs}
+                    value={referralSettings?.referrer_reward_ghs ?? 15}
                     onChange={e => setReferralSettings({ ...referralSettings, referrer_reward_ghs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-bold font-mono text-purple-600 dark:text-purple-400 outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-bold font-mono text-blue-600 dark:text-blue-400 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -1356,9 +1362,9 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                     type="number"
                     step="0.5"
                     min="0"
-                    value={referralSettings.referee_reward_ghs}
+                    value={referralSettings?.referee_reward_ghs ?? 10}
                     onChange={e => setReferralSettings({ ...referralSettings, referee_reward_ghs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-bold font-mono text-purple-600 dark:text-purple-400 outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-bold font-mono text-blue-600 dark:text-blue-400 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -1370,9 +1376,9 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                     type="number"
                     step="1"
                     min="0"
-                    value={referralSettings.min_order_amount_for_referral_ghs}
+                    value={referralSettings?.min_order_amount_for_referral_ghs ?? 0}
                     onChange={e => setReferralSettings({ ...referralSettings, min_order_amount_for_referral_ghs: parseFloat(e.target.value) || 0 })}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-mono outline-none focus:ring-2 focus:ring-purple-500"
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
 
@@ -1383,10 +1389,10 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                   <input
                     type="number"
                     step="1"
-                    min="1"
-                    value={referralSettings.max_referrals_per_user}
-                    onChange={e => setReferralSettings({ ...referralSettings, max_referrals_per_user: parseInt(e.target.value) || 50 })}
-                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-mono outline-none focus:ring-2 focus:ring-purple-500"
+                    min="0"
+                    value={referralSettings?.max_referrals_per_user ?? 0}
+                    onChange={e => setReferralSettings({ ...referralSettings, max_referrals_per_user: parseInt(e.target.value) || 0 })}
+                    className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-mono outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
@@ -1395,7 +1401,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                 <button
                   type="submit"
                   disabled={savingReferralSettings}
-                  className="px-5 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl text-xs shadow flex items-center gap-2 cursor-pointer"
+                  className="px-5 py-2.5 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs shadow flex items-center gap-2 cursor-pointer"
                 >
                   {savingReferralSettings ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
                   Save Referral Settings

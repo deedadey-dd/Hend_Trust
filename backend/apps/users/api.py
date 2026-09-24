@@ -27,6 +27,7 @@ from utils.mnotify import MNotifyService
 
 auth_router = Router(tags=["Authentication"])
 profile_router = Router(tags=["Seller Profile"], auth=JWTCookieAuth())
+users_router = Router(tags=["Users & Referrals"], auth=JWTCookieAuth())
 
 def _send_user_phone_otp(user):
     import random, logging
@@ -1029,6 +1030,23 @@ class BuyerReferralHubSchema(Schema):
     phone_number: str
 
 
+@auth_router.get("/referral-config", response=dict)
+def get_public_referral_config(request):
+    """
+    Returns public referral program reward configuration and active state.
+    """
+    from apps.users.referrals import get_referral_config
+    cfg = get_referral_config()
+    return {
+        "referral_program_active": cfg["referral_program_active"],
+        "referrer_reward_ghs": float(cfg["referrer_reward_ghs"]),
+        "referee_reward_ghs": float(cfg["referee_reward_ghs"]),
+        "referee_welcome_bonus_ghs": float(cfg["referee_reward_ghs"]),
+        "min_order_amount_for_referral_ghs": float(cfg["min_order_amount_for_referral_ghs"]),
+        "max_referrals_per_user": cfg["max_referrals_per_user"],
+    }
+
+
 @auth_router.get("/validate-referral", response=dict)
 def validate_referral_endpoint(request, code: str):
     """
@@ -1093,18 +1111,26 @@ class ReferralSettingsSchema(Schema):
 class AdminReferralItemSchema(Schema):
     id: str
     referrer_id: str
+    referrer_name: Optional[str] = ""
     referrer_username: str
     referrer_phone: Optional[str] = None
     referee_id: str
+    referee_name: Optional[str] = ""
     referee_username: str
     referee_phone: Optional[str] = None
     code_used: str
     status: str
     reward_amount_ghs: float
     referee_discount_ghs: float
+    referrer_reward_ghs: float = 0.0
+    referee_reward_ghs: float = 0.0
+    qualifying_transaction_id: Optional[str] = None
+    qualifying_reference: Optional[str] = None
+    qualifying_amount_ghs: Optional[float] = None
     completed_transaction_id: Optional[str] = None
     completed_transaction_reference: Optional[str] = None
     created_at: str
+    completed_at: Optional[str] = None
     rewarded_at: Optional[str] = None
 
 
@@ -1112,7 +1138,10 @@ class AdminReferralMetricsSchema(Schema):
     total_referrals: int
     completed_count: int
     pending_count: int
-    total_payout_ghs: float
+    qualifying_count: int = 0
+    total_referrer_rewards_ghs: float = 0.0
+    total_referee_rewards_ghs: float = 0.0
+    total_payout_ghs: float = 0.0
 
 
 class AdminReferralsResponseSchema(Schema):
@@ -1121,8 +1150,7 @@ class AdminReferralsResponseSchema(Schema):
     items: List[AdminReferralItemSchema]
 
 
-@profile_router.get("/admin/referral-settings", response=ReferralSettingsSchema)
-def get_admin_referral_settings_endpoint(request):
+def _get_admin_referral_settings_handler(request):
     if not (request.user.is_staff or getattr(request.user, 'role', '') in ['ADMIN', 'FINANCE_ADMIN']):
         raise HttpError(403, "Access restricted to administrators.")
     from apps.users.referrals import get_referral_config
@@ -1136,8 +1164,7 @@ def get_admin_referral_settings_endpoint(request):
     }
 
 
-@profile_router.put("/admin/referral-settings", response=ReferralSettingsSchema)
-def update_admin_referral_settings_endpoint(request, data: ReferralSettingsSchema):
+def _update_admin_referral_settings_handler(request, data: ReferralSettingsSchema):
     if not (request.user.is_staff or getattr(request.user, 'role', '') in ['ADMIN', 'FINANCE_ADMIN']):
         raise HttpError(403, "Access restricted to administrators.")
     from apps.users.referrals import save_referral_config
@@ -1151,8 +1178,7 @@ def update_admin_referral_settings_endpoint(request, data: ReferralSettingsSchem
     }
 
 
-@profile_router.get("/admin/referrals", response=AdminReferralsResponseSchema)
-def get_admin_referrals_endpoint(
+def _get_admin_referrals_handler(
     request,
     search: Optional[str] = None,
     status: Optional[str] = None,
@@ -1203,30 +1229,44 @@ def get_admin_referrals_endpoint(
     total_count = qs.count()
     completed_count = qs.filter(status='COMPLETED').count()
     pending_count = qs.filter(status='PENDING').count()
-    total_payout = sum(
-        (r.reward_amount_ghs + r.referee_discount_ghs for r in qs if r.status == 'COMPLETED'),
+    total_referrer_rewards = sum(
+        (r.reward_amount_ghs for r in qs if r.status == 'COMPLETED'),
         Decimal('0.00')
     )
+    total_referee_rewards = sum(
+        (r.referee_discount_ghs for r in qs if r.status == 'COMPLETED'),
+        Decimal('0.00')
+    )
+    total_payout = total_referrer_rewards + total_referee_rewards
 
     page_items = qs[offset:offset + limit]
 
     items = []
     for r in page_items:
+        tx = r.completed_transaction
         items.append({
             "id": str(r.id),
             "referrer_id": str(r.referrer.id),
+            "referrer_name": r.referrer.get_full_name() or r.referrer.username,
             "referrer_username": r.referrer.username,
             "referrer_phone": r.referrer.phone_number,
             "referee_id": str(r.referred_user.id),
+            "referee_name": r.referred_user.get_full_name() or r.referred_user.username,
             "referee_username": r.referred_user.username,
             "referee_phone": r.referred_user.phone_number,
             "code_used": r.code_used,
             "status": r.status,
             "reward_amount_ghs": float(r.reward_amount_ghs),
             "referee_discount_ghs": float(r.referee_discount_ghs),
-            "completed_transaction_id": str(r.completed_transaction.id) if r.completed_transaction else None,
-            "completed_transaction_reference": r.completed_transaction.paystack_reference if r.completed_transaction else None,
+            "referrer_reward_ghs": float(r.reward_amount_ghs),
+            "referee_reward_ghs": float(r.referee_discount_ghs),
+            "qualifying_transaction_id": str(tx.id) if tx else None,
+            "qualifying_reference": tx.paystack_reference if tx else None,
+            "qualifying_amount_ghs": float(tx.total_amount_ghs) if (tx and hasattr(tx, 'total_amount_ghs')) else None,
+            "completed_transaction_id": str(tx.id) if tx else None,
+            "completed_transaction_reference": tx.paystack_reference if tx else None,
             "created_at": r.created_at.isoformat(),
+            "completed_at": r.rewarded_at.isoformat() if r.rewarded_at else None,
             "rewarded_at": r.rewarded_at.isoformat() if r.rewarded_at else None,
         })
 
@@ -1236,10 +1276,62 @@ def get_admin_referrals_endpoint(
             "total_referrals": total_count,
             "completed_count": completed_count,
             "pending_count": pending_count,
+            "qualifying_count": completed_count,
+            "total_referrer_rewards_ghs": float(total_referrer_rewards),
+            "total_referee_rewards_ghs": float(total_referee_rewards),
             "total_payout_ghs": float(total_payout),
         },
         "items": items,
     }
+
+
+# Endpoints on profile_router
+@profile_router.get("/admin/referral-settings", response=ReferralSettingsSchema)
+def get_admin_referral_settings_profile(request):
+    return _get_admin_referral_settings_handler(request)
+
+
+@profile_router.put("/admin/referral-settings", response=ReferralSettingsSchema)
+def update_admin_referral_settings_profile(request, data: ReferralSettingsSchema):
+    return _update_admin_referral_settings_handler(request, data)
+
+
+@profile_router.get("/admin/referrals", response=AdminReferralsResponseSchema)
+def get_admin_referrals_profile(
+    request,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+):
+    return _get_admin_referrals_handler(request, search, status, start_date, end_date, limit, offset)
+
+
+# Endpoints on users_router (/api/v1/users/admin/...)
+@users_router.get("/admin/referral-settings", response=ReferralSettingsSchema)
+def get_admin_referral_settings_users(request):
+    return _get_admin_referral_settings_handler(request)
+
+
+@users_router.put("/admin/referral-settings", response=ReferralSettingsSchema)
+def update_admin_referral_settings_users(request, data: ReferralSettingsSchema):
+    return _update_admin_referral_settings_handler(request, data)
+
+
+@users_router.get("/admin/referrals", response=AdminReferralsResponseSchema)
+def get_admin_referrals_users(
+    request,
+    search: Optional[str] = None,
+    status: Optional[str] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    limit: int = 20,
+    offset: int = 0
+):
+    return _get_admin_referrals_handler(request, search, status, start_date, end_date, limit, offset)
+
 
 
 

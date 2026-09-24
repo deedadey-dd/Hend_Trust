@@ -104,3 +104,35 @@ class TestReferralEngine:
         assert stats['total_referrals'] == 1
         assert stats['completed_referrals'] == 1
         assert stats['total_earned_ghs'] == 15.0
+
+    def test_dynamic_referral_config_persistence_and_reward_values(self):
+        from apps.users.referrals import get_referral_config, save_referral_config
+
+        # Update referral config to new amounts
+        updated = save_referral_config({
+            "referral_program_active": True,
+            "referrer_reward_ghs": 25.00,
+            "referee_reward_ghs": 20.00,
+            "min_order_amount_for_referral_ghs": 100.00,
+            "max_referrals_per_user": 100
+        })
+
+        assert updated["referrer_reward_ghs"] == Decimal("25.00")
+        assert updated["referee_reward_ghs"] == Decimal("20.00")
+        assert updated["min_order_amount_for_referral_ghs"] == Decimal("100.00")
+
+        cfg = get_referral_config()
+        assert cfg["referrer_reward_ghs"] == Decimal("25.00")
+        assert cfg["referee_reward_ghs"] == Decimal("20.00")
+
+        # Test new referral inherits the updated config values
+        ref1 = User.objects.create_user(username='top_user1', email='top1@example.com', password='Password123!', phone_number='+233241112222')
+        ref2 = User.objects.create_user(username='new_user2', email='new2@example.com', password='Password123!', phone_number='+233241113333')
+
+        res = apply_referral_code(ref2, ref1.referral_code)
+        assert res['success'] is True
+
+        referral_rec = Referral.objects.get(referred_user=ref2)
+        assert referral_rec.reward_amount_ghs == Decimal("25.00")
+        assert referral_rec.referee_discount_ghs == Decimal("20.00")
+

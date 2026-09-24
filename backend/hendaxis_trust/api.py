@@ -1,6 +1,6 @@
 from django.conf import settings
 from ninja import NinjaAPI
-from apps.users.api import auth_router, profile_router
+from apps.users.api import auth_router, profile_router, users_router
 from apps.links.api import links_router
 from apps.checkout.api import checkout_router
 from apps.delivery.api import delivery_router
@@ -32,6 +32,7 @@ api.add_router("/wallet", wallet_router)
 api.add_router("/admin", admin_router)
 api.add_router("/notifications", notifications_router)
 api.add_router("/profile", profile_router)
+api.add_router("/users", users_router)
 api.add_router("/reviews", reviews_router)
 api.add_router("/developer", developer_router)
 api.add_router("/v1", v1_developer_router)

@@ -352,17 +352,24 @@ def get_buyer_phone_referral_stats(phone_number: str) -> dict:
                 "created_at": e.created_at.isoformat()
             })
 
+    from django.conf import settings
+    frontend_url = getattr(settings, 'FRONTEND_URL', 'https://localhost:5173')
+    ref_link = f"{frontend_url}/register?ref={user_ref_code}"
+
     return {
         "success": True,
         "phone_number": clean_phone,
         "referral_code": user_ref_code,
+        "referral_link": ref_link,
         "available_credit_ghs": available_credit,
+        "wallet_bonus_credits_ghs": available_credit,
         "total_referrals": total_count,
         "completed_referrals": completed_count,
         "pending_referrals": pending_count,
         "total_earned_ghs": total_earned,
         "reward_per_referral_ghs": float(cfg["referrer_reward_ghs"]),
         "referee_bonus_ghs": float(cfg["referee_reward_ghs"]),
+        "referee_welcome_bonus_ghs": float(cfg["referee_reward_ghs"]),
         "referral_program_active": cfg["referral_program_active"],
         "credit_history": credit_history,
         "recent_referrals": [
