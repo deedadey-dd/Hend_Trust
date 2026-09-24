@@ -30,7 +30,11 @@ echo -e "${BLUE}====================================================${NC}\n"
 # 1. PULL LATEST GIT CHANGES
 echo -e "${YELLOW}[1/6] Pulling latest code changes from Git...${NC}"
 cd "$PROJECT_ROOT"
-# Auto-clear runtime schedule file changes that cause git pull conflicts
+# Ignore filemode changes (chmod) on Linux server
+git config core.fileMode false
+
+# Auto-clear runtime schedule and lockfile changes that cause git pull conflicts
+git checkout -- frontend/package-lock.json 2>/dev/null || true
 git checkout -- backend/celerybeat-schedule* 2>/dev/null || true
 git rm --cached backend/celerybeat-schedule* 2>/dev/null || true
 git pull origin main
@@ -82,7 +86,7 @@ echo -e "${GREEN}✓ Gunicorn WSGI Server launched in background.${NC}\n"
 # 5. BUILD FRONTEND ASSETS
 echo -e "${YELLOW}[5/6] Installing dependencies & building frontend production bundle...${NC}"
 cd "$FRONTEND_DIR"
-npm install --silent
+npm ci --prefer-offline --no-audit
 npm run build
 echo -e "${GREEN}✓ Frontend production build completed successfully.${NC}\n"
 
