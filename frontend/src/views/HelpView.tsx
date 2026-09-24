@@ -220,12 +220,19 @@ export const HelpView: React.FC = () => {
       />
 
       {/* Hero Header Banner */}
-      <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-b border-slate-800 py-14 px-4 sm:px-6 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#0363ff_1px,transparent_1px)] [background-size:16px_16px]"></div>
+      <div className="relative overflow-hidden bg-gradient-to-b from-black via-slate-950 to-black border-b border-orange-500/20 py-16 sm:py-20 px-4 sm:px-6">
+        {/* Ambient Orange Radial Glow */}
+        <div className="absolute top-0 left-1/2 -translate-x-1/2 w-[700px] sm:w-[950px] h-[380px] bg-gradient-to-b from-[#ff6d1d]/25 via-[#ff6d1d]/10 to-transparent blur-3xl pointer-events-none -z-0"></div>
+        
+        {/* Distinct Orange Dot Pattern */}
+        <div className="absolute inset-0 opacity-30 bg-[radial-gradient(#ff6d1d_1.5px,transparent_1.5px)] [background-size:24px_24px] pointer-events-none"></div>
+
+        {/* Bottom Ambient Line Accent */}
+        <div className="absolute bottom-0 inset-x-0 h-px bg-gradient-to-r from-transparent via-[#ff6d1d]/40 to-transparent"></div>
         
         <div className="max-w-4xl mx-auto text-center space-y-4 relative z-10">
-          <div className="inline-flex items-center gap-2 bg-blue-500/10 border border-blue-500/20 px-3.5 py-1.5 rounded-full text-xs font-extrabold text-blue-400">
-            <HelpCircle className="h-4 w-4" />
+          <div className="inline-flex items-center gap-2 bg-[#ff6d1d]/15 border border-[#ff6d1d]/35 px-4 py-1.5 rounded-full text-xs font-black text-[#ff6d1d] shadow-sm tracking-wide">
+            <HelpCircle className="h-4 w-4 text-[#ff6d1d]" />
             Official Platform Guide & Knowledge Base
           </div>
           <h1 className="text-3xl sm:text-5xl font-black text-white tracking-tight">
@@ -237,13 +244,13 @@ export const HelpView: React.FC = () => {
 
           {/* Search Bar */}
           <div className="relative max-w-xl mx-auto pt-3">
-            <Search className="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 z-10" />
+            <Search className="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-orange-400 z-10" />
             <input
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search help topics (e.g. 'refunds', 'verification', 'referrals', 'dispatch')..."
-              className="w-full pl-12 pr-4 py-3.5 bg-slate-900/90 border border-slate-700 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-blue-500 focus:ring-4 focus:ring-blue-500/20 shadow-xl transition"
+              className="w-full pl-12 pr-4 py-3.5 bg-slate-900/90 border border-slate-700 rounded-2xl text-xs sm:text-sm text-white placeholder-slate-400 focus:outline-none focus:border-[#ff6d1d] focus:ring-4 focus:ring-[#ff6d1d]/20 shadow-2xl transition"
             />
           </div>
         </div>
@@ -257,9 +264,9 @@ export const HelpView: React.FC = () => {
           {[
             { title: 'Buyer Escrow', icon: Lock, color: 'text-blue-500', desc: '100% money protection' },
             { title: 'Verified Sellers', icon: ShieldCheck, color: 'text-emerald-500', desc: 'Ghana Card KYC' },
-            { title: 'Dual Shipping', icon: Truck, color: 'text-purple-500', desc: 'Courier & Bus OTP' },
+            { title: 'Dual Shipping', icon: Truck, color: 'text-sky-500', desc: 'Courier & Bus OTP' },
             { title: '24h Arbitration', icon: Clock, color: 'text-amber-500', desc: 'Fair binding rulings' },
-            { title: 'Refer & Earn', icon: Gift, color: 'text-pink-500', desc: 'GH₵ 15 fee credits' },
+            { title: 'Refer & Earn', icon: Gift, color: 'text-[#ff6d1d]', desc: 'Fee offset credits' },
             { title: 'Developer APIs', icon: Code, color: 'text-teal-500', desc: 'REST API & SDK' }
           ].map((c, idx) => {
             const IconComp = c.icon;
@@ -364,9 +371,9 @@ export const HelpView: React.FC = () => {
 
           <Link
             to="/referrals"
-            className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-pink-500 dark:hover:border-pink-500 transition shadow-sm group"
+            className="p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-[#ff6d1d] dark:hover:border-[#ff6d1d] transition shadow-sm group"
           >
-            <Gift className="w-6 h-6 text-pink-500 mb-2 group-hover:scale-110 transition-transform" />
+            <Gift className="w-6 h-6 text-[#ff6d1d] mb-2 group-hover:scale-110 transition-transform" />
             <h4 className="font-bold text-sm text-slate-900 dark:text-white">Refer & Earn Hub</h4>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Earn fee offset credits whenever friends complete transactions.
@@ -375,7 +382,7 @@ export const HelpView: React.FC = () => {
         </div>
 
         {/* 24/7 Support CTA Banner */}
-        <div className="bg-gradient-to-r from-blue-900/90 via-indigo-900/90 to-slate-900 border border-blue-500/30 p-6 sm:p-8 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl text-white">
+        <div className="bg-gradient-to-r from-blue-950 via-slate-900 to-black border border-blue-500/30 p-6 sm:p-8 rounded-3xl flex flex-col sm:flex-row items-center justify-between gap-6 shadow-xl text-white">
           <div className="space-y-1 text-center sm:text-left">
             <h3 className="text-lg sm:text-xl font-black text-white flex items-center justify-center sm:justify-start gap-2">
               <PhoneCall className="h-5 w-5 text-emerald-400" />

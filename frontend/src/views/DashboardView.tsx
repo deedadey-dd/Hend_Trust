@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams, Link } from 'react-router-dom';
 import { 
   Search, Filter, Package, CheckCircle, 
-  Printer, X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
+  X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
   ShieldAlert, MapPin, Copy, Lock, ZoomIn, Archive, ArchiveRestore, MessageSquare,
-  Gift, Award
+  Gift, Award, Printer, Plus
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -1000,7 +1000,7 @@ export default function DashboardView() {
   const [endDate, setEndDate] = useState(searchParams.get('end_date') || '');
   
   // Pagination
-  const limit = 10;
+  const limit = parseInt(searchParams.get('limit') || '10', 10);
   const offset = parseInt(searchParams.get('offset') || '0', 10);
   
   // Parcel tag & transaction detail modal
@@ -1066,6 +1066,20 @@ export default function DashboardView() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const fetchAllTransactionsForExport = async (): Promise<Record<string, any>[]> => {
+    const params = new URLSearchParams();
+    params.append('limit', '10000');
+    params.append('offset', '0');
+    if (search) params.append('search', search);
+    if (status) params.append('status', status);
+    if (startDate) params.append('start_date', startDate);
+    if (endDate) params.append('end_date', endDate);
+    if (status === 'ARCHIVED') params.append('include_archived', 'true');
+    
+    const res = await apiClient.get(`/escrow/seller/transactions?${params.toString()}`);
+    return res.data?.items || [];
   };
 
   const fetchMetrics = async () => {
@@ -1200,14 +1214,17 @@ export default function DashboardView() {
     setSearchParams(params);
   };
 
-  const handlePrint = () => {
-    window.print();
+  const handleLimitChange = (newLimit: number) => {
+    const params = new URLSearchParams(searchParams);
+    params.set('limit', newLimit.toString());
+    params.set('offset', '0');
+    setSearchParams(params);
   };
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* ─── MERCHANT NAVIGATION TABS ─────────────────────────────────────────── */}
-      <div className="flex items-center gap-2 mb-6 border-b border-gray-200 dark:border-slate-800 pb-3 overflow-x-auto print:hidden">
+      <div className="flex items-center gap-2 mb-6 border-b border-gray-200 dark:border-slate-800 pb-3 overflow-x-auto print:hidden no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         <button
           type="button"
           onClick={() => {
@@ -1281,7 +1298,7 @@ export default function DashboardView() {
         <>
           <div className="sm:flex sm:items-center sm:justify-between mb-6 print:hidden">
             <div>
-              <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Transactions Dashboard</h1>
+              <h1 className="text-2xl font-bold text-white dark:text-white">Transactions Dashboard</h1>
               <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
                 Manage your escrow sales, track active order payouts, print parcel tags, and manage deliveries.
               </p>
@@ -1292,15 +1309,11 @@ export default function DashboardView() {
                 title="Merchant Transactions Escrow Report"
                 headers={merchantTxnExportHeaders}
                 data={txns}
+                totalCount={totalCount}
+                onFetchAll={fetchAllTransactionsForExport}
                 sheetName="Transactions"
                 label="Export Sales Report"
               />
-              <button
-                onClick={handlePrint}
-                className="inline-flex items-center gap-1.5 px-3.5 py-2 text-xs font-semibold rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 transition"
-              >
-                <Printer className="w-3.5 h-3.5" /> Print Page
-              </button>
             </div>
           </div>
 
@@ -1489,28 +1502,28 @@ export default function DashboardView() {
       )}
 
       {/* ─── PENDING TRANSACTIONS & AMOUNTS DUE SUMMARY ─────────────────────────── */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8 print:hidden">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-4 mb-6 sm:mb-8 print:hidden">
         {/* Card 1: Total Pending Orders & Net Amount Due */}
-        <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white rounded-2xl p-5 border border-blue-800/40 shadow-xl relative overflow-hidden flex flex-col justify-between">
-          <div className="absolute -right-4 -bottom-4 opacity-10 pointer-events-none">
-            <Package className="h-32 w-32 text-blue-400" />
+        <div className="bg-gradient-to-br from-slate-900 via-blue-950 to-slate-900 text-white rounded-xl sm:rounded-2xl p-3 sm:p-5 border border-blue-800/40 shadow-md sm:shadow-xl relative overflow-hidden flex flex-col justify-between">
+          <div className="absolute -right-3 -bottom-3 opacity-10 pointer-events-none">
+            <Package className="h-20 w-20 sm:h-32 sm:w-32 text-blue-400" />
           </div>
           <div>
-            <span className="text-[11px] uppercase tracking-wider font-bold text-blue-300 block">
+            <span className="text-[10px] sm:text-[11px] uppercase tracking-wider font-bold text-blue-300 block truncate">
               Pending Escrow Payouts
             </span>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-black font-mono text-emerald-400">
+            <div className="mt-1 sm:mt-2 flex items-baseline gap-2">
+              <span className="text-base sm:text-2xl font-black font-mono text-emerald-400 tracking-tight">
                 GHS {(metrics?.pending_net_due_seller_ghs ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
               </span>
             </div>
-            <p className="text-xs text-slate-300 mt-1">
+            <p className="hidden sm:block text-xs text-slate-300 mt-1">
               Net amount due across active pending orders
             </p>
           </div>
-          <div className="mt-5 pt-3 border-t border-blue-800/40 flex items-center justify-between">
-            <span className="text-xs font-semibold text-blue-200">Active Pending Orders</span>
-            <span className="text-xs font-bold font-mono bg-blue-500/20 text-blue-300 px-2.5 py-0.5 rounded-full border border-blue-400/30">
+          <div className="mt-2.5 sm:mt-5 pt-2 sm:pt-3 border-t border-blue-800/40 flex items-center justify-between">
+            <span className="hidden sm:inline text-xs font-semibold text-blue-200">Active Pending Orders</span>
+            <span className="text-[10px] sm:text-xs font-bold font-mono bg-blue-500/20 text-blue-300 px-2 sm:px-2.5 py-0.5 rounded-full border border-blue-400/30 ml-auto sm:ml-0">
               {metrics?.pending_transactions_count ?? 0} Orders
             </span>
           </div>
@@ -1525,23 +1538,23 @@ export default function DashboardView() {
             setStatus('PAYMENT_RECEIVED');
             setSearchParams(params);
           }}
-          className={`bg-white dark:bg-slate-950 rounded-2xl p-5 border cursor-pointer transition hover:border-amber-500/50 hover:shadow-md flex flex-col justify-between ${
+          className={`bg-white dark:bg-slate-950 rounded-xl sm:rounded-2xl p-3 sm:p-5 border cursor-pointer transition hover:border-amber-500/50 hover:shadow-md flex flex-col justify-between ${
             status === 'PAYMENT_RECEIVED' ? 'border-amber-500 ring-2 ring-amber-500/20' : 'border-gray-200 dark:border-slate-800'
           }`}
         >
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">Awaiting Dispatch</span>
-              <Package className="h-4 w-4 text-amber-500" />
+              <span className="text-[10px] sm:text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider truncate">Awaiting Dispatch</span>
+              <Package className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-amber-500 shrink-0" />
             </div>
-            <div className="mt-2 text-xl font-bold font-mono text-gray-900 dark:text-white">
+            <div className="mt-1 sm:mt-2 text-base sm:text-xl font-bold font-mono text-gray-900 dark:text-white tracking-tight">
               GHS {(metrics?.awaiting_dispatch_net_ghs ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Paid by buyer, needs dispatch</p>
+            <p className="hidden sm:block text-xs text-gray-500 dark:text-slate-400 mt-0.5">Paid by buyer, needs dispatch</p>
           </div>
-          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-900 flex items-center justify-between text-xs">
-            <span className="text-gray-600 dark:text-slate-400 font-medium">To Package & Ship</span>
-            <span className="font-bold font-mono text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50">
+          <div className="mt-2.5 sm:mt-4 pt-2 sm:pt-3 border-t border-gray-100 dark:border-slate-900 flex items-center justify-between text-xs">
+            <span className="hidden sm:inline text-gray-600 dark:text-slate-400 font-medium">To Package & Ship</span>
+            <span className="text-[10px] sm:text-xs font-bold font-mono text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 sm:px-2.5 py-0.5 rounded-full border border-amber-200 dark:border-amber-900/50 ml-auto sm:ml-0">
               {metrics?.awaiting_dispatch_count ?? 0} Orders
             </span>
           </div>
@@ -1556,23 +1569,23 @@ export default function DashboardView() {
             setStatus('DELIVERY_IN_PROGRESS');
             setSearchParams(params);
           }}
-          className={`bg-white dark:bg-slate-950 rounded-2xl p-5 border cursor-pointer transition hover:border-blue-500/50 hover:shadow-md flex flex-col justify-between ${
+          className={`bg-white dark:bg-slate-950 rounded-xl sm:rounded-2xl p-3 sm:p-5 border cursor-pointer transition hover:border-blue-500/50 hover:shadow-md flex flex-col justify-between ${
             status === 'DELIVERY_IN_PROGRESS' || status === 'INSPECTION_PERIOD' ? 'border-blue-500 ring-2 ring-blue-500/20' : 'border-gray-200 dark:border-slate-800'
           }`}
         >
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider">In Transit & Inspection</span>
-              <Truck className="h-4 w-4 text-blue-500" />
+              <span className="text-[10px] sm:text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider truncate">In Transit</span>
+              <Truck className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-blue-500 shrink-0" />
             </div>
-            <div className="mt-2 text-xl font-bold font-mono text-gray-900 dark:text-white">
+            <div className="mt-1 sm:mt-2 text-base sm:text-xl font-bold font-mono text-gray-900 dark:text-white tracking-tight">
               GHS {((metrics?.in_delivery_net_ghs ?? 0) + (metrics?.in_inspection_net_ghs ?? 0)).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">En route or buyer inspecting</p>
+            <p className="hidden sm:block text-xs text-gray-500 dark:text-slate-400 mt-0.5">En route or buyer inspecting</p>
           </div>
-          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-900 flex items-center justify-between text-xs">
-            <span className="text-gray-600 dark:text-slate-400 font-medium">In Transit / Inspecting</span>
-            <span className="font-bold font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-900/50">
+          <div className="mt-2.5 sm:mt-4 pt-2 sm:pt-3 border-t border-gray-100 dark:border-slate-900 flex items-center justify-between text-xs">
+            <span className="hidden sm:inline text-gray-600 dark:text-slate-400 font-medium">In Transit / Inspecting</span>
+            <span className="text-[10px] sm:text-xs font-bold font-mono text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/50 px-2 sm:px-2.5 py-0.5 rounded-full border border-blue-200 dark:border-blue-900/50 ml-auto sm:ml-0">
               {(metrics?.in_delivery_count ?? 0) + (metrics?.in_inspection_count ?? 0)} Orders
             </span>
           </div>
@@ -1587,23 +1600,23 @@ export default function DashboardView() {
             setStatus('COMPLETED');
             setSearchParams(params);
           }}
-          className={`bg-white dark:bg-slate-950 rounded-2xl p-5 border cursor-pointer transition hover:border-emerald-500/50 hover:shadow-md flex flex-col justify-between ${
+          className={`bg-white dark:bg-slate-950 rounded-xl sm:rounded-2xl p-3 sm:p-5 border cursor-pointer transition hover:border-emerald-500/50 hover:shadow-md flex flex-col justify-between ${
             status === 'COMPLETED' ? 'border-emerald-500 ring-2 ring-emerald-500/20' : 'border-gray-200 dark:border-slate-800'
           }`}
         >
           <div>
             <div className="flex items-center justify-between">
-              <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider">Completed Earnings</span>
-              <CheckCircle className="h-4 w-4 text-emerald-500" />
+              <span className="text-[10px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wider truncate">Completed</span>
+              <CheckCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-emerald-500 shrink-0" />
             </div>
-            <div className="mt-2 text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400">
+            <div className="mt-1 sm:mt-2 text-base sm:text-xl font-bold font-mono text-emerald-600 dark:text-emerald-400 tracking-tight">
               GHS {(metrics?.completed_total_earned_ghs ?? 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
             </div>
-            <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">Released & settled to wallet</p>
+            <p className="hidden sm:block text-xs text-gray-500 dark:text-slate-400 mt-0.5">Released & settled to wallet</p>
           </div>
-          <div className="mt-4 pt-3 border-t border-gray-100 dark:border-slate-900 flex items-center justify-between text-xs">
-            <span className="text-gray-600 dark:text-slate-400 font-medium">Total Settled</span>
-            <span className="font-bold font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900/50">
+          <div className="mt-2.5 sm:mt-4 pt-2 sm:pt-3 border-t border-gray-100 dark:border-slate-900 flex items-center justify-between text-xs">
+            <span className="hidden sm:inline text-gray-600 dark:text-slate-400 font-medium">Total Settled</span>
+            <span className="text-[10px] sm:text-xs font-bold font-mono text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 sm:px-2.5 py-0.5 rounded-full border border-emerald-200 dark:border-emerald-900/50 ml-auto sm:ml-0">
               {metrics?.completed_transactions_count ?? 0} Completed
             </span>
           </div>
@@ -1942,34 +1955,55 @@ export default function DashboardView() {
           </table>
         </div>
         
-        {/* Pagination controls */}
-        {!loading && totalCount > limit && (
-          <div className="bg-white dark:bg-slate-950 px-4 py-3 border-t border-gray-200 dark:border-slate-800 flex items-center justify-between sm:px-6">
-            <div className="hidden sm:flex-1 sm:flex sm:items-center sm:justify-between">
-              <div>
-                <p className="text-sm text-gray-700 dark:text-slate-300">
-                  Showing <span className="font-medium text-gray-900 dark:text-slate-100">{offset + 1}</span> to <span className="font-medium text-gray-900 dark:text-slate-100">{Math.min(offset + limit, totalCount)}</span> of <span className="font-medium text-gray-900 dark:text-slate-100">{totalCount}</span> results
-                </p>
+        {/* Pagination controls & Page Size Selector */}
+        {!loading && totalCount > 0 && (
+          <div className="bg-white dark:bg-slate-950 px-4 py-3.5 border-t border-gray-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3 sm:px-6">
+            <div className="flex items-center gap-3 w-full sm:w-auto justify-between sm:justify-start">
+              <p className="text-xs sm:text-sm text-gray-700 dark:text-slate-300">
+                Showing <span className="font-semibold text-gray-900 dark:text-slate-100">{offset + 1}</span> to <span className="font-semibold text-gray-900 dark:text-slate-100">{Math.min(offset + limit, totalCount)}</span> of <span className="font-semibold text-gray-900 dark:text-slate-100">{totalCount}</span>
+              </p>
+              
+              <div className="flex items-center gap-1.5 pl-2 sm:border-l sm:border-gray-200 sm:dark:border-slate-800 text-xs">
+                <span className="text-gray-500 dark:text-slate-400 hidden sm:inline">Per page:</span>
+                <div className="inline-flex rounded-lg border border-gray-200 dark:border-slate-800 p-0.5 bg-slate-50 dark:bg-slate-900">
+                  {[10, 25, 50, 100].map((size) => (
+                    <button
+                      key={size}
+                      type="button"
+                      onClick={() => handleLimitChange(size)}
+                      className={`px-2 py-1 rounded text-xs font-bold transition cursor-pointer ${
+                        limit === size
+                          ? 'bg-blue-600 text-white shadow-xs'
+                          : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+                      }`}
+                    >
+                      {size}
+                    </button>
+                  ))}
+                </div>
               </div>
-              <div>
-                <nav className="relative z-0 inline-flex rounded-md shadow-sm -space-x-px" aria-label="Pagination">
+            </div>
+
+            {totalCount > limit && (
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+                <nav className="relative z-0 inline-flex rounded-lg shadow-sm -space-x-px" aria-label="Pagination">
                   <button
                     onClick={() => handlePageChange(Math.max(0, offset - limit))}
                     disabled={offset === 0}
-                    className="relative inline-flex items-center px-2 py-2 rounded-l-md border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-medium text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                    className="relative inline-flex items-center px-3 py-1.5 rounded-l-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
                   >
                     Previous
                   </button>
                   <button
                     onClick={() => handlePageChange(offset + limit)}
                     disabled={offset + limit >= totalCount}
-                    className="relative inline-flex items-center px-2 py-2 rounded-r-md border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-sm font-medium text-gray-500 dark:text-slate-400 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-50"
+                    className="relative inline-flex items-center px-3 py-1.5 rounded-r-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs font-semibold text-gray-700 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
                   >
                     Next
                   </button>
                 </nav>
               </div>
-            </div>
+            )}
           </div>
         )}
       </div>
@@ -2253,7 +2287,7 @@ export default function DashboardView() {
               </button>
               {activeDetailTab === 'TAG' && (
                 <button 
-                  onClick={handlePrint}
+                  onClick={() => window.print()}
                   className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-xl text-sm font-medium hover:bg-blue-700 transition flex items-center justify-center gap-2 shadow-lg shadow-blue-600/20"
                 >
                   <Printer className="h-4 w-4" /> Print Tag
@@ -2361,6 +2395,19 @@ export default function DashboardView() {
           </div>
         </div>
       )}
+
+      {/* ─── FLOATING ACTION BUTTON (CREATE NEW PAYMENT LINK) ────────────────── */}
+      <Link
+        to="/create-link"
+        title="Create New Payment Link"
+        aria-label="Create New Payment Link"
+        className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-40 group flex items-center gap-2 bg-[#0363ff] hover:bg-blue-600 text-white p-3.5 sm:px-5 sm:py-3.5 rounded-full shadow-2xl shadow-blue-600/40 border border-blue-400/30 hover:shadow-blue-500/60 hover:scale-105 active:scale-95 transition-all duration-200 print:hidden cursor-pointer backdrop-blur-sm"
+      >
+        <Plus className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90 stroke-[2.5]" />
+        <span className="hidden sm:inline font-bold text-xs tracking-wider uppercase font-sans">
+          Create Link
+        </span>
+      </Link>
     </div>
   );
 }

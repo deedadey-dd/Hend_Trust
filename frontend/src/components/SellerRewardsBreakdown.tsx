@@ -107,7 +107,7 @@ export const SellerRewardsBreakdown: React.FC<SellerRewardsBreakdownProps> = ({ 
               <Coins className="h-7 w-7" />
             </div>
             <div>
-              <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+              <h3 className="text-xl font-black text-slate-300 dark:text-white flex items-center gap-2">
                 Promotions & Reward Earnings
                 <span className="bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase">
                   Automatic Fee Offset

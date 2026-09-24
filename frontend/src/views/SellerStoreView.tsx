@@ -3,12 +3,13 @@ import { useParams, Link } from 'react-router-dom';
 import { 
   Shield, ShieldCheck, Star, Award, CheckCircle2, MessageSquare, Loader2, 
   Calendar, PackageCheck, Send, Zap, ChevronRight, Pencil, Package, ExternalLink, 
-  MessageCircle, Info, Phone
+  MessageCircle, Info, Phone, Truck, AlertTriangle, X, Tag
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import SEOHead from '../components/SEOHead';
 import ReviewDetailModal from '../components/ReviewDetailModal';
+import { useEscapeKey } from '../utils/useEscapeKey';
 import type { RecentReview } from '../components/TrustpilotReviewCard';
 
 interface ProductCard {
@@ -63,6 +64,9 @@ interface SellerStorefront {
   seller_id: string;
   seller_username: string;
   shop_name?: string;
+  shop_description?: string;
+  shop_category?: string;
+  shop_categories?: string[];
   profile_picture_url?: string;
   banner_url?: string;
   joined_at: string;
@@ -88,6 +92,10 @@ export default function SellerStoreView() {
 
   // Selected review for detail modal
   const [selectedReview, setSelectedReview] = useState<RecentReview | null>(null);
+
+  // Interstitial Confirm Shipping / Delivery Modal for Products
+  const [shippingModalProduct, setShippingModalProduct] = useState<ProductCard | null>(null);
+  useEscapeKey(() => setShippingModalProduct(null), Boolean(shippingModalProduct));
 
   // Seller reply state
   const [replyingReviewId, setReplyingReviewId] = useState<string | null>(null);
@@ -354,6 +362,42 @@ export default function SellerStoreView() {
           </div>
         </div>
 
+        {/* 2.5 STORE INFORMATION, CATEGORIES & BIO */}
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 shadow-sm border border-gray-200 dark:border-slate-800 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="space-y-2.5 max-w-2xl">
+            {/* Category Badges */}
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1">
+                <Tag className="h-3 w-3 text-blue-600 dark:text-blue-400" /> Categories:
+              </span>
+              {store.shop_categories && store.shop_categories.length > 0 ? (
+                store.shop_categories.map(cat => (
+                  <span key={cat} className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/80 shadow-2xs">
+                    {cat}
+                  </span>
+                ))
+              ) : (
+                <span className="px-2.5 py-0.5 rounded-full text-xs font-semibold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200/80 dark:border-blue-800/80 shadow-2xs">
+                  {store.shop_category || 'General Marketplace'}
+                </span>
+              )}
+            </div>
+
+            {/* Shop Description / Bio */}
+            {store.shop_description && (
+              <p className="text-sm text-gray-700 dark:text-slate-300 leading-relaxed">
+                {store.shop_description}
+              </p>
+            )}
+          </div>
+
+          {/* Quick Shop Escrow Badge */}
+          <div className="shrink-0 flex items-center gap-2 self-start sm:self-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 px-3.5 py-2 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 shadow-2xs">
+            <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+            <span>Escrow Protected Store</span>
+          </div>
+        </div>
+
         {/* 3. ACTIVE PRODUCTS & ESCROW OFFERS SECTION */}
         {store.active_products && store.active_products.length > 0 && (
           <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden transition-colors">
@@ -380,7 +424,10 @@ export default function SellerStoreView() {
                     className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200/90 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-lg transition-all flex flex-col overflow-hidden group"
                   >
                     {/* Product Image */}
-                    <div className="h-44 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0">
+                    <div 
+                      onClick={() => setShippingModalProduct(prod)}
+                      className="h-44 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0 cursor-pointer"
+                    >
                       {prod.image_url ? (
                         <img
                           src={prod.image_url}
@@ -406,7 +453,10 @@ export default function SellerStoreView() {
                     {/* Card Content */}
                     <div className="p-4 flex flex-col flex-1 justify-between gap-3">
                       <div>
-                        <h4 className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                        <h4 
+                          onClick={() => setShippingModalProduct(prod)}
+                          className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors cursor-pointer"
+                        >
                           {prod.title}
                         </h4>
                         {prod.description && (
@@ -416,17 +466,29 @@ export default function SellerStoreView() {
                         )}
                       </div>
 
-                      {/* Transparent Shipping Disclaimer Pill */}
-                      <div className="flex items-center gap-1.5 text-[11px] text-slate-600 dark:text-slate-400 bg-slate-100 dark:bg-slate-800/80 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700">
-                        <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider shrink-0">📦 Shipping:</span>
-                        <span className="truncate">Based on your location</span>
-                      </div>
-
-                      {/* Clean Icon-Only Contact Row: Location pill on the left, Phone & WhatsApp icons on the right */}
-                      <div className="pt-2 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-1 text-[10px] text-slate-500 dark:text-slate-400 truncate">
-                          <span>Direct Inquiries</span>
+                      {/* Transparent Shipping Disclaimer Pill / Trigger Modal */}
+                      <button
+                        type="button"
+                        onClick={() => setShippingModalProduct(prod)}
+                        className="w-full flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 transition cursor-pointer text-left"
+                      >
+                        <div className="flex items-center gap-1 truncate">
+                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider shrink-0">📦 Shipping:</span>
+                          <span className="truncate">Based on location</span>
                         </div>
+                        <ChevronRight className="h-3 w-3 text-slate-400 shrink-0 ml-1" />
+                      </button>
+
+                      {/* Clean Action Buttons: Confirm & Buy Button + Contact Icons */}
+                      <div className="pt-2 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setShippingModalProduct(prod)}
+                          className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
+                        >
+                          <Truck className="w-3.5 h-3.5" />
+                          <span>Buy via Escrow</span>
+                        </button>
                         <div className="flex items-center gap-1.5 shrink-0">
                           {prod.seller_phone && (
                             <a
@@ -694,6 +756,110 @@ export default function SellerStoreView() {
         onClose={() => setSelectedReview(null)}
         showVisitStoreButton={false}
       />
+
+      {/* Interstitial Confirm Shipping / Delivery Modal */}
+      {shippingModalProduct && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 duration-200">
+            {/* Modal Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2.5">
+                <div className="h-10 w-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                  <Truck className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-slate-900 dark:text-white text-base leading-tight">
+                    Confirm Delivery with Seller
+                  </h3>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Verify shipping fees to your destination
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShippingModalProduct(null)}
+                className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Selected Product Snapshot */}
+            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-3">
+              <div className="min-w-0">
+                <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate">
+                  {shippingModalProduct.title}
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
+                  Store: <strong className="text-slate-700 dark:text-slate-200 font-semibold">{shippingModalProduct.seller_shop_name || store.shop_name}</strong>
+                </p>
+              </div>
+              <span className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 font-mono shrink-0">
+                GH₵ {Number(shippingModalProduct.price_ghs).toFixed(2)}
+              </span>
+            </div>
+
+            {/* Warning Box */}
+            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 text-xs text-amber-950 dark:text-amber-200 space-y-2">
+              <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300 text-xs">
+                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span>Important Shipping Notice</span>
+              </div>
+              <p className="leading-relaxed text-[11.5px]">
+                Shipping costs in Ghana depend on your specific city/town and chosen transport method (e.g. Courier or Station Bus OTP).
+              </p>
+              <p className="leading-relaxed text-[11.5px] font-medium text-amber-900 dark:text-amber-100">
+                If your delivery location costs more than what is included in this link, the seller may ask for an additional shipping fee before dispatching your package.
+              </p>
+            </div>
+
+            {/* Action Buttons */}
+            <div className="space-y-2 pt-1">
+              {shippingModalProduct.whatsapp_contact_url ? (
+                <a
+                  href={shippingModalProduct.whatsapp_contact_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 text-center cursor-pointer"
+                >
+                  <MessageCircle className="h-4 w-4" />
+                  <span>Chat on WhatsApp to Confirm Delivery</span>
+                </a>
+              ) : (
+                <Link
+                  to={`/l/${shippingModalProduct.link_id}`}
+                  onClick={() => setShippingModalProduct(null)}
+                  className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md flex items-center justify-center gap-2 text-center"
+                >
+                  <ExternalLink className="h-4 w-4" />
+                  <span>Proceed to Escrow Checkout</span>
+                </Link>
+              )}
+
+              {shippingModalProduct.seller_phone && (
+                <a
+                  href={`tel:${shippingModalProduct.seller_phone}`}
+                  className="w-full py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 text-center"
+                >
+                  <Phone className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <span>Call Seller ({shippingModalProduct.seller_phone})</span>
+                </a>
+              )}
+
+              <div className="pt-2 text-center">
+                <Link
+                  to={`/l/${shippingModalProduct.link_id}`}
+                  onClick={() => setShippingModalProduct(null)}
+                  className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-semibold underline"
+                >
+                  I have already agreed on delivery — Proceed to Checkout →
+                </Link>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

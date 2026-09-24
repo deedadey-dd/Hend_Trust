@@ -52,6 +52,8 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
 
   const origin = window.location.origin;
   const referralLink = stats?.referral_code ? `${origin}/register?ref=${stats.referral_code}` : '';
+  const referrerBonus = typeof stats?.reward_per_referral_ghs === 'number' ? stats.reward_per_referral_ghs : 15.0;
+  const refereeBonus = typeof stats?.referee_bonus_ghs === 'number' ? stats.referee_bonus_ghs : 10.0;
 
   useEffect(() => {
     if (referralLink) {
@@ -66,7 +68,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
     }
   }, [referralLink]);
 
-  const shareText = `Hey! I use HendAxis Trust to protect my online sales and purchases in Ghana with 100% scam-free escrow protection. Register with my link and get GH₵ 10.00 off your transactions: ${referralLink}`;
+  const shareText = `Hey! I use HendAxis Trust to protect my online sales and purchases in Ghana with 100% scam-free escrow protection. Register with my link and get GH₵ ${refereeBonus.toFixed(2)} off your transactions: ${referralLink}`;
   const whatsappUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareText)}`;
   const telegramUrl = `https://t.org/share/url?url=${encodeURIComponent(referralLink)}&text=${encodeURIComponent('Join HendAxis Trust for scam-free escrow payments in Ghana!')}`;
   const twitterUrl = `https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}`;
@@ -98,7 +100,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
           onClick={() => setActiveSubTab('referrals')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
             activeSubTab === 'referrals'
-              ? 'bg-indigo-600 text-white shadow-sm'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
               : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
           }`}
         >
@@ -108,7 +110,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
           onClick={() => setActiveSubTab('rewards_ledger')}
           className={`px-4 py-2 rounded-xl text-xs font-bold transition flex items-center gap-2 cursor-pointer ${
             activeSubTab === 'rewards_ledger'
-              ? 'bg-indigo-600 text-white shadow-sm'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-500/20'
               : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
           }`}
         >
@@ -121,21 +123,21 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
       ) : (
         <div className="space-y-6">
           {/* Header Banner */}
-          <div className="bg-gradient-to-r from-indigo-600/20 via-blue-600/10 to-orange-500/15 border border-indigo-500/30 rounded-3xl p-6 sm:p-8 space-y-4">
+          <div className="bg-gradient-to-r from-blue-900/40 via-slate-900 to-black border border-blue-500/30 rounded-3xl p-6 sm:p-8 space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
               <div className="flex items-center gap-4">
-                <div className="w-14 h-14 rounded-2xl bg-indigo-500/20 border border-indigo-500/30 flex items-center justify-center text-indigo-600 dark:text-blue-400 shrink-0">
-                  <Gift className="h-7 w-7 text-indigo-500" />
+                <div className="w-14 h-14 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-400 shrink-0">
+                  <Gift className="h-7 w-7 text-blue-400" />
                 </div>
                 <div>
-                  <h3 className="text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
+                  <h3 className="text-xl font-black text-slate-200 dark:text-white flex items-center gap-2">
                     Merchant & Buyer Referral Program
                     <span className="bg-orange-500/20 text-[#ff6d1d] border border-orange-500/30 text-[10px] font-bold px-2.5 py-0.5 rounded-full uppercase">
-                      Earn GH₵ 15.00 / Deal
+                      Earn GH₵ {referrerBonus.toFixed(2)} / Deal
                     </span>
                   </h3>
                   <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
-                    Share your unique link with fellow merchants and buyers. When they complete their first escrow transaction, you earn GH₵ 15.00 in fee offset credits and they get GH₵ 10.00!
+                    Share your unique link with fellow merchants and buyers. When they complete their first escrow transaction, you earn GH₵ {referrerBonus.toFixed(2)} in fee offset credits and they get GH₵ {refereeBonus.toFixed(2)}!
                   </p>
                 </div>
               </div>
@@ -165,7 +167,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
               <span className="text-[10px] font-bold text-slate-500 uppercase font-mono block">
                 Total Earned Lifetime
               </span>
-              <p className="text-2xl font-black text-indigo-600 dark:text-indigo-400">
+              <p className="text-2xl font-black text-blue-600 dark:text-blue-400">
                 GH₵ {Number(stats?.total_earned_ghs || 0).toFixed(2)}
               </p>
               <p className="text-[10px] text-slate-400">From completed referral deals</p>
@@ -197,11 +199,11 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
             <div className="lg:col-span-7 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 rounded-3xl space-y-5 shadow-sm">
               <div className="space-y-1">
                 <h4 className="text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                  <Share2 className="h-4 w-4 text-indigo-500" />
+                  <Share2 className="h-4 w-4 text-blue-500" />
                   Your Unique Referral Link
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Anyone who joins through your link gets GH₵ 10.00 off. You get GH₵ 15.00 automatically when they complete their first escrow deal.
+                  Anyone who joins through your link gets GH₵ {refereeBonus.toFixed(2)} off. You get GH₵ {referrerBonus.toFixed(2)} automatically when they complete their first escrow deal.
                 </p>
               </div>
 
@@ -220,7 +222,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
                       setCopiedLink(true);
                       setTimeout(() => setCopiedLink(false), 2000);
                     }}
-                    className="py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
+                    className="py-2 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition flex items-center gap-1.5 shrink-0 cursor-pointer shadow-sm"
                   >
                     {copiedLink ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
                     <span>{copiedLink ? 'Copied!' : 'Copy Link'}</span>
@@ -230,7 +232,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
                 <div className="flex flex-wrap items-center gap-2">
                   <div className="bg-slate-50 dark:bg-slate-950 px-4 py-2 rounded-xl border border-slate-200 dark:border-slate-800 flex items-center gap-2">
                     <span className="text-[10px] text-slate-500 font-mono uppercase">Code:</span>
-                    <span className="font-mono font-black text-sm text-indigo-600 dark:text-indigo-400">
+                    <span className="font-mono font-black text-sm text-blue-600 dark:text-blue-400">
                       {stats?.referral_code || '---'}
                     </span>
                     <button
@@ -252,7 +254,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
                     onClick={() => setShowQrModal(true)}
                     className="py-2 px-3.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs rounded-xl transition flex items-center gap-1.5 cursor-pointer"
                   >
-                    <QrCode className="w-3.5 h-3.5 text-indigo-500" /> Show QR
+                    <QrCode className="w-3.5 h-3.5 text-blue-500" /> Show QR
                   </button>
                 </div>
 
@@ -288,7 +290,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
                     </a>
                     <a
                       href={smsUrl}
-                      className="py-2.5 px-3 bg-indigo-500 hover:bg-indigo-400 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm text-center"
+                      className="py-2.5 px-3 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 cursor-pointer shadow-sm text-center"
                     >
                       <span>SMS Invite</span>
                     </a>
@@ -304,7 +306,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
                   Were you referred by a friend?
                 </h4>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Enter their referral code below to claim your GH₵ 10.00 first-transaction fee credit.
+                  Enter their referral code below to claim your GH₵ {refereeBonus.toFixed(2)} first-transaction fee credit.
                 </p>
               </div>
 
@@ -314,7 +316,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
                   value={inputCode}
                   onChange={e => setInputCode(e.target.value.toUpperCase())}
                   placeholder="e.g. HT-8K9X2 OR PHONE"
-                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white font-mono font-bold uppercase placeholder-slate-400 focus:ring-2 focus:ring-indigo-500 outline-none"
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white font-mono font-bold uppercase placeholder-slate-400 focus:ring-2 focus:ring-blue-500 outline-none"
                 />
 
                 {applyMsg && (
@@ -326,7 +328,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
                 <button
                   type="submit"
                   disabled={applying || !inputCode.trim()}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-extrabold text-xs rounded-xl transition shadow disabled:opacity-50 cursor-pointer"
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-extrabold text-xs rounded-xl transition shadow shadow-blue-500/20 disabled:opacity-50 cursor-pointer"
                 >
                   {applying ? 'Applying Code...' : 'Claim Referral Bonus'}
                 </button>
@@ -396,7 +398,7 @@ export const ReferralDashboardTab: React.FC<ReferralDashboardTabProps> = ({ onIn
                 <a
                   href={qrDataUrl}
                   download={`HendAxis_Referral_QR_${stats?.referral_code || 'code'}.png`}
-                  className="flex-1 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+                  className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
                 >
                   <Download className="w-3.5 h-3.5" /> Download QR
                 </a>
