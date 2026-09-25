@@ -578,12 +578,49 @@ The system utilizes **Celery** and **Celery Beat** backed by **Redis** to execut
 6. **`apps.developer.tasks.dispatch_webhook_retry`** (Triggered on event failure):
    - Retries failed merchant webhook notifications up to 5 times using exponential backoff.
 
-7. **`apps.notifications.tasks.send_sms_batch`** (Async execution):
-   - Queues and dispatches outgoing SMS notifications via Hubtel/Arkesel API to avoid blocking HTTP request threads.
+7. **`apps.core.tasks.celery_heartbeat_ping`** (Runs every 5 minutes):
+   - Periodic Celery heartbeat task confirming that Celery Beat is actively scheduling and Celery Worker is consuming tasks.
+   - Updates latest timestamp in Redis cache (`celery:last_heartbeat_timestamp`) and pings Better Stack Heartbeat URL (`BETTERSTACK_CELERY_HEARTBEAT_URL`).
+
+8. **`apps.notifications.tasks.send_sms_batch`** (Async execution):
+   - Queues and dispatches outgoing SMS notifications via Hubtel/Arkesel/mNotify API to avoid blocking HTTP request threads.
 
 ---
 
-## 7. QA Verification & Verification Procedures
+## 7. Production Observability, Monitoring & Reliability Architecture
+
+The platform implements a lightweight, high-reliability monitoring framework combining **Sentry** (application error & performance tracking) and **Better Stack** (external uptime, endpoint health, and pipeline heartbeats):
+
+### A. Sentry Error & Performance Observability
+- **Django Backend (`TRUST-Backend`)**:
+  - Automatically captures uncaught API exceptions, 500 errors, and database/Redis connection faults.
+  - Deeply integrated with **Celery** (task failures, retries, worker errors) and **Redis**.
+  - Conservative trace sampling (`SENTRY_TRACES_SAMPLE_RATE=0.1`) to prevent telemetry quota exhaustion.
+  - Strict privacy enforcement: `send_default_pii=False` prevents transmission of sensitive user data, passwords, or payment tokens.
+- **React Frontend (`TRUST-Frontend`)**:
+  - Integrated via `@sentry/react` to capture browser rendering exceptions and uncaught client crashes.
+  - Wired into `ErrorBoundary.tsx` fallback UI.
+  - Sanitized via `beforeSend` to scrub `Authorization` headers, cookies, passwords, and OTP tokens.
+  - Production source maps (`sourcemap: true` in Vite) enable high-fidelity TypeScript stack trace resolution in Sentry.
+
+### B. Health Check Endpoints (`/api/health/` & `/health/`)
+- Public, unauthenticated, lightweight status endpoint for Nginx, Docker, and Better Stack.
+- Executes non-blocking component checks:
+  - **PostgreSQL**: `SELECT 1;`
+  - **Redis**: Cache key write/read ping test.
+- Returns `HTTP 200 OK` (`{"status": "healthy", "database": "healthy", "redis": "healthy"}`) when fully operational; returns `HTTP 503 Service Unavailable` with itemized status if a critical dependency fails.
+- Never leaks internal hostnames, credentials, or raw stack traces.
+
+### C. External Uptime & Heartbeat Monitoring (Better Stack)
+- **Website Uptime**: Monitors `https://trust.hendaxis.com` every 3 minutes (Expected: `HTTP 200`).
+- **API & Database Health**: Monitors `https://trust.hendaxis.com/api/health/` every 1 minute (Expected: `HTTP 200`).
+- **Celery Heartbeat**: Celery Beat schedules a heartbeat task every 5 minutes to ping `BETTERSTACK_CELERY_HEARTBEAT_URL`. Alerts trigger if Celery Beat or Worker stops processing.
+- **Database Backup Heartbeat**: Nightly automated backup script (`scripts/backup_db.sh`) executes `pg_dump`, gzip compression, and retention pruning, then pings `BETTERSTACK_BACKUP_HEARTBEAT_URL` upon full completion.
+- **SSL Certificate Monitoring**: Continuously tracks TLS certificate validity and issues proactive alerts before expiration.
+
+---
+
+## 8. QA Verification & Verification Procedures
 
 To maintain production stability, all updates must pass automated backend test suites and frontend static build checks:
 
@@ -605,7 +642,7 @@ npm run build
 
 ---
 
-## 8. Summary & Maintenance Guidelines
+## 9. Summary & Maintenance Guidelines
 
 This blueprint serves as the living technical specification for the HendTrust platform. When adding new features or refactoring modules:
 1. Update database models with appropriate Django migrations.

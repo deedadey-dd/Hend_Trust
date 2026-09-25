@@ -199,3 +199,45 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Security Lockout Audit**: Verify failed login attempts counter (`django-axes` / cache) and unlock blocked IPs if required.
 - [ ] **Developer Webhook Logs**: Audit outbound HMAC webhook delivery logs and retry statuses.
 
+---
+
+## 📊 Phase 7: Production Health, Observability & Monitoring Verification
+
+### 7.1 Backend API & System Health Endpoint (`/api/health/`)
+- [ ] **Healthy State Verification**: Send `GET https://trust.hendaxis.com/api/health/`. Confirm `HTTP 200 OK` with JSON:
+  ```json
+  { "status": "healthy", "database": "healthy", "redis": "healthy" }
+  ```
+- [ ] **Database Dependency Check**: Confirm PostgreSQL connectivity is verified via `SELECT 1` without leaking credentials or database names.
+- [ ] **Redis Dependency Check**: Confirm Redis cache & broker connectivity is verified via test key ping.
+- [ ] **Degraded Fallback Verification**: Confirm that if Database or Redis becomes unavailable, the endpoint returns `HTTP 503 Service Unavailable` with itemized component status.
+
+### 7.2 Celery Beat & Worker Heartbeat Pipeline
+- [ ] **Heartbeat Execution**: Confirm `apps.core.tasks.celery_heartbeat_ping` runs every 5 minutes in `CELERY_BEAT_SCHEDULE`.
+- [ ] **Redis Timestamp Registration**: Verify key `celery:last_heartbeat_timestamp` is updated in Redis cache on every execution.
+- [ ] **Better Stack Heartbeat**: When `BETTERSTACK_CELERY_HEARTBEAT_URL` is set, confirm periodic HTTP ping is received in Better Stack dashboard and status stays **UP**.
+
+### 7.3 Sentry Backend Error Tracking (`TRUST-Backend`)
+- [ ] **Exception Capture**: Trigger controlled test exception via Django shell (`sentry_sdk.capture_message(...)`). Confirm issue appears in Sentry `TRUST-Backend` project.
+- [ ] **Celery Error Tracking**: Verify failed or retried Celery tasks capture stack traces, task names, and arguments in Sentry.
+- [ ] **PII Scrubbing**: Confirm passwords, authorization headers, credit cards, and Ghana card numbers are stripped (`send_default_pii=False`).
+- [ ] **Tracing Quota Protection**: Confirm conservative trace sampling is active (`SENTRY_TRACES_SAMPLE_RATE=0.1`).
+
+### 7.4 Sentry Frontend Error Tracking (`TRUST-Frontend`)
+- [ ] **React Error Boundary**: Confirm rendering errors in React components trigger the fallback UI and dispatch exception payloads to Sentry `TRUST-Frontend`.
+- [ ] **Source Map Resolution**: Confirm production stack traces in Sentry map directly to TypeScript source files via Vite source maps (`sourcemap: true`).
+- [ ] **Client PII Sanitization**: Verify `beforeSend` strips `Authorization` headers, `Cookie` headers, passwords, and OTP tokens.
+
+### 7.5 PostgreSQL Database Backup Automation (`scripts/backup_db.sh`)
+- [ ] **Dry Run Backup**: Execute `bash /var/www/hendaxis/Hend_Trust/scripts/backup_db.sh`. Confirm `.sql.gz` dump is created in `/var/backups/hendaxis_trust/`.
+- [ ] **Retention Pruning**: Verify backups older than 7 days are automatically pruned.
+- [ ] **Better Stack Backup Heartbeat**: Confirm `BETTERSTACK_BACKUP_HEARTBEAT_URL` is pinged only after `pg_dump` and gzip compression succeed.
+- [ ] **Nightly Cron Registration**: Verify cron job `0 2 * * * /var/www/hendaxis/Hend_Trust/scripts/backup_db.sh` is active on server.
+
+### 7.6 Better Stack External Uptime Monitoring
+- [ ] **Website Monitor**: Confirm `https://trust.hendaxis.com` is monitored every 3 minutes (Expected `HTTP 200`).
+- [ ] **API Health Monitor**: Confirm `https://trust.hendaxis.com/api/health/` is monitored every 1 minute (Expected `HTTP 200`).
+- [ ] **SSL Expiry Monitoring**: Verify SSL certificate validity alerting is enabled.
+- [ ] **Incident Routing**: Confirm email/SMS alerts route to on-call engineering team upon downtime.
+
+

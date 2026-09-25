@@ -85,12 +85,16 @@ backend/celery_worker.log
 backend/celery_beat.log
 backend/gunicorn.log
 
-# Databases & Cache DBs
+# Databases, Cache DBs & Backups
 *.sqlite3
 *.sqlite3-wal
 *.sqlite3-shm
 *.sqlite3-journal
 *.db
+*.sql
+*.sql.gz
+backups/
+scripts/backups/
 celerybeat-schedule*
 celerybeat-schedule.*
 celerybeat-schedule-*
