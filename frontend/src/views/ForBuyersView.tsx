@@ -17,8 +17,9 @@ export const ForBuyersView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-20 transition-colors">
       <SEOHead 
-        title="Buyer Protection & Safe Shopping — HendAxis Trust"
-        description="Shop online in Ghana without fear. HendAxis Trust protects your money in escrow until you inspect your items."
+        title="Secure Online Shopping with Escrow | HendAxis Trust"
+        description="Buy online with greater confidence using HendAxis Trust escrow. Your payment is held securely until the transaction conditions are fulfilled."
+        canonicalUrl="https://trust.hendaxis.com/for-buyers"
       />
 
       {/* Hero Section */}

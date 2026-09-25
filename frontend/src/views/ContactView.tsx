@@ -51,8 +51,8 @@ export const ContactView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16 transition-colors">
       <SEOHead
-        title="Contact Customer Support — HendAxis Trust Ghana"
-        description="Get in touch with HendAxis Trust Ghana support team for assistance with escrow transactions, seller identity verification, and Mobile Money payouts."
+        title="Contact HendAxis Trust Support | HendAxis Trust"
+        description="Get in touch with the HendAxis Trust team for transaction assistance, dispute support, seller verification, and partnership inquiries."
         canonicalUrl="https://trust.hendaxis.com/contact"
         jsonLd={contactJsonLd}
       />

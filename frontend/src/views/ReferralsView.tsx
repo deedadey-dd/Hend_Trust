@@ -115,9 +115,9 @@ export default function ReferralsView() {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans transition-colors">
       <SEOHead
-        title="Refer & Earn Escrow Credits | HendAxis Trust Ghana"
+        title="Referral Program & Rewards | HendAxis Trust"
         description={`Share HendAxis Trust with friends and sellers in Ghana. Earn GH₵ ${referrerBonus.toFixed(2)} in fee credits for every completed escrow deal while your friend gets GH₵ ${refereeBonus.toFixed(2)}.`}
-        canonicalUrl="/referrals"
+        canonicalUrl="https://trust.hendaxis.com/referrals"
       />
 
       {/* Hero Section (Vibrant Theme Blue & Deep Black Gradient) */}

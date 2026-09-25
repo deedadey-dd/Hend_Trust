@@ -183,8 +183,8 @@ function verifyHendAxisWebhook(req) {
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors py-10 px-4 sm:px-6 lg:px-8 font-sans">
       <SEOHead
-        title="Developer APIs & Drop-in SDK Documentation — HendAxis Trust"
-        description="Integrate buyer-seller escrow payments, webhooks, and instant Mobile Money payouts into any website or app using HendAxis REST APIs and JS SDK."
+        title="Developer Hub & Escrow API | HendAxis Trust"
+        description="Integrate HendAxis Trust escrow checkout into your e-commerce store or marketplace with our REST APIs and webhooks."
         canonicalUrl="https://trust.hendaxis.com/developers"
         jsonLd={developerJsonLd}
       />

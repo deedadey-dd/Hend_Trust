@@ -111,8 +111,9 @@ export const GuidesHubView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-20 transition-colors">
       <SEOHead 
-        title="Scam Prevention & Safe Commerce Resource Hub — HendAxis Trust"
-        description="Comprehensive guides on online shopping scam prevention, Mobile Money escrow security, and seller protection in Ghana."
+        title="Guides & Safe Trading Hub | HendAxis Trust"
+        description="Step-by-step guides and best practices for safe online trading, buyer protection, and dispute resolution with escrow in Ghana."
+        canonicalUrl="https://trust.hendaxis.com/guides"
       />
 
       {/* Header Banner */}

@@ -16,8 +16,9 @@ export const TrustCenterView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-20 transition-colors">
       <SEOHead 
-        title="Trust, Security & Compliance Center — HendAxis Trust"
-        description="Learn about our bank-grade escrow security, NIA Ghana Card verification standards, double-entry financial ledger, and 24-hour dispute SLA."
+        title="Trust & Security Center | HendAxis Trust"
+        description="Discover how HendAxis Trust guarantees payment security with double-entry ledgers, verified sellers, encryption, and dispute arbitration in Ghana."
+        canonicalUrl="https://trust.hendaxis.com/trust-center"
       />
 
       {/* Hero Header */}

@@ -17,8 +17,9 @@ export const ForSellersView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-20 transition-colors">
       <SEOHead 
-        title="Seller Solutions & Escrow Commerce — HendAxis Trust"
-        description="Grow your Instagram, WhatsApp & TikTok store in Ghana with zero payment defaults and instant Mobile Money payouts."
+        title="Sell Online with Buyer-Seller Escrow Protection | HendAxis Trust"
+        description="Accept online payments with escrow protection. HendAxis Trust helps sellers build buyer confidence while protecting transaction payments."
+        canonicalUrl="https://trust.hendaxis.com/for-sellers"
       />
 
       {/* Hero Section */}

@@ -569,9 +569,9 @@ export default function ShopsDirectoryView() {
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 transition-colors">
       <SEOHead
-        title="Marketplace Directory — Find Products & Verified Escrow Shops in Ghana"
-        description="Search active escrow products, verified online stores, and boutique merchants in Ghana. Transparent pricing with scam-free buyer protection."
-        canonicalUrl="/shops"
+        title="Verified Sellers & Storefront Directory | HendAxis Trust"
+        description="Explore verified social commerce sellers and registered businesses protected by HendAxis Trust escrow in Ghana."
+        canonicalUrl="https://trust.hendaxis.com/shops"
       />
 
       {/* Hero Search Section */}
