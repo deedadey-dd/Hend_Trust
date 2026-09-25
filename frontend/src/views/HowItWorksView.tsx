@@ -20,8 +20,9 @@ export const HowItWorksView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-20 transition-colors">
       <SEOHead 
-        title="How Escrow Works — Step-by-Step Protection Guide | HendAxis Trust"
-        description="Learn how HendAxis Trust protects buyers and sellers in Ghana across Mobile Money, Courier deliveries, and Dispute resolution."
+        title="How Escrow Works | HendAxis Trust"
+        description="Learn how HendAxis Trust protects buyers and sellers by holding payment securely until the agreed transaction conditions are fulfilled."
+        canonicalUrl="https://trust.hendaxis.com/how-it-works"
       />
 
       {/* Header Banner */}

@@ -213,9 +213,9 @@ export const HelpView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-16 transition-colors">
       <SEOHead
-        title="Platform Guide & FAQ Knowledge Base — HendAxis Trust Ghana"
+        title="Help Center & Support FAQs | HendAxis Trust"
         description="Official platform guide and frequently asked questions for buyers, sellers, couriers, and developers. Learn how escrow, verification, tracking, and disputes work."
-        canonicalUrl="/help"
+        canonicalUrl="https://trust.hendaxis.com/help"
         jsonLd={faqJsonLd}
       />
 

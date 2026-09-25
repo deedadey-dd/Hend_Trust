@@ -65,8 +65,6 @@ def sitemap_view(request):
         {'loc': f'{main_domain}/developers', 'priority': '0.8', 'changefreq': 'weekly'},
         {'loc': f'{main_domain}/help', 'priority': '0.8', 'changefreq': 'weekly'},
         {'loc': f'{main_domain}/contact', 'priority': '0.7', 'changefreq': 'monthly'},
-        {'loc': f'{main_domain}/login', 'priority': '0.6', 'changefreq': 'monthly'},
-        {'loc': f'{main_domain}/register', 'priority': '0.6', 'changefreq': 'monthly'},
     ]
 
     # Dynamic Seller Storefronts
