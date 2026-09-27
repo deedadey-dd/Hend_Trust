@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
-import { useParams, useSearchParams } from 'react-router-dom';
+import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 import {
   ShieldCheck, Truck, ArrowRight, Loader2,
   CheckCircle, Clock, AlertTriangle, X, KeyRound, Store, ZoomIn,
-  Gift, Sparkles, Tag, RefreshCw, Check
+  Gift, Sparkles, Tag, RefreshCw, Check, UserCheck, LogIn
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
 import { compressImageToWebP } from '../utils/imageUtils';
@@ -14,6 +14,7 @@ import ImageLightboxModal from '../components/ImageLightboxModal';
 import DisputeChatTimeline from '../components/DisputeChatTimeline';
 import { saveReviewToken } from '../utils/reviewStorage';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { useAuthStore } from '../store/authStore';
 
 
 interface LinkData {
@@ -37,6 +38,8 @@ interface TxnDetail {
   status: string;
   total_amount_ghs: number;
   buyer_refund_amount_ghs?: number;
+  buyer_name?: string;
+  buyer_phone?: string;
   buyer_email: string;
   shipping_address: string;
   title: string;
@@ -85,6 +88,7 @@ import { STATUS_CONFIG } from '../constants/statusConfig';
 
 // ─── Transaction Status Screen (post-payment) ──────────────────────────────
 function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string }) {
+  const navigate = useNavigate();
   const cfg = STATUS_CONFIG[txn.status] || STATUS_CONFIG['AWAITING_PAYMENT'];
   const Icon = cfg.icon;
 
@@ -132,11 +136,28 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     }
   }
 
+  const { isAuthenticated, login: authLogin } = useAuthStore();
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [confirmCode, setConfirmCode] = useState('');
   const [isSendingCode, setIsSendingCode] = useState(false);
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState('');
+
+  // 1-Click Approve & Release State
+  const [isReleasing, setIsReleasing] = useState(false);
+
+  // Quick Buyer Registration State
+  const [buyerPassword, setBuyerPassword] = useState('');
+  const [buyerSignupStep, setBuyerSignupStep] = useState<'PASSWORD' | 'OTP'>('PASSWORD');
+  const [signupUid, setSignupUid] = useState('');
+  const [phoneOtp, setPhoneOtp] = useState('');
+  const [isVerifyingPhoneOtp, setIsVerifyingPhoneOtp] = useState(false);
+  const [otpResendCooldown, setOtpResendCooldown] = useState(0);
+  const [isSigningUpBuyer, setIsSigningUpBuyer] = useState(false);
+  const [buyerSignupSuccess, setBuyerSignupSuccess] = useState(false);
+  const [buyerSignupError, setBuyerSignupError] = useState('');
+  const [existingAccountData, setExistingAccountData] = useState<any | null>(null);
+  const [isConfirmingExistingLogin, setIsConfirmingExistingLogin] = useState(false);
 
   // Rating Modal state
   const [showRatingModal, setShowRatingModal] = useState(false);
@@ -171,7 +192,29 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     return () => clearInterval(timer);
   }, [resendCooldown]);
 
+  useEffect(() => {
+    if (otpResendCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setOtpResendCooldown(prev => Math.max(0, prev - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpResendCooldown]);
+
   const handleOpenConfirmModal = async () => {
+    if (isAuthenticated) {
+      // 1-Click direct confirmation with zero SMS
+      setIsConfirming(true);
+      try {
+        await axios.post(`/api/v1/escrow/${txn.id}/buyer-confirm-receipt`);
+        setShowRatingModal(true);
+      } catch (err: any) {
+        alert(err.response?.data?.message || 'Failed to confirm receipt.');
+      } finally {
+        setIsConfirming(false);
+      }
+      return;
+    }
+
     if (resendCooldown > 0) {
       setShowConfirmModal(true);
       return;
@@ -185,6 +228,104 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
       alert(err.response?.data?.message || 'Failed to send confirmation code.');
     } finally {
       setIsSendingCode(false);
+    }
+  };
+
+  const handleApproveAndRelease = async () => {
+    if (!window.confirm("Are you satisfied with your order? Releasing payment will immediately transfer funds to the seller's wallet.")) return;
+    setIsReleasing(true);
+    try {
+      await axios.post(`/api/v1/escrow/${txn.id}/approve-and-release`);
+      alert('Order approved! Funds released to seller.');
+      setShowRatingModal(true);
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.detail || 'Failed to release funds.');
+    } finally {
+      setIsReleasing(false);
+    }
+  };
+
+  const handleQuickBuyerSignup = async (e?: React.FormEvent, forceConfirmLogin = false) => {
+    if (e) e.preventDefault();
+    if (buyerPassword.length < 8) {
+      setBuyerSignupError('Password must be at least 8 characters long.');
+      return;
+    }
+    setBuyerSignupError('');
+    if (forceConfirmLogin) {
+      setIsConfirmingExistingLogin(true);
+    } else {
+      setIsSigningUpBuyer(true);
+    }
+    try {
+      const res = await axios.post('/api/v1/auth/buyer-quick-register', {
+        email: txn.buyer_email,
+        phone_number: txn.buyer_phone || '',
+        name: txn.buyer_name || '',
+        password: buyerPassword,
+        transaction_ref: txRef || txn.paystack_reference || txn.id,
+        confirm_existing_login: forceConfirmLogin
+      });
+
+      if (res.data.account_already_exists) {
+        setExistingAccountData(res.data);
+        return;
+      }
+
+      setExistingAccountData(null);
+      if (res.data.requires_phone_otp) {
+        setSignupUid(res.data.uid || '');
+        setBuyerSignupStep('OTP');
+        setOtpResendCooldown(60);
+      } else {
+        authLogin(res.data.user_id, res.data);
+        setBuyerSignupSuccess(true);
+        setTimeout(() => {
+          navigate(`/dashboard?tab=purchases&new_order=${encodeURIComponent(txRef || txn.paystack_reference || txn.id)}`);
+        }, 1200);
+      }
+    } catch (err: any) {
+      setBuyerSignupError(err.response?.data?.message || err.response?.data?.detail || 'Failed to create account.');
+    } finally {
+      setIsSigningUpBuyer(false);
+      setIsConfirmingExistingLogin(false);
+    }
+  };
+
+  const handleVerifySignupPhoneOtp = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!phoneOtp.trim()) {
+      setBuyerSignupError('Please enter the 6-digit SMS verification code.');
+      return;
+    }
+    setBuyerSignupError('');
+    setIsVerifyingPhoneOtp(true);
+    try {
+      const res = await axios.post('/api/v1/auth/verify-phone-otp', {
+        uid: signupUid,
+        otp_code: phoneOtp.trim()
+      });
+      authLogin(res.data.user_id, res.data);
+      setBuyerSignupSuccess(true);
+      setTimeout(() => {
+        navigate(`/dashboard?tab=purchases&new_order=${encodeURIComponent(txRef || txn.paystack_reference || txn.id)}`);
+      }, 1200);
+    } catch (err: any) {
+      setBuyerSignupError(err.response?.data?.message || err.response?.data?.detail || 'Invalid verification code. Please try again.');
+    } finally {
+      setIsVerifyingPhoneOtp(false);
+    }
+  };
+
+  const handleResendSignupPhoneOtp = async () => {
+    if (otpResendCooldown > 0) return;
+    setBuyerSignupError('');
+    try {
+      await axios.post('/api/v1/auth/send-phone-otp', { uid: signupUid });
+      setOtpResendCooldown(60);
+      alert('A new 6-digit verification code has been sent to your phone.');
+    } catch (err: any) {
+      setBuyerSignupError(err.response?.data?.message || 'Failed to resend verification code.');
     }
   };
 
@@ -264,6 +405,21 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     }
   };
 
+  const [guestDismissed, setGuestDismissed] = useState(false);
+
+  // Auto-check on load if an account already exists for this buyer
+  useEffect(() => {
+    if (isAuthenticated || !txn?.buyer_email) return;
+    axios.post('/api/v1/auth/check-account-exists', {
+      email: txn.buyer_email,
+      phone_number: txn.buyer_phone || ''
+    }).then(res => {
+      if (res.data?.exists) {
+        setExistingAccountData(res.data);
+      }
+    }).catch(() => {});
+  }, [txn?.buyer_email, txn?.buyer_phone, isAuthenticated]);
+
   return (
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-10 px-4 font-sans transition-colors">
       <div className="max-w-lg mx-auto space-y-4">
@@ -289,6 +445,199 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
             <h1 className={`text-2xl font-bold mb-1 ${cfg.color}`}>{cfg.label}</h1>
             <p className="text-gray-500 dark:text-slate-400 text-sm font-medium">{txn.title}</p>
           </div>
+
+          {/* 1-Click Buyer Account / Login Section */}
+          {!isAuthenticated && (
+            <div className="px-5 py-3.5 bg-gradient-to-r from-indigo-50 via-blue-50/70 to-indigo-50 dark:from-slate-800/95 dark:via-indigo-950/70 dark:to-slate-800/95 border-y border-indigo-200/80 dark:border-indigo-800/60">
+              <div className="w-full space-y-2">
+                {existingAccountData && !guestDismissed ? (
+                  /* Existing Account Login Form */
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <LogIn className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        <h4 className="text-xs sm:text-sm font-black text-gray-900 dark:text-white truncate">
+                          Log In to Your Buyer Account
+                        </h4>
+                      </div>
+                      <span className="bg-indigo-600 text-white text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs shrink-0">
+                        ⚡ 1-Click Access
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-gray-600 dark:text-slate-300 leading-normal w-full">
+                      An account is registered for <strong className="text-indigo-600 dark:text-indigo-400">{existingAccountData.email || txn.buyer_email}</strong>. Enter your password to log in or continue as a guest.
+                    </p>
+
+                    <form onSubmit={(e) => handleQuickBuyerSignup(e, true)} className="space-y-2">
+                      <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
+                        <input
+                          type="password"
+                          required
+                          value={buyerPassword}
+                          onChange={e => setBuyerPassword(e.target.value)}
+                          placeholder="Enter your password"
+                          className="w-full sm:flex-1 px-3 py-2.5 sm:py-2 bg-white dark:bg-slate-800 border border-indigo-200 dark:border-slate-700 rounded-lg text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                        />
+                        <button
+                          type="submit"
+                          disabled={isConfirmingExistingLogin || !buyerPassword}
+                          className="w-full sm:w-auto py-2.5 sm:py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition shadow-sm shadow-indigo-600/20 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                        >
+                          {isConfirmingExistingLogin ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <LogIn className="w-3.5 h-3.5" />}
+                          Log In & Access Dashboard
+                        </button>
+                      </div>
+
+                      <div className="flex items-center justify-between text-[11px] pt-1">
+                        <button
+                          type="button"
+                          onClick={() => { setGuestDismissed(true); setBuyerSignupError(''); }}
+                          className="text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-white font-medium cursor-pointer"
+                        >
+                          Continue as Guest →
+                        </button>
+                        <Link
+                          to="/login"
+                          className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold"
+                        >
+                          Forgot Password?
+                        </Link>
+                      </div>
+                    </form>
+                  </div>
+                ) : existingAccountData && guestDismissed ? (
+                  /* Guest Dismissed Mode with easy toggle back */
+                  <div className="flex items-center justify-between py-1 text-xs text-gray-600 dark:text-slate-300">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <UserCheck className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                      <span className="truncate">Tracking as Guest. Account found for <strong>{existingAccountData.email || txn.buyer_email}</strong>.</span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setGuestDismissed(false)}
+                      className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold text-xs shrink-0 ml-2 cursor-pointer"
+                    >
+                      Log In ⚡
+                    </button>
+                  </div>
+                ) : buyerSignupSuccess ? (
+                  /* Account Creation Success */
+                  <div className="p-2.5 bg-emerald-50 dark:bg-emerald-950/70 border border-emerald-500/60 rounded-xl text-xs font-bold text-emerald-900 dark:text-emerald-200 flex items-center gap-2 shadow-sm">
+                    <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0 animate-pulse" />
+                    <div>
+                      <p>Account created & verified! Redirecting to Dashboard...</p>
+                    </div>
+                  </div>
+                ) : buyerSignupStep === 'OTP' ? (
+                  /* Phone OTP Verification */
+                  <div className="space-y-2">
+                    <div className="p-2 rounded-lg bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-900 text-[11px] text-blue-900 dark:text-blue-200 flex items-center gap-1.5">
+                      <KeyRound className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                      <span>SMS code sent to <strong className="text-blue-700 dark:text-blue-300">{txn.buyer_phone || 'your phone'}</strong></span>
+                    </div>
+
+                    <form onSubmit={handleVerifySignupPhoneOtp} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
+                      <input
+                        type="text"
+                        maxLength={6}
+                        required
+                        value={phoneOtp}
+                        onChange={e => setPhoneOtp(e.target.value.replace(/\D/g, ''))}
+                        placeholder="6-digit SMS code"
+                        className="w-full sm:flex-1 px-3 py-2.5 sm:py-2 bg-white dark:bg-slate-800 border border-indigo-200 dark:border-slate-700 rounded-lg text-xs font-mono font-bold tracking-widest text-center sm:text-left text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isVerifyingPhoneOtp || phoneOtp.length < 6}
+                        className="w-full sm:w-auto py-2.5 sm:py-2 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-lg transition shadow-sm shadow-emerald-600/20 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                      >
+                        {isVerifyingPhoneOtp ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '✓ Verify Code'}
+                      </button>
+                    </form>
+
+                    <div className="flex items-center justify-between text-[11px] pt-0.5">
+                      <button
+                        type="button"
+                        onClick={() => setBuyerSignupStep('PASSWORD')}
+                        className="text-gray-500 hover:text-gray-800 dark:text-slate-400 dark:hover:text-white font-medium cursor-pointer"
+                      >
+                        ← Back
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleResendSignupPhoneOtp}
+                        disabled={otpResendCooldown > 0}
+                        className="text-indigo-600 dark:text-indigo-400 hover:underline font-bold disabled:opacity-50 cursor-pointer"
+                      >
+                        {otpResendCooldown > 0 ? `Resend (${otpResendCooldown}s)` : 'Resend SMS Code'}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  /* Standard 1-Click Signup */
+                  <div className="space-y-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 min-w-0">
+                        <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                        <h4 className="text-xs sm:text-sm font-black text-gray-900 dark:text-white truncate">
+                          Create 1-Click Buyer Account
+                        </h4>
+                      </div>
+                      <span className="bg-indigo-600 text-white text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs shrink-0">
+                        ⚡ 0-OTP Mode
+                      </span>
+                    </div>
+                    <p className="text-xs text-gray-600 dark:text-slate-300 leading-normal w-full">
+                      Set a password for <strong className="text-indigo-600 dark:text-indigo-400">{txn.buyer_email}</strong>{txn.buyer_phone ? <span> (<strong className="text-indigo-600 dark:text-indigo-400">{txn.buyer_phone}</strong>)</span> : null} to manage purchases, release funds, and track shipments in 1 click.
+                    </p>
+
+                    <form onSubmit={handleQuickBuyerSignup} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
+                      <input
+                        type="password"
+                        required
+                        value={buyerPassword}
+                        onChange={e => setBuyerPassword(e.target.value)}
+                        placeholder="Choose password (min 8 chars)"
+                        className="w-full sm:flex-1 px-3 py-2.5 sm:py-2 bg-white dark:bg-slate-800 border border-indigo-200 dark:border-slate-700 rounded-lg text-xs text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                      />
+                      <button
+                        type="submit"
+                        disabled={isSigningUpBuyer || !buyerPassword}
+                        className="w-full sm:w-auto py-2.5 sm:py-2 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-lg transition shadow-sm shadow-indigo-600/20 disabled:opacity-50 cursor-pointer flex items-center justify-center gap-1.5 shrink-0"
+                      >
+                        {isSigningUpBuyer ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '⚡ Save & Verify'}
+                      </button>
+                    </form>
+                  </div>
+                )}
+
+                {buyerSignupError && (
+                  <div className="p-2.5 rounded-lg bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-900 text-xs text-red-600 dark:text-red-400 font-medium space-y-1.5">
+                    <p>{buyerSignupError}</p>
+                    {buyerSignupError.toLowerCase().includes('already exists') && (
+                      <div className="flex items-center gap-2.5 pt-1 border-t border-red-100 dark:border-red-900/60">
+                        <button
+                          type="button"
+                          onClick={() => { setExistingAccountData({ email: txn.buyer_email }); setGuestDismissed(false); setBuyerSignupError(''); }}
+                          className="font-bold text-indigo-600 dark:text-indigo-400 underline hover:text-indigo-700 cursor-pointer"
+                        >
+                          → Log In
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => { setBuyerSignupError(''); setBuyerPassword(''); setGuestDismissed(true); }}
+                          className="text-gray-500 hover:text-gray-700 dark:text-slate-400 text-[11px] underline cursor-pointer"
+                        >
+                          Continue as Guest
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
 
           <div className="p-6 space-y-3 text-sm">
             {txn.price_ghs !== undefined && (
@@ -505,30 +854,39 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         )}
 
         {/* Buyer Inspection & Confirmation Actions */}
-        {(canConfirm || canDispute) && (
+        {(canConfirm || canDispute || isInspection) && (
           <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-md border border-gray-100 dark:border-slate-800 p-6">
             <h3 className="text-sm font-semibold text-gray-700 dark:text-slate-200 mb-1">
-              {isInspection ? "Inspection Mode" : "Item received?"}
+              {isInspection ? "Inspection & Payout Approval" : "Item received?"}
             </h3>
             <p className="text-xs text-gray-500 dark:text-slate-400 mb-4">
               {isInspection 
-                ? `You have ${inspectionRemaining} remaining to raise a dispute before funds are automatically released to the seller.` 
+                ? `You have ${inspectionRemaining} remaining. If satisfied, you can release payment immediately to the seller.` 
                 : "Confirm receipt to enter Inspection Mode, or raise a dispute if something is wrong."}
             </p>
             <div className="flex flex-col sm:flex-row gap-3">
               {canConfirm && (
                 <button
                   onClick={handleOpenConfirmModal}
-                  disabled={isSendingCode}
-                  className="flex-1 py-2.5 px-4 rounded-lg bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2 disabled:opacity-70"
+                  disabled={isSendingCode || isConfirming}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer shadow-sm"
                 >
-                  {isSendingCode ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Confirm Receipt'}
+                  {isSendingCode || isConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : (isAuthenticated ? '⚡ Confirm Receipt (1-Click)' : '✓ Confirm Receipt')}
+                </button>
+              )}
+              {isInspection && (
+                <button
+                  onClick={handleApproveAndRelease}
+                  disabled={isReleasing}
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer shadow-sm"
+                >
+                  {isReleasing ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Approve & Release Payment'}
                 </button>
               )}
               {canDispute && (
                 <button
                   onClick={() => { setShowDisputeModal(true); setDisputeReason(''); setBuyerPhotos([]); setDisputeError(''); }}
-                  className="flex-1 py-2.5 px-4 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 text-sm font-semibold hover:bg-red-100 dark:hover:bg-red-900/40 transition"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 text-sm font-semibold hover:bg-red-100 dark:hover:bg-red-900/40 transition cursor-pointer"
                 >
                   ⚠ Raise Dispute
                 </button>
@@ -973,6 +1331,24 @@ export default function PublicCheckoutView() {
 
   useEscapeKey(() => setShowOtpModal(false), showOtpModal);
 
+  const { isAuthenticated, user } = useAuthStore();
+
+  useEffect(() => {
+    if (isAuthenticated && user) {
+      if (!name) {
+        const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.name || user.username || '';
+        if (fullName) setName(fullName);
+      }
+      if (!phone && user.phone_number) {
+        setPhone(user.phone_number);
+        validatePromoDiscount(promoCode, applyBuyerCredit, user.phone_number);
+      }
+      if (!email && user.email) {
+        setEmail(user.email);
+      }
+    }
+  }, [isAuthenticated, user]);
+
   useEffect(() => {
     const fetchData = async () => {
       try {
@@ -1059,6 +1435,28 @@ export default function PublicCheckoutView() {
       return;
     }
     setIsProcessing(true);
+
+    if (isAuthenticated) {
+      // 1-Click checkout initialization: no SMS OTP required!
+      try {
+        const res = await axios.post('/api/v1/checkout/verify-and-initialize', {
+          link_id: linkId,
+          name: name || user?.name || user?.username || 'Buyer',
+          phone_number: phone || user?.phone_number || '',
+          email: email || user?.email || '',
+          shipping_address: address,
+          promo_code: promoSimulation?.promo_code_applied || (promoCode.trim() ? promoCode.trim().toUpperCase() : undefined),
+          apply_buyer_credit: Boolean(applyBuyerCredit),
+          redeem_credit_ghs: applyBuyerCredit ? (promoSimulation?.credit_discount_ghs || 999999.0) : 0.0
+        });
+        window.location.href = res.data.authorization_url;
+      } catch (err: any) {
+        alert(err.response?.data?.detail || err.response?.data?.message || 'Checkout initialization failed.');
+        setIsProcessing(false);
+      }
+      return;
+    }
+
     try {
       await axios.post('/api/v1/checkout/send-otp', { phone_number: phone });
       setShowOtpModal(true);
@@ -1486,7 +1884,7 @@ export default function PublicCheckoutView() {
 
             <button disabled={isProcessing || !acceptedTerms} type="submit"
               className="mt-4 w-full flex justify-center items-center py-3.5 px-4 rounded-xl shadow-lg shadow-[#ff6d1d]/25 text-sm sm:text-base font-black text-white bg-gradient-to-r from-[#ff6d1d] via-[#ff7c33] to-[#ff6d1d] hover:brightness-110 active:scale-[0.99] focus:outline-none focus:ring-4 focus:ring-[#ff6d1d]/30 disabled:opacity-50 disabled:pointer-events-none transition-all cursor-pointer">
-              {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Continue to Payment'}
+              {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : (isAuthenticated ? '⚡ Proceed to Payment (1-Click)' : 'Continue to Payment')}
               <ArrowRight className="ml-2 h-4 w-4" />
             </button>
             <p className="text-center text-xs text-gray-500 dark:text-slate-400 flex items-center justify-center mt-4">

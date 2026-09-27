@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Loader2 } from 'lucide-react';
 import { apiClient } from './api/client';
 import Navbar from './components/Navbar';
+import UnverifiedEmailBanner from './components/UnverifiedEmailBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { initSentry } from './utils/sentry';
 import { useAuthStore } from './store/authStore';
@@ -105,6 +106,7 @@ function App() {
   return (
     <ErrorBoundary>
       <Router>
+        <UnverifiedEmailBanner />
         <Navbar />
         <Suspense fallback={<PageLoader />}>
           <Routes>

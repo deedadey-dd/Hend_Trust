@@ -3,7 +3,8 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { 
   Search, Store, Star, Zap, Shield, ShieldCheck, Loader2, 
   X, Wallet, Truck, MessageCircle, ShoppingBag, 
-  Sparkles, Layers, Phone, AlertTriangle
+  Sparkles, Layers, Phone, AlertTriangle, ArrowUpDown, 
+  RotateCcw, ArrowRight, UserPlus
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -72,6 +73,18 @@ const IconTooltip = ({ text, children }: { text: string; children: React.ReactNo
   </div>
 );
 
+type SortOption = 'RELEVANCE' | 'RATING' | 'ESCROWS' | 'PRICE_ASC' | 'PRICE_DESC';
+type PriceFilter = 'ALL' | 'UNDER_200' | '200_1000' | '1000_5000' | 'OVER_5000';
+
+const POPULAR_SUGGESTIONS = [
+  'Phones & Tablets',
+  'Fashion & Apparel',
+  'Electronics & Gadgets',
+  'Solar & Power',
+  'Beauty & Hair',
+  'Sneakers'
+];
+
 export default function ShopsDirectoryView() {
   const { user } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -83,11 +96,13 @@ export default function ShopsDirectoryView() {
   const [standardShops, setStandardShops] = useState<ShopCard[]>([]);
   const [loading, setLoading] = useState(true);
 
-  // Search & Filter
+  // Search & Filters
   const [query, setQuery] = useState(initialQuery);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
   const [activeTab, setActiveTab] = useState<'ALL' | 'PRODUCTS' | 'SHOPS'>('ALL');
   const [showAllStores, setShowAllStores] = useState(false);
+  const [sortBy, setSortBy] = useState<SortOption>('RELEVANCE');
+  const [priceRange, setPriceRange] = useState<PriceFilter>('ALL');
 
   useEffect(() => {
     const urlQuery = searchParams.get('query') || searchParams.get('search') || '';
@@ -165,7 +180,6 @@ export default function ShopsDirectoryView() {
     const timer = setTimeout(() => {
       fetchDirectory();
 
-      // Sync browser URL parameters with current search state smoothly
       const params = new URLSearchParams(window.location.search);
       if (query.trim()) {
         params.set('query', query.trim());
@@ -191,11 +205,20 @@ export default function ShopsDirectoryView() {
 
   const handleCategorySelect = (catName: string) => {
     setSelectedCategory(catName);
-    setQuery(''); // Reset query text so user browses the selected category directly
+    setQuery('');
     const params = new URLSearchParams();
     if (catName !== 'All') {
       params.set('category', catName);
     }
+    setSearchParams(params, { replace: true });
+  };
+
+  const handleClearFilters = () => {
+    setQuery('');
+    setSelectedCategory('All');
+    setPriceRange('ALL');
+    setSortBy('RELEVANCE');
+    const params = new URLSearchParams();
     setSearchParams(params, { replace: true });
   };
 
@@ -259,11 +282,34 @@ export default function ShopsDirectoryView() {
     }
   };
 
+  // Client-side Price Filtering & Sorting for Products
+  const processedProducts = matchedProducts
+    .filter(product => {
+      if (priceRange === 'UNDER_200') return product.price_ghs < 200;
+      if (priceRange === '200_1000') return product.price_ghs >= 200 && product.price_ghs <= 1000;
+      if (priceRange === '1000_5000') return product.price_ghs > 1000 && product.price_ghs <= 5000;
+      if (priceRange === 'OVER_5000') return product.price_ghs > 5000;
+      return true;
+    })
+    .sort((a, b) => {
+      if (sortBy === 'PRICE_ASC') return a.price_ghs - b.price_ghs;
+      if (sortBy === 'PRICE_DESC') return b.price_ghs - a.price_ghs;
+      if (sortBy === 'RATING') return (b.seller_avg_rating || 0) - (a.seller_avg_rating || 0);
+      return 0;
+    });
+
+  // Client-side Sorting for Standard Stores
+  const processedStandardShops = [...standardShops].sort((a, b) => {
+    if (sortBy === 'RATING') return (b.avg_overall || 0) - (a.avg_overall || 0);
+    if (sortBy === 'ESCROWS') return (b.total_completed_escrows || 0) - (a.total_completed_escrows || 0);
+    return 0;
+  });
+
   // Render Product Card
   const renderProductCard = (product: ProductCard) => (
     <div
       key={product.link_id}
-      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-indigo-500/40 dark:hover:border-indigo-500/40 transition-all group"
+      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-blue-500/40 dark:hover:border-blue-500/40 transition-all group"
     >
       <div>
         {/* Product Image Preview */}
@@ -290,7 +336,7 @@ export default function ShopsDirectoryView() {
 
           {product.category && (
             <div className="absolute top-2.5 right-2.5">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-indigo-950/80 text-indigo-200 backdrop-blur-md border border-indigo-400/30">
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-950/80 text-blue-200 backdrop-blur-md border border-blue-400/30">
                 {product.category}
               </span>
             </div>
@@ -298,7 +344,7 @@ export default function ShopsDirectoryView() {
         </div>
 
         {/* Product Title */}
-        <h3 className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base line-clamp-2 leading-snug group-hover:text-indigo-600 dark:group-hover:text-indigo-400 transition-colors">
+        <h3 className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base line-clamp-2 leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
           {product.title}
         </h3>
 
@@ -325,10 +371,10 @@ export default function ShopsDirectoryView() {
       <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 gap-2">
         <Link
           to={`/store/${product.seller_username}`}
-          className="flex items-center gap-1.5 min-w-0 hover:text-indigo-600 dark:hover:text-indigo-400 transition"
+          className="flex items-center gap-1.5 min-w-0 hover:text-blue-600 dark:hover:text-blue-400 transition"
           title={`Visit ${product.seller_shop_name || product.seller_username}'s storefront`}
         >
-          <div className="w-6 h-6 rounded-full bg-indigo-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 shadow-2xs">
+          <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 shadow-2xs">
             {(product.seller_shop_name || product.seller_username || 'S')[0].toUpperCase()}
           </div>
           <div className="min-w-0">
@@ -448,91 +494,72 @@ export default function ShopsDirectoryView() {
           {/* Stats & Category Badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg text-[11px] border border-slate-200/80 dark:border-slate-700/60">
-              <ShieldCheck className="h-3 w-3 text-blue-600 dark:text-blue-400" />
-              {shop.total_completed_escrows} Deals
+              <Store className="w-3 h-3 text-blue-500" />
+              <span>{categoryName}</span>
             </span>
 
-            <span className="inline-flex items-center gap-1 font-bold text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/50 px-2 py-0.5 rounded-lg text-[11px]">
-              <Star className="h-3 w-3 fill-amber-400 text-amber-500" />
-              {shop.avg_overall > 0 ? shop.avg_overall.toFixed(1) : 'New'}
-              {shop.total_reviews_count > 0 && (
-                <span className="text-[10px] text-slate-400 font-normal">({shop.total_reviews_count})</span>
-              )}
-            </span>
-
-            {(shop.shop_categories && shop.shop_categories.length > 0 ? shop.shop_categories : [shop.shop_category]).slice(0, 2).map((cat, i) => (
-              <span key={i} className="text-[11px] font-semibold text-indigo-700 dark:text-indigo-300 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-800/40 px-2 py-0.5 rounded-md whitespace-nowrap">
-                {cat}
+            {shop.total_completed_escrows > 0 && (
+              <span className="inline-flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-lg text-[11px] border border-emerald-200/80 dark:border-emerald-800/60">
+                <ShieldCheck className="w-3 h-3 text-emerald-600" />
+                <span>{shop.total_completed_escrows} Escrows</span>
               </span>
-            ))}
+            )}
+
+            {shop.avg_overall > 0 ? (
+              <span className="inline-flex items-center gap-1 font-bold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/50 px-2 py-0.5 rounded-lg text-[11px] border border-amber-200/80 dark:border-amber-800/60">
+                <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                <span>{shop.avg_overall.toFixed(1)}</span>
+                <span className="text-slate-400">({shop.total_reviews_count})</span>
+              </span>
+            ) : (
+              <span className="text-[10px] text-slate-400 font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/60">
+                New Store
+              </span>
+            )}
           </div>
 
-          {/* Description or Smart Fallback */}
-          <p className="text-xs text-slate-600 dark:text-slate-300 line-clamp-2 leading-relaxed min-h-[32px]">
-            {shop.shop_description || `Verified escrow store on HendAxis Trust specializing in ${categoryName} with 100% buyer protection.`}
-          </p>
+          {/* Description */}
+          {shop.shop_description && (
+            <p className="text-xs text-slate-600 dark:text-slate-400 line-clamp-2 leading-relaxed">
+              {shop.shop_description}
+            </p>
+          )}
 
-          {/* Featured Links (if any) OR Custom Orders Placeholder Box */}
-          {shop.featured_products && shop.featured_products.length > 0 ? (
-            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Featured Links</span>
-                <span className="text-[10px] text-amber-600 dark:text-amber-400 font-medium flex items-center gap-0.5">
-                  <Truck className="h-2.5 w-2.5" /> Confirm shipping first
-                </span>
-              </div>
+          {/* Featured Active Products Pill Previews */}
+          {shop.featured_products && shop.featured_products.length > 0 && (
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+              <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                Featured Escrow Items:
+              </p>
               <div className="space-y-1.5">
-                {shop.featured_products.slice(0, 2).map(prod => (
+                {shop.featured_products.slice(0, 3).map(product => (
                   <button
-                    key={prod.link_id}
+                    key={product.link_id}
                     type="button"
-                    onClick={() => setShippingModalItem({ product: prod, shop })}
-                    className="w-full flex items-center justify-between p-2 rounded-xl bg-slate-50 dark:bg-slate-800/60 hover:bg-amber-50/70 dark:hover:bg-amber-950/30 border border-slate-200/80 dark:border-slate-700/60 hover:border-amber-300 dark:hover:border-amber-700 transition group text-xs text-left cursor-pointer"
-                    title="Click to verify delivery terms with seller before payment"
+                    onClick={() => setShippingModalItem({ product, shop })}
+                    className="w-full text-left p-2 rounded-xl bg-slate-50 dark:bg-slate-950/80 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-slate-200/80 dark:border-slate-800 transition flex items-center justify-between gap-2 group/prod cursor-pointer"
                   >
-                    <span className="font-medium text-slate-800 dark:text-slate-200 group-hover:text-amber-700 dark:group-hover:text-amber-300 truncate max-w-[170px]">
-                      {prod.title}
+                    <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 group-hover/prod:text-blue-600 dark:group-hover/prod:text-blue-400 truncate">
+                      {product.title}
                     </span>
-                    <span className="font-bold text-slate-900 dark:text-slate-100 group-hover:text-amber-700 dark:group-hover:text-amber-300 flex items-center gap-1 shrink-0 font-mono">
-                      GH₵ {prod.price_ghs.toFixed(2)}
-                      <span className="text-[10px] text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-950/80 px-1.5 py-0.5 rounded font-sans font-bold">Inquire</span>
+                    <span className="text-xs font-black text-emerald-600 dark:text-emerald-400 font-mono shrink-0">
+                      GH₵ {product.price_ghs.toFixed(2)}
                     </span>
                   </button>
                 ))}
               </div>
             </div>
-          ) : (
-            <div className="pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
-              <div className="flex items-center justify-between">
-                <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Storefront Catalog</span>
-                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-0.5">
-                  <ShieldCheck className="h-3 w-3" /> Escrow Ready
-                </span>
-              </div>
-              <div className="p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200/70 dark:border-slate-700/60 flex items-center justify-between text-xs">
-                <div className="flex items-center gap-1.5 text-slate-700 dark:text-slate-300 min-w-0">
-                  <ShoppingBag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="truncate text-[11px] font-medium">Accepts custom escrow orders & direct inquiries</span>
-                </div>
-                <Link
-                  to={`/store/${shop.seller_username}`}
-                  className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline shrink-0 ml-1.5"
-                >
-                  Browse →
-                </Link>
-              </div>
-            </div>
           )}
         </div>
 
-        {/* Standardized Bottom Action Footer */}
-        <div className="flex items-center justify-between pt-3 mt-3 border-t border-slate-100 dark:border-slate-800 gap-2">
+        {/* Footer Actions: Visit Store & Direct Contact Icons */}
+        <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between gap-2">
           <Link
             to={`/store/${shop.seller_username}`}
-            className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 hover:text-blue-700 dark:text-blue-400 dark:hover:text-blue-300 transition"
+            className="flex-1 py-2 px-3 rounded-xl bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold text-xs transition flex items-center justify-center gap-1.5 text-center"
           >
-            <Store className="w-3.5 h-3.5" />
-            <span>Visit Storefront →</span>
+            <span>Visit Store</span>
+            <ArrowRight className="w-3.5 h-3.5" />
           </Link>
 
           <div className="flex items-center gap-1.5 shrink-0">
@@ -540,12 +567,13 @@ export default function ShopsDirectoryView() {
               <a
                 href={`tel:${shop.seller_phone}`}
                 className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/60 dark:hover:text-blue-400 text-slate-700 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition shadow-2xs cursor-pointer"
-                title={`Call ${shop.shop_name || shop.seller_username}`}
+                title={`Call merchant (${shop.seller_phone})`}
                 aria-label={`Call merchant at ${shop.seller_phone}`}
               >
                 <Phone className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
               </a>
             )}
+
             {shopWhatsappUrl && (
               <a
                 href={shopWhatsappUrl}
@@ -574,38 +602,35 @@ export default function ShopsDirectoryView() {
         canonicalUrl="https://trust.hendaxis.com/shops"
       />
 
-      {/* Hero Search Section */}
-      <div className="bg-slate-950 text-white min-h-[340px] sm:min-h-[400px] px-4 sm:px-6 lg:px-8 pt-8 pb-6 relative overflow-hidden flex flex-col justify-between border-b border-slate-800">
+      {/* Streamlined Hero Search Section (Optimized for Mobile & Fast Product Discovery) */}
+      <div className="bg-slate-950 text-white min-h-[290px] sm:min-h-[360px] px-4 sm:px-6 lg:px-8 pt-6 sm:pt-8 pb-5 sm:pb-6 relative overflow-hidden flex flex-col justify-between border-b border-slate-800">
         <div className="absolute inset-0 z-0">
           <img src={heroBanner} alt="Marketplace Banner" className="w-full h-full object-cover opacity-100" fetchPriority="high" decoding="async" loading="eager" />
-          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 via-slate-950/45 to-slate-950/20" />
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 via-slate-950/50 to-slate-950/25" />
         </div>
 
-        <div className="max-w-5xl w-full mx-auto relative z-10 flex flex-col justify-between flex-1">
-          <div className="text-center space-y-2">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider backdrop-blur-md">
-              <Sparkles className="w-4 h-4 text-amber-400" />
+        <div className="max-w-5xl w-full mx-auto relative z-10 flex flex-col justify-between flex-1 space-y-3">
+          <div className="text-center space-y-1">
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider backdrop-blur-md">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
               Ghana's Escrow Marketplace
             </div>
-            {/* <h1 className="text-2xl sm:text-4xl font-black text-white tracking-tight drop-shadow-md">
-              Search Products & Verified Stores
+            <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md">
+              Verified Stores & Escrow Marketplace
             </h1>
-            <p className="text-xs sm:text-sm text-slate-200 max-w-xl mx-auto drop-shadow">
-              Find products by name or description. Buy directly with escrow protection or message the merchant on WhatsApp.
-            </p> */}
           </div>
 
-          {/* Transparent Search Bar & Category Scroller (NO solid outer card) */}
-          <div className="space-y-3 mt-4 w-full">
+          {/* Search Bar & Category Scroller */}
+          <div className="space-y-2.5 w-full">
             {/* Search Input Box */}
             <form onSubmit={handleSearchSubmit} className="relative max-w-2xl mx-auto">
-              <Search className="h-5 w-5 absolute left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" />
+              <Search className="h-4 sm:h-5 w-4 sm:w-5 absolute left-3.5 sm:left-4 top-1/2 -translate-y-1/2 text-slate-300 z-10" />
               <input
                 type="text"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
-                placeholder="Search products or stores (e.g. 'iPhone 15', 'Bone straight wig', 'Sneakers', 'Solar')..."
-                className="w-full pl-12 pr-32 sm:pr-36 py-3.5 bg-black/40 hover:bg-black/50 focus:bg-black/60 backdrop-blur-md rounded-2xl text-xs sm:text-sm border border-white/20 shadow-xl focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all text-white placeholder-slate-300"
+                placeholder="Search products or stores (e.g. 'iPhone 15', 'Sneakers', 'Solar', 'Wigs')..."
+                className="w-full pl-10 sm:pl-12 pr-28 sm:pr-36 py-3 sm:py-3.5 bg-black/45 hover:bg-black/55 focus:bg-black/65 backdrop-blur-md rounded-2xl text-xs sm:text-sm border border-white/20 shadow-xl focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all text-white placeholder-slate-300"
               />
               {query.trim() && (
                 <button
@@ -626,20 +651,20 @@ export default function ShopsDirectoryView() {
               )}
               <button
                 type="submit"
-                className="absolute right-1.5 top-1.5 bottom-1.5 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer"
+                className="absolute right-1.5 top-1.5 bottom-1.5 px-3.5 sm:px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer"
               >
                 <Search className="h-3.5 w-3.5" /> Search
               </button>
             </form>
 
-            {/* Category Filter Pills (All 16 Categories) with scrollbar hidden */}
-            <div className="flex items-center gap-2 overflow-x-auto no-scrollbar scrollbar-none pt-1">
+            {/* Category Filter Pills */}
+            <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar scrollbar-none pt-1">
               <button
                 onClick={() => handleCategorySelect('All')}
-                className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer flex items-center gap-1.5 ${
                   selectedCategory === 'All'
                     ? 'bg-blue-600 text-white shadow-md border border-blue-400/40'
-                    : 'bg-black/35 hover:bg-black/50 text-white/90 hover:text-white border border-white/20'
+                    : 'bg-black/40 hover:bg-black/55 text-white/90 hover:text-white border border-white/20'
                 }`}
               >
                 <Layers className="w-3.5 h-3.5" /> All Categories
@@ -652,10 +677,10 @@ export default function ShopsDirectoryView() {
                   <button
                     key={cat.id}
                     onClick={() => handleCategorySelect(cat.name)}
-                    className={`px-3.5 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer flex items-center gap-1.5 ${
                       isSelected
                         ? 'bg-blue-600 text-white shadow-md border border-blue-400/40'
-                        : 'bg-black/35 hover:bg-black/50 text-white/90 hover:text-white border border-white/20'
+                        : 'bg-black/40 hover:bg-black/55 text-white/90 hover:text-white border border-white/20'
                     }`}
                   >
                     <IconComp className="w-3.5 h-3.5" />
@@ -669,14 +694,14 @@ export default function ShopsDirectoryView() {
       </div>
 
       {/* Main Content Area */}
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-8 space-y-8">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 mt-6 sm:mt-8 space-y-6">
 
-        {/* View Mode Switcher Tabs */}
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-800 pb-4">
-          <div className="flex items-center gap-2 overflow-x-auto">
+        {/* View Mode Switcher, Sorting & Merchant CTAs */}
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-4">
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar">
             <button
               onClick={() => setActiveTab('ALL')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                 activeTab === 'ALL'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -687,7 +712,7 @@ export default function ShopsDirectoryView() {
 
             <button
               onClick={() => setActiveTab('SHOPS')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                 activeTab === 'SHOPS'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
@@ -699,25 +724,95 @@ export default function ShopsDirectoryView() {
 
             <button
               onClick={() => setActiveTab('PRODUCTS')}
-              className={`px-4 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-2 ${
+              className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-black transition cursor-pointer flex items-center gap-1.5 whitespace-nowrap ${
                 activeTab === 'PRODUCTS'
                   ? 'bg-blue-600 text-white shadow-sm'
                   : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
               <ShoppingBag className="w-4 h-4" />
-              Products ({matchedProducts.length})
+              Products ({processedProducts.length})
             </button>
           </div>
 
-          {/* Promote Shop Button for Merchants */}
-          <button
-            onClick={() => setShowPromoteModal(true)}
-            className="self-start sm:self-auto px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0"
-          >
-            <Zap className="w-4 h-4 fill-white" /> Advertise My Shop
-          </button>
+          {/* Right Action Bar: Sorting Controls & Promote / Register CTAs */}
+          <div className="flex items-center gap-2.5 flex-wrap justify-between md:justify-end">
+            {/* Sort Dropdown */}
+            <div className="flex items-center gap-1.5 bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-2.5 py-1.5 shadow-2xs">
+              <ArrowUpDown className="w-3.5 h-3.5 text-slate-500" />
+              <label htmlFor="sort-select" className="sr-only">Sort directory results</label>
+              <select
+                id="sort-select"
+                value={sortBy}
+                onChange={e => setSortBy(e.target.value as SortOption)}
+                aria-label="Sort directory results"
+                className="bg-transparent text-xs font-bold text-slate-700 dark:text-slate-300 outline-none cursor-pointer pr-1"
+              >
+                <option value="RELEVANCE" className="dark:bg-slate-900">Sort: Default</option>
+                <option value="RATING" className="dark:bg-slate-900">Top Rated (⭐)</option>
+                <option value="ESCROWS" className="dark:bg-slate-900">Most Escrows Completed</option>
+                <option value="PRICE_ASC" className="dark:bg-slate-900">Price: Low to High</option>
+                <option value="PRICE_DESC" className="dark:bg-slate-900">Price: High to Low</option>
+              </select>
+            </div>
+
+            {/* Merchant Buttons */}
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowPromoteModal(true)}
+                className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0"
+              >
+                <Zap className="w-3.5 h-3.5 fill-white" /> Advertise My Shop
+              </button>
+
+              {!user && (
+                <Link
+                  to="/register"
+                  className="px-3.5 py-2 rounded-xl bg-[#0363ff] hover:bg-blue-600 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0"
+                >
+                  <UserPlus className="w-3.5 h-3.5" /> List Store Free
+                </Link>
+              )}
+            </div>
+          </div>
         </div>
+
+        {/* Quick Price Range Filter Chips (Displayed when in ALL or PRODUCTS view) */}
+        {(activeTab === 'ALL' || activeTab === 'PRODUCTS') && matchedProducts.length > 0 && (
+          <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pt-1">
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 whitespace-nowrap">
+              Price Range:
+            </span>
+            {[
+              { id: 'ALL', label: 'All Prices' },
+              { id: 'UNDER_200', label: '< GH₵ 200' },
+              { id: '200_1000', label: 'GH₵ 200 – 1,000' },
+              { id: '1000_5000', label: 'GH₵ 1,000 – 5,000' },
+              { id: 'OVER_5000', label: 'GH₵ 5,000+' }
+            ].map(p => (
+              <button
+                key={p.id}
+                onClick={() => setPriceRange(p.id as PriceFilter)}
+                className={`px-3 py-1 rounded-lg text-xs font-semibold transition cursor-pointer whitespace-nowrap ${
+                  priceRange === p.id
+                    ? 'bg-blue-50 dark:bg-blue-950/60 border border-blue-500 text-blue-600 dark:text-blue-400 font-bold shadow-2xs'
+                    : 'bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                {p.label}
+              </button>
+            ))}
+
+            {(priceRange !== 'ALL' || sortBy !== 'RELEVANCE' || query || selectedCategory !== 'All') && (
+              <button
+                onClick={handleClearFilters}
+                className="ml-auto text-xs font-bold text-rose-600 dark:text-rose-400 hover:underline flex items-center gap-1 cursor-pointer whitespace-nowrap"
+              >
+                <RotateCcw className="w-3 h-3" /> Reset Filters
+              </button>
+            )}
+          </div>
+        )}
 
         {loading ? (
           <div className="py-20 text-center space-y-3">
@@ -727,7 +822,7 @@ export default function ShopsDirectoryView() {
         ) : (
           <div className="space-y-12">
 
-            {/* 1. VERIFIED ESCROW STORES SECTION (Row 1: Sponsored/Paid, Rows 2-3: Standard shops) */}
+            {/* 1. VERIFIED ESCROW STORES SECTION */}
             {(activeTab === 'ALL' || activeTab === 'SHOPS') && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
@@ -767,7 +862,7 @@ export default function ShopsDirectoryView() {
                 )}
 
                 {/* ROWS 2 & 3: STANDARD / RANDOM STORES */}
-                {standardShops.length > 0 && (
+                {processedStandardShops.length > 0 && (
                   <div className="space-y-4">
                     {featuredShops.length > 0 && (
                       <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
@@ -775,11 +870,11 @@ export default function ShopsDirectoryView() {
                       </h3>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                      {((showAllStores || activeTab === 'SHOPS') ? standardShops : standardShops.slice(0, 6)).map(shop => renderShopCard(shop, false))}
+                      {((showAllStores || activeTab === 'SHOPS') ? processedStandardShops : processedStandardShops.slice(0, 6)).map(shop => renderShopCard(shop, false))}
                     </div>
 
                     {/* View All / Collapse Button */}
-                    {standardShops.length > 6 && activeTab === 'ALL' && (
+                    {processedStandardShops.length > 6 && activeTab === 'ALL' && (
                       <div className="text-center pt-2">
                         <button
                           onClick={() => setShowAllStores(!showAllStores)}
@@ -794,10 +889,35 @@ export default function ShopsDirectoryView() {
                 )}
 
                 {standardShops.length === 0 && featuredShops.length === 0 && (
-                  <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800 space-y-3">
+                  <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 sm:p-12 text-center border border-slate-200 dark:border-slate-800 space-y-4">
                     <Shield className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-700" />
-                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No matching stores found</h3>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">Try adjusting your search terms or category filter.</p>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No matching stores found</h3>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                        Try exploring popular categories or clearing your search filter.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 justify-center pt-2">
+                      {POPULAR_SUGGESTIONS.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => handleCategorySelect(cat)}
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 hover:text-blue-600 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="pt-3">
+                      <button
+                        onClick={handleClearFilters}
+                        className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" /> Clear All Filters
+                      </button>
+                    </div>
                   </div>
                 )}
               </div>
@@ -821,7 +941,7 @@ export default function ShopsDirectoryView() {
                   <div>
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
                       <ShoppingBag className="w-5 h-5 text-blue-600" />
-                      {query.trim() ? `Search Results for "${query}"` : 'Marketplace Products & Escrow Offers'} ({matchedProducts.length})
+                      {query.trim() ? `Search Results for "${query}"` : 'Marketplace Products & Escrow Offers'} ({processedProducts.length})
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       Shipping cost is based on your location and agreed upon with the merchant.
@@ -829,17 +949,47 @@ export default function ShopsDirectoryView() {
                   </div>
                 </div>
 
-                {matchedProducts.length === 0 ? (
-                  <div className="bg-white dark:bg-slate-900 rounded-3xl p-12 text-center border border-slate-200 dark:border-slate-800 space-y-3">
+                {processedProducts.length === 0 ? (
+                  <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 sm:p-12 text-center border border-slate-200 dark:border-slate-800 space-y-4">
                     <ShoppingBag className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-700" />
-                    <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No matching products found</h3>
-                    <p className="text-xs text-slate-400 dark:text-slate-500">
-                      Try searching with general keywords (e.g. 'phone', 'bag', 'shoes') or browse categories.
-                    </p>
+                    <div>
+                      <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No matching products found</h3>
+                      <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+                        Try searching with broader terms or choose a category below.
+                      </p>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 justify-center pt-2">
+                      {POPULAR_SUGGESTIONS.map(cat => (
+                        <button
+                          key={cat}
+                          onClick={() => handleCategorySelect(cat)}
+                          className="px-3 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 dark:hover:bg-blue-950/40 text-slate-700 dark:text-slate-300 hover:text-blue-600 text-xs font-semibold border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                        >
+                          {cat}
+                        </button>
+                      ))}
+                    </div>
+
+                    <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+                      <button
+                        onClick={handleClearFilters}
+                        className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs transition shadow-sm inline-flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <RotateCcw className="w-3.5 h-3.5" /> Clear All Filters
+                      </button>
+                      <Link
+                        to="/for-buyers"
+                        className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition inline-flex items-center gap-1.5"
+                      >
+                        <span>How to buy from any vendor with escrow</span>
+                        <ArrowRight className="w-3.5 h-3.5" />
+                      </Link>
+                    </div>
                   </div>
                 ) : (
                   <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-5">
-                    {matchedProducts.map(renderProductCard)}
+                    {processedProducts.map(renderProductCard)}
                   </div>
                 )}
               </div>
@@ -902,7 +1052,7 @@ export default function ShopsDirectoryView() {
                       type="button"
                       onClick={() => handlePromoteSubmit(undefined, false, true)}
                       disabled={isPromoting}
-                      className="flex-1 py-3 bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
+                      className="flex-1 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition cursor-pointer"
                     >
                       {isPromoting ? 'Processing...' : 'Confirm & Deduct Wallet'}
                     </button>

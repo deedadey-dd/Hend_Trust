@@ -8,6 +8,7 @@ import ImageLightboxModal from './ImageLightboxModal';
 import DisputeChatTimeline from './DisputeChatTimeline';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { useAuthStore } from '../store/authStore';
 
 type TabMode = 'SINGLE' | 'HISTORY';
 type SingleStep = 'INPUT' | 'OTP';
@@ -19,11 +20,12 @@ interface TrackingModalProps {
 
 export default function TrackingModal({ onClose }: TrackingModalProps) {
   useEscapeKey(onClose);
+  const { isAuthenticated, user } = useAuthStore();
   const [tab, setTab] = useState<TabMode>('SINGLE');
   
   // Single Tracking State
   const [txnId, setTxnId] = useState('');
-  const [phone, setPhone] = useState('');
+  const [phone, setPhone] = useState(user?.phone_number || '');
   const [singleStep, setSingleStep] = useState<SingleStep>('INPUT');
   const [singleOtp, setSingleOtp] = useState('');
   const [loadingSingleOtp, setLoadingSingleOtp] = useState(false);
@@ -33,7 +35,7 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   const [rateTxn, setRateTxn] = useState<any>(null);
 
   // History State
-  const [identifier, setIdentifier] = useState(''); // phone or email
+  const [identifier, setIdentifier] = useState(user?.phone_number || user?.email || '');
   const [isEmailInput, setIsEmailInput] = useState(false);
   const [historyStep, setHistoryStep] = useState<HistoryStep>('INPUT');
   const [otp, setOtp] = useState('');
@@ -93,11 +95,51 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
     return () => clearInterval(timer);
   }, [historyOtpCooldown]);
 
+  useEffect(() => {
+    if (isAuthenticated) {
+      setLoading(true);
+      apiClient.get('/checkout/buyer/my-orders')
+        .then(res => {
+          const list = Array.isArray(res.data) ? res.data : [];
+          setTxns(list);
+          if (list.length > 0) {
+            setShowResults(true);
+          }
+        })
+        .catch(err => {
+          console.error("Failed to auto-fetch buyer orders:", err);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }
+  }, [isAuthenticated]);
+
   // Step 1 Single Order Submit: Request OTP
   const handleSingleSendOtp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     setError('');
-    if (!txnId.trim() || !phone.trim()) {
+    if (!txnId.trim()) {
+      setError('Please enter your Transaction Reference ID.');
+      return;
+    }
+
+    if (isAuthenticated) {
+      // 1-Click bypass
+      setLoading(true);
+      try {
+        const res = await apiClient.get(`/checkout/transaction/${txnId.trim().toUpperCase()}`);
+        setTxns(res.data ? [res.data] : []);
+        setShowResults(true);
+      } catch (err: any) {
+        setError(err.response?.data?.message || 'Order not found.');
+      } finally {
+        setLoading(false);
+      }
+      return;
+    }
+
+    if (!phone.trim()) {
       setError('Please enter both Transaction ID and Phone Number.');
       return;
     }

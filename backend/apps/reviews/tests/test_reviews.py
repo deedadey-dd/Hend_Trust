@@ -252,6 +252,37 @@ def test_shop_ad_invoice_creation(seller, db):
     assert invoice.amount_ghs == Decimal('50.00')
     assert invoice.payment_method == "WALLET"
     assert invoice.invoice_number.startswith("INV-AD-")
-
-
+@pytest.mark.django_db
+def test_buyer_my_reviews(completed_transaction, seller, db):
+    from ninja_jwt.tokens import RefreshToken
+    buyer_user = User.objects.create_user(
+        username="verified_buyer",
+        email=completed_transaction.buyer_email,
+        phone_number=completed_transaction.buyer_phone,
+        role="BUYER"
+    )
+    
+    # Create a review
+    review = SellerReview.objects.create(
+        seller=seller,
+        transaction=completed_transaction,
+        rating_speed=5,
+        rating_communication=4,
+        rating_overall=5,
+        comment="Awesome purchase!",
+        seller_reply="Thank you for shopping with us!"
+    )
+    
+    client = TestClient(reviews_router)
+    token = str(RefreshToken.for_user(buyer_user).access_token)
+    # Call as authenticated buyer
+    res = client.get("/buyer/my-reviews", headers={"Authorization": f"Bearer {token}"})
+    assert res.status_code == 200
+    data = res.json()
+    assert len(data) == 1
+    assert data[0]['item_title'] == completed_transaction.link.title
+    assert data[0]['rating_overall'] == 5
+    assert data[0]['comment'] == "Awesome purchase!"
+    assert data[0]['seller_reply'] == "Thank you for shopping with us!"
+    assert data[0]['shop_name'] == "Star Electronics Store"
 

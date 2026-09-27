@@ -1,7 +1,8 @@
+import re
 from ninja import Router, Schema
 from ninja.errors import HttpError
 from django.shortcuts import get_object_or_404
-from django.db.models import Avg, Count
+from django.db.models import Avg, Count, Q
 from django.utils import timezone
 from hendaxis_trust.auth import JWTCookieAuth
 from apps.escrow.models import Transaction, TransactionStatus
@@ -48,6 +49,27 @@ class SellerReplySchema(Schema):
 
 class ReviewVoteSchema(Schema):
     vote_type: str  # 'UP' or 'DOWN'
+
+class BuyerReviewDetailSchema(Schema):
+    id: str
+    transaction_id: str
+    item_title: str
+    transaction_title: str
+    paystack_reference: str
+    seller_username: str
+    shop_name: str
+    seller_shop_name: str
+    seller_profile_picture_url: str = ""
+    rating_overall: int
+    rating_speed: int
+    rating_communication: int
+    comment: str = ""
+    image_url: str = ""
+    seller_reply: str = ""
+    seller_replied_at: Optional[str] = None
+    created_at: str
+    updated_at: str
+    edit_count: int = 0
 
 class RecentReviewShopSchema(Schema):
     seller_id: uuid.UUID
@@ -255,6 +277,66 @@ def request_review_edit_link(request, data: RequestEditLinkSchema):
     return {
         "message": f"A secure edit link has been sent to {transaction.buyer_email}."
     }
+
+@reviews_router.get("/buyer/my-reviews", response=List[BuyerReviewDetailSchema], auth=JWTCookieAuth())
+def get_buyer_my_reviews(request):
+    """Retrieve all reviews submitted by the authenticated buyer."""
+    user = request.user
+    phone = (getattr(user, 'phone_number', '') or '').strip()
+    email = (getattr(user, 'email', '') or '').strip()
+
+    query = Q()
+    if phone:
+        digits = re.sub(r'\D', '', phone)
+        phone_variants = {phone}
+        if len(digits) >= 9:
+            last9 = digits[-9:]
+            phone_variants.add(f"0{last9}")
+            phone_variants.add(f"+233{last9}")
+            phone_variants.add(f"233{last9}")
+            phone_variants.add(last9)
+            query |= Q(transaction__buyer_phone__endswith=last9) | Q(transaction__buyer_identity__phone_number__endswith=last9) | Q(buyer_phone__endswith=last9)
+        for p in phone_variants:
+            query |= Q(transaction__buyer_phone=p) | Q(transaction__buyer_identity__phone_number=p) | Q(buyer_phone=p)
+
+    if email:
+        query |= Q(transaction__buyer_email__iexact=email) | Q(transaction__buyer_identity__primary_email__iexact=email)
+
+    if not query:
+        return []
+
+    reviews = SellerReview.objects.filter(query).select_related(
+        'transaction', 'transaction__link', 'seller'
+    ).order_by('-created_at')
+
+    results = []
+    for r in reviews:
+        txn = r.transaction
+        seller = r.seller
+        title = (txn.title if txn and getattr(txn, 'title', None) else (txn.link.title if (txn and txn.link) else "Escrow Purchase"))
+        shop = getattr(seller, 'shop_name', '') or (seller.username if seller else "Seller")
+        results.append({
+            "id": str(r.id),
+            "transaction_id": str(txn.id) if txn else "",
+            "item_title": title,
+            "transaction_title": title,
+            "paystack_reference": txn.paystack_reference if txn else "",
+            "seller_username": seller.username if seller else "",
+            "shop_name": shop,
+            "seller_shop_name": shop,
+            "seller_profile_picture_url": getattr(seller, 'profile_picture_url', '') or "",
+            "rating_overall": r.rating_overall,
+            "rating_speed": r.rating_speed,
+            "rating_communication": r.rating_communication,
+            "comment": r.comment or "",
+            "image_url": r.image_url or "",
+            "seller_reply": r.seller_reply or "",
+            "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
+            "created_at": r.created_at.isoformat(),
+            "updated_at": r.updated_at.isoformat(),
+            "edit_count": r.edit_count,
+        })
+    return results
 
 @reviews_router.get("/seller/{identifier}", response=SellerStorefrontSchema, auth=None)
 def get_seller_storefront(request, identifier: str):

@@ -40,12 +40,15 @@ Sellers can create secure Payment Links to send to their buyers.
 
 ---
 
-## 3. Making a Payment & Multi-Gateway Support (For Buyers)
+## 3. Making a Payment & Frictionless Buyer Accounts (For Buyers)
 1. **Open the Payment Link**: View the item description, total price, and clear merchant identification showing the **Shop Name** along with the `@username` handle.
-2. **Enter Delivery Details**: Provide your Name, Phone Number, and Shipping Address.
+2. **Checkout Modes (Authenticated 0-OTP vs. Guest Shopper)**:
+   - **Logged-In Buyers (1-Click Init)**: If you have a HendAxis buyer account, your name, phone, and email are filled automatically, and payment initializes in **1 click with zero SMS OTPs**.
+   - **Guest Shoppers**: Enter your phone number and verify via a quick 6-digit SMS OTP to initialize payment securely.
 3. **Pay via Active Payment Gateway**: Use Mobile Money (MTN MoMo, Telecel Cash, AT Money) or Bank Card (Visa, Mastercard).
    - **Supported Payment Engines**: **Paystack Multi-Channel**, **AppsNMobile (The Orchard API)**, and **Hubtel Ghana PSP**. The active checkout gateway is managed dynamically by platform administration.
-4. **Escrow Hold**: Your money is held securely in the **HendAxis System Escrow Account**. The seller is notified to dispatch your package within 4 days.
+4. **Post-Checkout Buyer Account & Dual Verification**: Immediately after checkout on your order page (`/l/:id`), you can create a permanent buyer account simply by choosing a password. The system sends an activation link to your email and an SMS OTP to your phone. Entering the phone OTP confirms phone possession and logs you in instantly, while an unobtrusive reminder banner helps you confirm your email anytime with 1-click resend. Once logged in, you skip all future checkout SMS OTPs.
+5. **Escrow Hold**: Your money is held securely in the **HendAxis System Escrow Account**. The seller is notified to dispatch your package within 4 days.
 
 ---
 
@@ -61,19 +64,21 @@ Sellers must dispatch items promptly after receiving payment notification:
 
 ---
 
-## 5. Upfront 2-Step OTP Tracking & Tiered Buyer Inspection Period
-Once delivery is initiated, buyers can track shipments with full privacy and convenience:
+## 5. Order Tracking, 1-Click Receipt Confirmation & Tiered Buyer Inspection Period
+Once delivery is initiated, buyers can track shipments and confirm orders with complete ease:
 
-- **Upfront 2-Step OTP Package Tracking**:
-  - Both **Track by Order ID** (single parcel) and **Full Order History** are protected by a secure 6-digit OTP sent to the buyer's phone number.
-  - **2-Hour Token Validity**: Once verified, your tracking session remains unlocked for **2 hours**, allowing instant access to package details and action buttons ("View Full Details & Actions", "+ Add Dispute Details", "Confirm Receipt", "Raise Dispute", "⭐ Rate Seller") without repetitive popups or interruptions.
-  - **60-Second SMS Cooldown**: A cost-saving 60-second cooldown prevents spam while keeping the active OTP code valid.
+- **Order Tracking Options**:
+  - **Logged-In Buyers**: Opening the **Track Order** modal (`/tracking`) or visiting **My Purchases** (`/dashboard?tab=purchases`) instantly displays all active and completed orders with **zero OTPs required**.
+  - **Guest Shoppers (Upfront 2-Step OTP)**: Unauthenticated visitors enter their phone number or Order Reference and verify via a 6-digit SMS OTP, unlocking a secure 2-hour session.
+- **1-Click Delivery Confirmation & Payout Release**:
+  - **Logged-In Buyers**: Click **"⚡ Confirm Receipt (1-Click)"** to transition the package to the inspection period, or **"✓ Approve & Release Payment"** to disburse funds to the seller in 1 click without entering SMS codes.
+  - **Guest Shoppers**: Enter the 6-digit confirmation code sent to your phone/email to confirm receipt.
 - **Inspection Timeframes**:
   - `< GHS 2,000`: **24 Hours**
   - `GHS 2,000 – GHS 9,999.99`: **48 Hours**
   - `>= GHS 10,000`: **72 Hours**
 - **Full-Screen Image Lightbox**: Product, dispatch waybills, and parcel inspection photos feature a full-screen zoom lightbox modal with 90° rotation and download controls.
-- **Automatic Completion & Rating Modal**: Once the buyer confirms receipt via their 6-digit confirmation code, payment is released to the seller, and the **3-Axis Rate Seller Modal** automatically launches on screen so the buyer can instantly leave a review.
+- **Automatic Completion & Rating Modal**: Once delivery is confirmed and funds are released, the **3-Axis Rate Seller Modal** automatically launches so the buyer can leave verified feedback.
 
 ---
 

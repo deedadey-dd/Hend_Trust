@@ -4,8 +4,10 @@ import {
   Search, Filter, Package, CheckCircle, 
   X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
   ShieldAlert, MapPin, Copy, Lock, ZoomIn, Archive, ArchiveRestore, MessageSquare,
-  Gift, Award, Printer, Plus
+  Gift, Award, Printer, Plus, ShoppingCart, ExternalLink, Sparkles,
+  Star, ShieldCheck, Store, Clock
 } from 'lucide-react';
+import RateSellerModal from '../components/RateSellerModal';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
@@ -15,6 +17,7 @@ import { ImageLightboxModal } from '../components/ImageLightboxModal';
 import DisputeChatTimeline from '../components/DisputeChatTimeline';
 import ReferralDashboardTab from '../components/ReferralDashboardTab';
 import EmbeddableTrustBadge from '../components/EmbeddableTrustBadge';
+import BuyerReviewsTab from '../components/BuyerReviewsTab';
 import { useAuthStore } from '../store/authStore';
 
 const merchantTxnExportHeaders: ExportColumn[] = [
@@ -972,11 +975,1052 @@ interface SellerMetrics {
   };
 }
 
+// ─── Buyer Order Detail Modal ───────────────────────────────────────────────
+
+interface BuyerOrderDetailModalProps {
+  order: any;
+  onClose: () => void;
+  onRefresh: () => void;
+  onOpenLightbox: (url: string) => void;
+  onOpenRating: (order: any) => void;
+  onOpenDispute: (order: any) => void;
+  onOpenRetract: (order: any) => void;
+}
+
+function BuyerOrderDetailModal({
+  order,
+  onClose,
+  onRefresh,
+  onOpenLightbox,
+  onOpenRating,
+  onOpenDispute,
+  onOpenRetract
+}: BuyerOrderDetailModalProps) {
+  useEscapeKey(onClose);
+  const [copiedRef, setCopiedRef] = useState(false);
+  const [isConfirming, setIsConfirming] = useState(false);
+  const [isReleasing, setIsReleasing] = useState(false);
+
+  const statusCfg = STATUS_CONFIG[order.status] || STATUS_CONFIG['PAYMENT_RECEIVED'];
+  const StatusIcon = statusCfg.icon;
+
+  const canConfirm = order.status === 'DELIVERY_IN_PROGRESS';
+  const isInspection = order.status === 'INSPECTION_PERIOD';
+  const isDisputed = order.status === 'DISPUTED';
+  const isCompleted = order.status === 'COMPLETED';
+  const canDispute = (canConfirm || isInspection) && !order.dispute_retracted_at && !isDisputed;
+  const hasDisputeRecord = Boolean(order.buyer_dispute_reason || order.dispute_retracted_at || isDisputed);
+
+  const handleCopyRef = () => {
+    navigator.clipboard.writeText(order.paystack_reference);
+    setCopiedRef(true);
+    setTimeout(() => setCopiedRef(false), 2000);
+  };
+
+  const handle1ClickConfirm = async () => {
+    setIsConfirming(true);
+    try {
+      await apiClient.post(`/escrow/${order.id}/buyer-confirm-receipt`);
+      alert('Delivery confirmed! Inspection period started.');
+      onRefresh();
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to confirm delivery.');
+    } finally {
+      setIsConfirming(false);
+    }
+  };
+
+  const handleApproveRelease = async () => {
+    if (!window.confirm("Are you satisfied with your order? Releasing payment will immediately transfer escrow funds to the seller's wallet.")) return;
+    setIsReleasing(true);
+    try {
+      await apiClient.post(`/escrow/${order.id}/approve-and-release`);
+      alert('Order approved! Escrow payment released to seller.');
+      onRefresh();
+      onOpenRating(order);
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.detail || 'Failed to release payment.');
+    } finally {
+      setIsReleasing(false);
+    }
+  };
+
+  let inspectionRemaining = "";
+  if (isInspection && order.inspection_starts_at && !order.dispute_retracted_at) {
+    const start = new Date(order.inspection_starts_at).getTime();
+    const now = new Date().getTime();
+    const hoursAllowed = order.inspection_hours_allowed || 24;
+    const end = start + (hoursAllowed * 60 * 60 * 1000);
+    const diff = end - now;
+    if (diff > 0) {
+      const hours = Math.floor(diff / (1000 * 60 * 60));
+      const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+      inspectionRemaining = `${hours}h ${mins}m`;
+    } else {
+      inspectionRemaining = "Expired (auto-releasing)";
+    }
+  }
+
+  const targetPublicUrl = `/l/${order.link_id || order.id}?reference=${order.paystack_reference}`;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-2xl w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200 my-auto">
+        {/* Modal Sticky Header */}
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-slate-50 dark:bg-slate-950 shrink-0">
+          <div className="flex items-center gap-3">
+            <span className={`px-3 py-1 rounded-full text-xs font-bold flex items-center gap-1.5 ${statusCfg.bg} ${statusCfg.color}`}>
+              <StatusIcon className="w-3.5 h-3.5" />
+              {statusCfg.label}
+            </span>
+            <button
+              onClick={handleCopyRef}
+              title="Click to copy reference"
+              className="text-xs font-mono font-bold text-slate-600 dark:text-slate-400 bg-slate-200/70 dark:bg-slate-800 px-2.5 py-1 rounded-lg hover:bg-slate-300 dark:hover:bg-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+            >
+              <Copy className="w-3 h-3" />
+              {order.paystack_reference}
+              {copiedRef && <span className="text-[10px] text-emerald-600 dark:text-emerald-400">Copied!</span>}
+            </button>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition p-1.5 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Modal Scrollable Body */}
+        <div className="p-6 overflow-y-auto space-y-5 text-xs sm:text-sm">
+          {/* Product & Store Card */}
+          <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800">
+            {order.image_url ? (
+              <div
+                onClick={() => onOpenLightbox(order.image_url)}
+                className="w-20 h-20 rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shrink-0 relative group cursor-pointer shadow-sm"
+                title="Click to enlarge"
+              >
+                <img src={order.image_url} alt={order.title} className="w-full h-full object-cover group-hover:scale-105 transition duration-200" />
+                <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white">
+                  <ZoomIn className="w-4 h-4" />
+                </div>
+              </div>
+            ) : (
+              <div className="w-20 h-20 rounded-xl bg-slate-200 dark:bg-slate-700 flex items-center justify-center text-slate-400 shrink-0">
+                <Package className="w-8 h-8" />
+              </div>
+            )}
+            <div className="flex-1 min-w-0">
+              <h3 className="text-base font-bold text-slate-900 dark:text-white line-clamp-2">{order.title}</h3>
+              <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-slate-600 dark:text-slate-400">
+                <span className="flex items-center gap-1 font-medium">
+                  <Store className="w-3.5 h-3.5 text-[#ff6d1d]" />
+                  Sold by: <strong className="text-slate-900 dark:text-slate-200">{order.shop_name || `@${order.seller_username}`}</strong>
+                </span>
+                {order.seller_username && (
+                  <a
+                    href={`/store/${order.seller_username}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-blue-600 dark:text-blue-400 hover:underline font-semibold flex items-center gap-0.5 text-[11px]"
+                  >
+                    View Storefront <ExternalLink className="w-3 h-3" />
+                  </a>
+                )}
+              </div>
+              {order.shipping_address && (
+                <div className="mt-2 text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <MapPin className="w-3.5 h-3.5 shrink-0 text-slate-400" />
+                  <span>Delivery Address: <strong className="text-slate-700 dark:text-slate-300">{order.shipping_address}</strong></span>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Escrow Financial Summary */}
+          <div className="bg-slate-50 dark:bg-slate-800/40 p-4 rounded-2xl border border-slate-200/70 dark:border-slate-800 space-y-2 text-xs">
+            <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+              <span>Item Price</span>
+              <span className="font-bold text-slate-900 dark:text-white">GHS {Number(order.price_ghs !== undefined ? order.price_ghs : order.total_amount_ghs).toFixed(2)}</span>
+            </div>
+            {Number(order.shipping_fee_ghs || 0) > 0 && (
+              <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
+                <span className="flex items-center gap-1"><Truck className="w-3.5 h-3.5 text-blue-500" /> Shipping Fee</span>
+                <span className="font-bold text-slate-900 dark:text-white">GHS {Number(order.shipping_fee_ghs).toFixed(2)}</span>
+              </div>
+            )}
+            <div className="flex justify-between items-center text-slate-600 dark:text-slate-400 pt-1 border-t border-slate-200/60 dark:border-slate-700">
+              <span className="flex items-center gap-1 font-medium">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection Fee
+              </span>
+              <span className="font-semibold text-emerald-700 dark:text-emerald-400">
+                {order.fee_handling === 'PASS_TO_BUYER'
+                  ? `GHS ${Number(order.platform_fee_ghs || 0).toFixed(2)}`
+                  : 'Covered by Seller (Free for Buyer)'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center pt-2 border-t border-slate-200/80 dark:border-slate-700 text-sm">
+              <span className="font-bold text-slate-900 dark:text-white">Total Amount Paid</span>
+              <span className="font-black text-emerald-600 dark:text-emerald-400 text-base">
+                GHS {Number(order.total_amount_ghs || 0).toFixed(2)}
+              </span>
+            </div>
+          </div>
+
+          {/* Delivery & Tracking Details */}
+          {(order.tracking_number || order.waybill_photo_url || order.driver_phone) && (
+            <div className="bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
+                  <Truck className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                  Delivery & Logistics Information
+                </span>
+                {order.carrier_tracking_url && (
+                  <a
+                    href={order.carrier_tracking_url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-xs font-bold text-blue-700 dark:text-blue-300 hover:underline flex items-center gap-1"
+                  >
+                    Track Live ↗
+                  </a>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs">
+                {order.courier_name && (
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Courier Service</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{order.courier_name}</span>
+                  </div>
+                )}
+                {order.tracking_number && (
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Tracking Number</span>
+                    <span className="font-mono font-bold text-blue-700 dark:text-blue-300">{order.tracking_number}</span>
+                  </div>
+                )}
+                {order.driver_phone && (
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Driver / Station Phone</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{order.driver_phone}</span>
+                  </div>
+                )}
+                {order.destination_station && (
+                  <div>
+                    <span className="text-slate-500 dark:text-slate-400 block text-[10px]">Destination Station</span>
+                    <span className="font-bold text-slate-800 dark:text-slate-200">{order.destination_station}</span>
+                  </div>
+                )}
+              </div>
+              {order.waybill_photo_url && (
+                <div className="pt-2 border-t border-blue-200/60 dark:border-blue-900/40 flex items-center gap-3">
+                  <div
+                    onClick={() => onOpenLightbox(order.waybill_photo_url)}
+                    className="w-14 h-14 rounded-lg overflow-hidden border border-blue-200 dark:border-blue-800 shrink-0 cursor-pointer relative group"
+                    title="Click to enlarge package proof"
+                  >
+                    <img src={order.waybill_photo_url} alt="Waybill proof" className="w-full h-full object-cover group-hover:scale-105 transition" />
+                    <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 flex items-center justify-center text-white transition">
+                      <ZoomIn className="w-3.5 h-3.5" />
+                    </div>
+                  </div>
+                  <div>
+                    <span className="font-bold text-blue-900 dark:text-blue-200 block text-xs">Seller Dispatch Proof Photo</span>
+                    <span className="text-[11px] text-blue-700 dark:text-blue-400 block">Uploaded by merchant upon parcel handover</span>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Inspection Period Alert Box */}
+          {isInspection && (
+            <div className="bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800/60 rounded-2xl p-4 text-xs text-purple-900 dark:text-purple-200 space-y-1.5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <span className="font-bold flex items-center gap-1.5 text-purple-950 dark:text-purple-100">
+                  <Clock className="w-4 h-4 text-purple-600 dark:text-purple-400" />
+                  Inspection Window Active
+                </span>
+                {inspectionRemaining && (
+                  <span className="font-mono font-bold bg-purple-200/80 dark:bg-purple-900/60 text-purple-900 dark:text-purple-200 px-2.5 py-0.5 rounded-lg text-xs">
+                    ⏳ {inspectionRemaining} left
+                  </span>
+                )}
+              </div>
+              <p className="leading-relaxed text-purple-800 dark:text-purple-300 text-[11px]">
+                Test and inspect your item thoroughly. If you are satisfied, click <strong>Approve & Release Payment</strong> below to disburse funds to the seller. If anything is wrong, you can raise a dispute with photo evidence.
+              </p>
+            </div>
+          )}
+
+          {/* Dispute Dialogue Timeline (if disputed or historical) */}
+          {hasDisputeRecord && (
+            <div className="bg-rose-50/70 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-rose-900 dark:text-rose-200 flex items-center gap-1.5">
+                  <AlertTriangle className="w-4 h-4 text-rose-600" />
+                  {isDisputed ? 'Active Dispute Dialogue' : order.dispute_retracted_at ? 'Dispute Retracted & Settling' : 'Dispute Historical Record'}
+                </span>
+              </div>
+              <DisputeChatTimeline
+                buyerReason={order.buyer_dispute_reason}
+                buyerPhotos={order.buyer_dispute_photos}
+                buyerName="You (Buyer)"
+                sellerResponse={order.seller_dispute_response}
+                sellerPhotos={order.seller_dispute_photos}
+                sellerName={order.shop_name || order.seller_username || 'Seller'}
+                managerNotes={order.manager_dispute_notes}
+                managerPhotos={order.manager_dispute_photos}
+                disputeRetractedAt={order.dispute_retracted_at}
+              />
+              {isDisputed && (
+                <div className="flex gap-2 pt-2 border-t border-rose-200/70 dark:border-rose-900/50">
+                  <button
+                    onClick={() => onOpenDispute(order)}
+                    className="flex-1 py-2 bg-rose-100 dark:bg-rose-900/50 hover:bg-rose-200 text-rose-700 dark:text-rose-300 font-bold rounded-xl text-xs transition cursor-pointer"
+                  >
+                    + Add Evidence / Update
+                  </button>
+                  <button
+                    onClick={() => onOpenRetract(order)}
+                    className="flex-1 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-sm cursor-pointer"
+                  >
+                    Retract & Settle Privately
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Verified Reviews Section (if completed) */}
+          {isCompleted && (
+            <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 space-y-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                  <Star className="w-4 h-4 text-amber-500 fill-amber-500" />
+                  Verified Buyer Feedback
+                </span>
+                <button
+                  onClick={() => onOpenRating(order)}
+                  className="text-xs font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer"
+                >
+                  {order.has_reviewed ? 'Edit Review ✎' : '⭐ Leave a Review'}
+                </button>
+              </div>
+              {order.has_reviewed ? (
+                <div className="space-y-1.5 text-xs text-slate-700 dark:text-slate-300">
+                  <div className="flex items-center gap-1 text-amber-500">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <Star key={s} className={`w-3.5 h-3.5 ${s <= (order.review_overall || 5) ? 'fill-amber-500 text-amber-500' : 'text-slate-300 dark:text-slate-600'}`} />
+                    ))}
+                    <span className="text-[11px] font-bold text-slate-500 ml-1">({order.review_overall || 5}/5 Stars)</span>
+                  </div>
+                  {order.review_comment && (
+                    <p className="italic text-slate-600 dark:text-slate-300">"{order.review_comment}"</p>
+                  )}
+                </div>
+              ) : (
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Help the social commerce community by reviewing your experience with this seller.
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Modal Sticky Footer Actions */}
+        <div className="p-4 sm:p-5 border-t border-slate-200 dark:border-slate-800 bg-slate-50 dark:bg-slate-950 shrink-0 flex flex-wrap gap-2.5 items-center justify-between">
+          <div className="flex items-center gap-2">
+            <a
+              href={targetPublicUrl}
+              target="_blank"
+              rel="noreferrer"
+              className="text-xs text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold"
+            >
+              Public Order URL <ExternalLink className="w-3 h-3" />
+            </a>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap ml-auto">
+            {canConfirm && (
+              <button
+                onClick={handle1ClickConfirm}
+                disabled={isConfirming}
+                className="py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl transition shadow-md shadow-green-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isConfirming ? <Loader2 className="w-4 h-4 animate-spin" /> : '⚡ Confirm Delivery Receipt'}
+              </button>
+            )}
+
+            {isInspection && (
+              <button
+                onClick={handleApproveRelease}
+                disabled={isReleasing}
+                className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isReleasing ? <Loader2 className="w-4 h-4 animate-spin" /> : '✓ Approve & Release Payout'}
+              </button>
+            )}
+
+            {canDispute && (
+              <button
+                onClick={() => onOpenDispute(order)}
+                className="py-2.5 px-4 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 font-bold text-xs rounded-xl hover:bg-rose-100 transition cursor-pointer"
+              >
+                ⚠ Raise Dispute
+              </button>
+            )}
+
+            <button
+              onClick={onClose}
+              className="py-2.5 px-4 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold text-xs rounded-xl hover:bg-slate-300 dark:hover:bg-slate-700 transition cursor-pointer"
+            >
+              Close
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Buyer Dispute Modal ───────────────────────────────────────────────────
+interface BuyerDisputeModalProps {
+  order: any;
+  onClose: () => void;
+  onSuccess: () => void;
+  onOpenLightbox: (url: string) => void;
+}
+
+function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerDisputeModalProps) {
+  useEscapeKey(onClose);
+  const [reason, setReason] = useState('');
+  const [photos, setPhotos] = useState<string[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
+  const [error, setError] = useState('');
+
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (photos.length + files.length > 5) {
+      alert("You can upload a maximum of 5 evidence photos.");
+      return;
+    }
+    setIsCompressing(true);
+    setError('');
+    try {
+      const compressed: string[] = [];
+      for (const file of files) {
+        const webp = await compressImageToWebP(file);
+        compressed.push(webp);
+      }
+      setPhotos(prev => [...prev, ...compressed].slice(0, 5));
+    } catch (err) {
+      setError("Failed to compress evidence photo.");
+    } finally {
+      setIsCompressing(false);
+    }
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reason.trim()) {
+      setError('Please provide a description of the issue.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      const endpoint = order.buyer_dispute_reason
+        ? `/escrow/${order.id}/dispute-append`
+        : `/escrow/${order.id}/raise-dispute`;
+      await apiClient.post(endpoint, {
+        reason: reason.trim(),
+        photos: photos
+      });
+      alert('Dispute details submitted successfully. Management team will review.');
+      onSuccess();
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit dispute.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200 my-auto">
+        <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-rose-50/60 dark:bg-rose-950/40 shrink-0">
+          <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 font-bold">
+            <AlertTriangle className="w-5 h-5 text-rose-600" />
+            <span>{order.buyer_dispute_reason ? 'Add Dispute Update / Evidence' : 'Raise Order Dispute'}</span>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition cursor-pointer">
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="p-6 space-y-4 overflow-y-auto flex-1 text-xs sm:text-sm">
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            Please describe why the item is damaged, defective, or does not match what was agreed upon. Escrow funds will remain safely held until resolution.
+          </p>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+              Reason & Details *
+            </label>
+            <textarea
+              rows={4}
+              required
+              value={reason}
+              onChange={e => setReason(e.target.value)}
+              placeholder="Describe the issue in detail..."
+              className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
+            />
+          </div>
+
+          <div>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Evidence Photos (Max 5)
+              </label>
+              <span className="text-[11px] font-mono text-slate-400">{photos.length}/5</span>
+            </div>
+            <input
+              type="file"
+              accept="image/*"
+              multiple
+              disabled={photos.length >= 5 || isCompressing}
+              onChange={handlePhotoUpload}
+              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs rounded-xl p-2.5 cursor-pointer disabled:opacity-50"
+            />
+            {photos.length > 0 && (
+              <div className="flex flex-wrap gap-2 mt-2">
+                {photos.map((img, idx) => (
+                  <div key={idx} className="relative group cursor-pointer" onClick={() => onOpenLightbox(img)}>
+                    <img src={img} alt={`Evidence ${idx + 1}`} className="w-14 h-14 object-cover rounded-lg border border-slate-200 dark:border-slate-700" />
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); setPhotos(prev => prev.filter((_, i) => i !== idx)); }}
+                      className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-0.5 shadow z-10 cursor-pointer"
+                    >
+                      <X className="w-3 h-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {error && (
+            <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-xs text-rose-700 dark:text-rose-300 font-semibold">
+              {error}
+            </div>
+          )}
+
+          <div className="flex gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs hover:bg-slate-200 transition cursor-pointer"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={loading || isCompressing || !reason.trim()}
+              className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-rose-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+            >
+              {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit Dispute'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Buyer Retract Dispute Modal ───────────────────────────────────────────
+interface BuyerRetractModalProps {
+  order: any;
+  onClose: () => void;
+  onSuccess: () => void;
+}
+
+function BuyerRetractModal({ order, onClose, onSuccess }: BuyerRetractModalProps) {
+  useEscapeKey(onClose);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState('');
+
+  const handleRetract = async () => {
+    setLoading(true);
+    setError('');
+    try {
+      await apiClient.post(`/escrow/${order.id}/retract-dispute`);
+      alert('Dispute retracted successfully. Settlement grace period initiated.');
+      onSuccess();
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to retract dispute.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl max-w-md w-full p-6 shadow-2xl animate-in fade-in zoom-in-95 duration-200 space-y-4 my-auto">
+        <div className="flex items-center gap-2 text-emerald-700 dark:text-emerald-400 font-bold text-base">
+          <CheckCircle className="w-5 h-5" />
+          <span>Retract Dispute & Settle Privately</span>
+        </div>
+        <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+          Are you sure you want to retract this dispute? Doing so indicates that you and the merchant have reached an agreement. Escrow funds will automatically release to the seller after the 24-hour grace window.
+        </p>
+        {error && (
+          <div className="p-3 bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 rounded-xl text-xs text-rose-700 dark:text-rose-300 font-semibold">
+            {error}
+          </div>
+        )}
+        <div className="flex gap-3 pt-2">
+          <button
+            type="button"
+            onClick={onClose}
+            className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs hover:bg-slate-200 transition cursor-pointer"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleRetract}
+            disabled={loading}
+            className="flex-1 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+            {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Confirm Retraction'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function BuyerPurchasesTab() {
+  const [searchParams] = useSearchParams();
+  const newOrderRef = (searchParams.get('new_order') || '').trim();
+  const [purchases, setPurchases] = useState<any[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+
+  // Modal states for interactive order management
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [disputeOrder, setDisputeOrder] = useState<any | null>(null);
+  const [retractOrder, setRetractOrder] = useState<any | null>(null);
+  const [ratingOrder, setRatingOrder] = useState<any | null>(null);
+  const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  const fetchPurchases = async () => {
+    setLoading(true);
+    try {
+      const res = await apiClient.get('/checkout/buyer/my-orders');
+      let list = Array.isArray(res.data) ? res.data : [];
+      if (newOrderRef) {
+        list = [...list].sort((a, b) => {
+          const aMatch = a.paystack_reference === newOrderRef || a.id === newOrderRef || a.link_id === newOrderRef;
+          const bMatch = b.paystack_reference === newOrderRef || b.id === newOrderRef || b.link_id === newOrderRef;
+          if (aMatch && !bMatch) return -1;
+          if (!aMatch && bMatch) return 1;
+          return 0;
+        });
+      }
+      setPurchases(list);
+    } catch (err) {
+      console.error('Failed to fetch buyer purchases', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchPurchases();
+  }, [newOrderRef]);
+
+  const handle1ClickConfirm = async (txnId: string, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setActionLoadingId(txnId);
+    try {
+      await apiClient.post(`/escrow/${txnId}/buyer-confirm-receipt`);
+      alert('Delivery confirmed! Inspection period started.');
+      await fetchPurchases();
+      if (selectedOrder && selectedOrder.id === txnId) {
+        const res = await apiClient.get('/checkout/buyer/my-orders');
+        const found = (res.data || []).find((x: any) => x.id === txnId);
+        if (found) setSelectedOrder(found);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || 'Failed to confirm delivery.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const handleApproveRelease = async (txnId: string, orderObj?: any, e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    if (!window.confirm("Are you satisfied with this order? Releasing payment will immediately transfer escrow funds to the seller's wallet.")) return;
+    setActionLoadingId(txnId);
+    try {
+      await apiClient.post(`/escrow/${txnId}/approve-and-release`);
+      alert('Order approved! Escrow payment released to seller.');
+      await fetchPurchases();
+      if (orderObj) {
+        setRatingOrder(orderObj);
+      }
+      if (selectedOrder && selectedOrder.id === txnId) {
+        const res = await apiClient.get('/checkout/buyer/my-orders');
+        const found = (res.data || []).find((x: any) => x.id === txnId);
+        if (found) setSelectedOrder(found);
+      }
+    } catch (err: any) {
+      alert(err.response?.data?.message || err.response?.data?.detail || 'Failed to release payment.');
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const filtered = purchases.filter(p => {
+    const q = search.toLowerCase();
+    return (
+      (p.title && p.title.toLowerCase().includes(q)) ||
+      (p.paystack_reference && p.paystack_reference.toLowerCase().includes(q)) ||
+      (p.seller_username && p.seller_username.toLowerCase().includes(q)) ||
+      (p.shop_name && p.shop_name.toLowerCase().includes(q))
+    );
+  });
+
+  const inTransitCount = purchases.filter(p => p.status === 'DELIVERY_IN_PROGRESS').length;
+  const inInspectionCount = purchases.filter(p => p.status === 'INSPECTION_PERIOD').length;
+  const completedCount = purchases.filter(p => p.status === 'COMPLETED').length;
+
+  return (
+    <div className="space-y-6">
+      {/* Header & Stats Banner */}
+      <div className="bg-gradient-to-r from-blue-900 via-indigo-900 to-slate-900 rounded-3xl p-6 sm:p-8 text-white shadow-xl relative overflow-hidden">
+        <div className="relative z-10">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div>
+              <span className="px-3 py-1 bg-white/15 border border-white/20 rounded-full text-xs font-bold uppercase tracking-wider text-blue-200">
+                1-Click Buyer Escrow Hub
+              </span>
+              <h1 className="text-2xl sm:text-3xl font-black mt-2 tracking-tight">My Purchases & Orders</h1>
+              <p className="text-sm text-blue-200 mt-1 max-w-xl">
+                Track incoming shipments, inspect received items, and release escrow funds to sellers in 1 click with 0 SMS OTPs.
+              </p>
+            </div>
+            <Link
+              to="/shops"
+              className="self-start sm:self-auto px-5 py-3 bg-[#ff6d1d] hover:bg-[#e05b11] text-white font-bold text-xs rounded-xl transition shadow-lg shadow-[#ff6d1d]/30 flex items-center gap-2 cursor-pointer"
+            >
+              <ShoppingCart className="w-4 h-4" /> Explore Verified Shops
+            </Link>
+          </div>
+
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-white/15">
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+              <span className="text-xs text-blue-200 block font-medium">Total Purchases</span>
+              <span className="text-2xl font-black text-white mt-1 block">{purchases.length}</span>
+            </div>
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+              <span className="text-xs text-amber-200 block font-medium">In Transit</span>
+              <span className="text-2xl font-black text-amber-300 mt-1 block">{inTransitCount}</span>
+            </div>
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+              <span className="text-xs text-purple-200 block font-medium">In Inspection</span>
+              <span className="text-2xl font-black text-purple-300 mt-1 block">{inInspectionCount}</span>
+            </div>
+            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
+              <span className="text-xs text-emerald-200 block font-medium">Completed Safely</span>
+              <span className="text-2xl font-black text-emerald-300 mt-1 block">{completedCount}</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* New Order Welcome & Highlight Banner */}
+      {newOrderRef && (
+        <div className="bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-indigo-500/15 border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-md">
+          <div className="w-10 h-10 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-md shadow-emerald-600/20">
+            <CheckCircle className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <h4 className="text-sm font-bold text-slate-900 dark:text-white">
+                🎉 Welcome to your Buyer Dashboard!
+              </h4>
+              <span className="bg-emerald-600 text-white text-[10px] font-black uppercase px-2 py-0.5 rounded-full">
+                Account Active
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
+              Your recent purchase (<strong className="font-mono text-emerald-700 dark:text-emerald-400">{newOrderRef}</strong>) is highlighted at the top below. Click on any order to view details, inspect tracking, and release escrow in 1 click without leaving this page.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* Search Bar */}
+      <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
+        <div className="relative w-full sm:w-80">
+          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Search purchases by title, seller, or reference..."
+            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+          />
+        </div>
+        <button
+          onClick={fetchPurchases}
+          className="self-end sm:self-auto px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+        >
+          <RefreshCw className="w-3.5 h-3.5" /> Refresh Orders
+        </button>
+      </div>
+
+      {/* Order List */}
+      {loading ? (
+        <div className="py-20 flex justify-center items-center">
+          <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
+        </div>
+      ) : filtered.length === 0 ? (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-gray-200 dark:border-slate-800 p-12 text-center space-y-4">
+          <div className="w-16 h-16 bg-blue-50 dark:bg-slate-800 rounded-2xl flex items-center justify-center mx-auto text-blue-600 dark:text-blue-400">
+            <Package className="w-8 h-8" />
+          </div>
+          <h3 className="text-lg font-bold text-gray-900 dark:text-white">No Purchases Found</h3>
+          <p className="text-xs text-gray-500 dark:text-slate-400 max-w-sm mx-auto">
+            {search ? 'No orders match your search criteria.' : 'You haven\'t made any escrow purchases yet. Browse verified merchants and enjoy 100% money-back escrow protection.'}
+          </p>
+          <Link
+            to="/shops"
+            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-md"
+          >
+            Browse Verified Storefronts
+          </Link>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {filtered.map(p => {
+            const statusCfg = STATUS_CONFIG[p.status] || STATUS_CONFIG['PAYMENT_RECEIVED'];
+            const StatusIcon = statusCfg.icon;
+            const isProcessingThis = actionLoadingId === p.id;
+            const isNewOrder = Boolean(newOrderRef && (p.paystack_reference === newOrderRef || p.id === newOrderRef || p.link_id === newOrderRef));
+
+            return (
+              <div
+                key={p.id}
+                onClick={() => setSelectedOrder(p)}
+                className={`bg-white dark:bg-slate-900 rounded-2xl border ${isNewOrder ? 'border-2 border-indigo-500 dark:border-indigo-400 ring-4 ring-indigo-500/20 shadow-xl' : 'border-gray-200 dark:border-slate-800 shadow-sm hover:border-blue-400 dark:hover:border-blue-600 hover:shadow-lg'} p-5 transition-all duration-200 flex flex-col justify-between space-y-4 relative overflow-hidden cursor-pointer group`}
+              >
+                {isNewOrder && (
+                  <div className="absolute top-0 right-0 bg-gradient-to-l from-indigo-600 to-blue-600 text-white text-[10px] font-black uppercase px-3 py-1 rounded-bl-xl shadow-sm flex items-center gap-1 animate-pulse">
+                    <Sparkles className="w-3 h-3" /> Just Placed (New)
+                  </div>
+                )}
+                <div className="space-y-3">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-center gap-3">
+                      {p.image_url ? (
+                        <img src={p.image_url} alt={p.title} className="w-12 h-12 rounded-xl object-cover border border-gray-200 dark:border-slate-700 shrink-0 group-hover:scale-105 transition" />
+                      ) : (
+                        <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-800 border border-gray-200 dark:border-slate-700 flex items-center justify-center text-slate-500 shrink-0">
+                          <Package className="w-6 h-6" />
+                        </div>
+                      )}
+                      <div>
+                        <h4 className="text-sm font-bold text-gray-900 dark:text-white line-clamp-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition">{p.title}</h4>
+                        <span className="text-[11px] text-gray-500 dark:text-slate-400 block mt-0.5">
+                          Sold by <strong>{p.shop_name || `@${p.seller_username}`}</strong>
+                        </span>
+                      </div>
+                    </div>
+                    <span className={`px-2.5 py-1 rounded-full text-[10px] font-bold flex items-center gap-1 shrink-0 ${statusCfg.bg} ${statusCfg.color}`}>
+                      <StatusIcon className="w-3 h-3" /> {statusCfg.label}
+                    </span>
+                  </div>
+
+                  <div className="bg-slate-50 dark:bg-slate-800/50 rounded-xl p-3 text-xs flex justify-between items-center border border-slate-200/60 dark:border-slate-800">
+                    <div>
+                      <span className="text-gray-400 dark:text-slate-500 block text-[10px]">Total Escrow Amount</span>
+                      <span className="font-extrabold text-slate-900 dark:text-white text-sm">GHS {Number(p.total_amount_ghs || 0).toFixed(2)}</span>
+                    </div>
+                    <div className="text-right">
+                      <span className="text-gray-400 dark:text-slate-500 block text-[10px]">Reference</span>
+                      <span className="font-mono text-[11px] text-gray-700 dark:text-slate-300 font-bold">{p.paystack_reference}</span>
+                    </div>
+                  </div>
+
+                  {p.tracking_number && (
+                    <div className="text-xs text-blue-600 dark:text-blue-400 bg-blue-50 dark:bg-blue-950/40 p-2.5 rounded-xl border border-blue-200 dark:border-blue-900/50 flex items-center justify-between">
+                      <span className="flex items-center gap-1 font-semibold">
+                        <Truck className="w-3.5 h-3.5" /> Courier Tracking: {p.tracking_number}
+                      </span>
+                      {p.carrier_tracking_url && (
+                        <a
+                          href={p.carrier_tracking_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="underline font-bold text-[11px] flex items-center gap-1"
+                        >
+                          Track <ExternalLink className="w-3 h-3" />
+                        </a>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Action Buttons */}
+                <div className="pt-2 border-t border-gray-100 dark:border-slate-800 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setSelectedOrder(p)}
+                    className="flex-1 py-2 px-3 bg-blue-50 dark:bg-slate-800 hover:bg-blue-100 dark:hover:bg-slate-750 text-blue-700 dark:text-blue-300 text-xs font-bold rounded-xl transition text-center flex items-center justify-center gap-1 cursor-pointer"
+                  >
+                    🔍 View Details & Actions
+                  </button>
+
+                  {p.status === 'DELIVERY_IN_PROGRESS' && (
+                    <button
+                      onClick={(e) => handle1ClickConfirm(p.id, e)}
+                      disabled={isProcessingThis}
+                      className="flex-1 py-2 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      {isProcessingThis ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '⚡ Confirm Receipt'}
+                    </button>
+                  )}
+
+                  {p.status === 'INSPECTION_PERIOD' && (
+                    <button
+                      onClick={(e) => handleApproveRelease(p.id, p, e)}
+                      disabled={isProcessingThis}
+                      className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                    >
+                      {isProcessingThis ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '✓ Approve & Release'}
+                    </button>
+                  )}
+
+                  {p.status === 'COMPLETED' && (
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setRatingOrder(p); }}
+                      className="py-2 px-3 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold rounded-xl hover:bg-amber-100 transition flex items-center justify-center gap-1 cursor-pointer"
+                    >
+                      <Star className="w-3.5 h-3.5 text-amber-500 fill-amber-500" />
+                      {p.has_reviewed ? 'Edit Review' : 'Rate Seller'}
+                    </button>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* ─── MODALS ─── */}
+      {selectedOrder && (
+        <BuyerOrderDetailModal
+          order={selectedOrder}
+          onClose={() => setSelectedOrder(null)}
+          onRefresh={async () => {
+            await fetchPurchases();
+            const res = await apiClient.get('/checkout/buyer/my-orders');
+            const found = (res.data || []).find((x: any) => x.id === selectedOrder.id);
+            if (found) setSelectedOrder(found);
+          }}
+          onOpenLightbox={url => setLightboxImage(url)}
+          onOpenRating={ord => { setSelectedOrder(null); setRatingOrder(ord); }}
+          onOpenDispute={ord => setDisputeOrder(ord)}
+          onOpenRetract={ord => setRetractOrder(ord)}
+        />
+      )}
+
+      {disputeOrder && (
+        <BuyerDisputeModal
+          order={disputeOrder}
+          onClose={() => setDisputeOrder(null)}
+          onSuccess={async () => {
+            setDisputeOrder(null);
+            await fetchPurchases();
+            if (selectedOrder) {
+              const res = await apiClient.get('/checkout/buyer/my-orders');
+              const found = (res.data || []).find((x: any) => x.id === selectedOrder.id);
+              if (found) setSelectedOrder(found);
+            }
+          }}
+          onOpenLightbox={url => setLightboxImage(url)}
+        />
+      )}
+
+      {retractOrder && (
+        <BuyerRetractModal
+          order={retractOrder}
+          onClose={() => setRetractOrder(null)}
+          onSuccess={async () => {
+            setRetractOrder(null);
+            await fetchPurchases();
+            if (selectedOrder) {
+              const res = await apiClient.get('/checkout/buyer/my-orders');
+              const found = (res.data || []).find((x: any) => x.id === selectedOrder.id);
+              if (found) setSelectedOrder(found);
+            }
+          }}
+        />
+      )}
+
+      {ratingOrder && (
+        <RateSellerModal
+          transactionId={ratingOrder.id}
+          paystackReference={ratingOrder.paystack_reference}
+          itemTitle={ratingOrder.title}
+          sellerName={ratingOrder.shop_name || ratingOrder.seller_username || 'Seller'}
+          shopName={ratingOrder.shop_name}
+          sellerUsername={ratingOrder.seller_username}
+          initialOverall={ratingOrder.review_overall}
+          initialSpeed={ratingOrder.review_speed}
+          initialCommunication={ratingOrder.review_communication}
+          initialComment={ratingOrder.review_comment}
+          initialEditCount={ratingOrder.review_edit_count}
+          initialCreatedAt={ratingOrder.review_created_at}
+          initialUpdatedAt={ratingOrder.review_updated_at}
+          onClose={() => setRatingOrder(null)}
+          onSuccess={async () => {
+            setRatingOrder(null);
+            await fetchPurchases();
+            if (selectedOrder) {
+              const res = await apiClient.get('/checkout/buyer/my-orders');
+              const found = (res.data || []).find((x: any) => x.id === selectedOrder.id);
+              if (found) setSelectedOrder(found);
+            }
+          }}
+        />
+      )}
+
+      {lightboxImage && (
+        <ImageLightboxModal
+          imageUrl={lightboxImage}
+          onClose={() => setLightboxImage(null)}
+        />
+      )}
+    </div>
+  );
+}
+
 export default function DashboardView() {
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthStore();
-  const [activeTab, setActiveTab] = useState<'transactions' | 'referrals' | 'badges'>(
-    (searchParams.get('tab') as any) || 'transactions'
+  const defaultTab = searchParams.get('tab') || (user?.role === 'BUYER' ? 'purchases' : 'transactions');
+  const [activeTab, setActiveTab] = useState<'transactions' | 'purchases' | 'referrals' | 'badges' | 'reviews'>(
+    defaultTab as any
   );
   const [txns, setTxns] = useState<SellerTxn[]>([]);
   const [totalCount, setTotalCount] = useState(0);
@@ -1178,6 +2222,10 @@ export default function DashboardView() {
   };
 
   useEffect(() => {
+    const tabParam = searchParams.get('tab');
+    if (tabParam && ['transactions', 'purchases', 'referrals', 'badges', 'reviews'].includes(tabParam)) {
+      setActiveTab(tabParam as any);
+    }
     fetchTransactions();
     fetchMetrics();
     fetchAppealStatus();
@@ -1223,25 +2271,45 @@ export default function DashboardView() {
 
   return (
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-      {/* ─── MERCHANT NAVIGATION TABS ─────────────────────────────────────────── */}
+      {/* ─── NAVIGATION TABS ─────────────────────────────────────────── */}
       <div className="flex items-center gap-2 mb-6 border-b border-gray-200 dark:border-slate-800 pb-3 overflow-x-auto print:hidden no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
         <button
           type="button"
           onClick={() => {
             const params = new URLSearchParams(searchParams);
-            params.set('tab', 'transactions');
+            params.set('tab', 'purchases');
             setSearchParams(params);
-            setActiveTab('transactions');
+            setActiveTab('purchases');
           }}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
-            activeTab === 'transactions'
+            activeTab === 'purchases'
               ? 'bg-blue-600 !text-white shadow-md'
               : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
           }`}
         >
-          <Package className="h-4 w-4" />
-          Transactions & Escrows
+          <ShoppingCart className="h-4 w-4" />
+          My Purchases & Orders
         </button>
+
+        {user?.role !== 'BUYER' && (
+          <button
+            type="button"
+            onClick={() => {
+              const params = new URLSearchParams(searchParams);
+              params.set('tab', 'transactions');
+              setSearchParams(params);
+              setActiveTab('transactions');
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+              activeTab === 'transactions'
+                ? 'bg-blue-600 !text-white shadow-md'
+                : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Package className="h-4 w-4" />
+            Merchant Sales & Escrows
+          </button>
+        )}
 
         <button
           type="button"
@@ -1265,20 +2333,53 @@ export default function DashboardView() {
           type="button"
           onClick={() => {
             const params = new URLSearchParams(searchParams);
-            params.set('tab', 'badges');
+            params.set('tab', 'reviews');
             setSearchParams(params);
-            setActiveTab('badges');
+            setActiveTab('reviews');
           }}
           className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
-            activeTab === 'badges'
+            activeTab === 'reviews'
               ? 'bg-blue-600 !text-white shadow-md'
               : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
           }`}
         >
-          <Award className="h-4 w-4 text-amber-400" />
-          Trust Badges & Proof
+          <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+          My Reviews & Ratings
         </button>
+
+        {user?.role !== 'BUYER' && (
+          <button
+            type="button"
+            onClick={() => {
+              const params = new URLSearchParams(searchParams);
+              params.set('tab', 'badges');
+              setSearchParams(params);
+              setActiveTab('badges');
+            }}
+            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+              activeTab === 'badges'
+                ? 'bg-blue-600 !text-white shadow-md'
+                : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Award className="h-4 w-4 text-amber-400" />
+            Trust Badges & Proof
+          </button>
+        )}
       </div>
+
+      {activeTab === 'purchases' && <BuyerPurchasesTab />}
+
+      {activeTab === 'reviews' && (
+        <BuyerReviewsTab
+          onNavigateToPurchases={() => {
+            const params = new URLSearchParams(searchParams);
+            params.set('tab', 'purchases');
+            setSearchParams(params);
+            setActiveTab('purchases');
+          }}
+        />
+      )}
 
       {activeTab === 'referrals' && <ReferralDashboardTab />}
 
@@ -2397,17 +3498,19 @@ export default function DashboardView() {
       )}
 
       {/* ─── FLOATING ACTION BUTTON (CREATE NEW PAYMENT LINK) ────────────────── */}
-      <Link
-        to="/create-link"
-        title="Create New Payment Link"
-        aria-label="Create New Payment Link"
-        className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-40 group flex items-center gap-2 bg-[#0363ff] hover:bg-blue-600 text-white p-3.5 sm:px-5 sm:py-3.5 rounded-full shadow-2xl shadow-blue-600/40 border border-blue-400/30 hover:shadow-blue-500/60 hover:scale-105 active:scale-95 transition-all duration-200 print:hidden cursor-pointer backdrop-blur-sm"
-      >
-        <Plus className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90 stroke-[2.5]" />
-        <span className="hidden sm:inline font-bold text-xs tracking-wider uppercase font-sans">
-          Create Link
-        </span>
-      </Link>
+      {user?.role !== 'BUYER' && (
+        <Link
+          to="/create-link"
+          title="Create New Payment Link"
+          aria-label="Create New Payment Link"
+          className="fixed bottom-6 right-6 sm:bottom-8 sm:right-8 z-40 group flex items-center gap-2 bg-[#0363ff] hover:bg-blue-600 text-white p-3.5 sm:px-5 sm:py-3.5 rounded-full shadow-2xl shadow-blue-600/40 border border-blue-400/30 hover:shadow-blue-500/60 hover:scale-105 active:scale-95 transition-all duration-200 print:hidden cursor-pointer backdrop-blur-sm"
+        >
+          <Plus className="w-5 h-5 transition-transform duration-300 group-hover:rotate-90 stroke-[2.5]" />
+          <span className="hidden sm:inline font-bold text-xs tracking-wider uppercase font-sans">
+            Create Link
+          </span>
+        </Link>
+      )}
     </div>
   );
 }
