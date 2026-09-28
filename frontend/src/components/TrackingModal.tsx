@@ -823,6 +823,7 @@ const DISPUTE_CATEGORIES = [
                               disputedAt={txn.disputed_at || txn.created_at}
                               dispatchedAt={txn.dispatched_at}
                               createdAt={txn.created_at}
+                              arbiterName={txn.arbiter_name}
                               arbiterEscalatedAt={txn.arbiter_escalated_at}
                               arbiterEscalatedRole={txn.arbiter_escalated_role}
                               arbiterEscalationHours={txn.arbiter_escalation_hours || 48}
