@@ -104,6 +104,19 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Suspension Appeals Desk**: Administrators review seller justification and remediation appeals in the Admin Portal.
 - **Clean Slate Reinstatement**: Reinstating a seller records `reinstated_at = timezone.now()`. Subsequent health checks evaluate only post-reinstatement transactions, preventing immediate re-suspension loops.
 
+### 13. Buyer Accounts, 0-OTP Frictionless Workflows & Dual-Flow Guarantee
+- **Post-Checkout Buyer Account Creation & Dual-Verification**: Right after completing a purchase on `/l/:id`, guest buyers can create an account simply by setting a password. The system immediately dispatches an email activation link to their inbox and a 6-digit SMS OTP to their phone. Entering the phone OTP verifies their phone and logs them in via HTTP-only JWT cookies, while a top banner with 1-click resend prompts email confirmation. Once logged in, buyers skip all future checkout SMS OTPs.
+- **Zero-OTP 1-Click Checkout**: Authenticated buyers initialize Paystack checkout directly from payment links without triggering an SMS OTP verification modal.
+- **1-Click Delivery Confirmation & Payout Release**: Authenticated buyers confirm receipt (`POST /api/v1/escrow/{id}/buyer-confirm-receipt`) and release escrow payouts to sellers (`POST /api/v1/escrow/{id}/approve-and-release`) with 0 SMS OTP codes required.
+- **Buyer Purchases Hub (`/dashboard?tab=purchases`)**: Authenticated buyers get a dedicated dashboard tab aggregating active in-flight orders, inspection countdowns, historical transactions, tracking links, and 1-click action buttons.
+- **Instant Order Tracking**: In the global tracking modal (`/tracking`), authenticated buyer orders are queried automatically via `GET /api/v1/checkout/buyer/my-orders` across matching phone, email, and user ID without SMS OTP lookup.
+- **100% Guest Shopper Fallback**: Unauthenticated guest shoppers continue to experience the original secure SMS OTP checkout verification, delivery code confirmation, and lookup OTP flow without breaking.
+
+### 14. Static Route SEO Pre-Rendering & Dynamic Multi-Role Navigation
+- **Static HTML Multi-Route Pre-Rendering**: Build pipeline executes `scripts/generate-routes-seo.mjs` during `npm run build`, generating 12 distinct, fully-rendered static HTML route files (`/`, `/for-buyers`, `/for-sellers`, `/how-it-works`, `/trust-center`, `/guides`, `/referrals`, `/developers`, `/help`, `/contact`, `/shops`, `/reviews`) with individual `<title>`, meta descriptions, canonical URLs, OpenGraph/Twitter cards, and Schema.org JSON-LD structured data.
+- **Dynamic Role-Adaptive Navbar**: Navigation bar dynamically adapts its desktop links, profile dropdown menu, and mobile drawer between `BUYER` (My Purchases, Verified Shops, Track Order), `SELLER` (Dashboard, Create Link, My Links, Shops, Wallet Balance), and `ADMIN` roles.
+- **Dynamic Admin Courier Sync**: Logistics section on public landing pages and directories dynamically syncs with active administrative settings.
+
 ---
 
 ## 🏗 Architecture Overview
@@ -111,15 +124,16 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 The repository is structured as a Monorepo:
 
 ### Backend (Django Ninja)
-- **Framework**: Django 5.x + Django Ninja (FastAPI-style routing and schemas)
-- **Database**: PostgreSQL / SQLite (Relational schema and double-entry ledger state)
-- **Caching & Queues**: Redis & Celery (Handles 4-day dispatch expiry, 24h settlements, reminders, and auto-deliveries)
-- **Authentication**: JWT (`django-ninja-jwt`)
+- **Framework**: Django 5.x + Django Ninja (FastAPI-style routing, type-safe schemas, OpenAPI `/api/docs`)
+- **Database**: PostgreSQL / SQLite (Relational schema, double-entry financial ledger state, buyer-seller records)
+- **Caching & Queues**: Redis & Celery (Handles 4-day dispatch expiry, 24h settlements, progressive reminders, and auto-deliveries)
+- **Authentication**: JWT via HTTP-only secure cookies (`django-ninja-jwt`)
 
 ### Frontend (React + Vite)
-- **Framework**: React 18 + Vite
-- **Styling**: Tailwind CSS
-- **Views**: Seller Dashboard, Profile & Verification Setup, Public Checkout, Tracking Portal with OTP Modal, Marketplace Directory (`/shops`), Public Seller Storefronts (`/store/:username`), and Manager Operations Center.
+- **Framework**: React 18 + TypeScript + Vite
+- **Styling**: Vanilla Tailwind CSS with dark/light themes & glassmorphism
+- **Views**: Buyer & Seller Dashboard, Profile & Verification Setup, Public Checkout with 1-Click Init, Tracking Portal with Upfront OTP & 1-Click Auth Mode, Marketplace Directory (`/shops`), Public Seller Storefronts (`/store/:username`), and Manager Operations Center.
+- **SEO Engine**: Static HTML route pre-rendering for all public indexing routes with canonical tags and Schema.org metadata.
 
 ---
 

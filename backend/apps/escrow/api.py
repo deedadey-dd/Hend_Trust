@@ -16,7 +16,7 @@ from apps.escrow.payouts import execute_payout_for_transaction
 from apps.core.ratelimit import rate_limit
 from apps.users.models import User
 import uuid
-from django.db.models import Q
+from django.db.models import Q, F
 from datetime import datetime
 from django.utils import timezone
 from ninja.pagination import paginate, LimitOffsetPagination
@@ -58,12 +58,18 @@ class SellerTransactionSchema(Schema):
     driver_phone: Optional[str] = None
     driver_car_number: Optional[str] = None
     destination_station: Optional[str] = None
+    buyer_dispute_category: Optional[str] = None
     buyer_dispute_reason: Optional[str] = None
     buyer_dispute_photos: Optional[list[str]] = []
     seller_dispute_response: Optional[str] = None
     seller_dispute_photos: Optional[list[str]] = []
     manager_dispute_notes: Optional[str] = None
     manager_dispute_photos: Optional[list[str]] = []
+    disputed_at: Optional[str] = None
+    arbiter_escalated_at: Optional[str] = None
+    arbiter_escalated_role: Optional[str] = None
+    arbiter_escalation_hours: int = 48
+    external_arbitration_order_url: Optional[str] = None
     shipping_timeout_days: int = 4
     inspection_hours_allowed: int = 24
     otp_reveal_delay_hours: int = 24
@@ -114,6 +120,7 @@ def get_seller_transactions(request, search: Optional[str] = None, status: Optio
     cfg = get_platform_settings()
     timeout_days = cfg.get("shipping_timeout_days", 4)
     otp_delay_hrs = cfg.get("otp_reveal_delay_hours", 24)
+    escalation_hrs = int(cfg.get("arbiter_escalation_hours", 48))
 
     items = []
     for t in txns:
@@ -144,12 +151,18 @@ def get_seller_transactions(request, search: Optional[str] = None, status: Optio
             "driver_phone": latest_log.driver_phone if latest_log else None,
             "driver_car_number": latest_log.driver_car_number if latest_log else None,
             "destination_station": latest_log.destination_station if latest_log else None,
+            "buyer_dispute_category": getattr(t, 'buyer_dispute_category', '') or None,
             "buyer_dispute_reason": t.buyer_dispute_reason,
             "buyer_dispute_photos": t.buyer_dispute_photos or [],
             "seller_dispute_response": t.seller_dispute_response,
             "seller_dispute_photos": t.seller_dispute_photos or [],
             "manager_dispute_notes": t.manager_dispute_notes,
             "manager_dispute_photos": t.manager_dispute_photos or [],
+            "disputed_at": t.disputed_at.isoformat() if getattr(t, 'disputed_at', None) else None,
+            "arbiter_escalated_at": t.arbiter_escalated_at.isoformat() if getattr(t, 'arbiter_escalated_at', None) else None,
+            "arbiter_escalated_role": getattr(t, 'arbiter_escalated_role', '') or None,
+            "arbiter_escalation_hours": escalation_hrs,
+            "external_arbitration_order_url": getattr(t, 'external_arbitration_order_url', '') or None,
             "otp_reveal_delay_hours": otp_delay_hrs,
             "shipping_timeout_days": timeout_days,
             "inspection_hours_allowed": get_inspection_hours_for_amount(t.total_amount_ghs),
@@ -1037,18 +1050,33 @@ def send_confirmation_code(request, transaction_id: uuid.UUID):
 
 @escrow_router.post("/{transaction_id}/confirm-receipt", response=MessageResponse, auth=None)
 def confirm_receipt(request, transaction_id: uuid.UUID, data: ConfirmReceiptSchema):
-    """Buyer confirms they received the item - triggers payout to seller."""
+    """Buyer confirms they received the item - starts inspection period."""
     transaction = get_object_or_404(Transaction, id=transaction_id)
     
     if transaction.status != TransactionStatus.DELIVERY_IN_PROGRESS:
         raise HttpError(400, f"Cannot confirm receipt in {transaction.status} state. Only applicable when in transit.")
         
-    from apps.delivery.services import verify_delivery_otp
-    is_valid_code = (transaction.delivery_confirmation_code and transaction.delivery_confirmation_code == data.confirmation_code)
-    is_valid_otp = verify_delivery_otp(str(transaction.id), data.confirmation_code)
-    
-    if not (is_valid_code or is_valid_otp):
-        raise HttpError(400, "Invalid confirmation code or delivery OTP.")
+    # Check if user is authenticated and is the buyer of this transaction
+    is_buyer_auth = False
+    try:
+        auth_helper = JWTCookieAuth()
+        user = auth_helper.authenticate(request, None)
+        if user and user.is_authenticated:
+            user_phone = getattr(user, 'phone_number', '') or ''
+            user_email = getattr(user, 'email', '') or ''
+            if (user_phone and (user_phone == transaction.buyer_phone or user_phone == getattr(transaction.buyer_identity, 'phone_number', None))) or \
+               (user_email and (user_email.lower() == (transaction.buyer_email or '').lower() or user_email.lower() == getattr(transaction.buyer_identity, 'email', '').lower())):
+                is_buyer_auth = True
+    except Exception:
+        pass
+
+    if not is_buyer_auth:
+        from apps.delivery.services import verify_delivery_otp
+        is_valid_code = (transaction.delivery_confirmation_code and transaction.delivery_confirmation_code == data.confirmation_code)
+        is_valid_otp = verify_delivery_otp(str(transaction.id), data.confirmation_code)
+        
+        if not (is_valid_code or is_valid_otp):
+            raise HttpError(400, "Invalid confirmation code or delivery OTP.")
         
     transaction.status = TransactionStatus.INSPECTION_PERIOD
     from django.utils import timezone
@@ -1059,6 +1087,71 @@ def confirm_receipt(request, transaction_id: uuid.UUID, data: ConfirmReceiptSche
     from apps.core.tasks import notify_seller_delivery_confirmed_task
     notify_seller_delivery_confirmed_task.delay(transaction.id)
     return {"message": "Receipt confirmed. Inspection period started."}
+
+@escrow_router.post("/{transaction_id}/buyer-confirm-receipt", response=MessageResponse, auth=JWTCookieAuth())
+def buyer_confirm_receipt_authenticated(request, transaction_id: uuid.UUID):
+    """Authenticated buyer confirms receipt in 1-click with zero OTPs required."""
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    if transaction.status != TransactionStatus.DELIVERY_IN_PROGRESS:
+        raise HttpError(400, f"Cannot confirm receipt in {transaction.status} state. Only applicable when in transit.")
+
+    user = request.user
+    user_phone = getattr(user, 'phone_number', '') or ''
+    user_email = getattr(user, 'email', '') or ''
+    is_owner = (
+        (user_phone and (user_phone == transaction.buyer_phone or user_phone == getattr(transaction.buyer_identity, 'phone_number', None))) or
+        (user_email and (user_email.lower() == (transaction.buyer_email or '').lower() or user_email.lower() == getattr(transaction.buyer_identity, 'email', '').lower())) or
+        user.is_staff or user.is_superuser
+    )
+    if not is_owner:
+        raise HttpError(403, "You are not authorized to confirm receipt for this transaction.")
+
+    transaction.status = TransactionStatus.INSPECTION_PERIOD
+    from django.utils import timezone
+    transaction.inspection_starts_at = timezone.now()
+    transaction.save(update_fields=['status', 'inspection_starts_at', 'updated_at'])
+
+    _notify_buyer_inspection_started(transaction)
+    from apps.core.tasks import notify_seller_delivery_confirmed_task
+    notify_seller_delivery_confirmed_task.delay(transaction.id)
+    return {"message": "Receipt confirmed. Inspection period started."}
+
+@escrow_router.post("/{transaction_id}/approve-and-release", response=MessageResponse, auth=JWTCookieAuth())
+def buyer_approve_and_release_funds(request, transaction_id: uuid.UUID):
+    """Authenticated buyer approves the item early and immediately releases funds to the seller."""
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    if transaction.status not in [TransactionStatus.INSPECTION_PERIOD, TransactionStatus.DELIVERY_IN_PROGRESS]:
+        raise HttpError(400, f"Cannot release funds for transaction in {transaction.status} state.")
+
+    user = request.user
+    user_phone = getattr(user, 'phone_number', '') or ''
+    user_email = getattr(user, 'email', '') or ''
+    is_owner = (
+        (user_phone and (user_phone == transaction.buyer_phone or user_phone == getattr(transaction.buyer_identity, 'phone_number', None))) or
+        (user_email and (user_email.lower() == (transaction.buyer_email or '').lower() or user_email.lower() == getattr(transaction.buyer_identity, 'email', '').lower())) or
+        user.is_staff or user.is_superuser
+    )
+    if not is_owner:
+        raise HttpError(403, "You are not authorized to approve and release funds for this transaction.")
+
+    transaction.status = TransactionStatus.COMPLETED
+    transaction.save(update_fields=['status', 'updated_at'])
+
+    # Execute payout to seller
+    execute_payout_for_transaction(transaction)
+
+    # Notify seller
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    seller = transaction.link.seller
+    s_phone = getattr(seller, 'phone_number', None)
+    s_email = getattr(seller, 'email', None)
+    s_msg = f"Payment Released! The buyer has approved order {transaction.paystack_reference} ({transaction.link.title}). Funds of GHS {(float(transaction.total_amount_ghs) - float(transaction.platform_fee_ghs or 0.0)):.2f} have been released to your wallet."
+    if s_phone:
+        dispatch_sms_task.delay(s_phone, s_msg)
+    if s_email:
+        dispatch_email_task.delay(s_email, f"Payment Released - Order {transaction.paystack_reference}", s_msg)
+
+    return {"message": "Inspection approved. Escrow funds released immediately to the seller."}
     
 def process_and_optimize_dispute_photos(photos: list[str], max_dim: int = 1200, quality: int = 75) -> list[str]:
     """
@@ -1272,12 +1365,19 @@ class CreateStaffMemberSchema(Schema):
     last_name: Optional[str] = ""
 
 class DisputeResolutionAdminSchema(Schema):
-    action: str  # 'RELEASE_TO_SELLER', 'FULL_REFUND_TO_BUYER', 'PARTIAL_REFUND_TO_BUYER', 'REQUIRE_RETURN_FROM_BUYER'
+    action: str  # 'RELEASE_TO_SELLER', 'FULL_REFUND_TO_BUYER', 'PARTIAL_REFUND_TO_BUYER', 'REQUIRE_RETURN_FROM_BUYER', 'EXTERNAL_ARBITRATION_RULING'
     refund_amount_ghs: Optional[float] = 0.0
     seller_amount_ghs: Optional[float] = 0.0
     platform_retained_fee_ghs: Optional[float] = 0.0
     admin_notes: Optional[str] = None
     manager_photos: Optional[List[str]] = []
+    external_order_document_url: Optional[str] = None
+    is_external_arbitration: Optional[bool] = False
+
+class ArbiterInstructionSchema(Schema):
+    instruction_notes: str
+    photos: Optional[List[str]] = []
+
 
 class DispatchReturnSchema(Schema):
     delivery_method: str  # 'COURIER_API' or 'INFORMAL_BUS'
@@ -1293,6 +1393,7 @@ class ConfirmReturnSchema(Schema):
     confirmation_code: Optional[str] = None
 
 class RaiseDisputeSchema(Schema):
+    category: Optional[str] = None
     reason: str
     photos: Optional[List[str]] = []
 
@@ -1300,12 +1401,22 @@ class SellerDisputeResponseSchema(Schema):
     response: str
     photos: Optional[List[str]] = []
 
+class RequestArbiterDecisionSchema(Schema):
+    phone_number: Optional[str] = None
+    email: Optional[str] = None
+    notes: Optional[str] = None
+
 @escrow_router.post("/{transaction_id}/raise-dispute", response=MessageResponse, auth=None)
+@escrow_router.post("/{transaction_id}/dispute-append", response=MessageResponse, auth=None)
 def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSchema):
     transaction = get_object_or_404(Transaction, id=transaction_id)
     if transaction.status in [TransactionStatus.COMPLETED, TransactionStatus.REFUNDED, TransactionStatus.CANCELLED]:
         raise HttpError(400, f"Cannot raise dispute when transaction is in {transaction.status} status.")
     
+    clean_reason = (data.reason or "").strip()
+    if len(clean_reason) < 10:
+        raise HttpError(400, "Dispute explanation must be at least 10 characters long with sufficient details.")
+
     new_photos = data.photos or []
     if len(new_photos) > 5:
         raise HttpError(400, "Maximum of 5 evidence photos allowed per submission.")
@@ -1317,22 +1428,24 @@ def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSc
     if is_subsequent_update:
         # Append reason with timestamp
         if transaction.buyer_dispute_reason:
-            transaction.buyer_dispute_reason = f"{transaction.buyer_dispute_reason}\n\n--- [Buyer Update ({now_ts})] ---\n{data.reason}"
+            transaction.buyer_dispute_reason = f"{transaction.buyer_dispute_reason}\n\n--- [Buyer Update ({now_ts})] ---\n{clean_reason}"
         else:
-            transaction.buyer_dispute_reason = data.reason
+            transaction.buyer_dispute_reason = clean_reason
             
         # Accumulate photos up to max 5 total
         existing_photos = transaction.buyer_dispute_photos or []
         combined_photos = existing_photos + [p for p in optimized_new_photos if p not in existing_photos]
         transaction.buyer_dispute_photos = combined_photos[:5]
+        transaction.save(update_fields=['buyer_dispute_reason', 'buyer_dispute_photos', 'updated_at'])
     else:
         # Initial dispute
         transaction.status = TransactionStatus.DISPUTED
-        transaction.buyer_dispute_reason = data.reason
+        transaction.disputed_at = timezone.now()
+        transaction.buyer_dispute_category = (data.category or "OTHER").strip()
+        transaction.buyer_dispute_reason = clean_reason
         transaction.buyer_dispute_photos = optimized_new_photos[:5]
+        transaction.save(update_fields=['status', 'disputed_at', 'buyer_dispute_category', 'buyer_dispute_reason', 'buyer_dispute_photos', 'updated_at'])
 
-    transaction.save(update_fields=['status', 'buyer_dispute_reason', 'buyer_dispute_photos', 'updated_at'])
-    
     # Auto-clear/Deactivate any review submitted by the buyer for this transaction
     if hasattr(transaction, 'review') and transaction.review:
         transaction.review.is_active = False
@@ -1348,12 +1461,12 @@ def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSc
     action_title = "Dispute Update" if is_subsequent_update else "Dispute Raised"
     s_sms = (
         f"{action_title}: Buyer submitted {'additional details' if is_subsequent_update else 'a dispute'} for order {transaction.paystack_reference} ({transaction.link.title}). "
-        f"Details: {data.reason}. Log in to seller dashboard to review."
+        f"Details: {clean_reason}. Log in to seller dashboard to review."
     )
     
     s_email_body = (
         f"Action Required: {action_title} on order {transaction.paystack_reference} ({transaction.link.title}).\n\n"
-        f"Buyer Details:\n\"{data.reason}\"\n\n"
+        f"Buyer Details:\n\"{clean_reason}\"\n\n"
         f"Please log in to your seller dashboard to review the dispute claim, view buyer evidence photos, and submit counter-evidence.\n\n"
         f"Review Dispute Now: {dash_link}"
     )
@@ -1371,6 +1484,87 @@ def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSc
         )
     
     return {"message": "Additional dispute details and evidence photos submitted successfully." if is_subsequent_update else "Dispute and evidence photos submitted successfully."}
+
+@escrow_router.post("/{transaction_id}/request-arbiter-decision", response=MessageResponse, auth=None)
+def request_arbiter_decision(request, transaction_id: uuid.UUID, data: Optional[RequestArbiterDecisionSchema] = None):
+    """
+    Allows buyer or seller to request an official Arbiter Decision and escalate the dispute 
+    in the arbitration queue once the negotiation window (default 48 hours) has elapsed.
+    """
+    transaction = get_object_or_404(Transaction.objects.select_related('link', 'link__seller'), id=transaction_id)
+    if transaction.status != TransactionStatus.DISPUTED:
+        raise HttpError(400, "Transaction is not currently in DISPUTED status.")
+
+    if transaction.arbiter_escalated_at:
+        return {"message": "An official Arbiter Decision has already been requested for this dispute. It is currently prioritized in the arbitration queue."}
+
+    # Determine caller identity
+    user = getattr(request, 'user', None)
+    if not (user and user.is_authenticated):
+        try:
+            auth_resolver = JWTCookieAuth()
+            user = auth_resolver(request)
+        except Exception:
+            user = None
+
+    caller_role = 'BUYER'
+    if user and user.is_authenticated:
+        if user == transaction.link.seller or getattr(user, 'role', '') == Role.SELLER:
+            caller_role = 'SELLER'
+        elif user.is_staff or getattr(user, 'role', '') in [Role.ARBITER, Role.ADMIN_MANAGER, Role.SUPERUSER]:
+            caller_role = 'ADMIN'
+        else:
+            caller_role = 'BUYER'
+    else:
+        if data and data.phone_number and transaction.link.seller.phone_number and data.phone_number.strip()[-9:] == transaction.link.seller.phone_number.strip()[-9:]:
+            caller_role = 'SELLER'
+        else:
+            caller_role = 'BUYER'
+
+    # Check timing against arbiter_escalation_hours
+    cfg = get_platform_settings()
+    escalation_hours = int(cfg.get("arbiter_escalation_hours", 48))
+    base_time = transaction.disputed_at or transaction.updated_at or transaction.created_at
+    hours_elapsed = (timezone.now() - base_time).total_seconds() / 3600.0
+
+    if hours_elapsed < escalation_hours:
+        remaining = max(1, int(escalation_hours - hours_elapsed))
+        raise HttpError(400, f"An Arbiter Decision can only be requested after {escalation_hours} hours of direct party negotiation ({remaining} hours remaining).")
+
+    transaction.arbiter_escalated_at = timezone.now()
+    transaction.arbiter_escalated_role = caller_role
+    if user and user.is_authenticated:
+        transaction.arbiter_escalated_by = user
+    transaction.save(update_fields=['arbiter_escalated_at', 'arbiter_escalated_role', 'arbiter_escalated_by', 'updated_at'])
+
+    # Create audit record
+    DisputeResolutionAction.objects.create(
+        transaction=transaction,
+        action_type=DisputeActionType.ASSIGNED if not transaction.assigned_arbiter else DisputeActionType.PARTIAL_REFUND,
+        arbiter=user if (user and user.is_authenticated) else None,
+        admin_notes=f"Official Arbiter Decision requested by {caller_role}. Dispute escalated in the arbiter review queue (after {hours_elapsed:.1f}h).",
+    )
+
+    # Notify counterpart
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    seller = transaction.link.seller
+    ref = transaction.paystack_reference
+    product = transaction.link.title
+
+    msg = f"Dispute Escalation: An official Arbiter Decision has been requested by the {caller_role.lower()} for Order #{ref} ({product}). A platform arbiter will review all evidence and issue a binding ruling."
+    
+    if caller_role == 'BUYER':
+        if getattr(seller, 'phone_number', None):
+            dispatch_sms_task.delay(seller.phone_number, msg)
+        if getattr(seller, 'email', None):
+            dispatch_email_task.delay(seller.email, f"Arbiter Decision Requested: Order #{ref}", msg)
+    else:
+        if transaction.buyer_phone:
+            dispatch_sms_task.delay(transaction.buyer_phone, msg)
+        if transaction.buyer_email:
+            dispatch_email_task.delay(transaction.buyer_email, f"Arbiter Decision Requested: Order #{ref}", msg)
+
+    return {"message": "Arbiter Decision requested successfully. Your case has been prioritized in the arbitration queue."}
 
 @escrow_router.post("/{transaction_id}/seller-dispute-response", response=MessageResponse, auth=JWTCookieAuth())
 def seller_dispute_response(request, transaction_id: uuid.UUID, data: SellerDisputeResponseSchema):
@@ -1650,7 +1844,12 @@ def get_platform_metrics(request):
 @admin_router.get("/disputes")
 def get_disputes(request):
     is_staff_user(request)
-    txns = Transaction.objects.filter(status=TransactionStatus.DISPUTED).select_related('link', 'link__seller', 'assigned_arbiter').prefetch_related('delivery_logs')
+    txns = Transaction.objects.filter(
+        status=TransactionStatus.DISPUTED
+    ).select_related('link', 'link__seller', 'assigned_arbiter').prefetch_related('delivery_logs').order_by(
+        F('arbiter_escalated_at').desc(nulls_last=True),
+        '-created_at'
+    )
     res = []
     for t in txns:
         log = t.delivery_logs.order_by('-created_at').first()
@@ -1669,12 +1868,17 @@ def get_disputes(request):
             "total_amount_ghs": float(t.total_amount_ghs),
             "platform_fee_ghs": float(t.platform_fee_ghs),
             "status": t.status,
+            "buyer_dispute_category": getattr(t, 'buyer_dispute_category', '') or None,
             "buyer_dispute_reason": t.buyer_dispute_reason,
             "buyer_dispute_photos": t.buyer_dispute_photos or [],
             "seller_dispute_response": t.seller_dispute_response,
             "seller_dispute_photos": t.seller_dispute_photos or [],
             "manager_dispute_notes": t.manager_dispute_notes,
             "manager_dispute_photos": t.manager_dispute_photos or [],
+            "disputed_at": t.disputed_at.isoformat() if getattr(t, 'disputed_at', None) else None,
+            "arbiter_escalated_at": t.arbiter_escalated_at.isoformat() if getattr(t, 'arbiter_escalated_at', None) else None,
+            "arbiter_escalated_role": getattr(t, 'arbiter_escalated_role', '') or None,
+            "external_arbitration_order_url": getattr(t, 'external_arbitration_order_url', '') or None,
             "assigned_arbiter": {
                 "id": str(t.assigned_arbiter.id),
                 "username": t.assigned_arbiter.username,
@@ -1759,6 +1963,96 @@ def get_dispute_actions(request, id: uuid.UUID):
     ]
 
 
+@admin_router.post("/disputes/{id}/post-instruction", response=MessageResponse)
+def post_dispute_instruction(request, id: uuid.UUID, data: ArbiterInstructionSchema):
+    is_arbiter_user(request)
+    transaction = get_object_or_404(Transaction, id=id)
+    if transaction.status != TransactionStatus.DISPUTED:
+        raise HttpError(400, "Instructions can only be posted to active DISPUTED transactions.")
+
+    clean_notes = (data.instruction_notes or "").strip()
+    if len(clean_notes) < 5:
+        raise HttpError(400, "Instruction note must be at least 5 characters long.")
+
+    new_photos = data.photos or []
+    if len(new_photos) > 5:
+        raise HttpError(400, "Maximum of 5 instruction photos allowed.")
+
+    opt_photos = process_and_optimize_dispute_photos(new_photos[:5]) if new_photos else []
+
+    arbiter = getattr(request, 'user', None) or getattr(request, 'auth', None)
+    arbiter_name = f"{arbiter.first_name} {arbiter.last_name}".strip() if arbiter and (getattr(arbiter, 'first_name', None) or getattr(arbiter, 'last_name', None)) else (getattr(arbiter, 'username', 'Arbiter') if arbiter else "Arbiter")
+
+    now_ts = timezone.now().strftime("%b %d, %Y %I:%M %p")
+    header = f"--- [Arbiter Instruction ({now_ts}) by {arbiter_name}] ---"
+
+    with db_transaction.atomic():
+        if not transaction.assigned_arbiter and arbiter and hasattr(arbiter, 'id'):
+            transaction.assigned_arbiter = arbiter
+
+        if transaction.manager_dispute_notes:
+            transaction.manager_dispute_notes = f"{transaction.manager_dispute_notes}\n\n{header}\n{clean_notes}"
+        else:
+            transaction.manager_dispute_notes = f"{header}\n{clean_notes}"
+
+        if opt_photos:
+            existing_photos = transaction.manager_dispute_photos or []
+            combined_photos = existing_photos + [p for p in opt_photos if p not in existing_photos]
+            transaction.manager_dispute_photos = combined_photos[:5]
+
+        transaction.save(update_fields=['assigned_arbiter', 'manager_dispute_notes', 'manager_dispute_photos', 'updated_at'])
+
+        DisputeResolutionAction.objects.create(
+            transaction=transaction,
+            arbiter=arbiter if (arbiter and hasattr(arbiter, 'id')) else None,
+            action_type=DisputeActionType.ARBITER_INSTRUCTION,
+            admin_notes=clean_notes,
+            manager_photos=opt_photos,
+            refund_amount_ghs=Decimal('0.00'),
+            seller_amount_ghs=Decimal('0.00'),
+            platform_retained_fee_ghs=Decimal('0.00'),
+        )
+
+    # Send SMS & Email notification to both parties
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from django.conf import settings
+    default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+    frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+    buyer_link = f"{frontend_url}/tracking"
+    seller_link = f"{frontend_url}/dashboard?search={transaction.paystack_reference}"
+
+    preview = clean_notes if len(clean_notes) <= 120 else f"{clean_notes[:117]}..."
+
+    # Notify Buyer
+    if transaction.buyer_phone:
+        dispatch_sms_task.delay(
+            transaction.buyer_phone,
+            f"HendAxis Arbiter Notice (Order {transaction.paystack_reference}): {preview} View details: {buyer_link}"
+        )
+    if transaction.buyer_email:
+        dispatch_email_task.delay(
+            "HendAxis Trust — Arbiter Instruction on Your Order",
+            f"The assigned Arbiter has posted an instruction/notice for your disputed order {transaction.paystack_reference} ({transaction.link.title}):\n\n\"{clean_notes}\"\n\nPlease review the details at: {buyer_link}",
+            [transaction.buyer_email]
+        )
+
+    # Notify Seller
+    seller = transaction.link.seller
+    if getattr(seller, 'phone_number', None):
+        dispatch_sms_task.delay(
+            seller.phone_number,
+            f"HendAxis Arbiter Notice (Order {transaction.paystack_reference}): {preview} View dashboard: {seller_link}"
+        )
+    if getattr(seller, 'email', None):
+        dispatch_email_task.delay(
+            "HendAxis Trust — Arbiter Instruction on Order Dispute",
+            f"The assigned Arbiter has posted an instruction/notice for disputed order {transaction.paystack_reference} ({transaction.link.title}):\n\n\"{clean_notes}\"\n\nPlease review and respond at: {seller_link}",
+            [seller.email]
+        )
+
+    return {"message": "Instruction posted successfully to both parties."}
+
+
 @admin_router.post("/disputes/{id}/resolve")
 def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSchema):
     is_arbiter_user(request)
@@ -1778,6 +2072,11 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
     cfg = get_platform_settings()
     fee_rate = Decimal(str(cfg.get("arbiter_fee_per_dispute", 25.00)))
 
+    if getattr(data, 'is_external_arbitration', False):
+        doc_url = (getattr(data, 'external_order_document_url', None) or "").strip()
+        if not doc_url:
+            raise HttpError(400, "Official external arbitration/court order letter must be uploaded before releasing funds pursuant to an external ruling.")
+
     with db_transaction.atomic():
         if not transaction.assigned_arbiter:
             transaction.assigned_arbiter = request.user
@@ -1786,6 +2085,8 @@ def resolve_dispute_admin(request, id: uuid.UUID, data: DisputeResolutionAdminSc
             transaction.manager_dispute_notes = data.admin_notes
         if opt_manager_photos:
             transaction.manager_dispute_photos = opt_manager_photos
+        if getattr(data, 'is_external_arbitration', False) and getattr(data, 'external_order_document_url', None):
+            transaction.external_arbitration_order_url = data.external_order_document_url.strip()
 
         refund_val = Decimal(str(data.refund_amount_ghs or 0.0))
         seller_val = Decimal(str(data.seller_amount_ghs or 0.0))
@@ -2678,7 +2979,9 @@ def approve_seller_verification(request, user_id: uuid.UUID):
     seller.verification_status = VerificationStatus.APPROVED
     seller.verified_at = timezone.now()
     seller.verification_rejection_reason = ""
-    seller.save(update_fields=['verification_status', 'verified_at', 'verification_rejection_reason'])
+    if getattr(seller, 'role', 'SELLER') == 'BUYER':
+        seller.role = 'SELLER'
+    seller.save(update_fields=['verification_status', 'verified_at', 'verification_rejection_reason', 'role'])
     
     # Send SMS & Email notification to seller
     dispatch_sms_task.delay(
@@ -2692,7 +2995,7 @@ def approve_seller_verification(request, user_id: uuid.UUID):
             f"Dear @{seller.username},\n\nYour identity and business verification documents have been officially approved by management. Your store now features the Verified Seller badge on all payment links and directory listings."
         )
 
-    return {"message": f"Seller @{seller.username} has been verified and granted the Verified Seller badge."}
+    return {"message": f"User @{seller.username} has been verified and granted the Verified Seller badge."}
 
 @admin_router.post("/verifications/{user_id}/reject", response=dict)
 def reject_seller_verification(request, user_id: uuid.UUID, data: RejectVerificationSchema):
@@ -2705,7 +3008,7 @@ def reject_seller_verification(request, user_id: uuid.UUID, data: RejectVerifica
     seller.save(update_fields=['verification_status', 'verification_rejection_reason'])
 
     dispatch_sms_task.delay(
-        seller.phone_number,
+        seller.phone_number, 
         f"Your verification documents for {seller.shop_name or seller.username} were rejected. Reason: {seller.verification_rejection_reason}"
     )
 
@@ -2733,8 +3036,10 @@ def auto_verify_seller_verification(request, user_id: uuid.UUID):
         seller.verification_status = VerificationStatus.APPROVED
         seller.verified_at = timezone.now()
         seller.verification_rejection_reason = ""
-        seller.save(update_fields=['verification_status', 'verified_at', 'verification_rejection_reason'])
-        return {"success": True, "message": f"Auto-verification succeeded! Seller @{seller.username} approved via NIA/Identity API."}
+        if getattr(seller, 'role', 'SELLER') == 'BUYER':
+            seller.role = 'SELLER'
+        seller.save(update_fields=['verification_status', 'verified_at', 'verification_rejection_reason', 'role'])
+        return {"success": True, "message": f"Auto-verification succeeded! User @{seller.username} approved via NIA/Identity API."}
     else:
         return {"success": False, "message": f"Auto-verification failed: {msg}"}
 
@@ -2919,6 +3224,7 @@ DEFAULT_SYSTEM_SETTINGS = {
     "dispute_warning_threshold": 30.0,
     "dispute_suspension_threshold": 40.0,
     "dispute_retraction_release_hours": 24,
+    "arbiter_escalation_hours": 48,
     # Seller Dispatch Expiry Governance Thresholds
     "dispatch_expiry_warning_threshold": 20.0,
     "dispatch_expiry_suspension_threshold": 35.0,
@@ -3000,6 +3306,7 @@ class PublicPlatformSettingsSchema(Schema):
     dispute_warning_threshold: float = 30.0
     dispute_suspension_threshold: float = 40.0
     dispute_retraction_release_hours: int = 24
+    arbiter_escalation_hours: int = 48
     dispatch_expiry_warning_threshold: float = 20.0
     dispatch_expiry_suspension_threshold: float = 35.0
     arbiter_fee_per_dispute: float = 25.0
@@ -3035,6 +3342,7 @@ class PlatformSettingsSchema(Schema):
     dispute_warning_threshold: float = 30.0
     dispute_suspension_threshold: float = 40.0
     dispute_retraction_release_hours: int = 24
+    arbiter_escalation_hours: int = 48
     dispatch_expiry_warning_threshold: float = 20.0
     dispatch_expiry_suspension_threshold: float = 35.0
     arbiter_fee_per_dispute: float = 25.0
@@ -3070,6 +3378,8 @@ class UpdatePlatformSettingsSchema(Schema):
     dispute_alert_threshold: Optional[float] = None
     dispute_warning_threshold: Optional[float] = None
     dispute_suspension_threshold: Optional[float] = None
+    dispute_retraction_release_hours: Optional[int] = None
+    arbiter_escalation_hours: Optional[int] = None
     dispatch_expiry_warning_threshold: Optional[float] = None
     dispatch_expiry_suspension_threshold: Optional[float] = None
     arbiter_fee_per_dispute: Optional[float] = None

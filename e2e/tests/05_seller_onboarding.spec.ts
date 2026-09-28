@@ -19,7 +19,7 @@ test.describe('E2E: Seller Registration, Login & Profile Setup', () => {
   test('seller can fill login form', async ({ page }) => {
     await page.goto('/login');
 
-    const identifierInput = page.locator('input[placeholder="johndoe"]').first();
+    const identifierInput = page.locator('input[placeholder*="you@example.com"]').first();
     const passwordInput = page.locator('input[placeholder="••••••••"]').first();
 
     await identifierInput.fill('demo_seller@example.com');

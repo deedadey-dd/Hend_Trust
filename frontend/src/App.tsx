@@ -3,12 +3,15 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { Loader2 } from 'lucide-react';
 import { apiClient } from './api/client';
 import Navbar from './components/Navbar';
+import UnverifiedEmailBanner from './components/UnverifiedEmailBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { initSentry } from './utils/sentry';
 import { useAuthStore } from './store/authStore';
 
 // Initialize frontend Sentry observability stub
 initSentry();
+
+import { ModalProvider } from './context/ModalContext';
 
 // Core lightweight entry view
 import HomeView from './views/HomeView';
@@ -104,7 +107,9 @@ function App() {
   
   return (
     <ErrorBoundary>
-      <Router>
+      <ModalProvider>
+        <Router>
+        <UnverifiedEmailBanner />
         <Navbar />
         <Suspense fallback={<PageLoader />}>
           <Routes>
@@ -170,8 +175,9 @@ function App() {
           </Routes>
         </Suspense>
       </Router>
-    </ErrorBoundary>
-  );
+    </ModalProvider>
+  </ErrorBoundary>
+);
 }
 
 export default App;

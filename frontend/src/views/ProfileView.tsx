@@ -1,11 +1,14 @@
 import React, { useState, useEffect } from 'react';
 import { 
   User, Wallet, Zap, PiggyBank, Phone, Building2, 
-  Save, Loader2, CheckCircle, AlertTriangle, ShieldCheck, FileCheck, Store, Clock, XCircle, Image as ImageIcon, Camera, X
+  Save, Loader2, CheckCircle, AlertTriangle, ShieldCheck, FileCheck, Store, Clock, XCircle, 
+  Image as ImageIcon, Camera, X, ShoppingBag, Sparkles, Lock, BadgeCheck, Mail, Link2
 } from 'lucide-react';
 import { apiClient } from '../api/client';
+import { useAuthStore } from '../store/authStore';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { useModal } from '../context/ModalContext';
 import { MARKETPLACE_CATEGORIES } from '../constants/categories';
 
 interface ProfileData {
@@ -15,6 +18,9 @@ interface ProfileData {
   first_name: string;
   last_name: string;
   phone_number: string;
+  role?: 'BUYER' | 'SELLER' | 'ADMIN' | 'SUPPORT_AGENT' | 'MANAGER' | string;
+  is_superuser?: boolean;
+  is_staff?: boolean;
   payout_mode: 'INSTANT' | 'MANUAL';
   preferred_payout_type: 'MOMO' | 'BANK' | null;
   momo_number: string | null;
@@ -42,6 +48,8 @@ interface ProfileData {
 }
 
 export default function ProfileView() {
+  const modal = useModal();
+  const { user, updateUser } = useAuthStore();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -99,6 +107,12 @@ export default function ProfileView() {
       const res = await apiClient.get('/profile/');
       const data = res.data as ProfileData;
       setProfile(data);
+
+      // Sync role with authStore if updated
+      if (data.role && user && data.role !== user.role) {
+        updateUser({ role: data.role });
+      }
+
       setIs2FAEnabled(Boolean(data.is_2fa_enabled));
       setFirstName(data.first_name || '');
       setLastName(data.last_name || '');
@@ -300,29 +314,33 @@ export default function ProfileView() {
     setSuccess('');
     setError('');
 
-    // Check if user modified MoMo number
-    const momoChanged = payoutType === 'MOMO' && momoNumber && momoNumber.trim() !== (profile?.momo_number || '');
+    const isBuyer = profile?.role === 'BUYER';
 
-    if (momoChanged) {
-      // Trigger MoMo OTP request before saving
+    // If seller modified MoMo number
+    if (!isBuyer && payoutType === 'MOMO' && momoNumber && momoNumber.trim() !== (profile?.momo_number || '')) {
       await requestMomoOtpCode(momoNumber.trim());
       return;
     }
 
     setSaving(true);
     try {
-      await apiClient.patch('/profile/', {
+      const payload: Record<string, any> = {
         first_name: firstName,
         last_name: lastName,
-        payout_mode: payoutMode,
-        preferred_payout_type: payoutType,
-        momo_number: payoutType === 'MOMO' ? momoNumber : null,
-        bank_account_number: payoutType === 'BANK' ? bankAccount : null,
-        bank_name: payoutType === 'BANK' ? bankName : null,
-        bank_code: payoutType === 'BANK' ? bankCode : null,
-        bank_account_name: payoutType === 'BANK' ? bankAccountName : null,
-      });
-      setSuccess('Profile & Payout settings saved!');
+      };
+
+      if (!isBuyer) {
+        payload.payout_mode = payoutMode;
+        payload.preferred_payout_type = payoutType;
+        payload.momo_number = payoutType === 'MOMO' ? momoNumber : null;
+        payload.bank_account_number = payoutType === 'BANK' ? bankAccount : null;
+        payload.bank_name = payoutType === 'BANK' ? bankName : null;
+        payload.bank_code = payoutType === 'BANK' ? bankCode : null;
+        payload.bank_account_name = payoutType === 'BANK' ? bankAccountName : null;
+      }
+
+      await apiClient.patch('/profile/', payload);
+      setSuccess('Profile updated successfully!');
       setTimeout(() => setSuccess(''), 4000);
       fetchProfile();
     } catch (err: any) {
@@ -366,7 +384,12 @@ export default function ProfileView() {
       const webp = await compressImageToWebP(file);
       setProfilePicture(webp);
     } catch {
-      alert("Failed to process profile picture.");
+      await modal.alert({
+        title: 'Image Error',
+        message: 'Failed to process profile picture. Please try a different image.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setIsCompressingProfilePic(false);
     }
@@ -380,21 +403,31 @@ export default function ProfileView() {
       const webp = await compressImageToWebP(file);
       setBanner(webp);
     } catch {
-      alert("Failed to process cover banner image.");
+      await modal.alert({
+        title: 'Banner Error',
+        message: 'Failed to process cover banner image. Please try a different image.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setIsCompressingBanner(false);
     }
   };
 
-  const handleCategoryToggle = (cat: string) => {
+  const handleCategoryToggle = async (cat: string) => {
     if (selectedCategories.includes(cat)) {
-      setSelectedCategories(prev => prev.filter(c => c !== cat));
+      setSelectedCategories((prev: string[]) => prev.filter((c: string) => c !== cat));
     } else {
       if (selectedCategories.length >= 3) {
-        alert("Maximum of 3 product categories allowed.");
+        await modal.alert({
+          title: 'Category Limit',
+          message: 'Maximum of 3 product categories allowed.',
+          type: 'warning',
+          icon: 'alert'
+        });
         return;
       }
-      setSelectedCategories(prev => [...prev, cat]);
+      setSelectedCategories((prev: string[]) => [...prev, cat]);
     }
   };
 
@@ -423,14 +456,14 @@ export default function ProfileView() {
     setSuccess('');
     setError('');
     try {
-      await apiClient.post('/profile/submit-verification', {
+      const res = await apiClient.post('/profile/submit-verification', {
         national_id_number: idNumber,
         national_id_photo_url: idPhoto,
         business_license_photo_url: licensePhoto
       });
-      setSuccess('Verification documents submitted for manager review!');
-      setTimeout(() => setSuccess(''), 4000);
-      fetchProfile();
+      setSuccess(res.data?.message || 'Verification submitted successfully!');
+      setTimeout(() => setSuccess(''), 5000);
+      await fetchProfile();
     } catch (err: any) {
       setError(err.response?.data?.message || 'Failed to submit verification documents.');
     } finally {
@@ -440,517 +473,809 @@ export default function ProfileView() {
 
   if (loading) {
     return (
-      <div className="min-h-[80vh] flex items-center justify-center bg-gray-50">
+      <div className="min-h-[80vh] flex items-center justify-center bg-gray-50 dark:bg-slate-950">
         <Loader2 className="h-8 w-8 text-blue-600 animate-spin" />
       </div>
     );
   }
 
+  const isBuyer = profile?.role === 'BUYER';
+
   return (
     <div className="min-h-[80vh] bg-gray-50 dark:bg-slate-950 py-10 px-4 sm:px-6 lg:px-8 transition-colors">
       <div className="max-w-3xl mx-auto space-y-8">
         
-        {/* Header */}
-        <div>
-          <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">Account & Storefront Settings</h1>
-          <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">Manage your identity, store presentation, verification, and payout preferences.</p>
+        {/* Header with clear role distinction badge */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-3xl font-extrabold text-gray-900 dark:text-white tracking-tight">
+              {isBuyer ? 'Buyer Profile & Settings' : 'Account & Storefront Settings'}
+            </h1>
+            <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
+              {isBuyer 
+                ? 'Manage your personal details, login security, and unlock selling features with escrow.' 
+                : 'Manage your identity, store presentation, verification, and payout preferences.'}
+            </p>
+          </div>
+
+          <div>
+            {isBuyer ? (
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shadow-sm">
+                <ShoppingBag className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                BUYER ACCOUNT
+              </span>
+            ) : (
+              <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 shadow-sm">
+                <BadgeCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
+                VERIFIED MERCHANT / SELLER
+              </span>
+            )}
+          </div>
         </div>
 
         {/* Feedback Messages */}
         {success && (
-          <div className="flex items-center gap-2 bg-green-50 dark:bg-emerald-950/40 text-green-700 dark:text-emerald-300 border border-green-200 dark:border-emerald-800 px-4 py-3 rounded-xl text-sm font-medium">
+          <div className="flex items-center gap-2 bg-green-50 dark:bg-emerald-950/40 text-green-700 dark:text-emerald-300 border border-green-200 dark:border-emerald-800 px-4 py-3 rounded-xl text-sm font-medium shadow-sm animate-in fade-in">
             <CheckCircle className="h-4 w-4 flex-shrink-0" />
             {success}
           </div>
         )}
         {error && (
-          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800 px-4 py-3 rounded-xl text-sm font-medium">
+          <div className="flex items-center gap-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-300 border border-red-200 dark:border-red-800 px-4 py-3 rounded-xl text-sm font-medium shadow-sm animate-in fade-in">
             <AlertTriangle className="h-4 w-4 flex-shrink-0" />
             {error}
           </div>
         )}
 
-        {/* 1. SELLER VERIFICATION STATUS CARD */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
-          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center">
-                <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-gray-900 dark:text-white">Seller Document Verification</h2>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Earn the official Verified Seller badge</p>
-              </div>
-            </div>
-
-            {profile?.verification_status === 'APPROVED' && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3 py-1 rounded-full">
-                <CheckCircle className="h-3.5 w-3.5" /> 🛡️ VERIFIED SELLER
-              </span>
-            )}
-            {profile?.verification_status === 'PENDING' && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-1 rounded-full">
-                <Clock className="h-3.5 w-3.5" /> Pending Manager Approval
-              </span>
-            )}
-            {profile?.verification_status === 'REJECTED' && (
-              <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 px-3 py-1 rounded-full">
-                <XCircle className="h-3.5 w-3.5" /> Rejected
-              </span>
-            )}
-          </div>
-
-          <div className="px-6 py-5 space-y-5">
-            {profile?.verification_status === 'APPROVED' ? (
-              <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
-                <p className="font-bold text-sm">🎉 Your Account is Verified!</p>
-                <p>Your documents were verified on {profile.verified_at ? new Date(profile.verified_at).toLocaleDateString() : 'Management Review'}. Your store features the official Verified Seller badge across payment links and marketplace listings.</p>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmitVerification} className="space-y-4">
-                {profile?.verification_status === 'REJECTED' && (
-                  <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 space-y-1">
-                    <p className="font-bold">❌ Previous Submission Rejected:</p>
-                    <p>{profile.verification_rejection_reason}</p>
+        {/* ======================================================== */}
+        {/* BUYER-SPECIFIC VIEW */}
+        {/* ======================================================== */}
+        {isBuyer && (
+          <>
+            {/* 1. BUYER PERSONAL INFORMATION CARD */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center">
+                    <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
                   </div>
-                )}
-
-                <div className="text-xs text-gray-500 dark:text-slate-400 space-y-1">
-                  <p>
-                    Enter your <strong>Ghana Card / National ID number</strong> and upload a clear photo of your card.
-                  </p>
-                  <p className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                    <Zap className="h-3.5 w-3.5" /> Instant NIA Auto-Verification enabled. Valid Ghana Cards are verified immediately!
-                  </p>
+                  <div>
+                    <h2 className="font-semibold text-gray-900 dark:text-white">Personal Information</h2>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">Your shopping identity and contact info</p>
+                  </div>
                 </div>
+                <button
+                  type="button"
+                  onClick={handleSaveProfile}
+                  disabled={saving}
+                  className="px-4 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow flex items-center gap-1.5 cursor-pointer"
+                >
+                  {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                  Save Changes
+                </button>
+              </div>
 
-                <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">National ID / Ghana Card Number *</label>
-                  <input
-                    type="text"
-                    required
-                    value={idNumber}
-                    onChange={e => setIdNumber(e.target.value)}
-                    placeholder="e.g. GHA-123456789-0"
-                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                  />
-                  <span className="text-[10px] text-gray-400 dark:text-slate-500 mt-1 block">Format: GHA-XXXXXXXXX-X (15 characters)</span>
+              <div className="px-6 py-5 space-y-5">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">First Name</label>
+                    <input
+                      value={firstName}
+                      onChange={e => setFirstName(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="First name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Last Name</label>
+                    <input
+                      value={lastName}
+                      onChange={e => setLastName(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Last name"
+                    />
+                  </div>
                 </div>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {/* National ID Photo */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">National ID Photo *</label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={e => handleFileUpload(e, setIdPhoto)}
-                      className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
-                    />
-                    {idPhoto && (
-                      <img src={idPhoto} alt="National ID" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700" />
-                    )}
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Username</label>
+                    <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/60 px-4 py-2.5 text-xs text-gray-600 dark:text-slate-400 font-mono">
+                      @{profile?.username}
+                    </div>
                   </div>
 
-                  {/* Business License Photo */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Business License <span className="text-gray-400 dark:text-slate-500">(optional)</span></label>
-                    <input
-                      type="file"
-                      accept="image/*"
-                      onChange={e => handleFileUpload(e, setLicensePhoto)}
-                      className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
-                    />
-                    {licensePhoto && (
-                      <img src={licensePhoto} alt="Business License" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700" />
-                    )}
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Phone Number</label>
+                    <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/60 px-4 py-2 text-xs flex items-center justify-between">
+                      <span className="font-mono text-gray-700 dark:text-slate-300">{profile?.phone_number || 'Not provided'}</span>
+                      <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">
+                        <CheckCircle className="h-3 w-3" /> Verified
+                      </span>
+                    </div>
                   </div>
                 </div>
 
-                <button
-                  type="submit"
-                  disabled={submittingVerif}
-                  className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
-                >
-                  {submittingVerif ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
-                  Submit for Auto / Manager Verification
-                </button>
-              </form>
-            )}
-          </div>
-        </div>
-
-        {/* 2. STOREFRONT DISPLAY SETTINGS */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
-          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-950/60 flex items-center justify-center">
-              <Store className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">Public Storefront Presentation</h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400">Displayed on your public profile and marketplace directory</p>
-            </div>
-          </div>
-          
-          <div className="px-6 py-5 space-y-5">
-            {/* Branding Images: Logo & Banner */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50/80 dark:bg-slate-800/50 p-4 rounded-xl border border-gray-200/80 dark:border-slate-700">
-              {/* Profile Picture / Logo */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Camera className="h-4 w-4 text-blue-600 dark:text-blue-400" /> Storefront Logo / Profile Picture
-                  </label>
-                  {isCompressingProfilePic && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={isCompressingProfilePic}
-                  onChange={handleProfilePictureUpload}
-                  className="w-full text-sm text-gray-600 dark:text-slate-400 border border-gray-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-900 cursor-pointer disabled:opacity-50"
-                />
-                {profilePicture && (
-                  <div className="mt-2 relative inline-block">
-                    <img src={profilePicture} alt="Profile Logo" className="h-16 w-16 object-cover rounded-xl border border-gray-300 dark:border-slate-700 shadow-sm" />
-                    <button
-                      type="button"
-                      onClick={() => setProfilePicture('')}
-                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700 cursor-pointer"
-                      title="Remove Logo"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Cover Banner */}
-              <div>
-                <div className="flex justify-between items-center mb-1">
-                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <ImageIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" /> Storefront Cover Banner
-                  </label>
-                  {isCompressingBanner && <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
-                </div>
-                <input
-                  type="file"
-                  accept="image/*"
-                  disabled={isCompressingBanner}
-                  onChange={handleBannerUpload}
-                  className="w-full text-sm text-gray-600 dark:text-slate-400 border border-gray-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-900 cursor-pointer disabled:opacity-50"
-                />
-                {banner && (
-                  <div className="mt-2 relative inline-block">
-                    <img src={banner} alt="Cover Banner" className="h-16 w-36 object-cover rounded-xl border border-gray-300 dark:border-slate-700 shadow-sm" />
-                    <button
-                      type="button"
-                      onClick={() => setBanner('')}
-                      className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700 cursor-pointer"
-                      title="Remove Banner"
-                    >
-                      <X className="h-3.5 w-3.5" />
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Shop Name</label>
-              <input
-                type="text"
-                value={shopName}
-                onChange={e => setShopName(e.target.value)}
-                placeholder="e.g. Accra Gadgets Hub"
-                className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Shop Description</label>
-              <textarea
-                rows={3}
-                value={shopDescription}
-                onChange={e => setShopDescription(e.target.value)}
-                placeholder="Briefly describe your business, shipping options, and warranty terms..."
-                className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-2">Product Categories (Select at most 3)</label>
-              <div className="flex items-center gap-2 flex-wrap">
-                {MARKETPLACE_CATEGORIES.map(cat => {
-                  const isSelected = selectedCategories.includes(cat.name);
-                  const Icon = cat.icon;
-                  return (
-                    <button
-                      key={cat.id}
-                      type="button"
-                      onClick={() => handleCategoryToggle(cat.name)}
-                      className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
-                        isSelected
-                          ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-500 ring-offset-1'
-                          : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
-                      }`}
-                    >
-                      <Icon className="h-3.5 w-3.5 shrink-0" />
-                      <span>{cat.name}</span>
-                      {isSelected && <span>✓</span>}
-                    </button>
-                  );
-                })}
-              </div>
-              <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-2 block">
-                Selected: <strong className="text-blue-600 dark:text-blue-400 font-bold">{selectedCategories.length}</strong> / 3 allowed categories
-              </span>
-            </div>
-
-            <button
-              onClick={handleSaveShop}
-              disabled={savingShop}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
-            >
-              {savingShop ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              Save Storefront Details
-            </button>
-          </div>
-        </div>
-
-        {/* 3. ACCOUNT INFO */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
-          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center">
-              <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">Personal Information</h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400">Your account credentials</p>
-            </div>
-          </div>
-          <div className="px-6 py-5 space-y-5">
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">First Name</label>
-                <input
-                  value={firstName}
-                  onChange={e => setFirstName(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="First name"
-                />
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Last Name</label>
-                <input
-                  value={lastName}
-                  onChange={e => setLastName(e.target.value)}
-                  className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                  placeholder="Last name"
-                />
-              </div>
-            </div>
-            <div className="grid grid-cols-2 gap-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Username</label>
-                <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800 px-4 py-2 text-xs text-gray-500 dark:text-slate-400">
-                  {profile?.username}
-                </div>
-              </div>
-              <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Phone Number</label>
-                <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800 px-4 py-2 text-xs text-gray-500 dark:text-slate-400">
-                  {profile?.phone_number}
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        {/* 4. PAYOUT SETTINGS */}
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
-          <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
-            <div className="h-9 w-9 rounded-full bg-indigo-100 dark:bg-indigo-950/60 flex items-center justify-center">
-              <Wallet className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-            </div>
-            <div>
-              <h2 className="font-semibold text-gray-900 dark:text-white">Payout Settings</h2>
-              <p className="text-xs text-gray-500 dark:text-slate-400">Choose how you receive your earnings</p>
-            </div>
-          </div>
-          <div className="px-6 py-5 space-y-5">
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-3">Payout Mode</label>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <button
-                  type="button"
-                  onClick={() => setPayoutMode('INSTANT')}
-                  className={`relative p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
-                    payoutMode === 'INSTANT'
-                      ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 shadow-sm'
-                      : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-gray-300 dark:hover:border-slate-700'
-                  }`}
-                >
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center mb-2 ${
-                    payoutMode === 'INSTANT' ? 'bg-blue-100 dark:bg-blue-900/60' : 'bg-gray-100 dark:bg-slate-800'
-                  }`}>
-                    <Zap className={`h-4 w-4 ${payoutMode === 'INSTANT' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'}`} />
-                  </div>
-                  <p className={`font-semibold text-xs ${payoutMode === 'INSTANT' ? 'text-blue-800 dark:text-blue-300' : 'text-gray-800 dark:text-slate-200'}`}>
-                    Instant Payout
-                  </p>
-                  <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">Automatic transfer upon order completion.</p>
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setPayoutMode('MANUAL')}
-                  className={`relative p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
-                    payoutMode === 'MANUAL'
-                      ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40 shadow-sm'
-                      : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-gray-300 dark:hover:border-slate-700'
-                  }`}
-                >
-                  <div className={`h-8 w-8 rounded-full flex items-center justify-center mb-2 ${
-                    payoutMode === 'MANUAL' ? 'bg-purple-100 dark:bg-purple-900/60' : 'bg-gray-100 dark:bg-slate-800'
-                  }`}>
-                    <PiggyBank className={`h-4 w-4 ${payoutMode === 'MANUAL' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-slate-400'}`} />
-                  </div>
-                  <p className={`font-semibold text-xs ${payoutMode === 'MANUAL' ? 'text-purple-800 dark:text-purple-300' : 'text-gray-800 dark:text-slate-200'}`}>
-                    Manual Withdrawal
-                  </p>
-                  <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">Accumulate in wallet and withdraw on demand.</p>
-                </button>
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-2">Payout Destination</label>
-              <div className="flex gap-2 mb-4 p-1 bg-gray-100 dark:bg-slate-800 rounded-lg">
-                <button
-                  type="button"
-                  onClick={() => setPayoutType('MOMO')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition cursor-pointer ${
-                    payoutType === 'MOMO' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'
-                  }`}
-                >
-                  <Phone className="h-3.5 w-3.5" /> Mobile Money
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setPayoutType('BANK')}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition cursor-pointer ${
-                    payoutType === 'BANK' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'
-                  }`}
-                >
-                  <Building2 className="h-3.5 w-3.5" /> Bank Account
-                </button>
-              </div>
-
-              {payoutType === 'MOMO' ? (
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">MoMo Number</label>
-                  <input
-                    type="tel"
-                    value={momoNumber}
-                    onChange={e => setMomoNumber(e.target.value)}
-                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
-                    placeholder="e.g. 0244000000"
-                  />
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Email Address</label>
+                  <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/60 px-4 py-2.5 text-xs text-gray-600 dark:text-slate-400 flex items-center gap-2">
+                    <Mail className="h-4 w-4 text-slate-400" />
+                    <span>{profile?.email || 'No email associated'}</span>
+                  </div>
                 </div>
-              ) : (
-                <div className="space-y-3">
-                  <div>
-                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Select Bank *</label>
-                    <select
-                      value={bankCode}
-                      onChange={e => {
-                        const selectedCode = e.target.value;
-                        setBankCode(selectedCode);
-                        const selectedBank = banksList.find(b => b.code === selectedCode);
-                        if (selectedBank) setBankName(selectedBank.name);
-                        if (selectedCode && bankAccount) handleResolveBank(selectedCode, bankAccount);
-                      }}
-                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer font-medium"
-                    >
-                      <option value="">Select your Commercial Bank / MoMo</option>
-                      {banksList.map(b => (
-                        <option key={b.code} value={b.code}>
-                          {b.name} ({b.code})
-                        </option>
-                      ))}
-                    </select>
+              </div>
+            </div>
+
+            {/* 2. "BECOME A VERIFIED SELLER" UPGRADE CARD */}
+            <div className="relative rounded-3xl p-0.5 bg-gradient-to-r from-orange-500 via-amber-500 to-emerald-500 shadow-lg overflow-hidden">
+              <div className="bg-white dark:bg-slate-900 rounded-[22px] p-6 sm:p-7 space-y-6">
+                
+                {/* Hero Banner Header */}
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-slate-800 pb-5">
+                  <div className="space-y-1">
+                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400 mb-1">
+                      <Sparkles className="h-3.5 w-3.5" /> Start Selling
+                    </div>
+                    <h2 className="text-xl font-black text-gray-900 dark:text-white tracking-tight">
+                      Upgrade to Verified Seller
+                    </h2>
+                    <p className="text-xs text-gray-500 dark:text-slate-400 max-w-xl">
+                      Want to sell products, collect escrow payments, and receive instant Mobile Money or Bank payouts? Submit your Ghana Card for verification.
+                    </p>
                   </div>
 
+                  {/* Verification Status Badge */}
                   <div>
-                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Account Number *</label>
-                    <div className="flex gap-2">
+                    {profile?.verification_status === 'APPROVED' && (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-full">
+                        <CheckCircle className="h-4 w-4" /> 🛡️ APPROVED
+                      </span>
+                    )}
+                    {profile?.verification_status === 'PENDING' && (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-full">
+                        <Clock className="h-4 w-4" /> ⏳ Verification Pending Review
+                      </span>
+                    )}
+                    {profile?.verification_status === 'REJECTED' && (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 px-3 py-1.5 rounded-full">
+                        <XCircle className="h-4 w-4" /> Resubmission Required
+                      </span>
+                    )}
+                    {(!profile?.verification_status || profile.verification_status === 'UNSUBMITTED') && (
+                      <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full">
+                        Ghana Card Required
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Seller Value Proposition Grid */}
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                  <div className="p-3.5 rounded-xl bg-orange-50/60 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/40">
+                    <Link2 className="h-4 w-4 text-orange-600 dark:text-orange-400 mb-1.5" />
+                    <p className="text-xs font-bold text-gray-900 dark:text-white">Escrow Payment Links</p>
+                    <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">Generate shareable payment links for WhatsApp, Instagram, and TikTok.</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40">
+                    <Zap className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mb-1.5" />
+                    <p className="text-xs font-bold text-gray-900 dark:text-white">Instant MoMo Payouts</p>
+                    <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">Automatic transfers directly to your MTN, Telecel, or Bank account.</p>
+                  </div>
+
+                  <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40">
+                    <Store className="h-4 w-4 text-blue-600 dark:text-blue-400 mb-1.5" />
+                    <p className="text-xs font-bold text-gray-900 dark:text-white">Verified Storefront</p>
+                    <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">Get listed on the Verified Shops Directory with your custom logo and banner.</p>
+                  </div>
+                </div>
+
+                {/* Document Verification Submission Form / Status */}
+                {profile?.verification_status === 'APPROVED' ? (
+                  <div className="p-5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl text-xs text-emerald-900 dark:text-emerald-200 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                      <p className="font-bold text-sm">🎉 You are a Verified Seller!</p>
+                    </div>
+                    <p>
+                      Your documents have been verified. You now have full access to create escrow links, receive payouts, and customize your storefront.
+                    </p>
+                  </div>
+                ) : profile?.verification_status === 'PENDING' ? (
+                  <div className="p-5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
+                      <p className="font-bold text-sm">⏳ Documents Under Review</p>
+                    </div>
+                    <p>
+                      We received your Ghana Card submission (<strong>{profile.national_id_number}</strong>). Our compliance team is verifying the details. You will automatically receive seller access once approved!
+                    </p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSubmitVerification} className="space-y-4 pt-2">
+                    {profile?.verification_status === 'REJECTED' && (
+                      <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 space-y-1">
+                        <p className="font-bold">❌ Previous Submission Rejected:</p>
+                        <p>{profile.verification_rejection_reason}</p>
+                      </div>
+                    )}
+
+                    <div className="text-xs text-gray-600 dark:text-slate-300 space-y-1">
+                      <p>
+                        To activate seller privileges, please provide your <strong>Ghana Card / National ID number</strong> and upload a clear photo of your card.
+                      </p>
+                      <p className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                        <Zap className="h-3.5 w-3.5 shrink-0" /> Instant NIA Auto-Verification: Valid Ghana Cards are verified immediately!
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
+                        National ID / Ghana Card Number *
+                      </label>
                       <input
                         type="text"
-                        value={bankAccount}
-                        onChange={e => {
-                          setBankAccount(e.target.value);
-                          if (bankCode && e.target.value.length >= 6) {
-                            handleResolveBank(bankCode, e.target.value);
-                          }
-                        }}
-                        onBlur={() => handleResolveBank()}
-                        className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none font-mono"
-                        placeholder="e.g. 1441000123456"
+                        required
+                        value={idNumber}
+                        onChange={e => setIdNumber(e.target.value)}
+                        placeholder="e.g. GHA-123456789-0"
+                        className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none font-mono font-bold"
                       />
-                      <button
-                        type="button"
-                        onClick={() => handleResolveBank()}
-                        disabled={resolvingBank || !bankCode || !bankAccount}
-                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition shadow flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
-                      >
-                        {resolvingBank ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
-                        Verify
-                      </button>
+                      <span className="text-[10px] text-gray-400 dark:text-slate-500 mt-1 block">Format: GHA-XXXXXXXXX-X (15 characters)</span>
                     </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* National ID Photo */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
+                          Ghana Card Photo *
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => handleFileUpload(e, setIdPhoto)}
+                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
+                        />
+                        {idPhoto && (
+                          <img src={idPhoto} alt="National ID" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
+                        )}
+                      </div>
+
+                      {/* Business License Photo */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
+                          Business Certificate / License <span className="text-gray-400 dark:text-slate-500">(Optional)</span>
+                        </label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => handleFileUpload(e, setLicensePhoto)}
+                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
+                        />
+                        {licensePhoto && (
+                          <img src={licensePhoto} alt="Business License" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={submittingVerif}
+                      className="w-full py-3 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-bold rounded-xl text-xs transition shadow-md flex justify-center items-center gap-2 cursor-pointer disabled:opacity-50"
+                    >
+                      {submittingVerif ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
+                      Submit Documents & Activate Seller Account
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+
+            {/* 3. BUYER LOCKED SELLER PREVIEW */}
+            <div className="bg-slate-100/60 dark:bg-slate-900/40 rounded-2xl p-5 border border-dashed border-slate-300 dark:border-slate-800 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center shrink-0">
+                  <Lock className="h-5 w-5" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Storefront Branding & Payout Channels</p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Custom shop URL, logo, cover banner, and Mobile Money/Bank payout routing become configurable immediately upon seller verification.</p>
+                </div>
+              </div>
+            </div>
+          </>
+        )}
+
+        {/* ======================================================== */}
+        {/* SELLER / MERCHANT VIEW */}
+        {/* ======================================================== */}
+        {!isBuyer && (
+          <>
+            {/* 1. SELLER VERIFICATION STATUS CARD */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center">
+                    <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                  </div>
+                  <div>
+                    <h2 className="font-semibold text-gray-900 dark:text-white">Seller Document Verification</h2>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">Verified Seller badge status</p>
+                  </div>
+                </div>
+
+                {profile?.verification_status === 'APPROVED' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3 py-1 rounded-full">
+                    <CheckCircle className="h-3.5 w-3.5" /> 🛡️ VERIFIED SELLER
+                  </span>
+                )}
+                {profile?.verification_status === 'PENDING' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-1 rounded-full">
+                    <Clock className="h-3.5 w-3.5" /> Pending Manager Approval
+                  </span>
+                )}
+                {profile?.verification_status === 'REJECTED' && (
+                  <span className="inline-flex items-center gap-1 text-xs font-bold text-red-700 dark:text-red-300 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 px-3 py-1 rounded-full">
+                    <XCircle className="h-3.5 w-3.5" /> Rejected
+                  </span>
+                )}
+              </div>
+
+              <div className="px-6 py-5 space-y-5">
+                {profile?.verification_status === 'APPROVED' ? (
+                  <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
+                    <p className="font-bold text-sm">🎉 Your Account is Verified!</p>
+                    <p>Your documents were verified on {profile.verified_at ? new Date(profile.verified_at).toLocaleDateString() : 'Management Review'}. Your store features the official Verified Seller badge across payment links and marketplace listings.</p>
+                  </div>
+                ) : (
+                  <form onSubmit={handleSubmitVerification} className="space-y-4">
+                    {profile?.verification_status === 'REJECTED' && (
+                      <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 space-y-1">
+                        <p className="font-bold">❌ Previous Submission Rejected:</p>
+                        <p>{profile.verification_rejection_reason}</p>
+                      </div>
+                    )}
+
+                    <div className="text-xs text-gray-500 dark:text-slate-400 space-y-1">
+                      <p>
+                        Enter your <strong>Ghana Card / National ID number</strong> and upload a clear photo of your card.
+                      </p>
+                      <p className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                        <Zap className="h-3.5 w-3.5" /> Instant NIA Auto-Verification enabled. Valid Ghana Cards are verified immediately!
+                      </p>
+                    </div>
+
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">National ID / Ghana Card Number *</label>
+                      <input
+                        type="text"
+                        required
+                        value={idNumber}
+                        onChange={e => setIdNumber(e.target.value)}
+                        placeholder="e.g. GHA-123456789-0"
+                        className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                      />
+                      <span className="text-[10px] text-gray-400 dark:text-slate-500 mt-1 block">Format: GHA-XXXXXXXXX-X (15 characters)</span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {/* National ID Photo */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">National ID Photo *</label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => handleFileUpload(e, setIdPhoto)}
+                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
+                        />
+                        {idPhoto && (
+                          <img src={idPhoto} alt="National ID" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700" />
+                        )}
+                      </div>
+
+                      {/* Business License Photo */}
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Business License <span className="text-gray-400 dark:text-slate-500">(optional)</span></label>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={e => handleFileUpload(e, setLicensePhoto)}
+                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
+                        />
+                        {licensePhoto && (
+                          <img src={licensePhoto} alt="Business License" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700" />
+                        )}
+                      </div>
+                    </div>
+
+                    <button
+                      type="submit"
+                      disabled={submittingVerif}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
+                    >
+                      {submittingVerif ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
+                      Submit for Auto / Manager Verification
+                    </button>
+                  </form>
+                )}
+              </div>
+            </div>
+
+            {/* 2. STOREFRONT DISPLAY SETTINGS */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-950/60 flex items-center justify-center">
+                  <Store className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-gray-900 dark:text-white">Public Storefront Presentation</h2>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Displayed on your public profile and marketplace directory</p>
+                </div>
+              </div>
+              
+              <div className="px-6 py-5 space-y-5">
+                {/* Branding Images: Logo & Banner */}
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-gray-50/80 dark:bg-slate-800/50 p-4 rounded-xl border border-gray-200/80 dark:border-slate-700">
+                  {/* Profile Picture / Logo */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <Camera className="h-4 w-4 text-blue-600 dark:text-blue-400" /> Storefront Logo / Profile Picture
+                      </label>
+                      {isCompressingProfilePic && <span className="text-xs text-blue-600 dark:text-blue-400 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
+                    </div>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isCompressingProfilePic}
+                      onChange={handleProfilePictureUpload}
+                      className="w-full text-sm text-gray-600 dark:text-slate-400 border border-gray-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-900 cursor-pointer disabled:opacity-50"
+                    />
+                    {profilePicture && (
+                      <div className="mt-2 relative inline-block">
+                        <img src={profilePicture} alt="Profile Logo" className="h-16 w-16 object-cover rounded-xl border border-gray-300 dark:border-slate-700 shadow-sm" />
+                        <button
+                          type="button"
+                          onClick={() => setProfilePicture('')}
+                          className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700 cursor-pointer"
+                          title="Remove Logo"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
 
-                  {/* Resolution Feedback Status */}
-                  {bankAccountName && (
-                    <div className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 ${
-                      bankNameMatched
-                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-                        : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                    }`}>
-                      <div>
-                        <span className="font-bold block">Account Holder: {bankAccountName}</span>
-                        <span className="text-[11px] opacity-90">
-                          {bankNameMatched
-                            ? '✓ Account name matches profile identity.'
-                            : 'ℹ️ Third-Party / Business Account detected. Details recorded for payout audit log.'}
-                        </span>
-                      </div>
-                      <CheckCircle className={`h-4 w-4 shrink-0 ${bankNameMatched ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`} />
+                  {/* Cover Banner */}
+                  <div>
+                    <div className="flex justify-between items-center mb-1">
+                      <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
+                        <ImageIcon className="h-4 w-4 text-indigo-600 dark:text-indigo-400" /> Storefront Cover Banner
+                      </label>
+                      {isCompressingBanner && <span className="text-xs text-indigo-600 dark:text-indigo-400 font-medium flex items-center gap-1"><Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing WebP...</span>}
                     </div>
-                  )}
+                    <input
+                      type="file"
+                      accept="image/*"
+                      disabled={isCompressingBanner}
+                      onChange={handleBannerUpload}
+                      className="w-full text-sm text-gray-600 dark:text-slate-400 border border-gray-300 dark:border-slate-700 rounded-xl p-2 bg-white dark:bg-slate-900 cursor-pointer disabled:opacity-50"
+                    />
+                    {banner && (
+                      <div className="mt-2 relative inline-block">
+                        <img src={banner} alt="Cover Banner" className="h-16 w-36 object-cover rounded-xl border border-gray-300 dark:border-slate-700 shadow-sm" />
+                        <button
+                          type="button"
+                          onClick={() => setBanner('')}
+                          className="absolute -top-1.5 -right-1.5 bg-red-600 text-white rounded-full p-0.5 shadow hover:bg-red-700 cursor-pointer"
+                          title="Remove Banner"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
+                    )}
+                  </div>
+                </div>
 
-                  {bankResolveError && (
-                    <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs flex items-center gap-2">
-                      <AlertTriangle className="h-4 w-4 shrink-0" />
-                      <span>{bankResolveError}</span>
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Shop Name</label>
+                  <input
+                    type="text"
+                    value={shopName}
+                    onChange={e => setShopName(e.target.value)}
+                    placeholder="e.g. Accra Gadgets Hub"
+                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-1">Shop Description</label>
+                  <textarea
+                    rows={3}
+                    value={shopDescription}
+                    onChange={e => setShopDescription(e.target.value)}
+                    placeholder="Briefly describe your business, shipping options, and warranty terms..."
+                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-sm font-semibold text-gray-700 dark:text-slate-300 mb-2">Product Categories (Select at most 3)</label>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    {MARKETPLACE_CATEGORIES.map(cat => {
+                      const isSelected = selectedCategories.includes(cat.name);
+                      const Icon = cat.icon;
+                      return (
+                        <button
+                          key={cat.id}
+                          type="button"
+                          onClick={() => handleCategoryToggle(cat.name)}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-semibold transition cursor-pointer flex items-center gap-1.5 ${
+                            isSelected
+                              ? 'bg-blue-600 text-white shadow-sm ring-2 ring-blue-500 ring-offset-1'
+                              : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
+                          }`}
+                        >
+                          <Icon className="h-3.5 w-3.5 shrink-0" />
+                          <span>{cat.name}</span>
+                          {isSelected && <span>✓</span>}
+                        </button>
+                      );
+                    })}
+                  </div>
+                  <span className="text-[11px] text-gray-400 dark:text-slate-500 mt-2 block">
+                    Selected: <strong className="text-blue-600 dark:text-blue-400 font-bold">{selectedCategories.length}</strong> / 3 allowed categories
+                  </span>
+                </div>
+
+                <button
+                  onClick={handleSaveShop}
+                  disabled={savingShop}
+                  className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
+                >
+                  {savingShop ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  Save Storefront Details
+                </button>
+              </div>
+            </div>
+
+            {/* 3. ACCOUNT INFO */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center">
+                  <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-gray-900 dark:text-white">Personal Information</h2>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Your account credentials</p>
+                </div>
+              </div>
+              <div className="px-6 py-5 space-y-5">
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">First Name</label>
+                    <input
+                      value={firstName}
+                      onChange={e => setFirstName(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="First name"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Last Name</label>
+                    <input
+                      value={lastName}
+                      onChange={e => setLastName(e.target.value)}
+                      className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                      placeholder="Last name"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-4">
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Username</label>
+                    <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800 px-4 py-2 text-xs text-gray-500 dark:text-slate-400">
+                      @{profile?.username}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Phone Number</label>
+                    <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800 px-4 py-2 text-xs text-gray-500 dark:text-slate-400">
+                      {profile?.phone_number}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* 4. PAYOUT SETTINGS */}
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
+                <div className="h-9 w-9 rounded-full bg-indigo-100 dark:bg-indigo-950/60 flex items-center justify-center">
+                  <Wallet className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
+                </div>
+                <div>
+                  <h2 className="font-semibold text-gray-900 dark:text-white">Payout Settings</h2>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Choose how you receive your earnings</p>
+                </div>
+              </div>
+              <div className="px-6 py-5 space-y-5">
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-3">Payout Mode</label>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <button
+                      type="button"
+                      onClick={() => setPayoutMode('INSTANT')}
+                      className={`relative p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                        payoutMode === 'INSTANT'
+                          ? 'border-blue-500 bg-blue-50 dark:bg-blue-950/40 shadow-sm'
+                          : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-gray-300 dark:hover:border-slate-700'
+                      }`}
+                    >
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center mb-2 ${
+                        payoutMode === 'INSTANT' ? 'bg-blue-100 dark:bg-blue-900/60' : 'bg-gray-100 dark:bg-slate-800'
+                      }`}>
+                        <Zap className={`h-4 w-4 ${payoutMode === 'INSTANT' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'}`} />
+                      </div>
+                      <p className={`font-semibold text-xs ${payoutMode === 'INSTANT' ? 'text-blue-800 dark:text-blue-300' : 'text-gray-800 dark:text-slate-200'}`}>
+                        Instant Payout
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">Automatic transfer upon order completion.</p>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => setPayoutMode('MANUAL')}
+                      className={`relative p-4 rounded-xl border-2 text-left transition-all cursor-pointer ${
+                        payoutMode === 'MANUAL'
+                          ? 'border-purple-500 bg-purple-50 dark:bg-purple-950/40 shadow-sm'
+                          : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-gray-300 dark:hover:border-slate-700'
+                      }`}
+                    >
+                      <div className={`h-8 w-8 rounded-full flex items-center justify-center mb-2 ${
+                        payoutMode === 'MANUAL' ? 'bg-purple-100 dark:bg-purple-900/60' : 'bg-gray-100 dark:bg-slate-800'
+                      }`}>
+                        <PiggyBank className={`h-4 w-4 ${payoutMode === 'MANUAL' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-slate-400'}`} />
+                      </div>
+                      <p className={`font-semibold text-xs ${payoutMode === 'MANUAL' ? 'text-purple-800 dark:text-purple-300' : 'text-gray-800 dark:text-slate-200'}`}>
+                        Manual Withdrawal
+                      </p>
+                      <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">Accumulate in wallet and withdraw on demand.</p>
+                    </button>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-2">Payout Destination</label>
+                  <div className="flex gap-2 mb-4 p-1 bg-gray-100 dark:bg-slate-800 rounded-lg">
+                    <button
+                      type="button"
+                      onClick={() => setPayoutType('MOMO')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition cursor-pointer ${
+                        payoutType === 'MOMO' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'
+                      }`}
+                    >
+                      <Phone className="h-3.5 w-3.5" /> Mobile Money
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setPayoutType('BANK')}
+                      className={`flex-1 flex items-center justify-center gap-2 py-2 rounded-md text-xs font-semibold transition cursor-pointer ${
+                        payoutType === 'BANK' ? 'bg-white dark:bg-slate-900 shadow text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'
+                      }`}
+                    >
+                      <Building2 className="h-3.5 w-3.5" /> Bank Account
+                    </button>
+                  </div>
+
+                  {payoutType === 'MOMO' ? (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">MoMo Number</label>
+                      <input
+                        type="tel"
+                        value={momoNumber}
+                        onChange={e => setMomoNumber(e.target.value)}
+                        className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                        placeholder="e.g. 0244000000"
+                      />
+                    </div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Select Bank *</label>
+                        <select
+                          value={bankCode}
+                          onChange={e => {
+                            const selectedCode = e.target.value;
+                            setBankCode(selectedCode);
+                            const selectedBank = banksList.find((b: { name: string; code: string; type?: string }) => b.code === selectedCode);
+                            if (selectedBank) setBankName(selectedBank.name);
+                            if (selectedCode && bankAccount) handleResolveBank(selectedCode, bankAccount);
+                          }}
+                          className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none cursor-pointer font-medium"
+                        >
+                          <option value="">Select your Commercial Bank / MoMo</option>
+                          {banksList.map((b: { name: string; code: string; type?: string }) => (
+                            <option key={b.code} value={b.code}>
+                              {b.name} ({b.code})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+
+                      <div>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Account Number *</label>
+                        <div className="flex gap-2">
+                          <input
+                            type="text"
+                            value={bankAccount}
+                            onChange={e => {
+                              setBankAccount(e.target.value);
+                              if (bankCode && e.target.value.length >= 6) {
+                                handleResolveBank(bankCode, e.target.value);
+                              }
+                            }}
+                            onBlur={() => handleResolveBank()}
+                            className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none font-mono"
+                            placeholder="e.g. 1441000123456"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleResolveBank()}
+                            disabled={resolvingBank || !bankCode || !bankAccount}
+                            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-xl text-xs transition shadow flex items-center gap-1.5 shrink-0 disabled:opacity-50 cursor-pointer"
+                          >
+                            {resolvingBank ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5" />}
+                            Verify
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Resolution Feedback Status */}
+                      {bankAccountName && (
+                        <div className={`p-3 rounded-xl border text-xs flex items-center justify-between gap-2 ${
+                          bankNameMatched
+                            ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                            : 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                        }`}>
+                          <div>
+                            <span className="font-bold block">Account Holder: {bankAccountName}</span>
+                            <span className="text-[11px] opacity-90">
+                              {bankNameMatched
+                                ? '✓ Account name matches profile identity.'
+                                : 'ℹ️ Third-Party / Business Account detected. Details recorded for payout audit log.'}
+                            </span>
+                          </div>
+                          <CheckCircle className={`h-4 w-4 shrink-0 ${bankNameMatched ? 'text-emerald-600 dark:text-emerald-400' : 'text-amber-600 dark:text-amber-400'}`} />
+                        </div>
+                      )}
+
+                      {bankResolveError && (
+                        <div className="p-3 rounded-xl bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800 text-xs flex items-center gap-2">
+                          <AlertTriangle className="h-4 w-4 shrink-0" />
+                          <span>{bankResolveError}</span>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
-              )}
+
+                <button
+                  onClick={handleSaveProfile}
+                  disabled={saving || sendingOtp}
+                  className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
+                >
+                  {saving || sendingOtp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
+                  {sendingOtp ? 'Sending Verification Code...' : 'Save Profile & Payout Settings'}
+                </button>
+              </div>
             </div>
+          </>
+        )}
 
-            <button
-              onClick={handleSaveProfile}
-              disabled={saving || sendingOtp}
-              className="w-full py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
-            >
-              {saving || sendingOtp ? <Loader2 className="h-4 w-4 animate-spin" /> : <Save className="h-4 w-4" />}
-              {sendingOtp ? 'Sending Verification Code...' : 'Save Profile & Payout Settings'}
-            </button>
-          </div>
-        </div>
-
-        {/* 5. SECURITY & 2FA SETTINGS */}
+        {/* ======================================================== */}
+        {/* COMMON: SECURITY & 2FA SETTINGS */}
+        {/* ======================================================== */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
           <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
             <div className="flex items-center gap-3">

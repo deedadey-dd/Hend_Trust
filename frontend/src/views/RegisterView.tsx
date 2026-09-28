@@ -54,6 +54,9 @@ export default function RegisterView() {
     return () => clearTimeout(timer);
   }, [referralCode]);
 
+  const [role, setRole] = useState<'SELLER' | 'BUYER'>((searchParams.get('role')?.toUpperCase() as any) === 'BUYER' ? 'BUYER' : 'SELLER');
+  const [registeredSuccess, setRegisteredSuccess] = useState(false);
+
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
@@ -91,10 +94,11 @@ export default function RegisterView() {
         email: email.trim(),
         password,
         phone_number: phone.trim(),
-        role: 'SELLER',
+        role: role,
         referral_code: referralCode.trim() || undefined
       });
       setRegisteredEmail(email.trim());
+      setRegisteredSuccess(true);
     } catch (err: any) {
       setError(getErrorMessage(err) || 'Registration failed. Please check your inputs.');
     } finally {
@@ -121,23 +125,59 @@ export default function RegisterView() {
             Sign in instead
           </Link>
         </p>
+
+        {/* Persona Selector Toggle */}
+        <div className="mt-6 flex bg-gray-200/80 dark:bg-slate-800/80 p-1 rounded-xl border border-gray-300/60 dark:border-slate-700">
+          <button
+            type="button"
+            onClick={() => setRole('SELLER')}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+              role === 'SELLER'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            🏪 Seller / Merchant
+          </button>
+          <button
+            type="button"
+            onClick={() => setRole('BUYER')}
+            className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+              role === 'BUYER'
+                ? 'bg-white dark:bg-slate-900 text-indigo-600 dark:text-indigo-400 shadow-sm'
+                : 'text-gray-600 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white'
+            }`}
+          >
+            🛍️ Buyer / Shopper
+          </button>
+        </div>
       </div>
 
-      <div className="mt-8 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
+      <div className="mt-6 sm:mx-auto sm:w-full sm:max-w-md relative z-10">
         <div className="bg-white/80 dark:bg-slate-900/90 backdrop-blur-xl py-8 px-4 shadow-2xl sm:rounded-2xl sm:px-10 border border-white/20 dark:border-slate-800">
-          {registeredEmail ? (
+          {registeredSuccess ? (
             <div className="text-center space-y-4 py-4">
               <div className="w-14 h-14 rounded-full bg-emerald-100 dark:bg-emerald-950/50 border border-emerald-200 dark:border-emerald-800 flex items-center justify-center mx-auto text-emerald-600 dark:text-emerald-400 shadow-lg">
                 <CheckCircle2 className="h-8 w-8" />
               </div>
-              <h3 className="text-xl font-bold text-gray-900 dark:text-white">Account Created!</h3>
+              <h3 className="text-xl font-bold text-gray-900 dark:text-white">
+                {role === 'BUYER' ? 'Buyer Account Ready!' : 'Account Created!'}
+              </h3>
               <p className="text-sm text-gray-600 dark:text-slate-400 leading-relaxed">
-                We've sent an activation link to <strong className="text-slate-900 dark:text-slate-200">{registeredEmail}</strong>. Please check your inbox and click the link to activate your account.
+                {role === 'BUYER' ? (
+                  <>
+                    Your buyer account with <strong className="text-slate-900 dark:text-slate-200">{registeredEmail}</strong> is active. You can now sign in to track your escrow orders with 0 SMS OTPs.
+                  </>
+                ) : (
+                  <>
+                    We've sent an activation link to <strong className="text-slate-900 dark:text-slate-200">{registeredEmail}</strong>. Please check your inbox and click the link to activate your seller account.
+                  </>
+                )}
               </p>
               <div className="pt-4">
                 <button
                   onClick={() => navigate('/login')}
-                  className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md transition-all text-sm"
+                  className="w-full py-3.5 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-lg shadow-md transition-all text-sm cursor-pointer"
                 >
                   Proceed to Sign In
                 </button>

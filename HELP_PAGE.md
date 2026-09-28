@@ -40,12 +40,15 @@ Sellers can create secure Payment Links to send to their buyers.
 
 ---
 
-## 3. Making a Payment & Multi-Gateway Support (For Buyers)
+## 3. Making a Payment & Frictionless Buyer Accounts (For Buyers)
 1. **Open the Payment Link**: View the item description, total price, and clear merchant identification showing the **Shop Name** along with the `@username` handle.
-2. **Enter Delivery Details**: Provide your Name, Phone Number, and Shipping Address.
+2. **Checkout Modes (Authenticated 0-OTP vs. Guest Shopper)**:
+   - **Logged-In Buyers (1-Click Init)**: If you have a HendAxis buyer account, your name, phone, and email are filled automatically, and payment initializes in **1 click with zero SMS OTPs**.
+   - **Guest Shoppers**: Enter your phone number and verify via a quick 6-digit SMS OTP to initialize payment securely.
 3. **Pay via Active Payment Gateway**: Use Mobile Money (MTN MoMo, Telecel Cash, AT Money) or Bank Card (Visa, Mastercard).
    - **Supported Payment Engines**: **Paystack Multi-Channel**, **AppsNMobile (The Orchard API)**, and **Hubtel Ghana PSP**. The active checkout gateway is managed dynamically by platform administration.
-4. **Escrow Hold**: Your money is held securely in the **HendAxis System Escrow Account**. The seller is notified to dispatch your package within 4 days.
+4. **Post-Checkout Buyer Account & Dual Verification**: Immediately after checkout on your order page (`/l/:id`), you can create a permanent buyer account simply by choosing a password. The system sends an activation link to your email and an SMS OTP to your phone. Entering the phone OTP confirms phone possession and logs you in instantly, while an unobtrusive reminder banner helps you confirm your email anytime with 1-click resend. Once logged in, you skip all future checkout SMS OTPs.
+5. **Escrow Hold**: Your money is held securely in the **HendAxis System Escrow Account**. The seller is notified to dispatch your package within 4 days.
 
 ---
 
@@ -61,36 +64,60 @@ Sellers must dispatch items promptly after receiving payment notification:
 
 ---
 
-## 5. Upfront 2-Step OTP Tracking & Tiered Buyer Inspection Period
-Once delivery is initiated, buyers can track shipments with full privacy and convenience:
+## 5. Order Tracking, 1-Click Receipt Confirmation & Tiered Buyer Inspection Period
+Once delivery is initiated, buyers can track shipments and confirm orders with complete ease:
 
-- **Upfront 2-Step OTP Package Tracking**:
-  - Both **Track by Order ID** (single parcel) and **Full Order History** are protected by a secure 6-digit OTP sent to the buyer's phone number.
-  - **2-Hour Token Validity**: Once verified, your tracking session remains unlocked for **2 hours**, allowing instant access to package details and action buttons ("View Full Details & Actions", "+ Add Dispute Details", "Confirm Receipt", "Raise Dispute", "⭐ Rate Seller") without repetitive popups or interruptions.
-  - **60-Second SMS Cooldown**: A cost-saving 60-second cooldown prevents spam while keeping the active OTP code valid.
+- **Order Tracking Options**:
+  - **Logged-In Buyers**: Opening the **Track Order** modal (`/tracking`) or visiting **My Purchases** (`/dashboard?tab=purchases`) instantly displays all active and completed orders with **zero OTPs required**.
+  - **Guest Shoppers (Upfront 2-Step OTP)**: Unauthenticated visitors enter their phone number or Order Reference and verify via a 6-digit SMS OTP, unlocking a secure 2-hour session.
+- **1-Click Delivery Confirmation & Payout Release**:
+  - **Logged-In Buyers**: Click **"⚡ Confirm Receipt (1-Click)"** to transition the package to the inspection period, or **"✓ Approve & Release Payment"** to disburse funds to the seller in 1 click without entering SMS codes.
+  - **Guest Shoppers**: Enter the 6-digit confirmation code sent to your phone/email to confirm receipt.
 - **Inspection Timeframes**:
   - `< GHS 2,000`: **24 Hours**
   - `GHS 2,000 – GHS 9,999.99`: **48 Hours**
   - `>= GHS 10,000`: **72 Hours**
 - **Full-Screen Image Lightbox**: Product, dispatch waybills, and parcel inspection photos feature a full-screen zoom lightbox modal with 90° rotation and download controls.
-- **Automatic Completion & Rating Modal**: Once the buyer confirms receipt via their 6-digit confirmation code, payment is released to the seller, and the **3-Axis Rate Seller Modal** automatically launches on screen so the buyer can instantly leave a review.
+- **Automatic Completion & Rating Modal**: Once delivery is confirmed and funds are released, the **3-Axis Rate Seller Modal** automatically launches so the buyer can leave verified feedback.
 
 ---
 
-## 6. How Disputes, Dialogue Trail, Retraction & 24-Hour Settlement Work
+## 6. How Disputes, Dialogue Trail, Retraction, 48-Hour Arbiter Escalation & Settlement Work
 If a buyer receives a damaged, defective, or incorrect item during the inspection period:
 
-- **Dispute Initiation & Evidence Upload**: Clicking **Raise Dispute** opens an interactive modal where the buyer enters their claim description and uploads up to **5 WebP evidence photos**.
+- **Standardized Dispute Categories & 10-Character Minimum**:
+  - Clicking **Raise Dispute** opens an interactive modal where the buyer selects from **7 Standardized Dispute Categories**:
+    1. `ITEM_NOT_RECEIVED` (Item Not Received / Missing Delivery)
+    2. `ITEM_DAMAGED` (Item Damaged / Broken during transit or upon receipt)
+    3. `ITEM_DIFFERENT_FROM_DESCRIPTION` (Item Significantly Different from Description)
+    4. `DEFECTIVE_OR_NON_FUNCTIONAL` (Defective / Counterfeit / Non-Functional)
+    5. `WRONG_SIZE_OR_SPEC` (Wrong Size, Color, or Technical Specification)
+    6. `INCOMPLETE_MISSING_ITEMS` (Incomplete Package / Missing Accessories)
+    7. `OTHER_VIOLATION` (Other Policy or Agreement Violation)
+  - **10-Character Minimum Requirement**: The claim explanation requires a strict minimum of 10 characters with a live character counter (`{count}/10 min chars`) to prevent blank or trivial submissions.
+  - **Evidence Upload**: The buyer can upload up to **5 WebP evidence photos**.
 - **Continuous Dialogue & Evidence Appending**: Both buyers and sellers can append ongoing follow-up messages and additional photos to active disputes. Every message is timestamped (`--- [Buyer Update (Timestamp)] ---` and `--- [Seller Response (Timestamp)] ---`), preserving the complete historical record without overwriting previous evidence (up to 5 cumulative photos).
-- **WhatsApp-Style Dispute Dialogue Trail**:
+- **WhatsApp-Style Dispute Dialogue Trail & Center-Aligned Arbiter Notices**:
   - Displays messages in a conversational timeline across the buyer tracking portal (`/l/:id`), Tracking Modal, Seller Dashboard, and Admin Portal.
-  - **Color-Coded Bubbles**: Buyer statements are styled on the left (Rose badge/background), Seller statements on the right (Emerald badge/background), Arbitrator notes in the center (Purple card), and Dispatch Waybill / Retraction cards prominently highlighted.
+  - **Color-Coded Bubbles**: Buyer statements are styled on the left (Rose badge/background), Seller statements on the right (Emerald badge/background), Arbitrator notes and instructions in the center (Purple card with scale icon `⚖️`), and Dispatch Waybill / Retraction cards prominently highlighted.
   - **Interactive Features**: Long statements (> 260 characters) include a clean `Read more / Show less` toggle, and long conversation trails (> 4 messages) collapse neatly with an expandable banner.
+- **Arbiter Instructions & Notices During Active Dispute (Without Resolving)**:
+  - During the mediation process, the assigned Arbiter can post direct instructions, information requests, deadlines, or warnings to both parties without concluding or resolving the dispute.
+  - Each instruction appears prominently **center-aligned** in the conversation trail with author attribution and timestamp (e.g. `⚖️ Arbiter Instruction (by Name)`).
+  - Both buyer and seller receive automated instant SMS and Email notifications containing the Arbiter's instruction and order link.
+- **Request Arbiter Decision (Configurable 48-Hour Escalation Window)**:
+  - Both buyers and sellers are initially given a direct negotiation window to communicate and resolve their issue.
+  - After **48 hours** (governed by the platform setting `arbiter_escalation_hours`), an interactive **"⚡ Request Arbiter Decision"** button activates on the dispute timeline for **both buyer and seller**.
+  - Clicking this button flags the dispute as **Priority Escalation** (`⚡ ARBITER DECISION REQUESTED`), sends automated SMS & Email alerts, and moves the case directly to the top of the Admin / Arbiter Queue for prompt mediation.
 - **Dispute Retraction & 24-Hour Private Settlement**:
   - If a buyer and seller resolve their issue amicably outside arbitration (e.g. seller sends a direct replacement or discount), the buyer can click **Retract Dispute / Settle Privately**.
   - **24-Hour Delay Hold**: Upon retraction, escrow funds enter a 24-hour grace period (`RETRACTED_SETTLING`) before releasing to the seller's wallet, ensuring protection against accidental or forced retractions.
   - **Rating Voidance**: Once a dispute has been opened, the rating capability is permanently voided (`rating_voided = True`) to prevent review manipulation or coercive settlement tactics.
-- **24-Hour Dispute Settlement (Arbitration)**: Platform support reviews all submitted evidence and dialogue, issuing a binding ruling within **24 hours**:
+- **External Arbitration, 100% Cost Assumption & Platform Indemnity**:
+  - **Cost Assumption**: If either party chooses to elevate the dispute to any external arbitration tribunal, statutory arbitration body, or court of law, that party (or both parties mutually) shall **bear 100% of all costs, filing fees, legal fees, and administrative expenses incurred**.
+  - **Platform Indemnity**: HendAxis Trust, its parent entity, directors, and agents are fully absolved, indemnified, and held harmless from any liabilities, damages, or legal expenses arising from external proceedings.
+  - **Mandatory Written Order Upload**: HendAxis Trust will **NOT** release escrowed funds based on informal demands, telephone requests, or unilateral notifications. Escrow funds will strictly and only be released pursuant to an external ruling upon receipt, verification, and platform arbiter upload of an **authentic, certified, written binding order from the third-party arbitrator or court of competent jurisdiction**.
+- **Dispute Settlement (Internal Arbitration)**: Platform support reviews all submitted evidence and dialogue, issuing a binding ruling within **24 hours**:
   - **Buyer Refund**: Issued via the **same payment medium** (MoMo/Card) used at checkout.
   - **Seller Payout**: Sent to seller's registered payout details or credited to seller's HendAxis Trust wallet.
 - **Dispute Rulings & Buyer Item Returns (`REQUIRE_RETURN_FROM_BUYER`)**:

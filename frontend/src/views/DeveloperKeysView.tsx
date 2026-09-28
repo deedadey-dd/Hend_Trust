@@ -5,6 +5,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { useModal } from '../context/ModalContext';
 
 interface APIKeyItem {
   id: string;
@@ -37,6 +38,7 @@ interface WebhookLogItem {
 }
 
 export default function DeveloperKeysView() {
+  const modal = useModal();
   const [keys, setKeys] = useState<APIKeyItem[]>([]);
   const [webhooks, setWebhooks] = useState<WebhookItem[]>([]);
   const [logs, setLogs] = useState<WebhookLogItem[]>([]);
@@ -115,19 +117,38 @@ export default function DeveloperKeysView() {
       setKeys(prev => [res.data, ...prev]);
       setKeyName('');
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to generate API Key.');
+      await modal.alert({
+        title: 'Key Generation Failed',
+        message: err.response?.data?.message || 'Failed to generate API Key.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setCreatingKey(false);
     }
   };
 
   const handleRevokeKey = async (keyId: string) => {
-    if (!confirm("Are you sure you want to revoke this API key? Any applications using this key will immediately lose access.")) return;
+    const confirmed = await modal.confirm({
+      title: 'Revoke API Key?',
+      message: 'Are you sure you want to revoke this API key?',
+      description: 'Any external platforms or integrations using this key will immediately lose access to the HendTrust API.',
+      confirmText: 'Revoke Key',
+      cancelText: 'Cancel',
+      type: 'danger',
+      icon: 'trash'
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/developer/keys/${keyId}`);
       setKeys(prev => prev.map(k => k.id === keyId ? { ...k, is_active: false } : k));
     } catch (err) {
-      alert("Failed to revoke API key.");
+      await modal.alert({
+        title: 'Revocation Failed',
+        message: 'Failed to revoke API key. Please check your connection.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
@@ -151,12 +172,26 @@ export default function DeveloperKeysView() {
   };
 
   const handleDeleteWebhook = async (webhookId: string) => {
-    if (!confirm("Are you sure you want to delete this Webhook endpoint?")) return;
+    const confirmed = await modal.confirm({
+      title: 'Delete Webhook Endpoint?',
+      message: 'Are you sure you want to delete this Webhook endpoint?',
+      description: 'Live escrow lifecycle notifications will no longer be dispatched to this URL.',
+      confirmText: 'Delete Endpoint',
+      cancelText: 'Keep Webhook',
+      type: 'danger',
+      icon: 'trash'
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/developer/webhooks/${webhookId}`);
       setWebhooks(prev => prev.filter(w => w.id !== webhookId));
     } catch (err) {
-      alert("Failed to delete webhook endpoint.");
+      await modal.alert({
+        title: 'Deletion Failed',
+        message: 'Failed to delete webhook endpoint. Please try again.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
@@ -168,7 +203,12 @@ export default function DeveloperKeysView() {
       setTestResult(res.data);
       if (selectedWebhookId) fetchWebhookLogs(selectedWebhookId);
     } catch (err: any) {
-      alert("Failed to dispatch test webhook event.");
+      await modal.alert({
+        title: 'Webhook Test Failed',
+        message: 'Failed to dispatch test webhook event. Please verify server status.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setTestingWebhook(false);
     }

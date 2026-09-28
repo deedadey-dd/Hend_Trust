@@ -65,12 +65,13 @@ graph TD
 
 #### Key Features & Workflows
 1. **Multi-Role User Accounts**:
-   - **Buyer**: Can purchase via payment links or storefronts, track orders, approve escrow release, raise disputes, submit reviews, and view purchase history.
-   - **Seller / Merchant**: Can create stores, generate custom payment links, track sales, manage escrow balances, request payouts, configure payout accounts (MoMo/Bank), and view analytics.
-   - **Admin / Operations**: Access to `/admin-portal` for global platform control, disputes desk, ledger auditing, user management, and manually approving KYC.
+   - **Buyer (`role: 'BUYER'`)**: Frictionless onboarding without email link lockouts. Can purchase via 1-click checkout (0 OTPs), track orders instantly across phone/email without SMS lookup OTPs, 1-click confirm delivery receipt, 1-click approve escrow payout release to sellers, raise disputes, and view full purchase history in the Buyer Dashboard (`/dashboard?tab=purchases`).
+   - **Seller / Merchant (`role: 'SELLER'`)**: Can create stores, generate custom payment links, track sales, manage escrow balances, request payouts, configure payout accounts (MoMo/Bank), and view analytics.
+   - **Admin / Operations (`role: 'ADMIN' | 'SUPPORT_AGENT' | 'MANAGER'`)**: Access to `/admin-portal` for global platform control, disputes desk, ledger auditing, user management, and manually approving KYC.
 
 2. **Authentication & Session Security**:
-   - JWT & Session token authentication.
+   - JWT authentication stored securely in HTTP-only, SameSite cookies.
+   - **1-Click Post-Checkout Buyer Registration, Uniqueness Verification & Guest Fallback (`/api/v1/auth/buyer-quick-register` & `/api/v1/auth/verify-phone-otp`)**: Allows guest shoppers on `/l/:id` to set a password in seconds post-checkout. Verifies email & phone uniqueness before creation. If an existing account is found with matching credentials, prompts the user to either log in to access their dashboard or continue tracking as a guest. If a new account is created, dispatches an email activation link and an SMS OTP code to their phone. For unauthenticated visitors, the 1-Click creation card remains prominently highlighted above the order details on `/l/:id` so they can create an account or log in at any time.
    - Email verification via OTP (6-digit PIN code with timed expiration).
    - Phone number verification via SMS OTP.
    - Password reset workflow with secure tokenized URLs.
@@ -82,7 +83,7 @@ graph TD
    - **Verified Seller Badge**: Once KYC is verified, a prominent **Verified Seller** checkmark badge appears on their profile, payment links, store page, and review modal.
 
 #### Database Models (`backend/apps/users/models.py`)
-- `User`: Custom user model with fields `role`, `ghana_card_number`, `is_identity_verified`, `is_business_verified`, `id_card_front_url`, `id_card_back_url`, `business_license_photo_url`, `payout_mode` (`MOMO` or `BANK`), `shop_category`, `advertised_until`.
+- `User`: Custom user model with fields `role` (`'BUYER'`, `'SELLER'`, `'ADMIN'`, `'SUPPORT_AGENT'`, `'MANAGER'`), `ghana_card_number`, `is_identity_verified`, `is_business_verified`, `is_email_verified`, `is_phone_verified`, `id_card_front_url`, `id_card_back_url`, `business_license_photo_url`, `payout_mode` (`MOMO` or `BANK`), `shop_category`, `advertised_until`.
 
 ---
 
@@ -137,12 +138,16 @@ graph TD
 
 2. **Public Checkout Page (`/pay/:slug` & `/l/:id`)**:
    - Clean, conversion-focused responsive checkout UI.
+   - **Dual-Flow Checkout Initialization**:
+     - **Authenticated Buyer (1-Click Init, 0 SMS OTPs)**: System auto-populates buyer name, phone, and email, initializing checkout with Paystack without triggering an SMS OTP modal.
+     - **Guest Shopper**: Follows the original secure upfront SMS phone OTP verification modal before initializing payment.
    - Real-time transparent fee calculation (Item Price + Delivery Fee + Escrow Protection Fee if passed to buyer).
    - Payment method selection:
      - **Mobile Money (MoMo)**: MTN Mobile Money, Telecel Cash, AT Money.
      - **Debit / Credit Card**: Visa, Mastercard.
      - **GhanaQR**: Instant QR code scan & pay.
    - Direct integration with Paystack / Hubtel inline modal or redirect API.
+   - **1-Click Post-Checkout Buyer Registration Card**: Displayed on `/l/:id` immediately following payment so guest buyers can set a password in 10 seconds, auto-login, and eliminate future checkout/tracking OTPs.
    - Upon successful payment verification, the transaction instantly transitions into an active **Held in Escrow** state.
 
 #### Database Models (`backend/apps/links/models.py`)
@@ -160,7 +165,7 @@ stateDiagram-v2
     [*] --> PENDING_PAYMENT: Link Created / Checkout Initiated
     PENDING_PAYMENT --> HELD_IN_ESCROW: Payment Confirmed (Paystack/Hubtel)
     HELD_IN_ESCROW --> IN_DELIVERY: Seller Dispatches Order
-    IN_DELIVERY --> DELIVERED: Courier / Seller Marks Delivered
+    IN_DELIVERY --> DELIVERED: Courier / Seller Marks Delivered / Buyer Confirms
     DELIVERED --> COMPLETED_RELEASED: Buyer Approves / Auto-Timer Expires
     DELIVERED --> DISPUTED: Buyer Raises Dispute
     IN_DELIVERY --> DISPUTED: Non-Delivery Dispute
@@ -175,12 +180,14 @@ stateDiagram-v2
     RETURNED_REFUNDED --> [*]
 ```
 
-2. **Auto-Release Timer Engine**:
-   - When an order enters `DELIVERED`, a countdown timer begins (default 24 to 48 hours).
-   - If the buyer does not raise a dispute before the timer expires, Celery Beat automatically triggers `auto_release_escrow()`, releasing funds to the seller's available wallet.
+2. **1-Click Delivery Confirmation & Payout Release (Zero OTPs for Authenticated Buyers)**:
+   - **Authenticated Buyer Receipt Confirmation (`POST /api/v1/escrow/{id}/buyer-confirm-receipt`)**: Authenticated buyers can confirm package receipt in 1 click without requiring an SMS verification code, immediately starting the inspection period.
+   - **1-Click Approve & Release (`POST /api/v1/escrow/{id}/approve-and-release`)**: Authenticated buyers can approve immediate release of escrow funds to the seller during the inspection period.
+   - **Guest Buyer Receipt Confirmation (`POST /api/v1/escrow/{id}/confirm-receipt`)**: Guest buyers enter the 6-digit confirmation code delivered via SMS/Email upon dispatch.
 
-3. **Buyer Manual Release**:
-   - Buyers receive an instant notification with a one-click **"Approve & Release Funds"** button upon receiving their item, immediately transferring funds to the seller.
+3. **Auto-Release Timer Engine**:
+   - When an order enters `DELIVERED`, a countdown timer begins (default 24 to 72 hours tiered by transaction value).
+   - If the buyer does not raise a dispute before the timer expires, Celery Beat automatically triggers `auto_release_escrow()`, releasing funds to the seller's available wallet.
 
 4. **Item Return Subsystem (`RETURN_IN_PROGRESS` ➔ `RETURNED` / `REFUNDED`)**:
    - **Return Initiation**: Initiated when an admin dispute ruling requires item return (`REQUIRE_RETURN_FROM_BUYER`).
@@ -208,11 +215,20 @@ stateDiagram-v2
 
 ---
 
-### Module E: Dispute Resolution & Seller Health Governance Subsystem
+### Module E: Dispute Resolution, Arbiter Escalation & Seller Health Governance Subsystem
 
 #### Key Features & Workflows
-1. **Dispute Initiation & Subsequent Detail Appending (`/dashboard`, `/l/:id`, `/tracking`)**:
+1. **Dispute Initiation, Categorization & Reason Validation (`/dashboard`, `/l/:id`, `/tracking`)**:
    - Either party (Buyer or Seller) can open a dispute if an issue arises (e.g., non-delivery, damaged goods, wrong item).
+   - **7 Standardized Dispute Reason Categories**:
+     - `ITEM_NOT_RECEIVED`: Item not delivered or missing in transit.
+     - `ITEM_DAMAGED`: Package or goods damaged/broken during transit or delivery.
+     - `ITEM_DIFFERENT_FROM_DESCRIPTION`: Significant deviation from product specifications or listed condition.
+     - `DEFECTIVE_OR_NON_FUNCTIONAL`: Item fails to operate, is counterfeit, or suffers internal malfunction.
+     - `WRONG_SIZE_OR_SPEC`: Incorrect dimensions, sizing, color, or model variant delivered.
+     - `INCOMPLETE_MISSING_ITEMS`: Missing bundled accessories, parts, or multi-item components.
+     - `OTHER_VIOLATION`: Other merchant breach or policy violation.
+   - **10-Character Minimum Explanation Rule**: Both dispute opening (`/raise-dispute`) and subsequent reason appends (`/dispute-append`) enforce a strict minimum explanation length of 10 characters with real-time UI character counters (`{len}/10 min chars`) to prevent uninformative or empty disputes.
    - **Subsequent Dialogue & Reason Appends**:
      - Buyers can add further clarification notes and photos to an ongoing dispute without overwriting past submissions. Updates are appended with audit timestamps: `--- [Buyer Update (Timestamp)] ---`.
      - Sellers can add multiple counter-responses and additional evidence over time (`--- [Seller Response (Timestamp)] ---`).
@@ -225,12 +241,32 @@ stateDiagram-v2
      - **Retraction events**: Centered amber status card (`bg-amber-100 dark:bg-amber-950/60`), shield check icon.
      - **Read More / Collapsible Trail**: Long text (> 260 characters) includes `Read more...` / `Read less` toggles; large dialogues (> 4 updates) feature a top `Show Earlier Updates (N)` / `Collapse Trail` banner with smooth scrolling.
 
-2. **Dispute Retraction & Private Settlement (`/l/:id`)**:
+2. **Arbiter Instructions & Notices During Active Dispute (Without Concluding/Resolving)**:
+   - **Post Instruction (`POST /api/v1/admin/disputes/{id}/post-instruction`)**: Allows arbiters to issue binding instructions, requests for evidence, or mediation notices without terminating or resolving the active dispute state.
+   - **Dispute Dialogue Appending**: Formatted with audit headers (`--- [Arbiter Instruction (Timestamp) by ArbiterName] ---`), automatically appending to `manager_dispute_notes` and supporting accumulated WebP photo uploads.
+   - **Center-Aligned Timeline Integration (`DisputeChatTimeline`)**: Parses individual instruction blocks and renders them prominently in the **center** of the conversation stream with author badge (`⚖️ Arbiter Instruction`), timestamp, formatted text, and photo gallery.
+   - **Automated Dispatches**: Automatically sends SMS & Email notifications to both buyer and seller with instruction preview and dashboard tracking links.
+
+3. **48-Hour "Request Arbiter Decision" Escalation & Priority Queue Ordering**:
+   - **Negotiation Period**: Disputes initially open into a peer negotiation state allowing buyer and seller to communicate and resolve the issue directly.
+   - **Escalation Activation (`arbiter_escalation_hours`, Default 48h)**: When $\text{elapsed dispute time} \ge \text{arbiter\_escalation\_hours}$, both buyer and seller receive an active **"⚡ Request Arbiter Decision"** button.
+   - **Escalation Trigger (`POST /api/v1/escrow/{id}/request-arbiter-decision`)**:
+     - Sets `arbiter_escalated_at = timezone.now()`, `arbiter_escalated_role = 'BUYER' | 'SELLER'`, and `arbiter_escalated_by = user`.
+     - Records an immutable audit log entry in `DisputeResolutionAction`.
+     - Dispatches automated SMS and email notifications informing both parties that the dispute has been escalated for high-priority arbiter ruling.
+   - **Priority Queue Sorting**: The Admin/Arbiter Dispute Queue orders transactions with `F('arbiter_escalated_at').desc(nulls_last=True), '-created_at'`, pushing escalated disputes immediately to the top with a distinct `⚡ ARBITER DECISION REQUESTED` badge.
+
+4. **External Arbitration, 100% Cost Assumption, Platform Indemnity & Certified Order Requirement**:
+   - **100% Cost Assumption**: Any party choosing to submit the dispute to external court litigation or statutory arbitration bodies bears 100% of all legal, filing, and administrative costs.
+   - **Platform Indemnity**: HendAxis Trust and its personnel remain fully absolved and indemnified against all consequences of external disputes.
+   - **Certified Written Ruling Upload (`external_arbitration_order_url`)**: Release of escrow funds following external arbitration requires submission of an authentic, certified, written binding order from the third-party arbitrator/court. The platform Arbiter must verify and attach the official document URL in the resolution modal before executing the payout.
+
+4. **Dispute Retraction & Private Settlement (`/l/:id`)**:
    - **Buyer Self-Retraction**: Buyers who reach a mutual agreement with the seller outside formal arbitration can retract their dispute directly from their order page (`/l/:id`).
    - **Automated Delayed Settlement (Default 24 Hours)**: Upon retraction (`dispute_retracted_at = timezone.now()`), the dispute is closed, and escrow funds are scheduled for automatic release to the seller after 24 hours (governed by the configurable platform setting `dispute_retraction_release_hours`).
    - **Permanent Rating Voidance**: To protect system integrity and prevent retaliatory or coerced review manipulation, any transaction that experienced a dispute permanently loses review eligibility—the rating capability remains voided even after retraction.
 
-3. **Automated Seller Dispute Health Monitoring & Account Suspension**:
+5. **Automated Seller Dispute Health Monitoring & Account Suspension**:
    - **Multi-Window Calculation**: System computes seller dispute percentage across (1) Last 30 Days, (2) Last 15 Sales, and (3) Lifetime Sales, selecting the highest dispute rate among sets with `paid_transactions >= dispute_min_sample_size` (default: 5) to prevent low-volume sample distortion.
    - **Configurable Platform Thresholds (`/admin/settings`)**:
      - **Dispute Minimum Sample Size (Default: 5 Txns)**: Number of paid transactions required before dispute rate evaluation begins.
@@ -240,35 +276,36 @@ stateDiagram-v2
    - **Suspension Enforcement**: Deactivates all active payment links, blocks payment link creation, and returns HTTP 403 Forbidden on public checkout for suspended seller links.
    - **In-Flight Order Continuity**: In-flight orders that were already paid prior to suspension remain active and proceed through the full fulfillment, delivery, inspection, dispute, and payout lifecycle.
 
-4. **Automated Seller Rating Governance & Thresholds**:
+6. **Automated Seller Rating Governance & Thresholds**:
    - **Aggregated Rating Calculation**: Computes average star rating from active customer reviews (`SellerReview.objects.filter(seller=seller_user, is_active=True)`).
    - **Rating Warning Banner (Default < 3.0 Stars)**: Triggers an inline warning notice on seller dashboard and sends a caution email to the seller.
    - **Rating Auto-Suspension (Default < 2.0 Stars with min 3 reviews)**: Automatically sets `is_suspended = True`, deactivates active payment links, and sends suspension alert email.
 
-5. **Automated Dispatch Expiry Governance & Thresholds**:
+7. **Automated Dispatch Expiry Governance & Thresholds**:
    - **Non-Dispatch Rate Calculation**: Computes the ratio of non-dispatch cancelled orders (`auto_cancelled_non_dispatch = True`) to total paid transactions.
    - **Dispatch Expiry Warning Banner (Default ≥ 20% Expiry Rate)**: Triggers an amber warning banner on the seller dashboard detailing non-dispatch metrics.
    - **Dispatch Expiry Auto-Suspension (Default ≥ 35% Expiry Rate with min sample size >= 5)**: Automatically sets `is_suspended = True`, deactivates all active links, records the suspension reason, and alerts the seller.
 
-6. **Post-Reinstatement Clean Slate & Immunity Protection**:
+8. **Post-Reinstatement Clean Slate & Immunity Protection**:
    - When an administrator manually reinstates a seller or approves an appeal, `seller.reinstated_at = timezone.now()` is recorded.
    - `compute_seller_dispute_health` filters evaluated transactions strictly to `created_at__gte=seller.reinstated_at`.
    - This gives reinstated merchants a clean slate and ensures they are not immediately re-suspended by historical transactions during the next Celery health check cycle, requiring 5 new paid transactions before thresholds are evaluated again.
 
-7. **Account Suspension Appeals & Admin Appeals Desk (`/admin-portal`)**:
+9. **Account Suspension Appeals & Admin Appeals Desk (`/admin-portal`)**:
    - **Payment Link Creation Modal UX**: Attempting to generate a payment link while suspended renders a dedicated modal explaining the exact suspension cause and offering an inline appeal form.
    - **Seller Appeal Submission (`POST /api/profile/appeal-suspension`)**: Suspended sellers submit a formal justification with remediation steps.
    - **Stale Appeal Status Isolation (`GET /api/profile/appeal-status`)**: Only appeals created after the current suspension timestamp are evaluated, preventing old rejected appeals from blocking new appeals.
    - **Admin Suspension Appeals Desk (`/admin-portal/dashboard` Tab 4)**: Administrators inspect appeals, review seller metrics, and approve (reinstating the account with `reinstated_at` set) or reject with notes.
 
-8. **Admin Mediation Desk & Resolution Notifications (`/admin-portal`)**:
-   - Dedicated interface displaying all active and past disputes.
-   - Embedded `DisputeChatTimeline` showing full chronological conversation stream and uploaded evidence.
-   - Direct action buttons for Admin Resolution (Full Refund, Release to Seller, Split Settlement, Require Item Return).
-   - Personalized Email & SMS notifications addressing buyers by First Name and sellers by Shop Name with exact Transaction Reference IDs.
+10. **Admin Mediation Desk & Resolution Notifications (`/admin-portal`)**:
+    - Dedicated interface displaying all active and past disputes.
+    - Embedded `DisputeChatTimeline` showing full chronological conversation stream and uploaded evidence.
+    - Direct action buttons for Admin Resolution (Full Refund, Release to Seller, Split Settlement, Require Item Return, External Arbitration Ruling).
+    - Personalized Email & SMS notifications addressing buyers by First Name and sellers by Shop Name with exact Transaction Reference IDs.
 
 #### Database Models (`backend/apps/escrow/models.py`, `backend/apps/users/models.py`)
 - `EscrowDispute`: Holds `escrow`, `raised_by`, `reason`, `description`, `evidence_urls`, `status`, `resolution_notes`, `resolved_by`, `resolved_at`.
+- `Transaction`: Extended with `buyer_dispute_category`, `disputed_at`, `arbiter_escalated_at`, `arbiter_escalated_role`, `arbiter_escalated_by`, and `external_arbitration_order_url`.
 - `SuspensionAppeal`: Holds `user`, `reason`, `status` (`PENDING`, `APPROVED`, `REJECTED`), `admin_notes`, `reviewed_by`, `created_at`, `reviewed_at`.
 - `User`: Extended with `is_suspended`, `suspension_reason`, `suspended_at`, and `reinstated_at`.
 
@@ -500,54 +537,81 @@ stateDiagram-v2
 
 ## 5. Backend REST API Reference Endpoint Mapping
 
-### Authentication & User Endpoints (`/api/users/`)
-- `POST /api/users/register`: Register new user account.
-- `POST /api/users/login`: Authenticate and obtain session/JWT token.
-- `POST /api/users/verify-email`: Confirm email via OTP PIN.
-- `POST /api/users/resend-otp`: Request fresh OTP PIN.
-- `POST /api/users/verify-ghana-card`: Submit Ghana Card for automated NIA or manual verification.
-- `GET /api/users/me`: Fetch authenticated user profile details.
-- `PUT /api/users/profile`: Update bio, logo, banner, and store settings.
-- `POST /api/users/verify-bank-account`: Validate MoMo/Bank account details against Paystack/Hubtel lookup API.
-- `POST /api/profile/appeal-suspension`: Submit account suspension appeal with detailed remediation justification.
-- `GET /api/profile/appeal-status`: Check current active appeal status and admin ruling notes.
+### Authentication & User Endpoints (`/api/v1/auth/` & `/api/v1/users/`)
+- `POST /api/v1/auth/buyer-quick-register`: Frictionless 1-click buyer account creation post-checkout (auto-verifies email/phone, returns JWT cookies).
+- `POST /api/v1/auth/register`: Register new merchant or buyer account.
+- `POST /api/v1/auth/login`: Authenticate and obtain JWT cookies.
+- `POST /api/v1/auth/verify-email`: Confirm email via OTP PIN.
+- `POST /api/v1/auth/resend-otp`: Request fresh OTP PIN.
+- `POST /api/v1/auth/verify-ghana-card`: Submit Ghana Card for automated NIA or manual verification.
+- `GET /api/v1/auth/me`: Fetch authenticated user profile details.
+- `PUT /api/v1/profile`: Update bio, logo, banner, and store settings.
+- `POST /api/v1/users/verify-bank-account`: Validate MoMo/Bank account details against Paystack/Hubtel lookup API.
+- `POST /api/v1/profile/appeal-suspension`: Submit account suspension appeal with detailed remediation justification.
+- `GET /api/v1/profile/appeal-status`: Check current active appeal status and admin ruling notes.
 
-### Payment Links Endpoints (`/api/links/`)
-- `GET /api/links`: List all payment links created by seller.
-- `POST /api/links`: Create new fixed or dynamic payment link (blocked if seller is suspended).
-- `GET /api/links/public/{slug}`: Fetch payment link public details for checkout.
-- `PUT /api/links/{id}/archive`: Archive a payment link.
+### Checkout & Order Tracking Endpoints (`/api/v1/checkout/`)
+- `POST /api/v1/checkout/verify-and-initialize`: Initialize payment with Paystack (OTP bypass for authenticated buyers; SMS OTP required for guests).
+- `POST /api/v1/checkout/send-otp`: Send checkout phone verification OTP for guest buyers.
+- `GET /api/v1/checkout/transaction/{ref}`: Fetch public transaction status details.
+- `GET /api/v1/checkout/buyer/my-orders`: Retrieve all active and historic orders for authenticated buyer across phone, email, and user ID (0 OTPs).
+- `POST /api/v1/checkout/tracking/send-otp`: Send 6-digit lookup OTP for guest order tracking.
+- `POST /api/v1/checkout/tracking/verify-otp`: Verify lookup OTP and unlock 2-hour tracking session.
 
-### Escrow Transactions & Disputes Endpoints (`/api/escrow/`)
-- `POST /api/escrow/initialize`: Initialize public checkout session (Paystack/Hubtel).
-- `POST /api/escrow/webhook`: Payment gateway callback webhook receiver.
-- `GET /api/escrow/my-transactions`: List buyer or seller transactions.
-- `POST /api/escrow/{id}/dispatch`: Mark order as dispatched with optional courier info.
-- `POST /api/escrow/{id}/mark-delivered`: Mark order as delivered.
-- `POST /api/escrow/{id}/release`: Buyer approves and releases escrow funds to seller.
-- `POST /api/escrow/{id}/dispute`: Raise dispute on an escrow transaction.
-- `POST /api/escrow/admin/resolve-dispute`: Admin action to resolve dispute (Refund, Release, Split).
-- `GET /api/escrow/admin/settings`: Fetch dynamic platform and governance settings.
-- `POST /api/escrow/admin/settings`: Update platform settings and governance thresholds.
-- `GET /api/admin/appeals`: List all seller suspension appeals.
-- `POST /api/admin/appeals/{id}/review`: Approve or reject suspension appeal.
+### Escrow Transactions & Disputes Endpoints (`/api/v1/escrow/`)
+- `POST /api/v1/escrow/{id}/buyer-confirm-receipt`: 1-Click delivery confirmation for authenticated buyers (0 OTPs, triggers inspection period).
+- `POST /api/v1/escrow/{id}/approve-and-release`: 1-Click escrow payout release to seller during inspection period (0 OTPs).
+- `POST /api/v1/escrow/{id}/confirm-receipt`: Delivery confirmation code verification for guest buyers.
+- `POST /api/v1/escrow/{id}/dispatch`: Mark order as dispatched with optional courier info and package photo.
+- `POST /api/v1/escrow/{id}/dispute`: Raise dispute on an escrow transaction with evidence photos.
+- `POST /api/v1/escrow/{id}/retract-dispute`: Buyer retracts dispute to settle privately with seller.
+- `POST /api/v1/escrow/admin/resolve-dispute`: Admin action to resolve dispute (Refund, Release, Split, Require Return).
+- `GET /api/v1/escrow/admin/settings`: Fetch dynamic platform and governance settings.
+- `POST /api/v1/escrow/admin/settings`: Update platform settings and governance thresholds.
 
-### Customer Reviews Endpoints (`/api/reviews/`)
-- `GET /api/reviews/feed`: Fetch recent verified reviews feed for carousels & `/reviews` page.
-- `GET /api/reviews/seller/{username}`: Fetch all reviews for a specific seller storefront.
-- `POST /api/reviews/submit`: Submit a verified review with ratings and optional item photo.
-- `POST /api/reviews/{id}/vote`: Upvote or downvote a review's helpfulness.
+### Customer Reviews Endpoints (`/api/v1/reviews/`)
+- `GET /api/v1/reviews/feed`: Fetch recent verified reviews feed for carousels & `/reviews` page.
+- `GET /api/v1/reviews/seller/{username}`: Fetch all reviews for a specific seller storefront.
+- `POST /api/v1/reviews/submit`: Submit a verified review with ratings and optional item photo.
+- `POST /api/v1/reviews/{id}/vote`: Upvote or downvote a review's helpfulness.
 
-### Wallet & Ledger Endpoints (`/api/wallet/`)
-- `GET /api/wallet/summary`: Fetch seller wallet balances (Available, Pending, Total Paid).
-- `POST /api/wallet/withdraw`: Initiate withdrawal request to bank or MoMo.
-- `GET /api/wallet/ledger-entries`: Fetch detailed double-entry financial ledger history.
+### Wallet & Ledger Endpoints (`/api/v1/wallet/`)
+- `GET /api/v1/wallet/balance`: Fetch current wallet balance.
+- `GET /api/v1/wallet/summary`: Fetch seller wallet balances (Available, Pending, Total Paid).
+- `POST /api/v1/wallet/withdraw`: Initiate withdrawal request to bank or MoMo.
+- `GET /api/v1/wallet/ledger-entries`: Fetch detailed double-entry financial ledger history.
 
-### Developer API Endpoints (`/api/developer/`)
-- `GET /api/developer/keys`: List user API keys.
-- `POST /api/developer/keys`: Generate new Live or Sandbox API key.
-- `DELETE /api/developer/keys/{id}`: Revoke an API key.
-- `POST /api/developer/webhooks`: Register webhook URL and secret.
+### Developer API Endpoints (`/api/v1/developer/`)
+- `GET /api/v1/developer/keys`: List user API keys.
+- `POST /api/v1/developer/keys`: Generate new Live or Sandbox API key.
+- `DELETE /api/v1/developer/keys/{id}`: Revoke an API key.
+- `POST /api/v1/developer/webhooks`: Register webhook URL and secret.
+
+---
+
+## 5.1 Static Route SEO Pre-Rendering & Dynamic Navigation Architecture
+
+### A. Static HTML Route Pre-Rendering Pipeline (`scripts/generate-routes-seo.mjs`)
+To guarantee optimal search engine indexing (Googlebot, Bingbot, Social Crawlers) and prevent canonical duplicate URL penalties, the build pipeline generates 12 independent, fully-rendered static HTML files on `npm run build`:
+- **Index (`/`)**: Main landing page with full Schema.org WebSite & FinancialService JSON-LD.
+- **For Buyers (`/for-buyers`)**: Buyer escrow guide, buyer protection highlights, FAQ snippet metadata.
+- **For Sellers (`/for-sellers`)**: Merchant value proposition, fee structure, WhatsApp integration guides.
+- **How It Works (`/how-it-works`)**: Step-by-step escrow lifecycle walkthrough and interactive calculator SEO schema.
+- **Trust Center (`/trust-center`)**: Bank-vault security, Ghana Card KYC standards, and fraud prevention measures.
+- **Safety Guides (`/guides`)**: Safe trading guides, scam identification, and MoMo security best practices.
+- **Referrals (`/referrals`)**: Community referral rewards and merchant affiliate program details.
+- **Developers (`/developers`)**: REST API & Webhook documentation, SDK references, sandbox keys.
+- **Help Center (`/help`)**: Searchable support categories, FAQs, and dispute escalation protocols.
+- **Contact Desk (`/contact`)**: Customer support channels, email, and live ticketing desk.
+- **Shops Directory (`/shops`)**: Verified escrow merchants, 16-category marketplace catalog, and live reviews carousel.
+- **Reviews (`/reviews`)**: Verified customer reviews feed and platform trust rating metrics.
+
+Each route contains its own dedicated `<title>`, meta description, `og:title`, `og:description`, `og:image`, `twitter:card`, and canonical URL `<link rel="canonical" href="https://trust.hendaxis.com/..." />`.
+
+### B. Dynamic Role-Adaptive Navigation (`Navbar.tsx`)
+- **Buyer Role (`role: 'BUYER'`)**: Primary links display **"My Purchases"** (`/dashboard?tab=purchases`), **"Verified Shops"** (`/shops`), and **"Track Order"** (0-OTP tracking modal).
+- **Merchant Role (`role: 'SELLER'`)**: Primary links display **"Dashboard"** (`/dashboard`), **"Create Link"** (`/create-link`), **"My Links"** (`/links`), **"Shops"** (`/shops`), and real-time **Wallet Balance Badge** linking to `/ledger`.
+- **Admin Roles (`role: 'ADMIN' | 'SUPPORT_AGENT' | 'MANAGER'`)**: Adds direct **"Manager Portal"** link to `/admin-portal/dashboard`.
 
 ---
 

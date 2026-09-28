@@ -1,3 +1,4 @@
+import re
 import secrets
 import string
 from ninja import Router, Schema
@@ -7,7 +8,9 @@ from apps.links.models import PaymentLink, FeeHandling
 from apps.escrow.models import Transaction, TransactionStatus
 from apps.checkout.services import generate_and_send_otp, generate_and_send_email_otp, verify_otp, PaystackAdapter
 from apps.core.ratelimit import rate_limit
-from typing import Optional
+from django.db.models import Q
+from hendaxis_trust.auth import JWTCookieAuth
+from typing import Optional, List
 from decimal import Decimal
 import uuid
 
@@ -43,8 +46,8 @@ class VerifyInitializeSchema(Schema):
     link_id: uuid.UUID
     name: str
     phone_number: str
-    otp_code: str
     email: str
+    otp_code: Optional[str] = None
     shipping_address: Optional[str] = ""
     promo_code: Optional[str] = None
     redeem_credit_ghs: Optional[float] = 0.0
@@ -85,6 +88,7 @@ class TransactionStatusSchema(Schema):
     total_amount_ghs: float
     buyer_refund_amount_ghs: Optional[float] = None
     buyer_name: str
+    buyer_phone: Optional[str] = ""
     buyer_email: str
     shipping_address: str
     title: str
@@ -107,10 +111,16 @@ class TransactionStatusSchema(Schema):
     waybill_photo_url: Optional[str] = None
     manager_dispute_notes: Optional[str] = None
     manager_dispute_photos: Optional[list[str]] = []
+    buyer_dispute_category: Optional[str] = None
     buyer_dispute_reason: Optional[str] = None
     buyer_dispute_photos: Optional[list[str]] = []
     seller_dispute_response: Optional[str] = None
     seller_dispute_photos: Optional[list[str]] = []
+    disputed_at: Optional[str] = None
+    arbiter_escalated_at: Optional[str] = None
+    arbiter_escalated_role: Optional[str] = None
+    arbiter_escalation_hours: Optional[int] = 48
+    external_arbitration_order_url: Optional[str] = None
     shipping_timeout_days: Optional[int] = 4
     inspection_hours_allowed: Optional[int] = 24
     buyer_review_token: Optional[str] = ""
@@ -198,6 +208,7 @@ def _build_txn_status_dict(t):
     cfg = get_platform_settings()
     timeout_days = int(cfg.get("shipping_timeout_days", 4))
     inspection_hours = get_inspection_hours_for_amount(t.total_amount_ghs)
+    escalation_hours = int(cfg.get("arbiter_escalation_hours", 48))
 
     return {
         "id": str(t.id),
@@ -205,6 +216,7 @@ def _build_txn_status_dict(t):
         "total_amount_ghs": float(t.total_amount_ghs or 0.0),
         "buyer_refund_amount_ghs": refund_val,
         "buyer_name": str(t.buyer_name or ''),
+        "buyer_phone": str(t.buyer_phone or ''),
         "buyer_email": str(t.buyer_email or ''),
         "shipping_address": str(t.shipping_address or ''),
         "title": str(t.link.title if t.link else 'Escrow Purchase'),
@@ -229,10 +241,16 @@ def _build_txn_status_dict(t):
         "waybill_photo_url": log.waybill_photo_url if log else None,
         "manager_dispute_notes": t.manager_dispute_notes or None,
         "manager_dispute_photos": t.manager_dispute_photos or [],
+        "buyer_dispute_category": getattr(t, 'buyer_dispute_category', '') or None,
         "buyer_dispute_reason": t.buyer_dispute_reason or None,
         "buyer_dispute_photos": t.buyer_dispute_photos or [],
         "seller_dispute_response": t.seller_dispute_response or None,
         "seller_dispute_photos": t.seller_dispute_photos or [],
+        "disputed_at": t.disputed_at.isoformat() if getattr(t, 'disputed_at', None) else None,
+        "arbiter_escalated_at": t.arbiter_escalated_at.isoformat() if getattr(t, 'arbiter_escalated_at', None) else None,
+        "arbiter_escalated_role": getattr(t, 'arbiter_escalated_role', '') or None,
+        "arbiter_escalation_hours": escalation_hours,
+        "external_arbitration_order_url": getattr(t, 'external_arbitration_order_url', '') or None,
         "buyer_review_token": getattr(t, 'buyer_review_token', ''),
         "link_id": str(t.link.id) if t.link else "",
         "dispute_retracted_at": t.dispute_retracted_at.isoformat() if t.dispute_retracted_at else None,
@@ -474,11 +492,60 @@ def validate_promo(request, data: ValidatePromoRequestSchema):
     }
 
 
+@checkout_router.get("/buyer/my-orders", response=list[TransactionStatusSchema], auth=JWTCookieAuth())
+def get_buyer_my_orders(request):
+    """Retrieve all orders belonging to the authenticated buyer without needing SMS OTP."""
+    user = request.user
+    phone = (getattr(user, 'phone_number', '') or '').strip()
+    email = (getattr(user, 'email', '') or '').strip()
+    
+    query = Q()
+    if phone:
+        digits = re.sub(r'\D', '', phone)
+        phone_variants = {phone}
+        if len(digits) >= 9:
+            last9 = digits[-9:]
+            phone_variants.add(f"0{last9}")
+            phone_variants.add(f"+233{last9}")
+            phone_variants.add(f"233{last9}")
+            phone_variants.add(last9)
+            query |= Q(buyer_phone__endswith=last9) | Q(buyer_identity__phone_number__endswith=last9)
+        for p in phone_variants:
+            query |= Q(buyer_phone=p) | Q(buyer_identity__phone_number=p)
+
+    if email:
+        query |= Q(buyer_email__iexact=email) | Q(buyer_identity__primary_email__iexact=email)
+        
+    if not query:
+        return []
+        
+    txns = Transaction.objects.filter(query).select_related(
+        'link', 'link__seller', 'review'
+    ).prefetch_related('delivery_logs').exclude(
+        status=TransactionStatus.AWAITING_PAYMENT
+    ).order_by('-created_at')
+    
+    return [_build_txn_status_dict(t) for t in txns]
+
 @checkout_router.post("/verify-and-initialize", response=InitializeResponse)
 @rate_limit('checkout_initialize', max_calls=10, window_seconds=300)
 def verify_and_initialize(request, data: VerifyInitializeSchema):
-    if not verify_otp(data.phone_number, data.otp_code):
-        raise HttpError(400, "Invalid or expired OTP")
+    is_auth = False
+    if hasattr(request, 'user') and request.user and request.user.is_authenticated:
+        is_auth = True
+    else:
+        try:
+            auth_helper = JWTCookieAuth()
+            user = auth_helper.authenticate(request, None)
+            if user and user.is_authenticated:
+                request.user = user
+                is_auth = True
+        except Exception:
+            pass
+
+    if not is_auth:
+        if not data.otp_code or not verify_otp(data.phone_number, data.otp_code):
+            raise HttpError(400, "Invalid or expired OTP")
 
     link = get_object_or_404(PaymentLink.objects.select_related('seller'), id=data.link_id)
     if not link.is_active or link.is_archived:

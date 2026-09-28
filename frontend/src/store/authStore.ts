@@ -6,10 +6,15 @@ interface User {
   role: string;
   email: string;
   name?: string;
+  first_name?: string;
+  last_name?: string;
   username?: string;
+  phone_number?: string;
   shop_name?: string;
   shop_category?: string;
   shop_categories?: string[];
+  is_email_verified?: boolean;
+  is_phone_verified?: boolean;
   is_superuser?: boolean;
   is_staff?: boolean;
 }
@@ -23,6 +28,7 @@ interface AuthState {
   login: (token: string, user: User) => void;
   logout: () => void;
   setToken: (token: string) => void;
+  updateUser: (user: Partial<User>) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
@@ -40,6 +46,11 @@ export const useAuthStore = create<AuthState>()(
       logout: () => set({ token: null, user: null, isAuthenticated: false }),
       
       setToken: (token) => set({ token }),
+
+      updateUser: (partialUser) =>
+        set((state) => ({
+          user: state.user ? { ...state.user, ...partialUser } : null,
+        })),
     }),
     {
       name: 'auth-storage',

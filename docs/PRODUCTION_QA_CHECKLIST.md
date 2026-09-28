@@ -51,22 +51,38 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Contact Form**: Fill out and submit the Contact Us form. Confirm success confirmation toast.
 
 ### 1.8 Order Tracking (`/tracking`)
-- [ ] **Upfront 2-Step OTP Verification**: Enter Order ID or Phone Number. Confirm 6-digit OTP prompt before accessing full order details.
+- [ ] **Dual-Mode Tracking Access**:
+  - [ ] **Logged-in Buyer**: Open `/tracking` modal while logged in. Confirm active and past orders appear automatically without an SMS lookup OTP.
+  - [ ] **Guest Shopper**: Enter Order ID or Phone Number. Confirm 6-digit OTP prompt before accessing full order details.
 - [ ] **Parcel Progress Timeline**: Verify courier status milestones (Order Placed ➔ Dispatched ➔ In Transit ➔ Delivered).
+
+### 1.9 Multi-Route Static SEO & Pre-Rendering (`scripts/generate-routes-seo.mjs`)
+- [ ] **Static Route Output**: Inspect `dist/` build output to confirm 12 distinct static HTML files exist (`/`, `/for-buyers`, `/for-sellers`, `/how-it-works`, `/trust-center`, `/guides`, `/referrals`, `/developers`, `/help`, `/contact`, `/shops`, `/reviews`).
+- [ ] **Canonical URL & Title Verification**: Inspect `<head>` tags of each route to verify independent `<title>`, meta description, OpenGraph/Twitter cards, and canonical link (`<link rel="canonical" href="https://trust.hendaxis.com/..." />`).
+- [ ] **Crawler Content Rendering**: Verify curl/raw HTTP request receives full static content rather than an empty blank SPA root.
 
 ---
 
 ## 🔐 Phase 2: User Onboarding & Authentication
 
 ### 2.1 Registration (`/register`)
-- [ ] **New Account Creation**: Register with a new username, email, phone number, and password.
+- [ ] **Persona Toggle**: Verify radio selector toggles cleanly between **"🏪 Merchant / Seller"** and **"🛍️ Buyer / Shopper"**.
+- [ ] **Buyer Account Registration**: Register a new account with `role: 'BUYER'`. Confirm instant account creation without email verification lockouts.
+- [ ] **Seller Account Registration**: Register a new account with `role: 'SELLER'`. Confirm standard onboarding requirements.
 - [ ] **Password Validation**: Test weak password (e.g. "123456") to confirm Django password strength rules trigger.
 
-### 2.2 Activation & Phone OTP Verification (`/activate-account`)
-- [ ] **Email Activation**: Check inbox for activation email. Click the verification link.
-- [ ] **SMS OTP**: Enter the 6-digit SMS verification code sent to phone number. Confirm account activates.
+### 2.2 Post-Checkout Buyer Registration & Dual-Verification (`/l/:id`)
+- [ ] **1-Click Password Setup**: Complete a guest checkout on `/l/:id`. On the order confirmation page, enter a password in the **"⚡ Create a 1-Click Buyer Account"** card and click **"Save Password & Verify"**.
+- [ ] **Dual Dispatch**: Confirm email activation link is sent to inbox, and a 6-digit SMS OTP is sent to phone number.
+- [ ] **Phone OTP Verification & Auto-Login**: Enter the 6-digit SMS OTP on the card. Confirm user is immediately logged in via secure HTTP-only JWT cookies upon entering the valid code.
+- [ ] **Unverified Email Banner**: Confirm the `UnverifiedEmailBanner` appears at the top of the application with a 1-click "Resend Link" button until the email link is clicked.
+- [ ] **Order Association**: Verify that the current transaction is immediately bound to the newly created buyer profile.
 
-### 2.3 Login & Two-Factor Authentication (`/login`)
+### 2.3 Activation & Phone OTP Verification (`/activate-account` - Sellers)
+- [ ] **Email Activation**: Check inbox for activation email. Click the verification link.
+- [ ] **SMS OTP**: Enter the 6-digit SMS verification code sent to phone number. Confirm seller account activates.
+
+### 2.4 Login & Two-Factor Authentication (`/login`)
 - [ ] **Login**: Sign in using registered email/username and password.
 - [ ] **2FA Setup**: Navigate to Profile ➔ Security. Scan QR code with Google Authenticator / Authy. Enter 6-digit OTP code to enable 2FA.
 - [ ] **2FA Login Verification**: Log out and log back in. Confirm system prompts for 2FA OTP before granting access.
@@ -107,34 +123,49 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 
 ---
 
-## 🛒 Phase 4: Buyer Persona (Public Checkout, Delivery & Promotions)
+## 🛒 Phase 4: Buyer Persona (Public Checkout, Delivery & Purchases Hub)
 
-### 4.1 Public Escrow Checkout & Brand Theme (`/l/:link_code`)
+### 4.1 Public Escrow Checkout & Dual-Flow Initialization (`/l/:link_code`)
 - [ ] **Brand Theme Styling**: Confirm page features Brand Blue (`#0363ff`) gradient header, glowing ambient accents, Brand Orange (`#ff6d1d`) "Continue to Payment" button, and `"Escrow Protected"` badges.
 - [ ] **Link Access & Security**: Open seller payment link in incognito or guest browser. Confirm HTTP 403 page if link belongs to a suspended seller.
 - [ ] **Authoritative Pricing Breakdown**: Verify Item Price + Delivery Fee + Platform Escrow Fee ($(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$).
 - [ ] **Location-Based Shipping Agreement**: Confirm delivery agreement rules and fee breakdown.
+- [ ] **Dual-Flow Checkout Verification**:
+  - [ ] **Authenticated Buyer (1-Click Init)**: Log in as a buyer and open `/l/:id`. Confirm buyer details autofill and clicking "Continue to Payment" immediately launches Paystack checkout **without displaying an SMS OTP modal**.
+  - [ ] **Guest Shopper (SMS OTP)**: Open in an incognito window without logging in. Confirm mandatory 6-digit SMS OTP modal appears before Paystack redirection.
 - [ ] **Promotions & Discount Engine**:
   - [ ] **Promo Code Application**: Expand the **"Have a Promo Code or Reward Credit?"** accordion. Enter a valid promo code (e.g. `WELCOME10`).
   - [ ] **Live Simulation (`/api/v1/checkout/validate-promo`)**: Verify real-time calculation shows discounted platform fee and net total. Confirm item price and shipping are untouched.
   - [ ] **Guest Buyer Credit Lookup**: Enter phone number (`024XXXXXXX`) with existing credits. Confirm available credit is detected and can be applied up to `max_promo_discount_cap_ghs` (default GHS 50.00).
-- [ ] **Buyer Details Form**: Input delivery address, full name, and mobile number.
-- [ ] **OTP Phone Verification Modal**: Verify 6-digit OTP prompt styled with Brand Blue shield and Brand Orange CTA button before redirection to Paystack.
 - [ ] **Payment Processing**: Select Payment Method (MoMo / Card via Paystack). Complete test transaction.
 
-### 4.2 Order Tracking & Parcel Handover
+### 4.2 Buyer Purchases & Orders Hub (`/dashboard?tab=purchases`)
+- [ ] **Dedicated Buyer Hub**: Log in as a buyer and navigate to `/dashboard`. Confirm default view loads **"My Purchases & Orders"** tab.
+- [ ] **Order Metrics Cards**: Verify summary counts for *Active In-Flight Orders*, *In Inspection Period*, and *Completed Orders*.
+- [ ] **Search & Filter**: Test filtering orders by search query (item title, merchant shop name, reference).
+- [ ] **Order Card Details**: Confirm product thumbnail, seller store link, courier tracking link, and live state tags render cleanly.
+
+### 4.3 Order Tracking & Parcel Handover
 - [ ] **SMS Notification**: Verify buyer receives order tracking code via SMS.
+- [ ] **Instant 0-OTP Tracking Modal**: Open Tracking Modal (`/tracking`) as an authenticated buyer. Confirm order history is fetched immediately via `GET /api/v1/checkout/buyer/my-orders` without prompting for a phone lookup OTP.
 - [ ] **Delivery Inspection**: Open Tracking Modal. Verify dispatch proof photo and courier details.
 - [x] **Full-Screen Image Lightbox**: Click product photo or delivery proof thumbnail to test full-screen zoom, 90° rotation, and download modal.
 
-### 4.3 Goods Confirmation, OTP Cooldown, Ratings & Post-Payout Rewards
-- [ ] **Confirm Delivery**: Enter delivery OTP upon receiving parcel. Confirm escrow status transitions to **Completed**.
-- [ ] **Post-Payout Loyalty Reward**: Confirm guest buyer identity automatically accrues 1% loyalty credit (valid for 90 days) on completed transaction.
+### 4.4 Goods Confirmation, 1-Click Release, Ratings & Post-Payout Rewards
+- [ ] **Dual Delivery Confirmation**:
+  - [ ] **Authenticated Buyer (1-Click Confirmation)**: Logged-in buyer clicks **"⚡ Confirm Receipt (1-Click)"** on `/l/:id` or in Buyer Purchases tab. Confirm transaction transitions immediately to `INSPECTION_PERIOD` with **0 OTP codes required**.
+  - [ ] **1-Click Approve & Release**: During inspection, logged-in buyer clicks **"✓ Approve & Release Payment"**. Confirm escrow payout releases directly to the seller with **0 OTP codes required**.
+  - [ ] **Guest Shopper (SMS Code)**: Guest buyer enters the 6-digit confirmation code from SMS/email to confirm receipt.
+- [ ] **Post-Payout Loyalty Reward**: Confirm buyer identity automatically accrues 1% loyalty credit (valid for 90 days) on completed transaction.
 - [x] **60-Second OTP SMS Cooldown**: Re-click **"Resend Code"** within 60 seconds. Verify countdown timer button (`Resend Code (58s)`), disabled state, and zero duplicate SMS dispatches.
 - [x] **Transit Rating Lock**: Verify rating button shows `🔒 Rate Seller (Unlocks upon delivery)` during transit (`DELIVERY_IN_PROGRESS`) and unlocks upon delivery with `#ff6d1d` brand accent.
 - [x] **1 Review Per Transaction**: Verify submitting feedback again updates the initial review instead of creating duplicate records.
 - [x] **$0-Cost Email Edit Link**: Test `/reviews/request-edit-link` fallback for buyers editing feedback from a new device or browser.
-- [ ] **Dispute Flow Test**: On a test order, click **"Raise Dispute"**, select reason (*Damaged / Wrong Item*), upload photo, and submit.
+- [x] **Dispute Reason Categorization & 10-Char Minimum Length**: On a test order, click **"Raise Dispute"**. Verify the 7 standardized category choices (*Item Not Received*, *Item Damaged / Broken*, *Item Different from Description*, *Defective or Non-Functional*, *Wrong Size or Specification*, *Incomplete / Missing Parts*, *Other Violation*). Confirm submission is blocked if explanation is under 10 characters, and verify the live character counter (`{len}/10 min chars`). Upload photo and submit.
+- [x] **Request Arbiter Decision Escalation (48h Window)**:
+  - [x] Before the configured escalation window (`arbiter_escalation_hours`, default 48h), confirm the dispute timeline shows the mediation countdown banner (*"Mediation Queue Escalation unlocks in X hours"*).
+  - [x] After 48 hours elapses (or accelerated test timestamp), verify both Buyer and Seller see the active **"⚡ Request Arbiter Decision"** button.
+  - [x] Click the button. Confirm confirmation prompt, immediate status update to `⚡ ARBITER DECISION REQUESTED`, audit log creation, and SMS/Email notification dispatch.
 - [ ] **Dispute Retraction Grace Release**: When buyer clicks **"Retract Dispute"** to settle privately, confirm auto-release grace timer (`dispute_retraction_release_hours`, default 24h) is scheduled.
 
 ---
@@ -147,10 +178,22 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Live Badge Indicators**: Confirm pending disputes, appeals, and KYC counters highlight with alert badges.
 
 ### 5.2 Dispute Mediation & Arbiter Workflow
-- [ ] **Review Evidence**: Inspect buyer dispute submission, seller dispatch proof images, and dispute chat timeline.
+- [ ] **Review Evidence & Dispute Categories**: Inspect buyer dispute category badge, evidence description, seller dispatch proof images, and dispute chat timeline.
+- [x] **Priority Queue Ordering (`⚡ ARBITER DECISION REQUESTED`)**: Verify disputes where either party clicked "Request Arbiter Decision" sort to the top of the Arbiter Dispute List with an active high-priority amber badge.
 - [ ] **Arbiter Assignment**: In Disputes Center, test assigning an arbiter to an active dispute.
 - [ ] **Arbiter Compensation**: Verify arbiter compensation ledger records standard mediation fee (`arbiter_fee_per_dispute`, default GHS 15.00).
-- [ ] **Resolution Action**: Execute dispute outcome (e.g. **Refund Buyer** or **Release Escrow Funds to Seller**). Confirm balance ledger adjusts accordingly.
+- [x] **Arbiter Non-Resolving Instruction / Notice Flow**:
+  - [x] On an active disputed transaction, click **"Post Instruction / Note"**.
+  - [x] Submit an instruction note (e.g. *"Seller, please upload courier receipt by tomorrow 5 PM."*) with optional photo attachment.
+  - [x] Verify the dispute remains in `DISPUTED` status (not resolved).
+  - [x] Confirm the instruction renders immediately in the center of the dispute dialogue trail with distinct purple badge (`⚖️ Arbiter Instruction`), timestamp, and photo previews.
+  - [x] Verify automated SMS and Email alerts are dispatched to both the buyer and seller with order reference and instruction summary.
+- [ ] **Standard Resolution Action**: Execute standard dispute outcome (e.g. **Refund Buyer** or **Release Escrow Funds to Seller**). Confirm balance ledger adjusts accordingly.
+- [x] **External Arbitration Ruling & Platform Indemnity Flow**:
+  - [x] In the Admin Resolution Modal, toggle **"External Arbitration / Court Ruling"**.
+  - [x] Confirm warning notice displays the legal indemnity disclaimer (*"Parties assume 100% of all legal/arbitration costs. Platform is indemnified and absolved"*).
+  - [x] Confirm that resolution submission is blocked until a valid, certified written order document URL / file upload (`external_order_document_url`) is attached by the arbiter.
+  - [x] Verify resolution log records the ruling order document URL and notes.
 
 ### 5.3 Merchant KYC Approval Queue
 - [ ] **Document Review**: Inspect submitted Ghana Card / National ID photos.
@@ -190,12 +233,12 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Role Management**: Promote or adjust staff roles (`ADMIN`, `ARBITER`, `COMPLIANCE_OFFICER`, `FINANCE_ADMIN`, `SUPPORT_AGENT`, `SELLER`).
 - [ ] **Role-Based Access Control (RBAC)**: Verify support agents cannot alter financial payout settings; finance admins have access to ledger and promo subsidies; superusers have unrestricted access.
 
-### 6.4 Production Django Admin (`DJANGO_ADMIN_URL`)
+### 6.4 Production Django Admin & Dynamic Platform Settings (`DJANGO_ADMIN_URL` & `/admin-portal/settings`)
 - [ ] **Secret Path Access**: Access `DJANGO_ADMIN_URL` path (e.g. `/hendaxis-secure-portal-9472/`).
 - [ ] **Decoy Honeypot Verification**: Open `/admin/` in incognito. Confirm decoy login trap renders. Verify intruder IP & attempt logged in backend security logs.
 - [ ] **Staff 2FA**: Confirm superuser login requires TOTP authenticator code.
 - [x] **Manual Admin Suspend & Clean Slate Reinstate**: Locate seller in Admin Portal directory. Click **"Suspend Seller"** (confirm links deactivate and user status locks to suspended) and **"Reinstate"** (confirm account unlocks and `reinstated_at` timestamp is updated).
-- [x] **Dispatch Expiry & Dispute Governance Settings**: In Settings Tab, test adjusting `shipping_timeout_days`, `dispatch_expiry_warning_threshold` (20%), `dispatch_expiry_suspension_threshold` (35%), and `dispute_retraction_release_hours` (24h).
+- [x] **Dispute Escalation & Logistics Governance Settings**: In Settings Tab, test adjusting `arbiter_escalation_hours` (default 48h), `shipping_timeout_days`, `dispatch_expiry_warning_threshold` (20%), `dispatch_expiry_suspension_threshold` (35%), and `dispute_retraction_release_hours` (24h). Confirm adjustments persist and apply globally.
 - [ ] **Security Lockout Audit**: Verify failed login attempts counter (`django-axes` / cache) and unlock blocked IPs if required.
 - [ ] **Developer Webhook Logs**: Audit outbound HMAC webhook delivery logs and retry statuses.
 

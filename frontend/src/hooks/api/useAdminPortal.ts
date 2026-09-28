@@ -353,6 +353,8 @@ export const useResolveDisputeMutation = () => {
       platform_retained_fee_ghs?: number;
       admin_notes?: string;
       manager_photos?: string[];
+      is_external_arbitration?: boolean;
+      external_order_document_url?: string;
     }) => {
       const { data } = await apiClient.post(`/admin/disputes/${resolveData.transaction_id}/resolve`, resolveData);
       return data;
@@ -364,6 +366,29 @@ export const useResolveDisputeMutation = () => {
     },
   });
 };
+
+export const usePostArbiterInstructionMutation = () => {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (payload: {
+      transaction_id: string;
+      instruction_notes: string;
+      photos?: string[];
+    }) => {
+      const { data } = await apiClient.post(`/admin/disputes/${payload.transaction_id}/post-instruction`, {
+        instruction_notes: payload.instruction_notes,
+        photos: payload.photos || [],
+      });
+      return data;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['admin-disputes'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-transactions'] });
+      queryClient.invalidateQueries({ queryKey: ['admin-metrics'] });
+    },
+  });
+};
+
 
 export const useBroadcastMessageMutation = () => {
   const queryClient = useQueryClient();

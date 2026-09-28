@@ -1,3 +1,4 @@
+import re
 # 2FA & Users API Module
 import secrets
 from datetime import timedelta
@@ -99,6 +100,15 @@ class LoginResponseSchema(Schema):
     username: str
     role: str
     email: str
+    name: Optional[str] = None
+    first_name: Optional[str] = None
+    last_name: Optional[str] = None
+    phone_number: Optional[str] = None
+    is_email_verified: bool = False
+    is_phone_verified: bool = False
+    requires_phone_otp: bool = False
+    account_already_exists: bool = False
+    uid: Optional[str] = None
     is_superuser: bool = False
     is_staff: bool = False
 
@@ -245,6 +255,232 @@ def send_password_reset_email(user, request=None):
         html_message=html_message
     )
 
+class CheckAccountExistsSchema(Schema):
+    email: Optional[str] = None
+    phone_number: Optional[str] = None
+
+@auth_router.post("/check-account-exists", response=dict)
+@rate_limit('auth_check_exists', max_calls=30, window_seconds=300)
+def check_account_exists(request, data: CheckAccountExistsSchema):
+    """Checks if an account is registered with the given email or phone number."""
+    email_clean = (data.email or "").strip().lower()
+    phone_clean = (data.phone_number or "").strip()
+
+    query = Q()
+    if email_clean:
+        query |= Q(email__iexact=email_clean)
+    if phone_clean:
+        digits = re.sub(r'\D', '', phone_clean)
+        variants = {phone_clean}
+        if len(digits) >= 9:
+            last9 = digits[-9:]
+            variants.add(f"0{last9}")
+            variants.add(f"+233{last9}")
+            variants.add(f"233{last9}")
+            variants.add(last9)
+            query |= Q(phone_number__endswith=last9)
+        for p in variants:
+            query |= Q(phone_number=p)
+
+    if not query:
+        return {"exists": False}
+
+    user = User.objects.filter(query).first()
+    if user:
+        return {
+            "exists": True,
+            "username": user.username,
+            "role": getattr(user, 'role', 'BUYER'),
+            "email": user.email or "",
+            "phone_number": user.phone_number or "",
+            "first_name": user.first_name or "",
+            "is_phone_verified": bool(user.is_phone_verified),
+            "is_email_verified": bool(user.is_email_verified)
+        }
+    return {"exists": False}
+
+class QuickBuyerRegisterSchema(Schema):
+    email: str
+    phone_number: Optional[str] = ""
+    password: str
+    name: Optional[str] = ""
+    transaction_ref: Optional[str] = None
+    referral_code: Optional[str] = None
+    confirm_existing_login: Optional[bool] = False
+
+@auth_router.post("/buyer-quick-register", response=LoginResponseSchema)
+@rate_limit('auth_buyer_register', max_calls=10, window_seconds=3600)
+def buyer_quick_register(request, data: QuickBuyerRegisterSchema, response: HttpResponse):
+    """Frictionless post-checkout account creation for buyers with uniqueness checks and guest fallback."""
+    email_clean = data.email.strip().lower()
+    phone_clean = (data.phone_number or "").strip()
+    
+    try:
+        django_validate_email(email_clean)
+    except DjangoValidationError:
+        raise HttpError(400, "Please provide a valid email address.")
+
+    if not phone_clean:
+        # Fallback: look up phone number from transaction by transaction_ref or buyer_email
+        from apps.escrow.models import Transaction
+        txn = None
+        if data.transaction_ref:
+            txn = Transaction.objects.filter(
+                Q(paystack_reference=data.transaction_ref.strip()) | Q(id__iexact=data.transaction_ref.strip())
+            ).first()
+        if not txn and email_clean:
+            txn = Transaction.objects.filter(buyer_email__iexact=email_clean).order_by('-created_at').first()
+        
+        if txn and txn.buyer_phone:
+            phone_clean = txn.buyer_phone.strip()
+            if not data.name and txn.buyer_name:
+                data.name = txn.buyer_name.strip()
+
+    if not phone_clean:
+        raise HttpError(400, "Phone number is required.")
+
+    # Uniqueness Verification: Check if user already exists with this email or phone
+    existing_user = User.objects.filter(Q(email__iexact=email_clean) | Q(phone_number=phone_clean)).first()
+    if existing_user:
+        # Check if password matches existing account
+        user = authenticate(username=existing_user.username, password=data.password)
+        if user:
+            # If user has not confirmed logging into the existing account yet, ask them first
+            if not getattr(data, 'confirm_existing_login', False):
+                return {
+                    "message": f"An existing account was found for {existing_user.email or existing_user.phone_number}.",
+                    "user_id": str(existing_user.id),
+                    "username": existing_user.username,
+                    "role": getattr(existing_user, 'role', 'BUYER'),
+                    "email": existing_user.email or "",
+                    "name": f"{existing_user.first_name} {existing_user.last_name}".strip() or existing_user.username,
+                    "first_name": existing_user.first_name or "",
+                    "last_name": existing_user.last_name or "",
+                    "phone_number": existing_user.phone_number or "",
+                    "is_email_verified": bool(existing_user.is_email_verified),
+                    "is_phone_verified": bool(existing_user.is_phone_verified),
+                    "requires_phone_otp": False,
+                    "account_already_exists": True,
+                    "uid": None,
+                    "is_superuser": bool(getattr(existing_user, 'is_superuser', False)),
+                    "is_staff": bool(getattr(existing_user, 'is_staff', False)),
+                }
+
+            # User explicitly confirmed logging in to their existing account
+            if not user.is_phone_verified:
+                _send_user_phone_otp(user)
+                uid = urlsafe_base64_encode(force_bytes(user.pk))
+                return {
+                    "message": f"Please verify your phone number. We've sent a 6-digit verification code to {user.phone_number}.",
+                    "user_id": str(user.id),
+                    "username": user.username,
+                    "role": getattr(user, 'role', 'BUYER'),
+                    "email": user.email or "",
+                    "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+                    "first_name": user.first_name or "",
+                    "last_name": user.last_name or "",
+                    "phone_number": user.phone_number or "",
+                    "is_email_verified": bool(user.is_email_verified),
+                    "is_phone_verified": False,
+                    "requires_phone_otp": True,
+                    "account_already_exists": False,
+                    "uid": uid,
+                    "is_superuser": bool(getattr(user, 'is_superuser', False)),
+                    "is_staff": bool(getattr(user, 'is_staff', False)),
+                }
+            refresh = RefreshToken.for_user(user)
+            set_auth_cookies(response, refresh, remember=True)
+            return {
+                "message": "Logged into existing account successfully.",
+                "user_id": str(user.id),
+                "username": user.username,
+                "role": getattr(user, 'role', 'BUYER'),
+                "email": user.email or "",
+                "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+                "first_name": user.first_name or "",
+                "last_name": user.last_name or "",
+                "phone_number": user.phone_number or "",
+                "is_email_verified": bool(user.is_email_verified),
+                "is_phone_verified": True,
+                "requires_phone_otp": False,
+                "account_already_exists": False,
+                "uid": None,
+                "is_superuser": bool(getattr(user, 'is_superuser', False)),
+                "is_staff": bool(getattr(user, 'is_staff', False)),
+            }
+        else:
+            raise HttpError(400, "An account with this email or phone number already exists with a different password. Please log in with your existing password or continue as a guest.")
+
+    # Generate a friendly username from name or email
+    base_name = "".join(c for c in (data.name or email_clean.split('@')[0]) if c.isalnum()).lower()
+    if len(base_name) < 3:
+        base_name = f"buyer{secrets.randbelow(9000) + 1000}"
+    base_name = base_name[:20]
+    
+    uname = base_name
+    counter = 1
+    while User.objects.filter(username__iexact=uname).exists():
+        uname = f"{base_name[:15]}{counter}"
+        counter += 1
+
+    temp_user = User(username=uname)
+    try:
+        validate_password(data.password, user=temp_user)
+    except DjangoValidationError as e:
+        raise HttpError(400, " ".join(e.messages))
+
+    user = User.objects.create_user(
+        username=uname,
+        email=email_clean,
+        password=data.password,
+        phone_number=phone_clean,
+        first_name=data.name.strip() if data.name else "",
+        role='BUYER',
+        is_email_verified=False,
+        is_phone_verified=False
+    )
+
+    # 1. Send account activation email asynchronously
+    try:
+        send_account_activation_email(user, request)
+    except Exception as email_err:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send buyer account activation email: {email_err}")
+
+    # 2. Send 6-digit phone verification SMS OTP
+    try:
+        _send_user_phone_otp(user)
+    except Exception as phone_err:
+        import logging
+        logging.getLogger(__name__).warning(f"Failed to send buyer phone OTP: {phone_err}")
+
+    if data.referral_code:
+        try:
+            from apps.users.referrals import apply_referral_code
+            apply_referral_code(user, data.referral_code)
+        except Exception as ref_err:
+            import logging
+            logging.getLogger(__name__).warning(f"Failed to link referral code on buyer registration: {ref_err}")
+
+    uid = urlsafe_base64_encode(force_bytes(user.pk))
+    return {
+        "message": f"Password saved! We've sent a 6-digit SMS verification code to {user.phone_number} and an activation link to your email. Please enter the SMS code below to activate your account.",
+        "user_id": str(user.id),
+        "username": user.username,
+        "role": 'BUYER',
+        "email": user.email or "",
+        "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "phone_number": user.phone_number or "",
+        "is_email_verified": False,
+        "is_phone_verified": False,
+        "requires_phone_otp": True,
+        "uid": uid,
+        "is_superuser": False,
+        "is_staff": False,
+    }
+
 @auth_router.post("/register", response=MessageSchema)
 @rate_limit('auth_register', max_calls=10, window_seconds=3600)
 def register(request, data: RegisterSchema):
@@ -273,13 +509,16 @@ def register(request, data: RegisterSchema):
     except DjangoValidationError as e:
         raise HttpError(400, " ".join(e.messages))
 
+    is_buyer = (data.role or '').upper() == 'BUYER'
+
     user = User.objects.create_user(
         username=data.username.strip(),
         email=data.email.strip(),
         password=data.password,
         phone_number=data.phone_number.strip(),
-        role=data.role or 'SELLER',
-        is_email_verified=False
+        role='BUYER' if is_buyer else 'SELLER',
+        is_email_verified=True if is_buyer else False,
+        is_phone_verified=True if is_buyer else False
     )
 
     if data.referral_code:
@@ -290,13 +529,16 @@ def register(request, data: RegisterSchema):
             import logging
             logging.getLogger(__name__).warning(f"Failed to link referral code on registration for {user.username}: {ref_err}")
 
-    try:
-        send_account_activation_email(user, request)
-    except Exception as e:
-        import logging
-        logging.getLogger(__name__).error(f"Error sending activation email to user {user.id}: {e}")
+    if not is_buyer:
+        try:
+            send_account_activation_email(user, request)
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Error sending activation email to user {user.id}: {e}")
 
-    return {"message": "Account created! Please check your email to activate your account before logging in."}
+        return {"message": "Account created! Please check your email to activate your account before logging in."}
+    
+    return {"message": "Account created successfully! You can now log in."}
 
 @auth_router.post("/activate-account", response=dict)
 def activate_account(request, data: ActivateAccountSchema):
@@ -362,7 +604,7 @@ def send_phone_otp(request, data: SendPhoneOtpSchema):
     }
 
 @auth_router.post("/verify-phone-otp", response=dict)
-def verify_phone_otp(request, data: VerifyPhoneOtpSchema):
+def verify_phone_otp(request, data: VerifyPhoneOtpSchema, response: HttpResponse):
     from django.db.models import Q
     user = None
     if getattr(request, 'user', None) and request.user.is_authenticated:
@@ -382,7 +624,23 @@ def verify_phone_otp(request, data: VerifyPhoneOtpSchema):
         raise HttpError(400, "User account not found.")
 
     if user.is_phone_verified:
-        return {"message": "Phone number is already verified.", "is_phone_verified": True}
+        refresh = RefreshToken.for_user(user)
+        set_auth_cookies(response, refresh, remember=True)
+        return {
+            "message": "Phone number is already verified.",
+            "is_phone_verified": True,
+            "is_email_verified": bool(user.is_email_verified),
+            "user_id": str(user.id),
+            "username": user.username,
+            "role": getattr(user, 'role', 'BUYER'),
+            "email": user.email or "",
+            "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+            "first_name": user.first_name or "",
+            "last_name": user.last_name or "",
+            "phone_number": user.phone_number or "",
+            "is_superuser": bool(getattr(user, 'is_superuser', False)),
+            "is_staff": bool(getattr(user, 'is_staff', False)),
+        }
 
     if not user.phone_otp_code or not data.otp_code.strip():
         raise HttpError(400, "Please enter the 6-digit verification code sent to your phone.")
@@ -397,9 +655,24 @@ def verify_phone_otp(request, data: VerifyPhoneOtpSchema):
     user.phone_otp_code = ""
     user.save(update_fields=['is_phone_verified', 'phone_otp_code'])
 
+    # Issue auth cookies on phone verification success
+    refresh = RefreshToken.for_user(user)
+    set_auth_cookies(response, refresh, remember=True)
+
     return {
-        "message": "Phone number verified successfully! Your account is now fully active.",
-        "is_phone_verified": True
+        "message": "Phone number verified successfully! Your account is now active.",
+        "is_phone_verified": True,
+        "is_email_verified": bool(user.is_email_verified),
+        "user_id": str(user.id),
+        "username": user.username,
+        "role": getattr(user, 'role', 'BUYER'),
+        "email": user.email or "",
+        "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "phone_number": user.phone_number or "",
+        "is_superuser": bool(getattr(user, 'is_superuser', False)),
+        "is_staff": bool(getattr(user, 'is_staff', False)),
     }
 
 @auth_router.post("/resend-activation", response=MessageSchema)
@@ -482,16 +755,34 @@ def login(request, data: LoginSchema, response: HttpResponse):
 
     user = authenticate(username=data.username, password=data.password)
     if not user:
-        # Fallback check by email if user entered email instead of username
-        user_by_email = User.objects.filter(email__iexact=data.username.strip()).first()
+        raw_ident = data.username.strip()
+        # Fallback 1: check by email
+        user_by_email = User.objects.filter(email__iexact=raw_ident).first()
         if user_by_email:
             user = authenticate(username=user_by_email.username, password=data.password)
+        else:
+            # Fallback 2: check by phone number (supports local 024..., +23324..., 23324..., and suffix match)
+            clean_digits = "".join(c for c in raw_ident if c.isdigit())
+            phone_queries = [raw_ident]
+            if clean_digits:
+                phone_queries.extend([
+                    clean_digits,
+                    f"+{clean_digits}",
+                    f"0{clean_digits[-9:]}" if len(clean_digits) >= 9 else clean_digits,
+                    f"+233{clean_digits[-9:]}" if len(clean_digits) >= 9 else clean_digits,
+                    f"233{clean_digits[-9:]}" if len(clean_digits) >= 9 else clean_digits,
+                ])
+            user_by_phone = User.objects.filter(phone_number__in=list(set(phone_queries))).first()
+            if not user_by_phone and len(clean_digits) >= 9:
+                user_by_phone = User.objects.filter(phone_number__endswith=clean_digits[-9:]).first()
+            if user_by_phone:
+                user = authenticate(username=user_by_phone.username, password=data.password)
 
     if not user:
         record_failure()
         raise HttpError(401, "Invalid credentials")
 
-    if not user.is_email_verified:
+    if not user.is_email_verified and getattr(user, 'role', 'SELLER') != 'BUYER':
         raise HttpError(403, "Please check your email and activate your account before logging in.")
 
     if not user.is_phone_verified and getattr(user, 'role', 'SELLER') == 'SELLER' and not (getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False)):
@@ -522,6 +813,12 @@ def login(request, data: LoginSchema, response: HttpResponse):
         "username": user.username,
         "role": user.role if hasattr(user, 'role') else 'SELLER',
         "email": user.email or "",
+        "name": f"{user.first_name} {user.last_name}".strip() or user.username,
+        "first_name": user.first_name or "",
+        "last_name": user.last_name or "",
+        "phone_number": user.phone_number or "",
+        "is_email_verified": bool(getattr(user, 'is_email_verified', False)),
+        "is_phone_verified": bool(getattr(user, 'is_phone_verified', False)),
         "is_superuser": bool(getattr(user, 'is_superuser', False)),
         "is_staff": bool(getattr(user, 'is_staff', False)),
     }
@@ -862,12 +1159,16 @@ def submit_verification_documents(request, data: SubmitVerificationRequest):
     if is_verified:
         user.verification_status = VerificationStatus.APPROVED
         user.verified_at = timezone.now()
+        was_buyer = (getattr(user, 'role', 'SELLER') == 'BUYER')
+        if was_buyer:
+            user.role = 'SELLER'
         user.save(update_fields=[
             'national_id_number', 'national_id_photo_url', 
             'business_license_photo_url', 'verification_status', 
-            'verification_rejection_reason', 'verified_at'
+            'verification_rejection_reason', 'verified_at', 'role'
         ])
-        return {"message": "Ghana Card auto-verified successfully! Verified merchant badge granted."}
+        msg = "Ghana Card auto-verified successfully! Your account has been upgraded to a Verified Seller." if was_buyer else "Ghana Card auto-verified successfully! Verified merchant badge granted."
+        return {"message": msg}
     else:
         user.verification_status = VerificationStatus.PENDING
         user.save(update_fields=[
@@ -875,7 +1176,7 @@ def submit_verification_documents(request, data: SubmitVerificationRequest):
             'business_license_photo_url', 'verification_status', 
             'verification_rejection_reason'
         ])
-        return {"message": f"Submission received! Auto-verification note: {v_msg}. Your documents have been forwarded to platform managers for manual verification."}
+        return {"message": f"Submission received! Auto-verification note: {v_msg}. Your documents have been forwarded to platform managers for review. Once verified, your seller account will be activated."}
 
 
 @profile_router.post("/2fa/setup", response=dict)

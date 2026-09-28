@@ -118,6 +118,53 @@ def test_get_pending_seller_verifications(admin_client, admin_user):
         assert isinstance(res.json(), list)
 
 @pytest.mark.django_db
+def test_get_disputes(admin_client, admin_user, disputed_transaction):
+    with patch('apps.escrow.api.is_staff_user') as mock_is_staff, \
+         patch('ninja_jwt.authentication.JWTAuth.__call__') as mock_auth:
+        mock_is_staff.return_value = True
+        mock_auth.return_value = admin_user
+        res = admin_client.get("/disputes")
+        assert res.status_code == 200
+        data = res.json()
+        assert isinstance(data, list)
+        assert len(data) >= 1
+        assert data[0]["id"] == str(disputed_transaction.id)
+
+
+@pytest.mark.django_db
+def test_post_dispute_instruction(admin_client, admin_user, disputed_transaction):
+    with patch('apps.escrow.api.is_arbiter_user') as mock_is_arbiter, \
+         patch('ninja_jwt.authentication.JWTAuth.__call__') as mock_auth, \
+         patch('apps.core.tasks.dispatch_sms_task.delay') as mock_sms, \
+         patch('apps.core.tasks.dispatch_email_task.delay') as mock_email:
+        mock_is_arbiter.return_value = True
+        mock_auth.return_value = admin_user
+
+        res = admin_client.post(
+            f"/disputes/{disputed_transaction.id}/post-instruction",
+            json={
+                "instruction_notes": "Both parties: please submit package photos by 5 PM tomorrow.",
+                "photos": []
+            }
+        )
+        assert res.status_code == 200
+        assert "Instruction posted" in res.json()["message"]
+
+        disputed_transaction.refresh_from_db()
+        assert "Arbiter Instruction" in disputed_transaction.manager_dispute_notes
+        assert "submit package photos" in disputed_transaction.manager_dispute_notes
+        assert disputed_transaction.status == TransactionStatus.DISPUTED  # NOT resolved!
+
+        # Check DisputeResolutionAction created
+        action = disputed_transaction.resolution_actions.first()
+        assert action is not None
+        assert action.action_type == "ARBITER_INSTRUCTION"
+        assert "submit package photos" in action.admin_notes
+        mock_sms.assert_called()
+
+
+
+@pytest.mark.django_db
 def test_resolve_dispute_partial_refund(admin_client, disputed_transaction, admin_user, system_accounts, seller_user):
     with patch('apps.escrow.api.is_admin_user') as mock_is_admin, \
          patch('ninja_jwt.authentication.JWTAuth.__call__') as mock_auth:

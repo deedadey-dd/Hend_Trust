@@ -256,13 +256,25 @@ class Transaction(models.Model):
     reminder_6h_inspection_sent = models.BooleanField(default=False)
     auto_cancelled_non_dispatch = models.BooleanField(default=False, db_index=True)
     # Dispute Evidence & Resolution Photos (Max 5 photos per party)
+    buyer_dispute_category = models.CharField(max_length=50, blank=True)
     buyer_dispute_reason = models.TextField(blank=True)
     buyer_dispute_photos = models.JSONField(default=list, blank=True)
     seller_dispute_response = models.TextField(blank=True)
     seller_dispute_photos = models.JSONField(default=list, blank=True)
     manager_dispute_notes = models.TextField(blank=True)
     manager_dispute_photos = models.JSONField(default=list, blank=True)
+    disputed_at = models.DateTimeField(null=True, blank=True)
     dispute_retracted_at = models.DateTimeField(null=True, blank=True)
+    arbiter_escalated_at = models.DateTimeField(null=True, blank=True)
+    arbiter_escalated_role = models.CharField(max_length=20, blank=True)
+    arbiter_escalated_by = models.ForeignKey(
+        'users.User',
+        on_delete=models.SET_NULL,
+        null=True,
+        blank=True,
+        related_name='escalated_dispute_transactions'
+    )
+    external_arbitration_order_url = models.TextField(blank=True)
     assigned_arbiter = models.ForeignKey(
         'users.User', 
         on_delete=models.SET_NULL, 
@@ -319,6 +331,7 @@ class PlatformSetting(models.Model):
 class DisputeActionType(models.TextChoices):
     ASSIGNED = 'ASSIGNED', 'Arbiter Assigned'
     MESSAGE_APPENDED = 'MESSAGE_APPENDED', 'Message / Evidence Appended'
+    ARBITER_INSTRUCTION = 'ARBITER_INSTRUCTION', 'Arbiter Instruction / Notice'
     RELEASE_TO_SELLER = 'RELEASE_TO_SELLER', 'Released to Seller'
     FULL_REFUND_TO_BUYER = 'FULL_REFUND_TO_BUYER', 'Full Refund to Buyer'
     PARTIAL_REFUND_TO_BUYER = 'PARTIAL_REFUND_TO_BUYER', 'Partial Refund Settlement'
