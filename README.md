@@ -95,8 +95,11 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Dynamic Configuration**: Configurable parameters (`shipping_timeout_days`, `auto_delivery_hours`, `return_dispatch_days`, `return_auto_refund_hours`, tiered inspection hours, `dispute_min_sample_size`, `dispute_warning_threshold`, `dispute_suspension_threshold`, `dispatch_expiry_warning_threshold`, `dispatch_expiry_suspension_threshold`) editable live in the Admin Portal.
 - **Strict Superuser Authorization**: Settings tab access strictly restricted to `is_superuser == True`.
 
-### 11. Multi-Channel Event Notification Suite
-- Automated SMS & Email notifications for payment receipts, dispatch tracking, 24h & 6h pre-dispatch warnings, delivery reminders, dispute alerts, return pickup OTPs, return refund confirmations, and payout completions.
+### 11. Multi-Channel Event Notification Suite & Staff Task Hub
+- **Automated Event Notifications**: Automated SMS & Email notifications for payment receipts, dispatch tracking, 24h & 6h pre-dispatch warnings, delivery reminders, dispute alerts, return pickup OTPs, return refund confirmations, and payout completions.
+- **Dedicated Notification Center (`/notifications`)**: High-contrast, multi-channel activity audit log aggregating Email, SMS, and in-app notices with intelligent deep linking, search, date range filters, and strict OTP privacy exclusion.
+- **Navbar Real-Time Alert Bell (`NotificationDropdown.tsx`)**: Global notification dropdown with live unread badge polling.
+- **Admin Portal Staff Task Alerts (`/admin-portal/dashboard?tab=notifications`)**: Automated work assignment alerts for staff roles (Dispute Arbitration assignments, 48h arbitration queue escalations, KYC Ghana Card review alerts, and suspension appeals).
 
 ### 12. Seller Health Governance, Appeals Desk & Clean Slate Reinstatement
 - **Dispute & Non-Dispatch Governance**: Multi-window calculations evaluating dispute rates and dispatch expiry rates (warn at 20%, auto-suspend at 35% expiry / 40% disputes with min sample size >= 5).

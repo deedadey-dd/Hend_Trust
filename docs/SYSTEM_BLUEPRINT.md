@@ -500,6 +500,30 @@ stateDiagram-v2
    - Generates branded, styled PDF reports with HendTrust logo headers, execution metadata (Timestamp, Admin User), clean table grids, and page numbers.
    - Available across all admin data tables and financial ledger views.
 
+### Module: Notification Engine, Activity Audit Logs & Staff Task Routing
+
+#### Key Features & Workflows
+1. **Multi-Channel Notification Aggregation (`/notifications`)**:
+   - Aggregates all transaction-related SMS notices, email dispatches, and in-app updates into a centralized audit log.
+   - **Security Exclusion**: Explicitly filters out one-time passwords (OTPs) and security verification codes to prevent unauthorized credential leakage.
+   - **Intelligent Deep Linking**: Automatically detects order references (`ORD-XXXX`, `TRK-XXXX`), dispute contexts, review notices, and promotional rewards to generate 1-click action links to the target route (e.g. `/track?code=...`, `/dashboard?tab=seller_reviews`, `/referrals`).
+   - **High-Contrast Dark & Light Design**: Clean `bg-slate-50 dark:bg-slate-950` backdrop with pure white/slate-900 cards, bold text hierarchy, left status borders, channel filter pills (*All Channels*, *In-App*, *Emails*, *SMS*), read/unread status filters, real-time debounced keyword search, date range pickers, and bulk actions (*Mark All Read*, *Clear Read*).
+
+2. **Navbar Notification Bell & Live Polling (`NotificationDropdown.tsx`)**:
+   - Interactive bell button embedded into the global navigation bar for authenticated buyers and sellers.
+   - Real-time unread bubble counter badge polling lightweight `/api/v1/notifications/unread-count`.
+   - Flyout dropdown panel displaying recent activity, 1-click mark-as-read, quick navigation links, and a direct button to the full `/notifications` center.
+
+3. **Admin Portal Staff Task Alerts & Work Routing (`/admin-portal/dashboard?tab=notifications`)**:
+   - Embedded notification dropdown and a dedicated **"Staff Task Alerts"** tab in the manager portal.
+   - **Automated Work Assignment Alerts**:
+     - `DISPUTE_ASSIGNMENT`: Direct notifications dispatched when a staff member is assigned as primary arbiter.
+     - `ARBITER_ESCALATION`: High-priority notices dispatched when either party triggers 48-hour arbitration queue escalation.
+     - `KYC_VERIFICATION`: Instant compliance notifications when a merchant uploads Ghana Card documents for review.
+     - `SUSPENSION_APPEAL`: Compliance alerts when a suspended merchant submits a remediation appeal.
+     - `STAFF_ROLE_ASSIGNMENT`: Alerts dispatched upon staff permission or role modifications.
+   - Work category filter pills (⚡ *Disputes & Arbitration*, 🛡️ *KYC Verifications*, ⚖️ *Suspension Appeals*, 👤 *Staff & Roles*), unread status filters, live search, and 1-click jump actions.
+
 ---
 
 ## 4. Frontend Route & Page Sitemap
@@ -529,9 +553,10 @@ stateDiagram-v2
 | `/links/create` | `CreatePaymentLinkView.tsx` | Authenticated (Seller) | Form for building dynamic or fixed price payment links with Account Suspended modal appeal integration. |
 | `/ledger` | `LedgerView.tsx` | Authenticated (Seller) | Financial wallet, balance breakdown, and withdrawal requests. |
 | `/profile` | `ProfileView.tsx` | Authenticated | User profile management, security settings, embeddable trust badges, and Ghana Card KYC upload. |
+| `/notifications` | `NotificationsView.tsx` | Authenticated | Dedicated notification center with multi-channel filtering (SMS, Email, In-App), search, and date presets. |
 | `/developer` | `DeveloperView.tsx` | Authenticated (Seller) | Developer documentation, API overview, and webhook configuration. |
 | `/developer/keys` | `DeveloperKeysView.tsx` | Authenticated (Seller) | API Key management portal (Live vs Sandbox keys). |
-| `/admin-portal` | `AdminDashboardView.tsx` | Admin Only | Master operations dashboard, disputes desk, KYC approvals, suspension appeals desk, ledger audits, and platform settings. |
+| `/admin-portal` | `AdminDashboardView.tsx` | Admin Only | Master operations dashboard, disputes desk, KYC approvals, suspension appeals desk, staff task alerts, ledger audits, and platform settings. |
 
 ---
 
@@ -549,6 +574,16 @@ stateDiagram-v2
 - `POST /api/v1/users/verify-bank-account`: Validate MoMo/Bank account details against Paystack/Hubtel lookup API.
 - `POST /api/v1/profile/appeal-suspension`: Submit account suspension appeal with detailed remediation justification.
 - `GET /api/v1/profile/appeal-status`: Check current active appeal status and admin ruling notes.
+
+### Notifications & Staff Task Endpoints (`/api/v1/notifications/`)
+- `GET /api/v1/notifications/`: Filtered notification list with pagination, channel filter (`SMS`, `EMAIL`, `IN_APP`), keyword search, and date ranges.
+- `GET /api/v1/notifications/unread-count`: Fast unread count endpoint for navbar badge updates.
+- `POST /api/v1/notifications/mark-all-read`: Marks all unread notifications as read.
+- `DELETE /api/v1/notifications/clear-read`: Bulk deletes read notifications.
+- `PATCH /api/v1/notifications/{id}/read`: Marks a single notification as read.
+- `PATCH /api/v1/notifications/{id}/toggle-read`: Toggles read/unread status.
+- `DELETE /api/v1/notifications/{id}`: Deletes a specific notification.
+
 
 ### Checkout & Order Tracking Endpoints (`/api/v1/checkout/`)
 - `POST /api/v1/checkout/verify-and-initialize`: Initialize payment with Paystack (OTP bypass for authenticated buyers; SMS OTP required for guests).

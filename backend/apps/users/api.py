@@ -1176,6 +1176,24 @@ def submit_verification_documents(request, data: SubmitVerificationRequest):
             'business_license_photo_url', 'verification_status', 
             'verification_rejection_reason'
         ])
+        
+        # Notify compliance staff and admins
+        from apps.notifications.services import create_notification
+        from apps.notifications.models import NotificationType
+        compliance_officers = User.objects.filter(
+            Q(role__in=['COMPLIANCE_OFFICER', 'ADMIN']) | Q(is_superuser=True), 
+            is_active=True
+        )
+        for officer in compliance_officers:
+            create_notification(
+                user=officer,
+                title=f"KYC Verification: @{user.username}",
+                message=f"User @{user.username} ({user.phone_number}) submitted documents for Ghana Card {normalized_id}.",
+                notif_type=NotificationType.IN_APP,
+                action_url="/admin-portal/dashboard?tab=verifications",
+                metadata={"user_id": str(user.id), "username": user.username, "task_type": "KYC_VERIFICATION"}
+            )
+
         return {"message": f"Submission received! Auto-verification note: {v_msg}. Your documents have been forwarded to platform managers for review. Once verified, your seller account will be activated."}
 
 
@@ -1267,6 +1285,23 @@ def submit_suspension_appeal(request, data: SubmitAppealSchema):
         raise HttpError(400, "You already have a pending appeal under review. Please wait for the admin team to respond.")
 
     appeal = SuspensionAppeal.objects.create(user=user, reason=reason)
+
+    # Notify compliance staff & admins via in-app notifications
+    from apps.notifications.services import create_notification
+    from apps.notifications.models import NotificationType
+    compliance_officers = User.objects.filter(
+        Q(role__in=['COMPLIANCE_OFFICER', 'ADMIN']) | Q(is_superuser=True), 
+        is_active=True
+    )
+    for officer in compliance_officers:
+        create_notification(
+            user=officer,
+            title=f"Suspension Appeal: @{user.username}",
+            message=f"Suspended seller @{user.username} submitted an appeal for review: \"{reason[:120]}\"",
+            notif_type=NotificationType.IN_APP,
+            action_url="/admin-portal/dashboard?tab=appeals",
+            metadata={"appeal_id": str(appeal.id), "username": user.username, "task_type": "SUSPENSION_APPEAL"}
+        )
 
     # Notify admins by email (optional, non-blocking)
     try:

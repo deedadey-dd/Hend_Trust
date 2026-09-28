@@ -4,8 +4,9 @@ import {
   TrendingUp, DollarSign, Lock, Eye, X, Zap, Clock,
   RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck, Store,
   Coins, UserPlus, Scale, History, UserCog, Gift, Menu, ChevronLeft, ChevronRight,
-  ExternalLink, MessageSquare
+  ExternalLink, MessageSquare, Bell, CheckCheck, Trash2
 } from 'lucide-react';
+import NotificationDropdown from '../components/NotificationDropdown';
 import { 
   useAdminMetricsQuery, 
   useAdminTransactionsQuery, 
@@ -134,7 +135,7 @@ const adInvoicesExportHeaders: ExportColumn[] = [
   { label: 'Active Until', key: 'advertised_until' },
 ];
 
-type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'APPEALS' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'AD_INVOICES' | 'SETTINGS' | 'STAFF' | 'ARBITER_PAYOUTS' | 'PROMOTIONS';
+type AdminTab = 'OVERVIEW' | 'TRANSACTIONS' | 'DISPUTES' | 'NOTIFICATIONS' | 'APPEALS' | 'VERIFICATIONS' | 'FUNDS' | 'SELLERS' | 'BUYERS' | 'BROADCAST' | 'AD_INVOICES' | 'SETTINGS' | 'STAFF' | 'ARBITER_PAYOUTS' | 'PROMOTIONS';
 
 interface ShopAdInvoiceAdminRecord {
   id: string;
@@ -929,6 +930,165 @@ export const AdminDashboardView: React.FC = () => {
     }
   };
 
+  // Staff Notifications & Work Assignment State
+  const [staffNotifications, setStaffNotifications] = useState<any[]>([]);
+  const [staffNotificationsLoading, setStaffNotificationsLoading] = useState(false);
+  const [staffTotalCount, setStaffTotalCount] = useState(0);
+  const [staffUnreadCount, setStaffUnreadCount] = useState(0);
+  const [staffTaskFilter, setStaffTaskFilter] = useState<'ALL' | 'DISPUTES' | 'VERIFICATIONS' | 'APPEALS' | 'ROLES'>('ALL');
+  const [staffStatusFilter, setStaffStatusFilter] = useState<'ALL' | 'UNREAD' | 'READ'>('ALL');
+  const [staffSearch, setStaffSearch] = useState('');
+  const [staffActionLoadingId, setStaffActionLoadingId] = useState<string | null>(null);
+
+  const fetchStaffUnreadCount = async () => {
+    try {
+      const res = await apiClient.get('/notifications/unread-count');
+      setStaffUnreadCount(res.data?.unread_count || 0);
+    } catch {
+      // ignore
+    }
+  };
+
+  const fetchStaffNotifications = async () => {
+    setStaffNotificationsLoading(true);
+    try {
+      const params = new URLSearchParams();
+      params.append('limit', '50');
+      if (staffStatusFilter === 'UNREAD') {
+        params.append('unread_only', 'true');
+      }
+      if (staffSearch.trim()) {
+        params.append('search', staffSearch.trim());
+      }
+      const res = await apiClient.get(`/notifications/?${params.toString()}`);
+      setStaffNotifications(res.data?.items || []);
+      setStaffTotalCount(res.data?.total_count || 0);
+      if (typeof res.data?.unread_count === 'number') {
+        setStaffUnreadCount(res.data.unread_count);
+      }
+    } catch (err) {
+      console.error('Failed to load staff notifications', err);
+    } finally {
+      setStaffNotificationsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchStaffUnreadCount();
+    const interval = setInterval(fetchStaffUnreadCount, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'NOTIFICATIONS') {
+      fetchStaffNotifications();
+    }
+  }, [activeTab, staffStatusFilter, staffSearch]);
+
+  const handleStaffMarkAllRead = async () => {
+    try {
+      await apiClient.post('/notifications/mark-all-read');
+      setStaffNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
+      setStaffUnreadCount(0);
+      modal.alert({
+        title: 'Alerts Marked as Read',
+        message: 'All your staff task notifications have been marked as read.',
+        type: 'success',
+        icon: 'check',
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleStaffClearRead = async () => {
+    const confirmed = await modal.confirm({
+      title: 'Clear Read Notifications',
+      message: 'Are you sure you want to remove all read notification alerts?',
+      confirmText: 'Clear Read',
+      type: 'orange',
+      icon: 'trash',
+    });
+    if (!confirmed) return;
+    try {
+      await apiClient.delete('/notifications/clear-read');
+      fetchStaffNotifications();
+      modal.alert({
+        title: 'Notifications Cleared',
+        message: 'All read notification alerts have been cleared.',
+        type: 'success',
+        icon: 'check',
+      });
+    } catch {
+      // ignore
+    }
+  };
+
+  const handleStaffToggleRead = async (item: any, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setStaffActionLoadingId(item.id);
+    try {
+      const res = await apiClient.patch(`/notifications/${item.id}/toggle-read`);
+      const newReadState = !item.is_read;
+      setStaffNotifications(prev =>
+        prev.map(n => (n.id === item.id ? { ...n, is_read: newReadState } : n))
+      );
+      if (typeof res.data?.unread_count === 'number') {
+        setStaffUnreadCount(res.data.unread_count);
+      } else {
+        setStaffUnreadCount(prev => (newReadState ? Math.max(0, prev - 1) : prev + 1));
+      }
+    } catch {
+      // ignore
+    } finally {
+      setStaffActionLoadingId(null);
+    }
+  };
+
+  const handleStaffNotificationClick = (item: any) => {
+    const taskType = item.metadata?.task_type || '';
+    const metadata = item.metadata || {};
+
+    if (!item.is_read) {
+      apiClient.patch(`/notifications/${item.id}/read`).catch(() => {});
+      setStaffNotifications(prev => prev.map(n => n.id === item.id ? { ...n, is_read: true } : n));
+      setStaffUnreadCount(prev => Math.max(0, prev - 1));
+    }
+
+    if (taskType === 'DISPUTE_ASSIGNMENT' || taskType === 'ARBITER_ESCALATION') {
+      setActiveTab('DISPUTES');
+      if (metadata.paystack_reference) {
+        setTxnSearch(metadata.paystack_reference);
+      }
+      return;
+    }
+
+    if (taskType === 'KYC_VERIFICATION') {
+      setActiveTab('VERIFICATIONS');
+      return;
+    }
+
+    if (taskType === 'SUSPENSION_APPEAL') {
+      setActiveTab('APPEALS');
+      return;
+    }
+
+    if (taskType === 'STAFF_ROLE_ASSIGNMENT') {
+      setActiveTab('STAFF');
+      return;
+    }
+
+    if (item.action_url) {
+      if (item.action_url.includes('tab=disputes')) {
+        setActiveTab('DISPUTES');
+      } else if (item.action_url.includes('tab=verifications')) {
+        setActiveTab('VERIFICATIONS');
+      } else if (item.action_url.includes('tab=appeals')) {
+        setActiveTab('APPEALS');
+      }
+    }
+  };
+
   interface NavItem {
     id: AdminTab;
     label: string;
@@ -948,6 +1108,7 @@ export const AdminDashboardView: React.FC = () => {
       category: 'Operations',
       items: [
         { id: 'OVERVIEW', label: 'Overview & Metrics', icon: BarChart3, visible: true },
+        { id: 'NOTIFICATIONS', label: 'Staff Task Alerts', icon: Bell, badge: staffUnreadCount || undefined, alert: (staffUnreadCount || 0) > 0, visible: true },
         { id: 'TRANSACTIONS', label: 'Transactions', icon: Package, badge: txnsData?.total_count, visible: true },
         { id: 'DISPUTES', label: 'Disputes Center', icon: ShieldAlert, badge: metrics?.active_disputes, alert: (metrics?.active_disputes || 0) > 0, visible: isArbiter || isCompliance || isAdminManager || isSupport },
         { id: 'APPEALS', label: 'Suspension Appeals', icon: ShieldAlert, badge: appealsData?.filter(a => a.status === 'PENDING').length, alert: (appealsData?.filter(a => a.status === 'PENDING').length || 0) > 0, visible: isCompliance || isAdminManager },
@@ -1018,8 +1179,10 @@ export const AdminDashboardView: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            <NotificationDropdown />
+
             <button 
-              onClick={() => { refetchMetrics(); refetchTxns(); refetchDisputes(); }}
+              onClick={() => { refetchMetrics(); refetchTxns(); refetchDisputes(); fetchStaffNotifications(); }}
               className="flex items-center justify-center gap-1.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 px-3 py-2 rounded-xl border border-slate-300 dark:border-slate-700 text-xs sm:text-sm font-semibold transition shadow-sm cursor-pointer"
             >
               <RefreshCw className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
@@ -1384,6 +1547,249 @@ export const AdminDashboardView: React.FC = () => {
                   </tbody>
                 </table>
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* ─── TAB: NOTIFICATIONS & STAFF WORK QUEUE ──────────────────────────── */}
+        {activeTab === 'NOTIFICATIONS' && (
+          <div className="space-y-6">
+            {/* Header Strip */}
+            <div className="bg-[#0363ff]/10 border border-[#0363ff]/20 rounded-2xl p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+              <div className="flex items-start gap-4">
+                <div className="w-10 h-10 rounded-2xl bg-[#0363ff] text-white flex items-center justify-center shrink-0 shadow-md">
+                  <Bell className="h-5 w-5" />
+                </div>
+                <div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-white">Staff Tasks & Notification Feed</h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5">
+                    Real-time operational alerts for dispute assignments, KYC identity submissions, suspension appeals, and administrative broadcasts.
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 self-stretch sm:self-auto">
+                <button
+                  type="button"
+                  onClick={handleStaffMarkAllRead}
+                  disabled={staffUnreadCount === 0 || staffNotificationsLoading}
+                  className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition border border-slate-200 dark:border-slate-700 shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <CheckCheck className="w-4 h-4 text-[#0363ff]" />
+                  <span>Mark All Read</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleStaffClearRead}
+                  disabled={staffNotificationsLoading}
+                  className="flex-1 sm:flex-none px-3.5 py-2 rounded-xl bg-white hover:bg-rose-50 dark:bg-slate-800 dark:hover:bg-rose-950/40 text-slate-800 hover:text-rose-700 dark:text-slate-200 dark:hover:text-rose-400 font-bold text-xs transition border border-slate-200 dark:border-slate-700 hover:border-rose-300 dark:hover:border-rose-800 shadow-xs flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  <span>Clear Read</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={fetchStaffNotifications}
+                  disabled={staffNotificationsLoading}
+                  className="p-2 rounded-xl bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 transition border border-slate-200 dark:border-slate-700 shadow-xs cursor-pointer disabled:opacity-50"
+                  title="Refresh staff alerts"
+                >
+                  <RefreshCw className={`w-4 h-4 ${staffNotificationsLoading ? 'animate-spin' : ''}`} />
+                </button>
+              </div>
+            </div>
+
+            {/* Filter Bar */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 shadow-xs space-y-4">
+              <div className="flex flex-col md:flex-row items-stretch md:items-center justify-between gap-3">
+                {/* Search */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    type="text"
+                    value={staffSearch}
+                    onChange={e => setStaffSearch(e.target.value)}
+                    placeholder="Search task alerts by order reference, username, or details..."
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-[#0363ff]"
+                  />
+                </div>
+
+                {/* Status Pills */}
+                <div className="flex items-center gap-1.5">
+                  <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1">Status:</span>
+                  {(['ALL', 'UNREAD', 'READ'] as const).map(st => (
+                    <button
+                      key={st}
+                      type="button"
+                      onClick={() => setStaffStatusFilter(st)}
+                      className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer border ${
+                        staffStatusFilter === st
+                          ? 'bg-slate-900 dark:bg-white text-white dark:text-slate-900 border-slate-900 dark:border-white shadow-xs'
+                          : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      {st === 'ALL' ? `All (${staffTotalCount})` : st === 'UNREAD' ? `Unread (${staffUnreadCount})` : 'Read'}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Task Category Tabs */}
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center gap-1.5 overflow-x-auto">
+                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1 shrink-0">Work Category:</span>
+                {[
+                  { id: 'ALL', label: 'All Alerts' },
+                  { id: 'DISPUTES', label: '⚡ Disputes & Arbitration' },
+                  { id: 'VERIFICATIONS', label: '🛡️ KYC Verifications' },
+                  { id: 'APPEALS', label: '⚖️ Suspension Appeals' },
+                  { id: 'ROLES', label: '👤 Staff & Roles' },
+                ].map(cat => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setStaffTaskFilter(cat.id as any)}
+                    className={`px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer shrink-0 border ${
+                      staffTaskFilter === cat.id
+                        ? 'bg-[#0363ff] text-white border-[#0363ff] shadow-xs'
+                        : 'bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+
+            {/* Notifications List */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs overflow-hidden divide-y divide-slate-100 dark:divide-slate-800">
+              {staffNotificationsLoading && staffNotifications.length === 0 ? (
+                <div className="py-20 flex flex-col items-center justify-center text-slate-500 gap-3">
+                  <RefreshCw className="w-8 h-8 animate-spin text-[#0363ff]" />
+                  <p className="text-sm font-semibold">Loading staff task alerts...</p>
+                </div>
+              ) : staffNotifications.filter(item => {
+                if (staffTaskFilter === 'DISPUTES') {
+                  return item.metadata?.task_type === 'DISPUTE_ASSIGNMENT' || item.metadata?.task_type === 'ARBITER_ESCALATION' || item.title?.toLowerCase().includes('dispute') || item.message?.toLowerCase().includes('dispute');
+                }
+                if (staffTaskFilter === 'VERIFICATIONS') {
+                  return item.metadata?.task_type === 'KYC_VERIFICATION' || item.title?.toLowerCase().includes('verification') || item.message?.toLowerCase().includes('verification');
+                }
+                if (staffTaskFilter === 'APPEALS') {
+                  return item.metadata?.task_type === 'SUSPENSION_APPEAL' || item.title?.toLowerCase().includes('appeal') || item.message?.toLowerCase().includes('appeal');
+                }
+                if (staffTaskFilter === 'ROLES') {
+                  return item.metadata?.task_type === 'STAFF_ROLE_ASSIGNMENT' || item.title?.toLowerCase().includes('role') || item.message?.toLowerCase().includes('staff');
+                }
+                return true;
+              }).length === 0 ? (
+                <div className="py-20 px-4 text-center space-y-3">
+                  <div className="w-14 h-14 rounded-3xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mx-auto border border-slate-200/80 dark:border-slate-700">
+                    <CheckCircle2 className="w-7 h-7 text-emerald-500" />
+                  </div>
+                  <h3 className="text-base font-black text-slate-900 dark:text-slate-100">All Clear! No Staff Alerts Pending</h3>
+                  <p className="text-xs text-slate-600 dark:text-slate-400 max-w-sm mx-auto leading-relaxed">
+                    You have no unread work assignments or operational task notifications matching this filter.
+                  </p>
+                </div>
+              ) : (
+                staffNotifications.filter(item => {
+                  if (staffTaskFilter === 'DISPUTES') {
+                    return item.metadata?.task_type === 'DISPUTE_ASSIGNMENT' || item.metadata?.task_type === 'ARBITER_ESCALATION' || item.title?.toLowerCase().includes('dispute') || item.message?.toLowerCase().includes('dispute');
+                  }
+                  if (staffTaskFilter === 'VERIFICATIONS') {
+                    return item.metadata?.task_type === 'KYC_VERIFICATION' || item.title?.toLowerCase().includes('verification') || item.message?.toLowerCase().includes('verification');
+                  }
+                  if (staffTaskFilter === 'APPEALS') {
+                    return item.metadata?.task_type === 'SUSPENSION_APPEAL' || item.title?.toLowerCase().includes('appeal') || item.message?.toLowerCase().includes('appeal');
+                  }
+                  if (staffTaskFilter === 'ROLES') {
+                    return item.metadata?.task_type === 'STAFF_ROLE_ASSIGNMENT' || item.title?.toLowerCase().includes('role') || item.message?.toLowerCase().includes('staff');
+                  }
+                  return true;
+                }).map((item) => {
+                  const taskType = item.metadata?.task_type || '';
+                  return (
+                    <div
+                      key={item.id}
+                      onClick={() => handleStaffNotificationClick(item)}
+                      className={`p-4 sm:p-5 transition-all cursor-pointer flex flex-col sm:flex-row sm:items-center justify-between gap-4 relative ${
+                        !item.is_read
+                          ? 'bg-blue-50/70 dark:bg-blue-950/20 border-l-4 border-l-[#0363ff] hover:bg-blue-50 dark:hover:bg-blue-950/30'
+                          : 'bg-white dark:bg-slate-900 border-l-4 border-l-transparent hover:bg-slate-50/80 dark:hover:bg-slate-800/40'
+                      }`}
+                    >
+                      {/* Left: Icon & Details */}
+                      <div className="flex items-start gap-3.5 flex-1 min-w-0">
+                        <div className="w-10 h-10 rounded-2xl bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 mt-0.5 border border-slate-200/80 dark:border-slate-700 shadow-xs">
+                          {taskType === 'DISPUTE_ASSIGNMENT' || taskType === 'ARBITER_ESCALATION' ? (
+                            <Scale className="w-5 h-5 text-rose-500" />
+                          ) : taskType === 'KYC_VERIFICATION' ? (
+                            <FileCheck className="w-5 h-5 text-blue-500" />
+                          ) : taskType === 'SUSPENSION_APPEAL' ? (
+                            <ShieldAlert className="w-5 h-5 text-amber-500" />
+                          ) : taskType === 'STAFF_ROLE_ASSIGNMENT' ? (
+                            <UserCog className="w-5 h-5 text-purple-500" />
+                          ) : (
+                            <Bell className="w-5 h-5 text-[#0363ff]" />
+                          )}
+                        </div>
+
+                        <div className="space-y-1.5 flex-1 min-w-0">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <h4 className={`text-sm leading-snug ${!item.is_read ? 'font-black text-slate-900 dark:text-white' : 'font-bold text-slate-800 dark:text-slate-200'}`}>
+                              {item.title}
+                            </h4>
+                            {!item.is_read && (
+                              <span className="w-2 h-2 rounded-full bg-[#0363ff] shrink-0" />
+                            )}
+                            {taskType && (
+                              <span className="inline-flex items-center px-2 py-0.5 rounded text-[10px] font-black uppercase tracking-wider bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700">
+                                {taskType.replace(/_/g, ' ')}
+                              </span>
+                            )}
+                          </div>
+
+                          <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line break-words">
+                            {item.message}
+                          </p>
+
+                          <span className="text-[11px] font-mono text-slate-500 dark:text-slate-400 font-medium block">
+                            {new Date(item.created_at).toLocaleString('en-US', {
+                              month: 'short',
+                              day: 'numeric',
+                              year: 'numeric',
+                              hour: 'numeric',
+                              minute: '2-digit',
+                              hour12: true,
+                            })}
+                          </span>
+                        </div>
+                      </div>
+
+                      {/* Right: Quick Action & Controls */}
+                      <div className="flex items-center gap-2 self-end sm:self-center shrink-0" onClick={e => e.stopPropagation()}>
+                        <button
+                          type="button"
+                          onClick={() => handleStaffNotificationClick(item)}
+                          className="px-3.5 py-1.5 rounded-xl bg-[#0363ff]/10 hover:bg-[#0363ff] text-[#0363ff] hover:text-white font-extrabold text-xs transition flex items-center gap-1.5 cursor-pointer border border-[#0363ff]/20 shadow-xs"
+                        >
+                          <span>Action</span>
+                          <ExternalLink className="w-3.5 h-3.5" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={(e) => handleStaffToggleRead(item, e)}
+                          disabled={staffActionLoadingId === item.id}
+                          className="p-2 rounded-xl text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+                          title={item.is_read ? 'Mark as Unread' : 'Mark as Read'}
+                        >
+                          <Eye className={`w-4 h-4 ${item.is_read ? 'text-slate-400' : 'text-[#0363ff]'}`} />
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })
+              )}
             </div>
           </div>
         )}

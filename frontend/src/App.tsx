@@ -46,6 +46,7 @@ const HowItWorksView = lazy(() => import('./views/HowItWorksView'));
 const TrustCenterView = lazy(() => import('./views/TrustCenterView'));
 const GuidesHubView = lazy(() => import('./views/GuidesHubView'));
 const ReferralsView = lazy(() => import('./views/ReferralsView'));
+const NotificationsView = lazy(() => import('./views/NotificationsView'));
 
 function PageLoader() {
   return (
@@ -169,6 +170,7 @@ function App() {
             <Route path="/ledger" element={<ProtectedRoute><LedgerView /></ProtectedRoute>} />
             <Route path="/links" element={<ProtectedRoute><LinksView /></ProtectedRoute>} />
             <Route path="/profile" element={<ProtectedRoute><ProfileView /></ProtectedRoute>} />
+            <Route path="/notifications" element={<ProtectedRoute><NotificationsView /></ProtectedRoute>} />
 
             {/* Default: home for authenticated, login for guests */}
             <Route path="*" element={<Navigate to="/" replace />} />

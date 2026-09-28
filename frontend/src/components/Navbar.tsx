@@ -7,10 +7,11 @@ import {
   Shield, LayoutDashboard, Link2, LogIn, UserPlus, LogOut, Menu, X, Wallet, MapPin, 
   Store, Sun, Moon, Laptop, HelpCircle, Phone, Code, ChevronDown, Settings, Scale,
   ShieldCheck, BookOpen, Sparkles, Gift, ArrowRight, ShoppingBag, Terminal, CheckCircle2,
-  Star
+  Star, Bell
 } from 'lucide-react';
 import TrackingModal from './TrackingModal';
 import TermsModal from './TermsModal';
+import NotificationDropdown from './NotificationDropdown';
 import logoWhite from '../assets/hendaxis_trust_logo_white.svg';
 import logoBlack from '../assets/hendaxis_trust_logo_black.svg';
 
@@ -221,6 +222,9 @@ export default function Navbar() {
                     </Link>
                   )}
 
+                  {/* Notification Center Popover */}
+                  <NotificationDropdown />
+
                   {/* Theme Switcher Button */}
                   {themeToggleButton}
 
@@ -296,6 +300,15 @@ export default function Navbar() {
                               Manager Portal
                             </Link>
                           )}
+
+                          <Link
+                            to="/notifications"
+                            onClick={() => setUserMenuOpen(false)}
+                            className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white transition-colors"
+                          >
+                            <Bell className="h-4 w-4 text-slate-500" />
+                            Notification Center
+                          </Link>
 
                           <Link
                             to="/profile"
@@ -722,7 +735,8 @@ export default function Navbar() {
                 </div>
 
                 <div className="space-y-1 pt-2 border-t border-slate-200 dark:border-slate-800">
-                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-1">Account & Wallet</p>
+                  <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-1">Account & Notifications</p>
+                  {navLink('/notifications', 'Notification Center', <Bell className="h-4 w-4 text-[#ff6d1d]" />)}
                   {navLink('/profile', 'Profile & Payout Settings', <Settings className="h-4 w-4 text-slate-500" />)}
                   {balance !== null && (
                     <Link

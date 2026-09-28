@@ -1547,6 +1547,9 @@ def request_arbiter_decision(request, transaction_id: uuid.UUID, data: Optional[
 
     # Notify counterpart
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from apps.notifications.services import create_notification
+    from apps.notifications.models import NotificationType
+    from apps.users.models import Role
     seller = transaction.link.seller
     ref = transaction.paystack_reference
     product = transaction.link.title
@@ -1563,6 +1566,21 @@ def request_arbiter_decision(request, transaction_id: uuid.UUID, data: Optional[
             dispatch_sms_task.delay(transaction.buyer_phone, msg)
         if transaction.buyer_email:
             dispatch_email_task.delay(transaction.buyer_email, f"Arbiter Decision Requested: Order #{ref}", msg)
+
+    # Notify all active Arbiters & Admins
+    arbiters = User.objects.filter(
+        Q(role=Role.ARBITER) | Q(role=Role.ADMIN) | Q(is_superuser=True), 
+        is_active=True
+    )
+    for arb in arbiters:
+        create_notification(
+            user=arb,
+            title=f"Arbiter Decision Requested: #{ref}",
+            message=f"Dispute on order #{ref} ({product}) was escalated by {caller_role.lower()} and is pending arbiter review.",
+            notif_type=NotificationType.IN_APP,
+            action_url=f"/admin-portal/dashboard?tab=disputes&search={ref}",
+            metadata={"transaction_id": str(transaction.id), "paystack_reference": ref, "task_type": "ARBITER_ESCALATION"}
+        )
 
     return {"message": "Arbiter Decision requested successfully. Your case has been prioritized in the arbitration queue."}
 
@@ -1927,6 +1945,30 @@ def assign_dispute_arbiter(request, id: uuid.UUID, data: AssignArbiterSchema):
             seller_amount_ghs=Decimal('0.00'),
             platform_retained_fee_ghs=Decimal('0.00'),
         )
+
+        # Notify assigned arbiter
+        from apps.notifications.services import create_notification
+        from apps.notifications.models import NotificationType
+        from apps.core.tasks import dispatch_email_task
+        from django.conf import settings
+
+        create_notification(
+            user=target_arbiter,
+            title=f"Dispute Assigned: #{transaction.paystack_reference}",
+            message=f"You were assigned to arbitrate the dispute on order #{transaction.paystack_reference} ({transaction.link.title}). Please inspect evidence and issue ruling.",
+            notif_type=NotificationType.IN_APP,
+            action_url=f"/admin-portal/dashboard?tab=disputes&search={transaction.paystack_reference}",
+            metadata={"transaction_id": str(transaction.id), "paystack_reference": transaction.paystack_reference, "task_type": "DISPUTE_ASSIGNMENT"}
+        )
+
+        if getattr(target_arbiter, 'email', None):
+            default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+            frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+            dispatch_email_task.delay(
+                target_arbiter.email,
+                f"Dispute Case Assigned: Order #{transaction.paystack_reference}",
+                f"Hello {target_arbiter.first_name or target_arbiter.username},\n\nYou have been assigned as the Arbiter for order #{transaction.paystack_reference} ({transaction.link.title}).\n\nPlease log in to the Manager Portal to review evidence and issue rulings.\n\nManager Portal: {frontend_url}/admin-portal/dashboard"
+            )
         
     return {
         "message": f"Dispute successfully assigned to @{target_arbiter.username}.",
@@ -5050,6 +5092,18 @@ def update_staff_role(request, user_id: uuid.UUID, data: UpdateStaffRoleSchema):
         
     target_user.save()
     
+    # Notify staff member of role update
+    from apps.notifications.services import create_notification
+    from apps.notifications.models import NotificationType
+    create_notification(
+        user=target_user,
+        title=f"Role Assignment: {target_user.role}",
+        message=f"Your staff role has been updated to {target_user.role}. You can now manage operations in the Manager Portal.",
+        notif_type=NotificationType.IN_APP,
+        action_url="/admin-portal/dashboard",
+        metadata={"role": target_user.role, "task_type": "STAFF_ROLE_ASSIGNMENT"}
+    )
+    
     return {
         "message": f"Updated role for @{target_user.username} to {target_user.role}.",
         "user": {
@@ -5080,6 +5134,18 @@ def create_staff_member(request, data: CreateStaffMemberSchema):
         if data.last_name:
             existing.last_name = data.last_name
         existing.save()
+
+        from apps.notifications.services import create_notification
+        from apps.notifications.models import NotificationType
+        create_notification(
+            user=existing,
+            title=f"Staff Promotion: {existing.role}",
+            message=f"You have been granted staff access as {existing.role} in the HendAxis Trust Manager Portal.",
+            notif_type=NotificationType.IN_APP,
+            action_url="/admin-portal/dashboard",
+            metadata={"role": existing.role, "task_type": "STAFF_ROLE_ASSIGNMENT"}
+        )
+
         return {
             "message": f"Existing user @{existing.username} promoted to staff role {data.role}.",
             "user": {

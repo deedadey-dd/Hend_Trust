@@ -168,6 +168,14 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
   - [x] Click the button. Confirm confirmation prompt, immediate status update to `⚡ ARBITER DECISION REQUESTED`, audit log creation, and SMS/Email notification dispatch.
 - [ ] **Dispute Retraction Grace Release**: When buyer clicks **"Retract Dispute"** to settle privately, confirm auto-release grace timer (`dispute_retraction_release_hours`, default 24h) is scheduled.
 
+### 4.5 Notification Center & Activity Hub (`/notifications`)
+- [x] **Light & Dark Theme Contrast**: Verify page renders with crisp high contrast (`bg-slate-50 dark:bg-slate-950` with high-contrast text and cards).
+- [x] **Multi-Channel Filters**: Toggle between **All Channels**, **Emails**, **SMS**, and **In-App Alerts**.
+- [x] **Search & Date Range**: Test live search by keyword and filtering by date preset (*Today*, *Last 7 Days*, *Last 30 Days*, *Custom Range*).
+- [x] **OTP Filtering**: Confirm one-time passwords and SMS verification codes are strictly omitted from the notification list.
+- [x] **Action Deep Linking**: Click notification card action buttons to verify deep navigation to tracking, reviews, or dashboard.
+- [x] **Read Management**: Test Mark All as Read, Clear Read, and toggle individual read states.
+
 ---
 
 ## 🛡️ Phase 5: Support & Arbiter Persona (Mediation & Appeals)
@@ -203,6 +211,16 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [x] **Review Appeal Submissions**: Inspect seller remediation justifications and order history.
 - [x] **Approve Appeal & Clean Slate Reinstatement**: Approve appeal. Verify seller account reinstates (`is_suspended = False`), `reinstated_at = timezone.now()` is set, and seller can create payment links again.
 - [x] **Reject Appeal**: Provide administrative feedback notes. Verify seller dashboard reflects rejection notes and allows re-submission.
+
+### 5.5 Staff Tasks & Work Assignment Alerts (Tab: `NOTIFICATIONS`)
+- [x] **Top Header Dropdown**: Verify bell icon in sticky top header displays live unread counter and quick preview drawer.
+- [x] **Work Category Filters**: Test filtering staff alerts by **Disputes & Arbitration**, **KYC Verifications**, **Suspension Appeals**, and **Staff & Roles**.
+- [x] **Deep Action Links**: Click quick view buttons to ensure direct transition to the corresponding dispute mediation modal, verification review card, or appeal desk.
+- [x] **Automated Triggering**:
+  - [x] Verify arbiter assignment generates targeted in-app notification.
+  - [x] Verify 48h arbitration queue escalation generates high-priority arbiter alerts.
+  - [x] Verify KYC Ghana Card document submission alerts compliance officers.
+  - [x] Verify merchant suspension appeal submission alerts compliance officers.
 
 ---
 
