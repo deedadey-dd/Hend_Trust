@@ -513,9 +513,9 @@ function generateStaticHtml(templateHtml, route) {
   }
 
   // 7. Inject Semantic Pre-render Content into <div id="root"></div>
-  // This ensures crawlers (Googlebot, Bing, curl) receive rich semantic HTML text, headings, and links immediately.
-  // When React client JS initializes, React mounts and takes over rendering.
-  const rootReplacement = `<div id="root">${route.htmlContent}</div>`;
+  // This ensures crawlers (Googlebot, Bing, curl) receive rich semantic HTML text, headings, and links immediately,
+  // while human visitors experience a smooth, flicker-free brand pre-loader until React client initializes and mounts.
+  const rootReplacement = `<div id="root"><div class="app-pre-loader"><div class="app-pre-spinner"></div></div><div class="seo-crawler-content">${route.htmlContent}</div></div>`;
   html = html.replace(/<div\s+id=["']root["']\s*>[\s\S]*?<\/div>/i, rootReplacement);
 
   return html;
