@@ -11,6 +11,8 @@ import { useAuthStore } from './store/authStore';
 // Initialize frontend Sentry observability stub
 initSentry();
 
+import { ModalProvider } from './context/ModalContext';
+
 // Core lightweight entry view
 import HomeView from './views/HomeView';
 
@@ -105,7 +107,8 @@ function App() {
   
   return (
     <ErrorBoundary>
-      <Router>
+      <ModalProvider>
+        <Router>
         <UnverifiedEmailBanner />
         <Navbar />
         <Suspense fallback={<PageLoader />}>
@@ -172,8 +175,9 @@ function App() {
           </Routes>
         </Suspense>
       </Router>
-    </ErrorBoundary>
-  );
+    </ModalProvider>
+  </ErrorBoundary>
+);
 }
 
 export default App;

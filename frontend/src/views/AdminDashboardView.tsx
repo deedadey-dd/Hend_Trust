@@ -4,7 +4,7 @@ import {
   TrendingUp, DollarSign, Lock, Eye, X, Zap, Clock,
   RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck, Store,
   Coins, UserPlus, Scale, History, UserCog, Gift, Menu, ChevronLeft, ChevronRight,
-  ExternalLink
+  ExternalLink, MessageSquare
 } from 'lucide-react';
 import { 
   useAdminMetricsQuery, 
@@ -14,6 +14,7 @@ import {
   useAdminSellersQuery, 
   useAdminBuyersQuery, 
   useResolveDisputeMutation, 
+  usePostArbiterInstructionMutation,
   useBroadcastMessageMutation,
   useAdminBroadcastCampaignsQuery,
   useCancelBroadcastCampaignMutation,
@@ -36,6 +37,7 @@ import { AdminStaffManagement } from '../components/AdminStaffManagement';
 import { AdminArbiterPayouts } from '../components/AdminArbiterPayouts';
 import { AdminPromotionsManager } from '../components/AdminPromotionsManager';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { useModal } from '../context/ModalContext';
 
 const adminTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -225,6 +227,7 @@ interface PlatformSettings {
   dispatch_expiry_suspension_threshold?: number;
   unpaid_auto_archive_days?: number;
   arbiter_fee_per_dispute?: number;
+  arbiter_escalation_hours?: number;
   django_admin_url?: string;
   promotions_active?: boolean;
   promotions_expires_at?: string | null;
@@ -237,6 +240,7 @@ interface PlatformSettings {
 
 
 export const AdminDashboardView: React.FC = () => {
+  const modal = useModal();
   const { user } = useAuthStore();
   const isSuperUser = Boolean(user?.is_superuser);
   const userRole = user?.role || 'ADMIN';
@@ -433,7 +437,12 @@ export const AdminDashboardView: React.FC = () => {
       refetchTxns();
       refetchDetail();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to advance status');
+      await modal.alert({
+        title: 'Status Update Failed',
+        message: err.response?.data?.detail || 'Failed to advance status.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
@@ -441,10 +450,20 @@ export const AdminDashboardView: React.FC = () => {
     setIsActioningVerif(true);
     try {
       await apiClient.post(`/admin/verifications/${userId}/approve`);
-      alert("Seller verification approved! Verified badge granted.");
+      await modal.alert({
+        title: 'Seller Approved',
+        message: 'Seller verification approved! Verified badge granted.',
+        type: 'success',
+        icon: 'check'
+      });
       fetchVerifications();
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to approve verification.");
+      await modal.alert({
+        title: 'Approval Failed',
+        message: err.response?.data?.message || 'Failed to approve verification.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setIsActioningVerif(false);
     }
@@ -454,10 +473,20 @@ export const AdminDashboardView: React.FC = () => {
     setIsActioningVerif(true);
     try {
       const res = await apiClient.post(`/admin/verifications/${userId}/auto-verify`);
-      alert(res.data.message);
+      await modal.alert({
+        title: 'Auto-Verification Result',
+        message: res.data.message || 'Auto-verification check completed.',
+        type: 'blue',
+        icon: 'shield'
+      });
       fetchVerifications();
     } catch (err: any) {
-      alert(err.response?.data?.message || err.response?.data?.detail || "Auto-verification check failed.");
+      await modal.alert({
+        title: 'Auto-Verification Error',
+        message: err.response?.data?.message || err.response?.data?.detail || 'Auto-verification check failed.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setIsActioningVerif(false);
     }
@@ -469,12 +498,22 @@ export const AdminDashboardView: React.FC = () => {
     setIsActioningVerif(true);
     try {
       await apiClient.post(`/admin/verifications/${rejectUserId}/reject`, { reason: rejectReason });
-      alert("Seller verification rejected.");
+      await modal.alert({
+        title: 'Verification Rejected',
+        message: 'Seller verification application has been marked as rejected.',
+        type: 'warning',
+        icon: 'alert'
+      });
       setRejectUserId(null);
       setRejectReason('');
       fetchVerifications();
     } catch (err: any) {
-      alert(err.response?.data?.message || "Failed to reject verification.");
+      await modal.alert({
+        title: 'Rejection Failed',
+        message: err.response?.data?.message || 'Failed to reject verification.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setIsActioningVerif(false);
     }
@@ -581,11 +620,83 @@ export const AdminDashboardView: React.FC = () => {
   const [managerPhotos, setManagerPhotos] = useState<string[]>([]);
   const [_isCompressingManagerPhotos, setIsCompressingManagerPhotos] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const [isExternalArbitration, setIsExternalArbitration] = useState<boolean>(false);
+  const [externalOrderDocumentUrl, setExternalOrderDocumentUrl] = useState<string>('');
+
+  // Arbiter Instruction Note State
+  const [instructionTxn, setInstructionTxn] = useState<any | null>(null);
+  const [instructionNotes, setInstructionNotes] = useState<string>('');
+  const [instructionPhotos, setInstructionPhotos] = useState<string[]>([]);
+  const [isCompressingInstructionPhotos, setIsCompressingInstructionPhotos] = useState<boolean>(false);
+  const [instructionMsg, setInstructionMsg] = useState<string>('');
+  const postInstructionMutation = usePostArbiterInstructionMutation();
+
+  const handleInstructionPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = Array.from(e.target.files || []);
+    if (instructionPhotos.length + files.length > 5) {
+      await modal.alert({
+        title: 'Limit Exceeded',
+        message: 'You can upload a maximum of 5 instruction photos.',
+        type: 'warning',
+        icon: 'alert'
+      });
+      return;
+    }
+    setIsCompressingInstructionPhotos(true);
+    try {
+      const compressedList: string[] = [];
+      for (const file of files) {
+        const webp = await compressImageToWebP(file);
+        compressedList.push(webp);
+      }
+      setInstructionPhotos((prev: string[]) => [...prev, ...compressedList].slice(0, 5));
+    } catch (err) {
+      console.error("Failed to compress instruction photo:", err);
+    } finally {
+      setIsCompressingInstructionPhotos(false);
+    }
+  };
+
+  const handlePostInstruction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!instructionTxn) return;
+    if (instructionNotes.trim().length < 5) {
+      await modal.alert({
+        title: 'Instruction Too Short',
+        message: 'Please enter a note of at least 5 characters to provide clear instructions.',
+        type: 'warning',
+        icon: 'alert'
+      });
+      return;
+    }
+    try {
+      await postInstructionMutation.mutateAsync({
+        transaction_id: instructionTxn.id,
+        instruction_notes: instructionNotes.trim(),
+        photos: instructionPhotos,
+      });
+      setInstructionMsg("Instruction notice successfully posted to the dispute trail and dispatched to both parties.");
+      setTimeout(() => {
+        setInstructionTxn(null);
+        setInstructionNotes('');
+        setInstructionPhotos([]);
+        setInstructionMsg('');
+      }, 1200);
+      refetchDisputes();
+    } catch (err) {
+      setInstructionMsg(`Error: ${getErrorMessage(err)}`);
+    }
+  };
 
   const handleManagerPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (managerPhotos.length + files.length > 5) {
-      alert("You can upload a maximum of 5 manager evidence photos.");
+      await modal.alert({
+        title: 'Limit Exceeded',
+        message: 'You can upload a maximum of 5 manager evidence photos.',
+        type: 'warning',
+        icon: 'alert'
+      });
       return;
     }
     setIsCompressingManagerPhotos(true);
@@ -613,21 +724,50 @@ export const AdminDashboardView: React.FC = () => {
     if (reason === null) return;
     try {
       await apiClient.post(`/admin/sellers/${sellerId}/suspend`, { reason });
-      alert(`Seller @${username} has been suspended successfully.`);
+      await modal.alert({
+        title: 'Seller Suspended',
+        message: `Seller @${username} has been suspended successfully.`,
+        type: 'warning',
+        icon: 'shield'
+      });
       refetchSellers();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to suspend seller.');
+      await modal.alert({
+        title: 'Suspension Failed',
+        message: err.response?.data?.detail || 'Failed to suspend seller.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
   const handleReinstateSeller = async (sellerId: string, username: string) => {
-    if (!window.confirm(`Are you sure you want to reinstate seller @${username}? This will restore their ability to create payment links.`)) return;
+    const confirmed = await modal.confirm({
+      title: 'Reinstate Seller?',
+      message: `Are you sure you want to reinstate seller @${username}?`,
+      description: 'This will restore their ability to create payment links and receive escrow payouts.',
+      confirmText: 'Reinstate Seller',
+      cancelText: 'Cancel',
+      type: 'success',
+      icon: 'check'
+    });
+    if (!confirmed) return;
     try {
       await apiClient.post(`/admin/sellers/${sellerId}/reinstate`);
-      alert(`Seller @${username} has been reinstated successfully.`);
+      await modal.alert({
+        title: 'Seller Reinstated',
+        message: `Seller @${username} has been reinstated successfully.`,
+        type: 'success',
+        icon: 'check'
+      });
       refetchSellers();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to reinstate seller.');
+      await modal.alert({
+        title: 'Reinstatement Failed',
+        message: err.response?.data?.detail || 'Failed to reinstate seller.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
@@ -659,15 +799,34 @@ export const AdminDashboardView: React.FC = () => {
   const cancelCampaignMutation = useCancelBroadcastCampaignMutation();
 
   const handleCancelCampaign = async (campaignId: string) => {
-    if (!window.confirm("Are you sure you want to stop and cancel this broadcast campaign? Unsent messages will be aborted.")) {
+    const confirmed = await modal.confirm({
+      title: 'Cancel Broadcast Campaign?',
+      message: 'Are you sure you want to stop and cancel this broadcast campaign?',
+      description: 'Any unsent queued messages will be permanently aborted.',
+      confirmText: 'Stop Campaign',
+      cancelText: 'Keep Running',
+      type: 'danger',
+      icon: 'trash'
+    });
+    if (!confirmed) {
       return;
     }
     try {
       const res = await cancelCampaignMutation.mutateAsync(campaignId);
-      alert(res.message);
+      await modal.alert({
+        title: 'Campaign Cancelled',
+        message: res.message || 'Campaign was cancelled successfully.',
+        type: 'blue',
+        icon: 'info'
+      });
       refetchBroadcastCampaigns();
     } catch (err: any) {
-      alert(err.response?.data?.message || err.response?.data?.detail || "Failed to cancel campaign.");
+      await modal.alert({
+        title: 'Cancellation Failed',
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to cancel campaign.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
@@ -687,6 +846,10 @@ export const AdminDashboardView: React.FC = () => {
       setResolveMsg(`The total allocated (GHS ${totalSplitSum.toFixed(2)}) cannot exceed the total amount paid by the buyer (GHS ${totalPaidByBuyer.toFixed(2)}).`);
       return;
     }
+    if (isExternalArbitration && !externalOrderDocumentUrl.trim()) {
+      setResolveMsg('For 3rd-party arbitration / court rulings, you must submit and upload the authentic written decision order.');
+      return;
+    }
     setResolveMsg('');
     try {
       const res = await resolveMutation.mutateAsync({
@@ -697,12 +860,16 @@ export const AdminDashboardView: React.FC = () => {
         platform_retained_fee_ghs: Number(platformFeeGhs) || 0,
         admin_notes: adminNotes,
         manager_photos: managerPhotos,
+        is_external_arbitration: isExternalArbitration,
+        external_order_document_url: externalOrderDocumentUrl.trim(),
       });
       setResolveMsg(res.message || 'Dispute resolved successfully.');
       setTimeout(() => {
         setResolvingTxnId(null);
         setResolveMsg('');
         setManagerPhotos([]);
+        setIsExternalArbitration(false);
+        setExternalOrderDocumentUrl('');
         refetchDisputes();
         refetchMetrics();
       }, 1500);
@@ -1256,7 +1423,7 @@ export const AdminDashboardView: React.FC = () => {
                 disputes?.map((d: any) => (
                   <div key={d.id} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl flex flex-col md:flex-row justify-between gap-6">
                     <div className="space-y-3 flex-1">
-                      <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-3 flex-wrap">
                         <button
                           type="button"
                           onClick={() => setSelectedTxnId(d.id || d.transaction_id)}
@@ -1267,6 +1434,11 @@ export const AdminDashboardView: React.FC = () => {
                           <ExternalLink className="h-3.5 w-3.5 opacity-70 group-hover/tx:opacity-100 transition" />
                         </button>
                         <h4 className="text-lg font-bold text-slate-900 dark:text-white">{d.link_title}</h4>
+                        {d.arbiter_escalated_at && (
+                          <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-xs font-black bg-rose-600 text-white shadow-sm animate-pulse">
+                            ⚡ ARBITER DECISION REQUESTED ({d.arbiter_escalated_role || 'PARTY'})
+                          </span>
+                        )}
                       </div>
 
                       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 text-xs">
@@ -1332,11 +1504,19 @@ export const AdminDashboardView: React.FC = () => {
                           buyerReason={d.buyer_dispute_reason}
                           buyerPhotos={d.buyer_dispute_photos}
                           buyerName={d.buyer_name || 'Buyer'}
+                          buyerCategory={d.buyer_dispute_category}
                           sellerResponse={d.seller_dispute_response}
                           sellerPhotos={d.seller_dispute_photos}
                           sellerName={d.shop_name ? `${d.shop_name} (@${d.seller_username})` : `@${d.seller_username}`}
                           managerNotes={d.manager_dispute_notes}
                           managerPhotos={d.manager_dispute_photos}
+                          disputedAt={d.disputed_at || d.created_at}
+                          dispatchedAt={d.dispatched_at}
+                          createdAt={d.created_at}
+                          arbiterName={d.assigned_arbiter ? (d.assigned_arbiter.first_name ? `${d.assigned_arbiter.first_name} ${d.assigned_arbiter.last_name || ''}`.trim() : `@${d.assigned_arbiter.username}`) : undefined}
+                          arbiterEscalatedAt={d.arbiter_escalated_at}
+                          arbiterEscalatedRole={d.arbiter_escalated_role}
+                          arbiterEscalationHours={d.arbiter_escalation_hours || 48}
                           disputeRetractedAt={d.dispute_retracted_at}
                           waybillPhotoUrl={d.waybill_photo_url}
                         />
@@ -1401,13 +1581,29 @@ export const AdminDashboardView: React.FC = () => {
                       </div>
 
                       {isArbiter && (
-                        <button
-                          onClick={() => { setResolvingTxnId(d.id); setResolveMsg(''); }}
-                          className="w-full py-3 bg-rose-600 hover:bg-rose-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-rose-500/10 cursor-pointer"
-                        >
-                          <ShieldAlert className="h-4 w-4" />
-                          Resolve Dispute
-                        </button>
+                        <div className="w-full space-y-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setInstructionTxn(d);
+                              setInstructionNotes('');
+                              setInstructionPhotos([]);
+                              setInstructionMsg('');
+                            }}
+                            className="w-full py-2 px-3 bg-purple-600 hover:bg-purple-500 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-purple-500/10 cursor-pointer"
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            Post Instruction / Note
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => { setResolvingTxnId(d.id); setResolveMsg(''); }}
+                            className="w-full py-2 px-3 bg-rose-600 hover:bg-rose-500 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5 shadow-md shadow-rose-500/10 cursor-pointer"
+                          >
+                            <ShieldAlert className="h-3.5 w-3.5" />
+                            Resolve Dispute
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>
@@ -2987,6 +3183,27 @@ export const AdminDashboardView: React.FC = () => {
                     <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Hours</span>
                   </div>
                 </div>
+
+                {/* 6. Request Arbiter Decision Escalation Window (Hours) */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    ⚡ Request Arbiter Decision Window (Hours)
+                  </label>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Delay after dispute is opened before buyer and seller can click 'Request Arbiter Decision' to move dispute to top queue.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="168"
+                      value={platformSettings.arbiter_escalation_hours ?? 48}
+                      onChange={(e) => handleUpdateSettings({ arbiter_escalation_hours: parseInt(e.target.value) || 48 })}
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Hours (Default 48)</span>
+                  </div>
+                </div>
               </div>
 
               {/* Inspection Period Tiers */}
@@ -3858,6 +4075,67 @@ export const AdminDashboardView: React.FC = () => {
                 </p>
               </div>
 
+              {/* External 3rd-Party Arbiter Order Section */}
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl p-4 space-y-3">
+                <label className="flex items-start gap-2.5 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={isExternalArbitration}
+                    onChange={e => setIsExternalArbitration(e.target.checked)}
+                    className="mt-0.5 h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                  />
+                  <div>
+                    <span className="text-xs font-bold text-amber-900 dark:text-amber-200 block">
+                      Enforce External 3rd-Party Arbiter / Court Order Ruling
+                    </span>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-0.5 leading-relaxed">
+                      Per Platform Terms &amp; Conditions §6, parties bear 100% of external arbitration/court costs and the platform is indemnified. Funds are only released upon receipt of an authentic written decision order uploaded below.
+                    </p>
+                  </div>
+                </label>
+
+                {isExternalArbitration && (
+                  <div className="pt-2 border-t border-amber-200 dark:border-amber-800 space-y-2">
+                    <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-200 font-mono uppercase">
+                      External Ruling Document Proof (Upload File or Document URL) *
+                    </label>
+                    <input
+                      type="text"
+                      value={externalOrderDocumentUrl}
+                      onChange={e => setExternalOrderDocumentUrl(e.target.value)}
+                      placeholder="Enter verified ruling document URL (e.g. https://... or paste link)..."
+                      className="w-full bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-slate-900 dark:text-slate-100 rounded-lg p-2 text-xs focus:outline-none focus:border-amber-500 font-mono"
+                    />
+                    <input
+                      type="file"
+                      accept="image/*,application/pdf"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+                        try {
+                          if (file.type.startsWith('image/')) {
+                            const webp = await compressImageToWebP(file);
+                            setExternalOrderDocumentUrl(webp);
+                          } else {
+                            const reader = new FileReader();
+                            reader.onload = () => setExternalOrderDocumentUrl(reader.result as string);
+                            reader.readAsDataURL(file);
+                          }
+                        } catch {
+                          await modal.alert({
+                            title: 'Upload Failed',
+                            message: 'Failed to process ruling document. Please try a different file.',
+                            type: 'danger',
+                            icon: 'alert'
+                          });
+                        }
+                      }}
+                      className="w-full bg-white dark:bg-slate-900 border border-amber-200 dark:border-amber-800 text-slate-700 dark:text-slate-300 text-xs rounded-lg p-2 file:mr-2 file:py-1 file:px-2.5 file:rounded-md file:border-0 file:text-xs file:font-semibold file:bg-amber-500/20 file:text-amber-800 dark:file:text-amber-300 hover:file:bg-amber-500/30 cursor-pointer"
+                    />
+                  </div>
+                )}
+              </div>
+
               <div>
                 <label className="block text-slate-600 dark:text-slate-400 font-mono uppercase mb-1">Manager Arbitration Notes / Reason</label>
                 <textarea
@@ -3931,6 +4209,143 @@ export const AdminDashboardView: React.FC = () => {
           </div>
         </div>
       )}
+
+      {/* ─── MODAL: POST ARBITER INSTRUCTION / NOTE ──────────────────────────── */}
+      {instructionTxn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-md overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full shadow-2xl flex flex-col max-h-[90vh] sm:max-h-[85vh] overflow-hidden text-slate-900 dark:text-slate-100 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-purple-50/50 dark:bg-purple-950/30 shrink-0">
+              <div className="flex items-center gap-2">
+                <span className="p-1.5 rounded-xl bg-purple-100 dark:bg-purple-900 text-purple-700 dark:text-purple-300">
+                  <Scale className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-extrabold text-purple-950 dark:text-purple-200">
+                    Post Arbiter Instruction / Information
+                  </h3>
+                  <p className="text-[11px] text-purple-700 dark:text-purple-400 font-mono">
+                    Order Ref: #{instructionTxn.paystack_reference}
+                  </p>
+                </div>
+              </div>
+              <button 
+                onClick={() => { setInstructionTxn(null); setInstructionPhotos([]); setInstructionMsg(''); }} 
+                className="text-slate-400 hover:text-slate-700 dark:hover:text-white transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handlePostInstruction} className="p-6 space-y-4 text-xs overflow-y-auto flex-1">
+              <div className="bg-purple-50/60 dark:bg-purple-950/40 p-3.5 rounded-xl border border-purple-200 dark:border-purple-800/60 text-purple-950 dark:text-purple-200 leading-relaxed text-[11px]">
+                <p>
+                  <strong>Notice:</strong> This note will be recorded permanently in the dispute conversation trail (centered for both parties) and dispatched via SMS &amp; Email notifications to both the buyer and seller.
+                </p>
+              </div>
+
+              {/* Order Info Chips */}
+              <div className="grid grid-cols-2 gap-3">
+                <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-500 uppercase font-mono block">Buyer</span>
+                  <span className="font-bold text-slate-900 dark:text-white truncate block">
+                    {instructionTxn.buyer_name || instructionTxn.buyer_phone}
+                  </span>
+                </div>
+                <div className="bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
+                  <span className="text-[10px] text-slate-500 uppercase font-mono block">Seller</span>
+                  <span className="font-bold text-slate-900 dark:text-white truncate block">
+                    {instructionTxn.shop_name || `@${instructionTxn.seller_username}`}
+                  </span>
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-slate-700 dark:text-slate-300 font-bold mb-1 uppercase tracking-wider text-[11px]">
+                  Arbiter Instruction or Information *
+                </label>
+                <textarea
+                  rows={4}
+                  required
+                  value={instructionNotes}
+                  onChange={e => setInstructionNotes(e.target.value)}
+                  placeholder="Provide instructions, required proofs, deadlines, or mediation notices to both parties (e.g., 'Seller, please provide proof of courier booking by 5:00 PM tomorrow. Buyer, please inspect outer packaging for damage')..."
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-900 dark:text-slate-100 rounded-xl p-3.5 text-xs focus:outline-none focus:ring-2 focus:ring-purple-500 font-sans leading-relaxed"
+                />
+                <span className="text-[10px] text-slate-400 font-mono mt-1 block">
+                  {instructionNotes.length} characters (min 5 characters)
+                </span>
+              </div>
+
+              <div>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-slate-700 dark:text-slate-300 font-bold text-[11px] uppercase tracking-wider">
+                    Attach Arbiter Evidence Photos (Optional)
+                  </label>
+                  <span className="text-[11px] font-mono text-purple-600 dark:text-purple-400 font-bold">
+                    {instructionPhotos.length}/5 photos
+                  </span>
+                </div>
+                <input
+                  type="file"
+                  accept="image/*"
+                  multiple
+                  disabled={instructionPhotos.length >= 5 || isCompressingInstructionPhotos}
+                  onChange={handleInstructionPhotoUpload}
+                  className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-800 text-slate-700 dark:text-slate-300 text-xs rounded-xl p-2 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-bold file:bg-purple-600 file:text-white hover:file:bg-purple-700 cursor-pointer disabled:opacity-50"
+                />
+                {isCompressingInstructionPhotos && (
+                  <p className="text-[10px] text-purple-600 dark:text-purple-400 mt-1 flex items-center gap-1 font-mono">
+                    <RefreshCw className="h-3 w-3 animate-spin" /> Compressing image to WebP...
+                  </p>
+                )}
+                {instructionPhotos.length > 0 && (
+                  <div className="flex flex-wrap gap-2 pt-2">
+                    {instructionPhotos.map((url: string, idx: number) => (
+                      <div key={idx} className="relative group">
+                        <img src={url} alt="Attachment" className="w-14 h-14 object-cover rounded-lg border border-purple-200 dark:border-purple-800" />
+                        <button
+                          type="button"
+                          onClick={() => setInstructionPhotos((prev: string[]) => prev.filter((_: string, i: number) => i !== idx))}
+                          className="absolute -top-1.5 -right-1.5 bg-rose-600 text-white rounded-full p-0.5 shadow hover:bg-rose-700 cursor-pointer"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {instructionMsg && (
+                <div className={`p-3 rounded-xl text-xs font-semibold ${
+                  instructionMsg.startsWith('Error') ? 'bg-rose-50 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-200' : 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200'
+                }`}>
+                  {instructionMsg}
+                </div>
+              )}
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => { setInstructionTxn(null); setInstructionPhotos([]); setInstructionMsg(''); }}
+                  className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl border border-slate-200 dark:border-slate-700 transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={postInstructionMutation.isPending || isCompressingInstructionPhotos}
+                  className="flex-1 py-2.5 bg-purple-600 hover:bg-purple-500 text-white font-bold rounded-xl transition flex items-center justify-center gap-2 shadow-lg shadow-purple-500/20 disabled:opacity-50 cursor-pointer"
+                >
+                  {postInstructionMutation.isPending ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                  Post Instruction to Parties
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
 
       {/* ─── MODAL: REVIEW SUSPENSION APPEAL ─────────────────────────────────── */}
       {reviewingAppeal && (

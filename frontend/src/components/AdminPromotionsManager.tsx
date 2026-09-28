@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { useModal } from '../context/ModalContext';
 import { ExportButton } from './ExportButton';
 import type { ExportColumn } from '../utils/exportUtils';
 
@@ -220,6 +221,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
   onUpdateSettings,
   onInspectTransaction
 }) => {
+  const modal = useModal();
   const [activeTab, setActiveTab] = useState<
     'CAMPAIGNS' | 'GLOBAL_HISTORY' | 'SEASONAL_HISTORY' | 'REFERRAL_AUDIT' | 'CASHBACK_LEDGER'
   >('CAMPAIGNS');
@@ -760,17 +762,36 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       });
       fetchPromoCodes();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update promo code.');
+      await modal.alert({
+        title: 'Status Update Failed',
+        message: err.response?.data?.detail || 'Failed to update promo code.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
   const handleDeleteCode = async (codeItem: AdminPromoCode) => {
-    if (!window.confirm(`Are you sure you want to permanently delete promo code "${codeItem.code}"?`)) return;
+    const confirmed = await modal.confirm({
+      title: 'Delete Promo Code?',
+      message: `Are you sure you want to permanently delete promo code "${codeItem.code}"?`,
+      description: 'Existing orders with this discount will retain their history, but new buyers will no longer be able to apply it.',
+      confirmText: 'Delete Promo Code',
+      cancelText: 'Keep Code',
+      type: 'danger',
+      icon: 'trash'
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/escrow/admin/promo-codes/${codeItem.id}`);
       fetchPromoCodes();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete promo code.');
+      await modal.alert({
+        title: 'Deletion Failed',
+        message: err.response?.data?.detail || 'Failed to delete promo code.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
@@ -851,17 +872,36 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       });
       fetchSeasonalCampaigns();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update campaign.');
+      await modal.alert({
+        title: 'Status Update Failed',
+        message: err.response?.data?.detail || 'Failed to update campaign.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
   const handleDeleteSeasonal = async (camp: SeasonalFeeCampaign) => {
-    if (!window.confirm(`Are you sure you want to permanently delete seasonal campaign "${camp.name}"?`)) return;
+    const confirmed = await modal.confirm({
+      title: 'Delete Seasonal Campaign?',
+      message: `Are you sure you want to permanently delete seasonal campaign "${camp.name}"?`,
+      description: 'Platform fee calculations will immediately revert to standard platform rates.',
+      confirmText: 'Delete Campaign',
+      cancelText: 'Keep Campaign',
+      type: 'danger',
+      icon: 'trash'
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/escrow/admin/seasonal-fees/${camp.id}`);
       fetchSeasonalCampaigns();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete seasonal campaign.');
+      await modal.alert({
+        title: 'Deletion Failed',
+        message: err.response?.data?.detail || 'Failed to delete seasonal campaign.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
@@ -951,17 +991,36 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       });
       fetchRewardCampaigns();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to update campaign.');
+      await modal.alert({
+        title: 'Status Update Failed',
+        message: err.response?.data?.detail || 'Failed to update campaign.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
   const handleDeleteReward = async (camp: TransactionRewardCampaign) => {
-    if (!window.confirm(`Are you sure you want to permanently delete reward campaign "${camp.name}"?`)) return;
+    const confirmed = await modal.confirm({
+      title: 'Delete Reward Campaign?',
+      message: `Are you sure you want to permanently delete reward campaign "${camp.name}"?`,
+      description: 'Users will no longer earn automated rewards from this campaign upon order completion.',
+      confirmText: 'Delete Campaign',
+      cancelText: 'Keep Campaign',
+      type: 'danger',
+      icon: 'trash'
+    });
+    if (!confirmed) return;
     try {
       await apiClient.delete(`/escrow/admin/reward-campaigns/${camp.id}`);
       fetchRewardCampaigns();
     } catch (err: any) {
-      alert(err.response?.data?.detail || 'Failed to delete reward campaign.');
+      await modal.alert({
+        title: 'Deletion Failed',
+        message: err.response?.data?.detail || 'Failed to delete reward campaign.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 

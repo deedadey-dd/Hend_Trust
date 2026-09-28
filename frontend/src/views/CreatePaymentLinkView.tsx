@@ -7,8 +7,10 @@ import { QRCodeDisplay } from '../components/QRCodeDisplay';
 import { useEscapeKey } from '../utils/useEscapeKey';
 import { MARKETPLACE_CATEGORIES } from '../constants/categories';
 import { useAuthStore } from '../store/authStore';
+import { useModal } from '../context/ModalContext';
 
 export default function CreatePaymentLinkView() {
+  const modal = useModal();
   const { user } = useAuthStore();
   const [searchParams] = useSearchParams();
 
@@ -99,7 +101,12 @@ export default function CreatePaymentLinkView() {
       setImageUrl(webpDataUrl);
     } catch (err) {
       console.error("Image compression failed:", err);
-      alert("Failed to process image. Please try a different photo.");
+      await modal.alert({
+        title: 'Image Error',
+        message: 'Failed to process image. Please try a different photo.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setIsCompressingImage(false);
     }
@@ -123,7 +130,12 @@ export default function CreatePaymentLinkView() {
         console.log('Error sharing', error);
       }
     } else {
-      alert("Web Share API not supported in your browser. Please copy the link instead.");
+      await modal.alert({
+        title: 'Share Not Supported',
+        message: 'Web Share API is not supported in your browser. Please copy the payment link instead.',
+        type: 'info',
+        icon: 'link'
+      });
     }
   };
 
@@ -160,7 +172,12 @@ export default function CreatePaymentLinkView() {
           message: typeof detail === 'string' ? detail : "Your account has been suspended by administration and cannot create new payment links."
         });
       } else {
-        alert(detail || 'Failed to create payment link. Please try again.');
+        await modal.alert({
+          title: 'Link Creation Failed',
+          message: detail || 'Failed to create payment link. Please try again.',
+          type: 'danger',
+          icon: 'alert'
+        });
       }
     }
   };

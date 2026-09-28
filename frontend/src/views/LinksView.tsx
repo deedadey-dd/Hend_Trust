@@ -4,6 +4,7 @@ import { apiClient } from '../api/client';
 import { Link as RouterLink } from 'react-router-dom';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { useModal } from '../context/ModalContext';
 
 export interface SellerPaymentLink {
   id: string;
@@ -22,6 +23,7 @@ export interface SellerPaymentLink {
 }
 
 export const LinksView: React.FC = () => {
+  const modal = useModal();
   const [links, setLinks] = useState<SellerPaymentLink[]>([]);
   const [totalCount, setTotalCount] = useState(0);
   const [loading, setLoading] = useState(true);
@@ -94,12 +96,26 @@ export const LinksView: React.FC = () => {
       }
     } catch (err) {
       console.error('Failed to toggle link status:', err);
-      alert('Failed to update link status.');
+      await modal.alert({
+        title: 'Status Update Failed',
+        message: 'Failed to update link active status. Please try again.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
   const handleArchive = async (link: any) => {
-    if (!confirm(`Are you sure you want to delete/archive "${link.title}"?\n\nThis will disable the link and hide it from your active list without breaking past transaction history.`)) return;
+    const confirmed = await modal.confirm({
+      title: 'Archive Payment Link?',
+      message: `Are you sure you want to archive "${link.title}"?`,
+      description: 'This will disable the link and hide it from your active list without breaking past transaction history.',
+      confirmText: 'Yes, Archive Link',
+      cancelText: 'Keep Active',
+      type: 'danger',
+      icon: 'trash'
+    });
+    if (!confirmed) return;
     try {
       await apiClient.post(`/links/${link.id}/archive`);
       if (selectedLink && selectedLink.id === link.id) {
@@ -108,7 +124,12 @@ export const LinksView: React.FC = () => {
       fetchLinks();
     } catch (err) {
       console.error('Failed to archive link:', err);
-      alert('Failed to archive link.');
+      await modal.alert({
+        title: 'Archive Failed',
+        message: 'Failed to archive payment link. Please try again.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 
@@ -121,7 +142,12 @@ export const LinksView: React.FC = () => {
       fetchLinks();
     } catch (err) {
       console.error('Failed to restore link:', err);
-      alert('Failed to restore link.');
+      await modal.alert({
+        title: 'Restoration Failed',
+        message: 'Failed to restore link. Please try again.',
+        type: 'danger',
+        icon: 'alert'
+      });
     }
   };
 

@@ -151,8 +151,30 @@ export const TermsModal: React.FC<TermsModalProps> = ({
           {/* Section 6 */}
           <section className="space-y-2">
             <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
+              <Scale className="h-4 w-4 text-rose-500" />
+              6. External Arbitration, Platform Indemnity & Third-Party Ruling Release Requirements
+            </h3>
+            <p>
+              If the Buyer or Seller elects to escalate any dispute beyond HendAxis Trust's internal dispute resolution mechanism to an external mediator, commercial arbitration tribunal, statutory authority, or court of law:
+            </p>
+            <ul className="list-disc pl-5 space-y-1 text-slate-600 dark:text-slate-300">
+              <li>
+                <strong>100% Cost Assumption:</strong> The disputing parties shall bear all associated legal, administrative, and arbitration expenses. Under no circumstances will HendAxis Trust incur any fees or costs related to third-party actions.
+              </li>
+              <li>
+                <strong>Platform Absolution & Indemnity:</strong> HendAxis Trust, its directors, employees, and technology partners are absolved of all consequences, liabilities, claims, damages, and legal costs arising from external arbitral or judicial proceedings.
+              </li>
+              <li>
+                <strong>Mandatory Written Order Upload:</strong> Escrow funds held in dispute will solely be released pursuant to an external ruling upon submission of an authentic, certified, written binding order from the third-party arbitrator or court. This document must be formally submitted to the platform and uploaded by an authorized platform arbiter into the immutable audit record prior to any disbursement.
+              </li>
+            </ul>
+          </section>
+
+          {/* Section 7 */}
+          <section className="space-y-2">
+            <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-white flex items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-2">
               <CheckCircle2 className="h-4 w-4 text-indigo-500" />
-              6. Governing Law
+              7. Governing Law
             </h3>
             <p>
               These Terms are governed by the laws of the Republic of Ghana. Any legal disputes shall be instituted exclusively in the competent courts of Accra, Ghana.

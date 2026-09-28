@@ -111,10 +111,16 @@ class TransactionStatusSchema(Schema):
     waybill_photo_url: Optional[str] = None
     manager_dispute_notes: Optional[str] = None
     manager_dispute_photos: Optional[list[str]] = []
+    buyer_dispute_category: Optional[str] = None
     buyer_dispute_reason: Optional[str] = None
     buyer_dispute_photos: Optional[list[str]] = []
     seller_dispute_response: Optional[str] = None
     seller_dispute_photos: Optional[list[str]] = []
+    disputed_at: Optional[str] = None
+    arbiter_escalated_at: Optional[str] = None
+    arbiter_escalated_role: Optional[str] = None
+    arbiter_escalation_hours: Optional[int] = 48
+    external_arbitration_order_url: Optional[str] = None
     shipping_timeout_days: Optional[int] = 4
     inspection_hours_allowed: Optional[int] = 24
     buyer_review_token: Optional[str] = ""
@@ -202,6 +208,7 @@ def _build_txn_status_dict(t):
     cfg = get_platform_settings()
     timeout_days = int(cfg.get("shipping_timeout_days", 4))
     inspection_hours = get_inspection_hours_for_amount(t.total_amount_ghs)
+    escalation_hours = int(cfg.get("arbiter_escalation_hours", 48))
 
     return {
         "id": str(t.id),
@@ -234,10 +241,16 @@ def _build_txn_status_dict(t):
         "waybill_photo_url": log.waybill_photo_url if log else None,
         "manager_dispute_notes": t.manager_dispute_notes or None,
         "manager_dispute_photos": t.manager_dispute_photos or [],
+        "buyer_dispute_category": getattr(t, 'buyer_dispute_category', '') or None,
         "buyer_dispute_reason": t.buyer_dispute_reason or None,
         "buyer_dispute_photos": t.buyer_dispute_photos or [],
         "seller_dispute_response": t.seller_dispute_response or None,
         "seller_dispute_photos": t.seller_dispute_photos or [],
+        "disputed_at": t.disputed_at.isoformat() if getattr(t, 'disputed_at', None) else None,
+        "arbiter_escalated_at": t.arbiter_escalated_at.isoformat() if getattr(t, 'arbiter_escalated_at', None) else None,
+        "arbiter_escalated_role": getattr(t, 'arbiter_escalated_role', '') or None,
+        "arbiter_escalation_hours": escalation_hours,
+        "external_arbitration_order_url": getattr(t, 'external_arbitration_order_url', '') or None,
         "buyer_review_token": getattr(t, 'buyer_review_token', ''),
         "link_id": str(t.link.id) if t.link else "",
         "dispute_retracted_at": t.dispute_retracted_at.isoformat() if t.dispute_retracted_at else None,

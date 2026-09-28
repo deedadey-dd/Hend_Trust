@@ -8,6 +8,7 @@ import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { useModal } from '../context/ModalContext';
 import { MARKETPLACE_CATEGORIES } from '../constants/categories';
 
 interface ProfileData {
@@ -47,6 +48,7 @@ interface ProfileData {
 }
 
 export default function ProfileView() {
+  const modal = useModal();
   const { user, updateUser } = useAuthStore();
   const [profile, setProfile] = useState<ProfileData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -382,7 +384,12 @@ export default function ProfileView() {
       const webp = await compressImageToWebP(file);
       setProfilePicture(webp);
     } catch {
-      alert("Failed to process profile picture.");
+      await modal.alert({
+        title: 'Image Error',
+        message: 'Failed to process profile picture. Please try a different image.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setIsCompressingProfilePic(false);
     }
@@ -396,18 +403,28 @@ export default function ProfileView() {
       const webp = await compressImageToWebP(file);
       setBanner(webp);
     } catch {
-      alert("Failed to process cover banner image.");
+      await modal.alert({
+        title: 'Banner Error',
+        message: 'Failed to process cover banner image. Please try a different image.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setIsCompressingBanner(false);
     }
   };
 
-  const handleCategoryToggle = (cat: string) => {
+  const handleCategoryToggle = async (cat: string) => {
     if (selectedCategories.includes(cat)) {
       setSelectedCategories((prev: string[]) => prev.filter((c: string) => c !== cat));
     } else {
       if (selectedCategories.length >= 3) {
-        alert("Maximum of 3 product categories allowed.");
+        await modal.alert({
+          title: 'Category Limit',
+          message: 'Maximum of 3 product categories allowed.',
+          type: 'warning',
+          icon: 'alert'
+        });
         return;
       }
       setSelectedCategories((prev: string[]) => [...prev, cat]);

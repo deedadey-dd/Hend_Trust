@@ -10,6 +10,7 @@ import { useAuthStore } from '../store/authStore';
 import SEOHead from '../components/SEOHead';
 import ReviewDetailModal from '../components/ReviewDetailModal';
 import { useEscapeKey } from '../utils/useEscapeKey';
+import { useModal } from '../context/ModalContext';
 import type { RecentReview } from '../components/TrustpilotReviewCard';
 
 interface ProductCard {
@@ -83,6 +84,7 @@ interface SellerStorefront {
 }
 
 export default function SellerStoreView() {
+  const modal = useModal();
   const { username } = useParams<{ username: string }>();
   const { user } = useAuthStore();
   const [store, setStore] = useState<SellerStorefront | null>(null);
@@ -170,7 +172,12 @@ export default function SellerStoreView() {
       setReplyText('');
       fetchStorefront();
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to submit reply.');
+      await modal.alert({
+        title: 'Reply Failed',
+        message: err.response?.data?.message || 'Failed to submit reply.',
+        type: 'danger',
+        icon: 'alert'
+      });
     } finally {
       setIsSubmittingReply(false);
     }

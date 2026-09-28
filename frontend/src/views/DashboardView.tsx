@@ -18,7 +18,10 @@ import DisputeChatTimeline from '../components/DisputeChatTimeline';
 import ReferralDashboardTab from '../components/ReferralDashboardTab';
 import EmbeddableTrustBadge from '../components/EmbeddableTrustBadge';
 import BuyerReviewsTab from '../components/BuyerReviewsTab';
+import SellerReviewsTab from '../components/SellerReviewsTab';
+import ConfirmDeliveryReceiptModal from '../components/ConfirmDeliveryReceiptModal';
 import { useAuthStore } from '../store/authStore';
+import { useModal } from '../context/ModalContext';
 
 const merchantTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -75,6 +78,11 @@ interface SellerTxn {
   manager_dispute_notes?: string;
   manager_dispute_photos?: string[];
   dispute_retracted_at?: string;
+  buyer_dispute_category?: string;
+  disputed_at?: string;
+  arbiter_escalated_at?: string;
+  arbiter_escalated_role?: string;
+  arbiter_escalation_hours?: number;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -753,6 +761,7 @@ interface SellerDisputeModalProps {
 }
 
 function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerDisputeModalProps) {
+  const modal = useModal();
   const [response, setResponse] = useState('');
   const [photos, setPhotos] = useState<string[]>(txn.seller_dispute_photos || []);
   const [loading, setLoading] = useState(false);
@@ -762,7 +771,11 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (photos.length + files.length > 5) {
-      alert("You can upload a maximum of 5 evidence photos in total.");
+      await modal.alert({
+        title: "Photo Limit Exceeded",
+        message: "You can upload a maximum of 5 evidence photos in total.",
+        type: "warning"
+      });
       return;
     }
     setIsCompressing(true);
@@ -795,13 +808,52 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
         response: response.trim(),
         photos
       });
-      alert('Your dispute response and evidence photos have been submitted successfully.');
+      await modal.alert({
+        title: "Response Submitted",
+        message: "Your dispute response and evidence photos have been submitted successfully. The buyer and arbiter desk have been updated.",
+        type: "success",
+        icon: "check"
+      });
       onSuccess();
       onClose();
     } catch (err: any) {
       setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit response.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const [requestingArbiter, setRequestingArbiter] = useState(false);
+  const handleRequestArbiter = async () => {
+    const confirmed = await modal.confirm({
+      title: "Request Official Arbiter Decision",
+      message: "Escalate this dispute to the certified Platform Arbiter desk? Your case will be placed in the priority arbitration queue for review and binding ruling.",
+      confirmText: "Request Arbiter Decision",
+      cancelText: "Keep Direct Chat",
+      type: "orange",
+      icon: "scale",
+      badgeText: "Priority Arbitration"
+    });
+    if (!confirmed) return;
+
+    setRequestingArbiter(true);
+    try {
+      const res = await apiClient.post(`/escrow/${txn.id}/request-arbiter-decision`);
+      await modal.alert({
+        title: "Arbiter Decision Requested",
+        message: res.data?.message || 'Arbiter Decision requested successfully. Placed in priority arbitration queue.',
+        type: "orange",
+        icon: "scale"
+      });
+      onSuccess();
+    } catch (err: any) {
+      await modal.alert({
+        title: "Escalation Error",
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to request arbiter decision.',
+        type: "danger"
+      });
+    } finally {
+      setRequestingArbiter(false);
     }
   };
 
@@ -824,11 +876,18 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
             buyerReason={txn.buyer_dispute_reason}
             buyerPhotos={txn.buyer_dispute_photos}
             buyerName={txn.buyer_name || 'Buyer'}
+            buyerCategory={txn.buyer_dispute_category}
             sellerResponse={txn.seller_dispute_response}
             sellerPhotos={txn.seller_dispute_photos}
             sellerName="You (Seller)"
             managerNotes={txn.manager_dispute_notes}
             managerPhotos={txn.manager_dispute_photos}
+            disputedAt={txn.disputed_at || txn.created_at}
+            arbiterEscalatedAt={txn.arbiter_escalated_at}
+            arbiterEscalatedRole={txn.arbiter_escalated_role}
+            arbiterEscalationHours={txn.arbiter_escalation_hours || 48}
+            onRequestArbiterDecision={handleRequestArbiter}
+            isRequestingArbiter={requestingArbiter}
             disputeRetractedAt={txn.dispute_retracted_at}
             waybillPhotoUrl={txn.waybill_photo_url}
           />
@@ -985,6 +1044,7 @@ interface BuyerOrderDetailModalProps {
   onOpenRating: (order: any) => void;
   onOpenDispute: (order: any) => void;
   onOpenRetract: (order: any) => void;
+  onOpenConfirmReceipt: (order: any) => void;
 }
 
 function BuyerOrderDetailModal({
@@ -994,12 +1054,14 @@ function BuyerOrderDetailModal({
   onOpenLightbox,
   onOpenRating,
   onOpenDispute,
-  onOpenRetract
+  onOpenRetract,
+  onOpenConfirmReceipt
 }: BuyerOrderDetailModalProps) {
+  const modal = useModal();
   useEscapeKey(onClose);
   const [copiedRef, setCopiedRef] = useState(false);
-  const [isConfirming, setIsConfirming] = useState(false);
   const [isReleasing, setIsReleasing] = useState(false);
+  const [requestingArbiter, setRequestingArbiter] = useState(false);
 
   const statusCfg = STATUS_CONFIG[order.status] || STATUS_CONFIG['PAYMENT_RECEIVED'];
   const StatusIcon = statusCfg.icon;
@@ -1017,31 +1079,74 @@ function BuyerOrderDetailModal({
     setTimeout(() => setCopiedRef(false), 2000);
   };
 
-  const handle1ClickConfirm = async () => {
-    setIsConfirming(true);
-    try {
-      await apiClient.post(`/escrow/${order.id}/buyer-confirm-receipt`);
-      alert('Delivery confirmed! Inspection period started.');
-      onRefresh();
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to confirm delivery.');
-    } finally {
-      setIsConfirming(false);
-    }
+  const handle1ClickConfirm = () => {
+    onOpenConfirmReceipt(order);
   };
 
   const handleApproveRelease = async () => {
-    if (!window.confirm("Are you satisfied with your order? Releasing payment will immediately transfer escrow funds to the seller's wallet.")) return;
+    const confirmed = await modal.confirm({
+      title: "Approve Order & Release Payment",
+      message: "Are you satisfied with your order? Releasing payment will immediately finalize escrow and transfer funds to the seller's wallet.",
+      confirmText: "Release Payment",
+      cancelText: "Keep In Inspection",
+      type: "success",
+      icon: "check",
+      badgeText: "Escrow Finalization"
+    });
+    if (!confirmed) return;
+
     setIsReleasing(true);
     try {
       await apiClient.post(`/escrow/${order.id}/approve-and-release`);
-      alert('Order approved! Escrow payment released to seller.');
+      await modal.alert({
+        title: "Order Approved & Completed",
+        message: "Escrow payment released to seller. Thank you for using HendAxis Trust!",
+        type: "success",
+        icon: "check"
+      });
       onRefresh();
       onOpenRating(order);
     } catch (err: any) {
-      alert(err.response?.data?.message || err.response?.data?.detail || 'Failed to release payment.');
+      await modal.alert({
+        title: "Payment Release Error",
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to release payment.',
+        type: "danger"
+      });
     } finally {
       setIsReleasing(false);
+    }
+  };
+
+  const handleRequestArbiter = async () => {
+    const confirmed = await modal.confirm({
+      title: "Request Official Arbiter Decision",
+      message: "Escalate this dispute to the certified Platform Arbiter desk? Your case will be placed at the top of the priority arbitration queue for a binding ruling.",
+      confirmText: "Request Arbiter Decision",
+      cancelText: "Keep Direct Chat",
+      type: "orange",
+      icon: "scale",
+      badgeText: "Priority Arbitration"
+    });
+    if (!confirmed) return;
+
+    setRequestingArbiter(true);
+    try {
+      await apiClient.post(`/escrow/${order.id}/request-arbiter-decision`);
+      await modal.alert({
+        title: "Arbiter Decision Requested",
+        message: "Platform arbiter escalation requested successfully. Your case has been placed at the top of the arbitration queue.",
+        type: "orange",
+        icon: "scale"
+      });
+      onRefresh();
+    } catch (err: any) {
+      await modal.alert({
+        title: "Escalation Error",
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to request arbiter decision.',
+        type: "danger"
+      });
+    } finally {
+      setRequestingArbiter(false);
     }
   };
 
@@ -1267,12 +1372,20 @@ function BuyerOrderDetailModal({
                 buyerReason={order.buyer_dispute_reason}
                 buyerPhotos={order.buyer_dispute_photos}
                 buyerName="You (Buyer)"
+                buyerCategory={order.buyer_dispute_category}
                 sellerResponse={order.seller_dispute_response}
                 sellerPhotos={order.seller_dispute_photos}
                 sellerName={order.shop_name || order.seller_username || 'Seller'}
                 managerNotes={order.manager_dispute_notes}
                 managerPhotos={order.manager_dispute_photos}
+                disputedAt={order.disputed_at || order.created_at}
+                arbiterEscalatedAt={order.arbiter_escalated_at}
+                arbiterEscalatedRole={order.arbiter_escalated_role}
+                arbiterEscalationHours={order.arbiter_escalation_hours || 48}
+                onRequestArbiterDecision={handleRequestArbiter}
+                isRequestingArbiter={requestingArbiter}
                 disputeRetractedAt={order.dispute_retracted_at}
+                waybillPhotoUrl={order.waybill_photo_url}
               />
               {isDisputed && (
                 <div className="flex gap-2 pt-2 border-t border-rose-200/70 dark:border-rose-900/50">
@@ -1346,10 +1459,9 @@ function BuyerOrderDetailModal({
             {canConfirm && (
               <button
                 onClick={handle1ClickConfirm}
-                disabled={isConfirming}
-                className="py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl transition shadow-md shadow-green-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="py-2.5 px-4 bg-green-600 hover:bg-green-700 text-white font-bold text-xs rounded-xl transition shadow-md shadow-green-600/20 flex items-center gap-1.5 cursor-pointer"
               >
-                {isConfirming ? <Loader2 className="w-4 h-4 animate-spin" /> : '⚡ Confirm Delivery Receipt'}
+                ⚡ Confirm Delivery Receipt
               </button>
             )}
 
@@ -1385,6 +1497,16 @@ function BuyerOrderDetailModal({
   );
 }
 
+const DISPUTE_CATEGORIES = [
+  { value: 'DAMAGED_ITEM', label: 'Item Damaged or Broken in Transit' },
+  { value: 'WRONG_ITEM', label: 'Wrong Item Delivered / Not as Described' },
+  { value: 'DEFECTIVE_OR_FAULTY', label: 'Defective, Malfunctioning or Inoperable' },
+  { value: 'MISSING_PARTS', label: 'Missing Accessories, Parts, or Incomplete Package' },
+  { value: 'COUNTERFEIT_OR_FAKE', label: 'Counterfeit, Fake, or Replica Item' },
+  { value: 'ITEM_NOT_RECEIVED', label: 'Item Not Received / Empty Parcel' },
+  { value: 'OTHER', label: 'Other Issue / Contractual Non-Compliance' },
+];
+
 // ─── Buyer Dispute Modal ───────────────────────────────────────────────────
 interface BuyerDisputeModalProps {
   order: any;
@@ -1394,7 +1516,10 @@ interface BuyerDisputeModalProps {
 }
 
 function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerDisputeModalProps) {
+  const modal = useModal();
   useEscapeKey(onClose);
+  const isInitialDispute = !order.buyer_dispute_reason && order.status !== 'DISPUTED';
+  const [category, setCategory] = useState(order.buyer_dispute_category || 'DAMAGED_ITEM');
   const [reason, setReason] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1404,7 +1529,11 @@ function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerD
   const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (photos.length + files.length > 5) {
-      alert("You can upload a maximum of 5 evidence photos.");
+      await modal.alert({
+        title: "Photo Limit Exceeded",
+        message: "You can upload a maximum of 5 evidence photos.",
+        type: "warning"
+      });
       return;
     }
     setIsCompressing(true);
@@ -1425,8 +1554,8 @@ function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerD
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!reason.trim()) {
-      setError('Please provide a description of the issue.');
+    if (reason.trim().length < 10) {
+      setError('Please provide at least 10 characters explaining the dispute reason in detail.');
       return;
     }
     setLoading(true);
@@ -1435,11 +1564,20 @@ function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerD
       const endpoint = order.buyer_dispute_reason
         ? `/escrow/${order.id}/dispute-append`
         : `/escrow/${order.id}/raise-dispute`;
-      await apiClient.post(endpoint, {
+      const payload: { reason: string; photos: string[]; category?: string } = {
         reason: reason.trim(),
-        photos: photos
+        photos: photos,
+      };
+      if (isInitialDispute) {
+        payload.category = category;
+      }
+      await apiClient.post(endpoint, payload);
+      await modal.alert({
+        title: "Dispute Submitted",
+        message: "Dispute details submitted successfully. Management and seller have been updated.",
+        type: "danger",
+        icon: "alert"
       });
-      alert('Dispute details submitted successfully. Management team will review.');
       onSuccess();
     } catch (err: any) {
       setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to submit dispute.');
@@ -1454,7 +1592,7 @@ function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerD
         <div className="px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-rose-50/60 dark:bg-rose-950/40 shrink-0">
           <div className="flex items-center gap-2 text-rose-700 dark:text-rose-300 font-bold">
             <AlertTriangle className="w-5 h-5 text-rose-600" />
-            <span>{order.buyer_dispute_reason ? 'Add Dispute Update / Evidence' : 'Raise Order Dispute'}</span>
+            <span>{isInitialDispute ? 'Raise Order Dispute' : 'Add Dispute Update / Evidence'}</span>
           </div>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition cursor-pointer">
             <X className="w-5 h-5" />
@@ -1466,16 +1604,38 @@ function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerD
             Please describe why the item is damaged, defective, or does not match what was agreed upon. Escrow funds will remain safely held until resolution.
           </p>
 
+          {isInitialDispute && (
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Dispute Category *
+              </label>
+              <select
+                value={category}
+                onChange={e => setCategory(e.target.value)}
+                className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-rose-500"
+              >
+                {DISPUTE_CATEGORIES.map(cat => (
+                  <option key={cat.value} value={cat.value}>{cat.label}</option>
+                ))}
+              </select>
+            </div>
+          )}
+
           <div>
-            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
-              Reason & Details *
-            </label>
+            <div className="flex justify-between items-center mb-1.5">
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300">
+                Reason & Details *
+              </label>
+              <span className={`text-[11px] font-mono ${reason.trim().length >= 10 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                {reason.trim().length}/10 min chars
+              </span>
+            </div>
             <textarea
               rows={4}
               required
               value={reason}
               onChange={e => setReason(e.target.value)}
-              placeholder="Describe the issue in detail..."
+              placeholder="Describe the issue in detail (minimum 10 characters)..."
               className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-3 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-rose-500"
             />
           </div>
@@ -1529,7 +1689,7 @@ function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerD
             </button>
             <button
               type="submit"
-              disabled={loading || isCompressing || !reason.trim()}
+              disabled={loading || isCompressing || reason.trim().length < 10}
               className="flex-1 py-2.5 bg-rose-600 hover:bg-rose-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-rose-600/20 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : 'Submit Dispute'}
@@ -1549,6 +1709,7 @@ interface BuyerRetractModalProps {
 }
 
 function BuyerRetractModal({ order, onClose, onSuccess }: BuyerRetractModalProps) {
+  const modal = useModal();
   useEscapeKey(onClose);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -1558,7 +1719,12 @@ function BuyerRetractModal({ order, onClose, onSuccess }: BuyerRetractModalProps
     setError('');
     try {
       await apiClient.post(`/escrow/${order.id}/retract-dispute`);
-      alert('Dispute retracted successfully. Settlement grace period initiated.');
+      await modal.alert({
+        title: "Dispute Retracted",
+        message: "Dispute retracted successfully. Settlement grace period initiated.",
+        type: "success",
+        icon: "shield"
+      });
       onSuccess();
     } catch (err: any) {
       setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to retract dispute.');
@@ -1605,15 +1771,18 @@ function BuyerRetractModal({ order, onClose, onSuccess }: BuyerRetractModalProps
 }
 
 function BuyerPurchasesTab() {
+  const modal = useModal();
   const [searchParams] = useSearchParams();
   const newOrderRef = (searchParams.get('new_order') || '').trim();
   const [purchases, setPurchases] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+  const [statusFilter, setStatusFilter] = useState<'ALL' | 'DELIVERY_IN_PROGRESS' | 'INSPECTION_PERIOD' | 'DISPUTED' | 'COMPLETED'>('ALL');
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Modal states for interactive order management
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
+  const [confirmingReceiptOrder, setConfirmingReceiptOrder] = useState<any | null>(null);
   const [disputeOrder, setDisputeOrder] = useState<any | null>(null);
   const [retractOrder, setRetractOrder] = useState<any | null>(null);
   const [ratingOrder, setRatingOrder] = useState<any | null>(null);
@@ -1645,32 +1814,36 @@ function BuyerPurchasesTab() {
     fetchPurchases();
   }, [newOrderRef]);
 
-  const handle1ClickConfirm = async (txnId: string, e?: React.MouseEvent) => {
+  const handle1ClickConfirm = (txnOrOrder: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    setActionLoadingId(txnId);
-    try {
-      await apiClient.post(`/escrow/${txnId}/buyer-confirm-receipt`);
-      alert('Delivery confirmed! Inspection period started.');
-      await fetchPurchases();
-      if (selectedOrder && selectedOrder.id === txnId) {
-        const res = await apiClient.get('/checkout/buyer/my-orders');
-        const found = (res.data || []).find((x: any) => x.id === txnId);
-        if (found) setSelectedOrder(found);
-      }
-    } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to confirm delivery.');
-    } finally {
-      setActionLoadingId(null);
-    }
+    const targetOrder = typeof txnOrOrder === 'string' 
+      ? purchases.find(p => p.id === txnOrOrder) || { id: txnOrOrder }
+      : txnOrOrder;
+    setConfirmingReceiptOrder(targetOrder);
   };
 
   const handleApproveRelease = async (txnId: string, orderObj?: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    if (!window.confirm("Are you satisfied with this order? Releasing payment will immediately transfer escrow funds to the seller's wallet.")) return;
+    const confirmed = await modal.confirm({
+      title: "Approve Order & Release Payment",
+      message: "Are you satisfied with this order? Releasing payment will immediately finalize escrow and transfer funds to the seller's wallet.",
+      confirmText: "Release Payment",
+      cancelText: "Keep In Inspection",
+      type: "success",
+      icon: "check",
+      badgeText: "Escrow Finalization"
+    });
+    if (!confirmed) return;
+
     setActionLoadingId(txnId);
     try {
       await apiClient.post(`/escrow/${txnId}/approve-and-release`);
-      alert('Order approved! Escrow payment released to seller.');
+      await modal.alert({
+        title: "Order Approved & Completed",
+        message: "Escrow payment released to seller. Thank you for using HendAxis Trust!",
+        type: "success",
+        icon: "check"
+      });
       await fetchPurchases();
       if (orderObj) {
         setRatingOrder(orderObj);
@@ -1681,7 +1854,11 @@ function BuyerPurchasesTab() {
         if (found) setSelectedOrder(found);
       }
     } catch (err: any) {
-      alert(err.response?.data?.message || err.response?.data?.detail || 'Failed to release payment.');
+      await modal.alert({
+        title: "Payment Release Error",
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to release payment.',
+        type: "danger"
+      });
     } finally {
       setActionLoadingId(null);
     }
@@ -1689,16 +1866,20 @@ function BuyerPurchasesTab() {
 
   const filtered = purchases.filter(p => {
     const q = search.toLowerCase();
-    return (
+    const matchesSearch = (
       (p.title && p.title.toLowerCase().includes(q)) ||
       (p.paystack_reference && p.paystack_reference.toLowerCase().includes(q)) ||
       (p.seller_username && p.seller_username.toLowerCase().includes(q)) ||
       (p.shop_name && p.shop_name.toLowerCase().includes(q))
     );
+    if (!matchesSearch) return false;
+    if (statusFilter !== 'ALL' && p.status !== statusFilter) return false;
+    return true;
   });
 
   const inTransitCount = purchases.filter(p => p.status === 'DELIVERY_IN_PROGRESS').length;
   const inInspectionCount = purchases.filter(p => p.status === 'INSPECTION_PERIOD').length;
+  const disputedCount = purchases.filter(p => p.status === 'DISPUTED').length;
   const completedCount = purchases.filter(p => p.status === 'COMPLETED').length;
 
   return (
@@ -1709,11 +1890,11 @@ function BuyerPurchasesTab() {
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
             <div>
               <span className="px-3 py-1 bg-white/15 border border-white/20 rounded-full text-xs font-bold uppercase tracking-wider text-blue-200">
-                1-Click Buyer Escrow Hub
+                Buyer Escrow Hub
               </span>
               <h1 className="text-2xl sm:text-3xl font-black mt-2 tracking-tight">My Purchases & Orders</h1>
               <p className="text-sm text-blue-200 mt-1 max-w-xl">
-                Track incoming shipments, inspect received items, and release escrow funds to sellers in 1 click with 0 SMS OTPs.
+                Track incoming shipments, inspect delivered items, and release escrow funds directly from your dashboard.
               </p>
             </div>
             <Link
@@ -1724,23 +1905,98 @@ function BuyerPurchasesTab() {
             </Link>
           </div>
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-6 pt-6 border-t border-white/15">
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
-              <span className="text-xs text-blue-200 block font-medium">Total Purchases</span>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3 mt-6 pt-6 border-t border-white/15">
+            <button
+              type="button"
+              onClick={() => setStatusFilter('ALL')}
+              className={`text-left rounded-2xl p-4 border transition-all duration-200 cursor-pointer focus:outline-none ${
+                statusFilter === 'ALL'
+                  ? 'bg-white/25 border-white shadow-lg ring-2 ring-white/40 scale-[1.02]'
+                  : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-white/20'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-blue-200 block font-medium">Total Purchases</span>
+                {statusFilter === 'ALL' && (
+                  <span className="text-[10px] font-bold bg-white/20 text-white px-1.5 py-0.5 rounded-md">All</span>
+                )}
+              </div>
               <span className="text-2xl font-black text-white mt-1 block">{purchases.length}</span>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
-              <span className="text-xs text-amber-200 block font-medium">In Transit</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter(prev => prev === 'DELIVERY_IN_PROGRESS' ? 'ALL' : 'DELIVERY_IN_PROGRESS')}
+              className={`text-left rounded-2xl p-4 border transition-all duration-200 cursor-pointer focus:outline-none ${
+                statusFilter === 'DELIVERY_IN_PROGRESS'
+                  ? 'bg-amber-500/25 border-amber-400 ring-2 ring-amber-400/50 shadow-lg shadow-amber-500/20 scale-[1.02]'
+                  : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-amber-400/30'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-amber-200 block font-medium">In Transit</span>
+                {statusFilter === 'DELIVERY_IN_PROGRESS' && (
+                  <span className="text-[10px] font-bold bg-amber-400/30 text-amber-200 px-1.5 py-0.5 rounded-md">Filtered</span>
+                )}
+              </div>
               <span className="text-2xl font-black text-amber-300 mt-1 block">{inTransitCount}</span>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
-              <span className="text-xs text-purple-200 block font-medium">In Inspection</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter(prev => prev === 'INSPECTION_PERIOD' ? 'ALL' : 'INSPECTION_PERIOD')}
+              className={`text-left rounded-2xl p-4 border transition-all duration-200 cursor-pointer focus:outline-none ${
+                statusFilter === 'INSPECTION_PERIOD'
+                  ? 'bg-purple-500/25 border-purple-400 ring-2 ring-purple-400/50 shadow-lg shadow-purple-500/20 scale-[1.02]'
+                  : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-purple-400/30'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-purple-200 block font-medium">In Inspection</span>
+                {statusFilter === 'INSPECTION_PERIOD' && (
+                  <span className="text-[10px] font-bold bg-purple-400/30 text-purple-200 px-1.5 py-0.5 rounded-md">Filtered</span>
+                )}
+              </div>
               <span className="text-2xl font-black text-purple-300 mt-1 block">{inInspectionCount}</span>
-            </div>
-            <div className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10">
-              <span className="text-xs text-emerald-200 block font-medium">Completed Safely</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter(prev => prev === 'DISPUTED' ? 'ALL' : 'DISPUTED')}
+              className={`text-left rounded-2xl p-4 border transition-all duration-200 cursor-pointer focus:outline-none ${
+                statusFilter === 'DISPUTED'
+                  ? 'bg-rose-500/30 border-rose-400 ring-2 ring-rose-400/50 shadow-lg shadow-rose-500/25 scale-[1.02]'
+                  : disputedCount > 0
+                    ? 'bg-rose-500/15 hover:bg-rose-500/25 border-rose-400/40'
+                    : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-rose-400/30'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-rose-200 block font-medium">Disputed</span>
+                {statusFilter === 'DISPUTED' && (
+                  <span className="text-[10px] font-bold bg-rose-400/30 text-rose-200 px-1.5 py-0.5 rounded-md">Filtered</span>
+                )}
+              </div>
+              <span className="text-2xl font-black text-rose-300 mt-1 block">{disputedCount}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setStatusFilter(prev => prev === 'COMPLETED' ? 'ALL' : 'COMPLETED')}
+              className={`text-left rounded-2xl p-4 border transition-all duration-200 cursor-pointer focus:outline-none ${
+                statusFilter === 'COMPLETED'
+                  ? 'bg-emerald-500/25 border-emerald-400 ring-2 ring-emerald-400/50 shadow-lg shadow-emerald-500/20 scale-[1.02]'
+                  : 'bg-white/10 hover:bg-white/15 border-white/10 hover:border-emerald-400/30'
+              }`}
+            >
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-emerald-200 block font-medium">Completed Safely</span>
+                {statusFilter === 'COMPLETED' && (
+                  <span className="text-[10px] font-bold bg-emerald-400/30 text-emerald-200 px-1.5 py-0.5 rounded-md">Filtered</span>
+                )}
+              </div>
               <span className="text-2xl font-black text-emerald-300 mt-1 block">{completedCount}</span>
-            </div>
+            </button>
           </div>
         </div>
       </div>
@@ -1761,27 +2017,51 @@ function BuyerPurchasesTab() {
               </span>
             </div>
             <p className="text-xs text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
-              Your recent purchase (<strong className="font-mono text-emerald-700 dark:text-emerald-400">{newOrderRef}</strong>) is highlighted at the top below. Click on any order to view details, inspect tracking, and release escrow in 1 click without leaving this page.
+              Your recent purchase (<strong className="font-mono text-emerald-700 dark:text-emerald-400">{newOrderRef}</strong>) is highlighted at the top below. Click on any order to view details, inspect tracking, and release escrow funds without leaving this page.
             </p>
           </div>
         </div>
       )}
 
-      {/* Search Bar */}
+      {/* Search & Filter Bar */}
       <div className="flex flex-col sm:flex-row gap-3 items-center justify-between">
-        <div className="relative w-full sm:w-80">
-          <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
-          <input
-            type="text"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            placeholder="Search purchases by title, seller, or reference..."
-            className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-          />
+        <div className="flex flex-wrap items-center gap-2.5 w-full sm:w-auto">
+          <div className="relative w-full sm:w-80">
+            <Search className="w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 text-gray-400" />
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Search purchases by title, seller, or reference..."
+              className="w-full pl-10 pr-4 py-2.5 bg-white dark:bg-slate-900 border border-gray-200 dark:border-slate-800 rounded-xl text-xs text-gray-900 dark:text-white placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          {statusFilter !== 'ALL' && (
+            <div className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-50 dark:bg-blue-900/30 border border-blue-200 dark:border-blue-800 rounded-xl text-xs text-blue-700 dark:text-blue-300">
+              <Filter className="w-3.5 h-3.5" />
+              <span>
+                Filtered by:{' '}
+                <strong>
+                  {statusFilter === 'DELIVERY_IN_PROGRESS' && 'In Transit'}
+                  {statusFilter === 'INSPECTION_PERIOD' && 'In Inspection'}
+                  {statusFilter === 'DISPUTED' && 'Disputed'}
+                  {statusFilter === 'COMPLETED' && 'Completed'}
+                </strong>
+              </span>
+              <button
+                type="button"
+                onClick={() => setStatusFilter('ALL')}
+                className="ml-1 p-0.5 hover:bg-blue-200 dark:hover:bg-blue-800 rounded text-blue-600 dark:text-blue-300 transition cursor-pointer"
+                title="Clear filter"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
         </div>
         <button
           onClick={fetchPurchases}
-          className="self-end sm:self-auto px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center gap-1.5 cursor-pointer"
+          className="self-end sm:self-auto px-4 py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-200 dark:hover:bg-slate-700 transition flex items-center gap-1.5 cursor-pointer shrink-0"
         >
           <RefreshCw className="w-3.5 h-3.5" /> Refresh Orders
         </button>
@@ -1799,14 +2079,26 @@ function BuyerPurchasesTab() {
           </div>
           <h3 className="text-lg font-bold text-gray-900 dark:text-white">No Purchases Found</h3>
           <p className="text-xs text-gray-500 dark:text-slate-400 max-w-sm mx-auto">
-            {search ? 'No orders match your search criteria.' : 'You haven\'t made any escrow purchases yet. Browse verified merchants and enjoy 100% money-back escrow protection.'}
+            {search || statusFilter !== 'ALL'
+              ? 'No orders match your filter criteria.'
+              : 'You haven\'t made any escrow purchases yet. Browse verified merchants and enjoy 100% money-back escrow protection.'}
           </p>
-          <Link
-            to="/shops"
-            className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-md"
-          >
-            Browse Verified Storefronts
-          </Link>
+          {(search || statusFilter !== 'ALL') ? (
+            <button
+              type="button"
+              onClick={() => { setSearch(''); setStatusFilter('ALL'); }}
+              className="inline-flex items-center gap-2 px-6 py-2.5 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-white font-bold text-xs rounded-xl transition cursor-pointer"
+            >
+              Clear All Filters
+            </button>
+          ) : (
+            <Link
+              to="/shops"
+              className="inline-flex items-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-md"
+            >
+              Browse Verified Storefronts
+            </Link>
+          )}
         </div>
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -1892,11 +2184,10 @@ function BuyerPurchasesTab() {
 
                   {p.status === 'DELIVERY_IN_PROGRESS' && (
                     <button
-                      onClick={(e) => handle1ClickConfirm(p.id, e)}
-                      disabled={isProcessingThis}
-                      className="flex-1 py-2 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                      onClick={(e) => handle1ClickConfirm(p, e)}
+                      className="flex-1 py-2 px-3 bg-green-600 hover:bg-green-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1 cursor-pointer"
                     >
-                      {isProcessingThis ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '⚡ Confirm Receipt'}
+                      ⚡ Confirm Receipt
                     </button>
                   )}
 
@@ -1941,6 +2232,7 @@ function BuyerPurchasesTab() {
           onOpenRating={ord => { setSelectedOrder(null); setRatingOrder(ord); }}
           onOpenDispute={ord => setDisputeOrder(ord)}
           onOpenRetract={ord => setRetractOrder(ord)}
+          onOpenConfirmReceipt={ord => setConfirmingReceiptOrder(ord)}
         />
       )}
 
@@ -2005,6 +2297,32 @@ function BuyerPurchasesTab() {
         />
       )}
 
+      {/* Confirmation Dialog to prevent accidental delivery confirmations */}
+      {confirmingReceiptOrder && (
+        <ConfirmDeliveryReceiptModal
+          order={{
+            id: confirmingReceiptOrder.id,
+            title: confirmingReceiptOrder.title,
+            paystack_reference: confirmingReceiptOrder.paystack_reference,
+            shop_name: confirmingReceiptOrder.shop_name,
+            seller_username: confirmingReceiptOrder.seller_username,
+            inspection_hours_allowed: confirmingReceiptOrder.inspection_hours_allowed,
+            total_amount_ghs: confirmingReceiptOrder.total_amount_ghs
+          }}
+          onClose={() => setConfirmingReceiptOrder(null)}
+          onConfirm={async () => {
+            await apiClient.post(`/escrow/${confirmingReceiptOrder.id}/buyer-confirm-receipt`);
+            setConfirmingReceiptOrder(null);
+            await fetchPurchases();
+            if (selectedOrder && selectedOrder.id === confirmingReceiptOrder.id) {
+              const res = await apiClient.get('/checkout/buyer/my-orders');
+              const found = (res.data || []).find((x: any) => x.id === confirmingReceiptOrder.id);
+              if (found) setSelectedOrder(found);
+            }
+          }}
+        />
+      )}
+
       {lightboxImage && (
         <ImageLightboxModal
           imageUrl={lightboxImage}
@@ -2016,10 +2334,11 @@ function BuyerPurchasesTab() {
 }
 
 export default function DashboardView() {
+  const modal = useModal();
   const [searchParams, setSearchParams] = useSearchParams();
   const { user } = useAuthStore();
   const defaultTab = searchParams.get('tab') || (user?.role === 'BUYER' ? 'purchases' : 'transactions');
-  const [activeTab, setActiveTab] = useState<'transactions' | 'purchases' | 'referrals' | 'badges' | 'reviews'>(
+  const [activeTab, setActiveTab] = useState<'transactions' | 'seller_reviews' | 'purchases' | 'referrals' | 'badges' | 'reviews'>(
     defaultTab as any
   );
   const [txns, setTxns] = useState<SellerTxn[]>([]);
@@ -2179,15 +2498,29 @@ export default function DashboardView() {
     try {
       const res = await apiClient.post(`/escrow/seller/transactions/${txnId}/verify-payment`);
       if (res.data.payment_confirmed) {
-        alert('Payment confirmed! The transaction status has been updated to Awaiting Shipping.');
+        await modal.alert({
+          title: "Payment Confirmed",
+          message: "Payment confirmed! The transaction status has been updated to Awaiting Shipping.",
+          type: "success",
+          icon: "check"
+        });
       } else {
-        alert(res.data.detail || 'Payment has not been received yet. Please try again later.');
+        await modal.alert({
+          title: "Payment Pending",
+          message: res.data.detail || 'Payment has not been received yet. Please try again later.',
+          type: "info",
+          icon: "info"
+        });
       }
       fetchTransactions();
       fetchMetrics();
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.detail || 'Failed to verify payment status.');
+      await modal.alert({
+        title: "Verification Error",
+        message: err.response?.data?.detail || 'Failed to verify payment status.',
+        type: "danger"
+      });
     } finally {
       setVerifyingPaymentId(null);
     }
@@ -2201,7 +2534,11 @@ export default function DashboardView() {
       fetchMetrics();
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.detail || 'Failed to archive transaction.');
+      await modal.alert({
+        title: "Archive Error",
+        message: err.response?.data?.detail || 'Failed to archive transaction.',
+        type: "danger"
+      });
     } finally {
       setActionLoadingId(null);
     }
@@ -2215,7 +2552,11 @@ export default function DashboardView() {
       fetchMetrics();
     } catch (err: any) {
       console.error(err);
-      alert(err.response?.data?.detail || 'Failed to unarchive transaction.');
+      await modal.alert({
+        title: "Restore Error",
+        message: err.response?.data?.detail || 'Failed to unarchive transaction.',
+        type: "danger"
+      });
     } finally {
       setActionLoadingId(null);
     }
@@ -2245,14 +2586,34 @@ export default function DashboardView() {
   };
 
   const handleCancel = async (id: string) => {
-    if (!confirm('Are you sure you want to cancel this transaction? The platform fee will be charged to you and the buyer will be fully refunded.')) return;
+    const confirmed = await modal.confirm({
+      title: "Cancel Transaction & Refund Buyer",
+      message: "Are you sure you want to cancel this transaction? The platform fee will be charged to you and the escrow funds will be fully refunded to the buyer.",
+      confirmText: "Cancel Order & Refund",
+      cancelText: "Keep Order Active",
+      type: "danger",
+      icon: "alert",
+      badgeText: "Cancellation Warning"
+    });
+    if (!confirmed) return;
+
     try {
       await apiClient.post(`/escrow/seller/transactions/${id}/cancel`);
+      await modal.alert({
+        title: "Transaction Cancelled",
+        message: "The transaction has been cancelled and funds scheduled for refund to the buyer.",
+        type: "info",
+        icon: "info"
+      });
       fetchTransactions();
       fetchMetrics();
-    } catch (err) {
+    } catch (err: any) {
       console.error(err);
-      alert('Failed to cancel transaction.');
+      await modal.alert({
+        title: "Cancellation Error",
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to cancel transaction.',
+        type: "danger"
+      });
     }
   };
 
@@ -2273,112 +2634,230 @@ export default function DashboardView() {
     <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
       {/* ─── NAVIGATION TABS ─────────────────────────────────────────── */}
       <div className="flex items-center gap-2 mb-6 border-b border-gray-200 dark:border-slate-800 pb-3 overflow-x-auto print:hidden no-scrollbar [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
-        <button
-          type="button"
-          onClick={() => {
-            const params = new URLSearchParams(searchParams);
-            params.set('tab', 'purchases');
-            setSearchParams(params);
-            setActiveTab('purchases');
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
-            activeTab === 'purchases'
-              ? 'bg-blue-600 !text-white shadow-md'
-              : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-          }`}
-        >
-          <ShoppingCart className="h-4 w-4" />
-          My Purchases & Orders
-        </button>
+        {user?.role !== 'BUYER' ? (
+          <>
+            {/* 1. Merchant Sales & Escrows (Primary for Seller) */}
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', 'transactions');
+                setSearchParams(params);
+                setActiveTab('transactions');
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+                activeTab === 'transactions'
+                  ? 'bg-[#0363ff] !text-white shadow-md'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Package className="h-4 w-4" />
+              Merchant Sales & Escrows
+            </button>
 
-        {user?.role !== 'BUYER' && (
-          <button
-            type="button"
-            onClick={() => {
-              const params = new URLSearchParams(searchParams);
-              params.set('tab', 'transactions');
-              setSearchParams(params);
-              setActiveTab('transactions');
-            }}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
-              activeTab === 'transactions'
-                ? 'bg-blue-600 !text-white shadow-md'
-                : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Package className="h-4 w-4" />
-            Merchant Sales & Escrows
-          </button>
-        )}
+            {/* 2. Customer Reviews & Ratings (Reviews about this Seller) */}
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', 'seller_reviews');
+                setSearchParams(params);
+                setActiveTab('seller_reviews');
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+                activeTab === 'seller_reviews'
+                  ? 'bg-[#0363ff] !text-white shadow-md'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+              Store Reviews & Ratings
+            </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            const params = new URLSearchParams(searchParams);
-            params.set('tab', 'referrals');
-            setSearchParams(params);
-            setActiveTab('referrals');
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
-            activeTab === 'referrals'
-              ? 'bg-blue-600 !text-white shadow-md'
-              : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Gift className="h-4 w-4 text-emerald-400" />
-          Referrals & Cash Rewards
-        </button>
+            {/* 3. Referrals & Cash Rewards */}
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', 'referrals');
+                setSearchParams(params);
+                setActiveTab('referrals');
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+                activeTab === 'referrals'
+                  ? 'bg-[#0363ff] !text-white shadow-md'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Gift className="h-4 w-4 text-emerald-400" />
+              Referrals & Cash Rewards
+            </button>
 
-        <button
-          type="button"
-          onClick={() => {
-            const params = new URLSearchParams(searchParams);
-            params.set('tab', 'reviews');
-            setSearchParams(params);
-            setActiveTab('reviews');
-          }}
-          className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
-            activeTab === 'reviews'
-              ? 'bg-blue-600 !text-white shadow-md'
-              : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-          }`}
-        >
-          <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
-          My Reviews & Ratings
-        </button>
+            {/* 4. Trust Badges & Social Proof */}
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', 'badges');
+                setSearchParams(params);
+                setActiveTab('badges');
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+                activeTab === 'badges'
+                  ? 'bg-[#0363ff] !text-white shadow-md'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Award className="h-4 w-4 text-amber-400" />
+              Trust Badges & Proof
+            </button>
 
-        {user?.role !== 'BUYER' && (
-          <button
-            type="button"
-            onClick={() => {
-              const params = new URLSearchParams(searchParams);
-              params.set('tab', 'badges');
-              setSearchParams(params);
-              setActiveTab('badges');
-            }}
-            className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
-              activeTab === 'badges'
-                ? 'bg-blue-600 !text-white shadow-md'
-                : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
-            }`}
-          >
-            <Award className="h-4 w-4 text-amber-400" />
-            Trust Badges & Proof
-          </button>
+            {/* 5. Grouped Buyer Activity (My Purchases & Written Reviews) */}
+            <button
+              type="button"
+              onClick={() => {
+                const target = activeTab === 'reviews' ? 'reviews' : 'purchases';
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', target);
+                setSearchParams(params);
+                setActiveTab(target);
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+                activeTab === 'purchases' || activeTab === 'reviews'
+                  ? 'bg-[#0363ff] !text-white shadow-md'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <ShoppingCart className="h-4 w-4" />
+              <span>Buyer Hub (Purchases & Reviews)</span>
+            </button>
+          </>
+        ) : (
+          <>
+            {/* Pure Buyer Tabs */}
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', 'purchases');
+                setSearchParams(params);
+                setActiveTab('purchases');
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+                activeTab === 'purchases'
+                  ? 'bg-[#0363ff] !text-white shadow-md'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <ShoppingCart className="h-4 w-4" />
+              My Purchases & Orders
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', 'reviews');
+                setSearchParams(params);
+                setActiveTab('reviews');
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+                activeTab === 'reviews'
+                  ? 'bg-[#0363ff] !text-white shadow-md'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
+              My Reviews & Ratings
+            </button>
+
+            <button
+              type="button"
+              onClick={() => {
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', 'referrals');
+                setSearchParams(params);
+                setActiveTab('referrals');
+              }}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold transition-all cursor-pointer shrink-0 ${
+                activeTab === 'referrals'
+                  ? 'bg-[#0363ff] !text-white shadow-md'
+                  : 'bg-slate-100 dark:bg-slate-900 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800'
+              }`}
+            >
+              <Gift className="h-4 w-4 text-emerald-400" />
+              Referrals & Cash Rewards
+            </button>
+          </>
         )}
       </div>
 
-      {activeTab === 'purchases' && <BuyerPurchasesTab />}
-
-      {activeTab === 'reviews' && (
-        <BuyerReviewsTab
-          onNavigateToPurchases={() => {
+      {/* ─── TAB CONTENT RENDERING ─────────────────────────────────────── */}
+      {activeTab === 'seller_reviews' && (
+        <SellerReviewsTab
+          onNavigateToBadges={() => {
             const params = new URLSearchParams(searchParams);
-            params.set('tab', 'purchases');
+            params.set('tab', 'badges');
             setSearchParams(params);
-            setActiveTab('purchases');
+            setActiveTab('badges');
           }}
         />
+      )}
+
+      {(activeTab === 'purchases' || activeTab === 'reviews') && (
+        <div className="space-y-6">
+          {user?.role !== 'BUYER' && (
+            <div className="bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl inline-flex items-center gap-1.5 border border-slate-200 dark:border-slate-800">
+              <button
+                type="button"
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams);
+                  params.set('tab', 'purchases');
+                  setSearchParams(params);
+                  setActiveTab('purchases');
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  activeTab === 'purchases'
+                    ? 'bg-[#0363ff] text-white shadow-md'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <ShoppingCart className="w-3.5 h-3.5" />
+                <span>My Purchases & Orders</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  const params = new URLSearchParams(searchParams);
+                  params.set('tab', 'reviews');
+                  setSearchParams(params);
+                  setActiveTab('reviews');
+                }}
+                className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 cursor-pointer ${
+                  activeTab === 'reviews'
+                    ? 'bg-[#0363ff] text-white shadow-md'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
+                }`}
+              >
+                <Star className="w-3.5 h-3.5 text-amber-400 fill-amber-400" />
+                <span>Reviews I've Written (Outbox)</span>
+              </button>
+            </div>
+          )}
+
+          {activeTab === 'purchases' && <BuyerPurchasesTab />}
+          {activeTab === 'reviews' && (
+            <BuyerReviewsTab
+              onNavigateToPurchases={() => {
+                const params = new URLSearchParams(searchParams);
+                params.set('tab', 'purchases');
+                setSearchParams(params);
+                setActiveTab('purchases');
+              }}
+            />
+          )}
+        </div>
       )}
 
       {activeTab === 'referrals' && <ReferralDashboardTab />}

@@ -215,11 +215,20 @@ stateDiagram-v2
 
 ---
 
-### Module E: Dispute Resolution & Seller Health Governance Subsystem
+### Module E: Dispute Resolution, Arbiter Escalation & Seller Health Governance Subsystem
 
 #### Key Features & Workflows
-1. **Dispute Initiation & Subsequent Detail Appending (`/dashboard`, `/l/:id`, `/tracking`)**:
+1. **Dispute Initiation, Categorization & Reason Validation (`/dashboard`, `/l/:id`, `/tracking`)**:
    - Either party (Buyer or Seller) can open a dispute if an issue arises (e.g., non-delivery, damaged goods, wrong item).
+   - **7 Standardized Dispute Reason Categories**:
+     - `ITEM_NOT_RECEIVED`: Item not delivered or missing in transit.
+     - `ITEM_DAMAGED`: Package or goods damaged/broken during transit or delivery.
+     - `ITEM_DIFFERENT_FROM_DESCRIPTION`: Significant deviation from product specifications or listed condition.
+     - `DEFECTIVE_OR_NON_FUNCTIONAL`: Item fails to operate, is counterfeit, or suffers internal malfunction.
+     - `WRONG_SIZE_OR_SPEC`: Incorrect dimensions, sizing, color, or model variant delivered.
+     - `INCOMPLETE_MISSING_ITEMS`: Missing bundled accessories, parts, or multi-item components.
+     - `OTHER_VIOLATION`: Other merchant breach or policy violation.
+   - **10-Character Minimum Explanation Rule**: Both dispute opening (`/raise-dispute`) and subsequent reason appends (`/dispute-append`) enforce a strict minimum explanation length of 10 characters with real-time UI character counters (`{len}/10 min chars`) to prevent uninformative or empty disputes.
    - **Subsequent Dialogue & Reason Appends**:
      - Buyers can add further clarification notes and photos to an ongoing dispute without overwriting past submissions. Updates are appended with audit timestamps: `--- [Buyer Update (Timestamp)] ---`.
      - Sellers can add multiple counter-responses and additional evidence over time (`--- [Seller Response (Timestamp)] ---`).
@@ -232,12 +241,32 @@ stateDiagram-v2
      - **Retraction events**: Centered amber status card (`bg-amber-100 dark:bg-amber-950/60`), shield check icon.
      - **Read More / Collapsible Trail**: Long text (> 260 characters) includes `Read more...` / `Read less` toggles; large dialogues (> 4 updates) feature a top `Show Earlier Updates (N)` / `Collapse Trail` banner with smooth scrolling.
 
-2. **Dispute Retraction & Private Settlement (`/l/:id`)**:
+2. **Arbiter Instructions & Notices During Active Dispute (Without Concluding/Resolving)**:
+   - **Post Instruction (`POST /api/v1/admin/disputes/{id}/post-instruction`)**: Allows arbiters to issue binding instructions, requests for evidence, or mediation notices without terminating or resolving the active dispute state.
+   - **Dispute Dialogue Appending**: Formatted with audit headers (`--- [Arbiter Instruction (Timestamp) by ArbiterName] ---`), automatically appending to `manager_dispute_notes` and supporting accumulated WebP photo uploads.
+   - **Center-Aligned Timeline Integration (`DisputeChatTimeline`)**: Parses individual instruction blocks and renders them prominently in the **center** of the conversation stream with author badge (`⚖️ Arbiter Instruction`), timestamp, formatted text, and photo gallery.
+   - **Automated Dispatches**: Automatically sends SMS & Email notifications to both buyer and seller with instruction preview and dashboard tracking links.
+
+3. **48-Hour "Request Arbiter Decision" Escalation & Priority Queue Ordering**:
+   - **Negotiation Period**: Disputes initially open into a peer negotiation state allowing buyer and seller to communicate and resolve the issue directly.
+   - **Escalation Activation (`arbiter_escalation_hours`, Default 48h)**: When $\text{elapsed dispute time} \ge \text{arbiter\_escalation\_hours}$, both buyer and seller receive an active **"⚡ Request Arbiter Decision"** button.
+   - **Escalation Trigger (`POST /api/v1/escrow/{id}/request-arbiter-decision`)**:
+     - Sets `arbiter_escalated_at = timezone.now()`, `arbiter_escalated_role = 'BUYER' | 'SELLER'`, and `arbiter_escalated_by = user`.
+     - Records an immutable audit log entry in `DisputeResolutionAction`.
+     - Dispatches automated SMS and email notifications informing both parties that the dispute has been escalated for high-priority arbiter ruling.
+   - **Priority Queue Sorting**: The Admin/Arbiter Dispute Queue orders transactions with `F('arbiter_escalated_at').desc(nulls_last=True), '-created_at'`, pushing escalated disputes immediately to the top with a distinct `⚡ ARBITER DECISION REQUESTED` badge.
+
+4. **External Arbitration, 100% Cost Assumption, Platform Indemnity & Certified Order Requirement**:
+   - **100% Cost Assumption**: Any party choosing to submit the dispute to external court litigation or statutory arbitration bodies bears 100% of all legal, filing, and administrative costs.
+   - **Platform Indemnity**: HendAxis Trust and its personnel remain fully absolved and indemnified against all consequences of external disputes.
+   - **Certified Written Ruling Upload (`external_arbitration_order_url`)**: Release of escrow funds following external arbitration requires submission of an authentic, certified, written binding order from the third-party arbitrator/court. The platform Arbiter must verify and attach the official document URL in the resolution modal before executing the payout.
+
+4. **Dispute Retraction & Private Settlement (`/l/:id`)**:
    - **Buyer Self-Retraction**: Buyers who reach a mutual agreement with the seller outside formal arbitration can retract their dispute directly from their order page (`/l/:id`).
    - **Automated Delayed Settlement (Default 24 Hours)**: Upon retraction (`dispute_retracted_at = timezone.now()`), the dispute is closed, and escrow funds are scheduled for automatic release to the seller after 24 hours (governed by the configurable platform setting `dispute_retraction_release_hours`).
    - **Permanent Rating Voidance**: To protect system integrity and prevent retaliatory or coerced review manipulation, any transaction that experienced a dispute permanently loses review eligibility—the rating capability remains voided even after retraction.
 
-3. **Automated Seller Dispute Health Monitoring & Account Suspension**:
+5. **Automated Seller Dispute Health Monitoring & Account Suspension**:
    - **Multi-Window Calculation**: System computes seller dispute percentage across (1) Last 30 Days, (2) Last 15 Sales, and (3) Lifetime Sales, selecting the highest dispute rate among sets with `paid_transactions >= dispute_min_sample_size` (default: 5) to prevent low-volume sample distortion.
    - **Configurable Platform Thresholds (`/admin/settings`)**:
      - **Dispute Minimum Sample Size (Default: 5 Txns)**: Number of paid transactions required before dispute rate evaluation begins.
@@ -247,35 +276,36 @@ stateDiagram-v2
    - **Suspension Enforcement**: Deactivates all active payment links, blocks payment link creation, and returns HTTP 403 Forbidden on public checkout for suspended seller links.
    - **In-Flight Order Continuity**: In-flight orders that were already paid prior to suspension remain active and proceed through the full fulfillment, delivery, inspection, dispute, and payout lifecycle.
 
-4. **Automated Seller Rating Governance & Thresholds**:
+6. **Automated Seller Rating Governance & Thresholds**:
    - **Aggregated Rating Calculation**: Computes average star rating from active customer reviews (`SellerReview.objects.filter(seller=seller_user, is_active=True)`).
    - **Rating Warning Banner (Default < 3.0 Stars)**: Triggers an inline warning notice on seller dashboard and sends a caution email to the seller.
    - **Rating Auto-Suspension (Default < 2.0 Stars with min 3 reviews)**: Automatically sets `is_suspended = True`, deactivates active payment links, and sends suspension alert email.
 
-5. **Automated Dispatch Expiry Governance & Thresholds**:
+7. **Automated Dispatch Expiry Governance & Thresholds**:
    - **Non-Dispatch Rate Calculation**: Computes the ratio of non-dispatch cancelled orders (`auto_cancelled_non_dispatch = True`) to total paid transactions.
    - **Dispatch Expiry Warning Banner (Default ≥ 20% Expiry Rate)**: Triggers an amber warning banner on the seller dashboard detailing non-dispatch metrics.
    - **Dispatch Expiry Auto-Suspension (Default ≥ 35% Expiry Rate with min sample size >= 5)**: Automatically sets `is_suspended = True`, deactivates all active links, records the suspension reason, and alerts the seller.
 
-6. **Post-Reinstatement Clean Slate & Immunity Protection**:
+8. **Post-Reinstatement Clean Slate & Immunity Protection**:
    - When an administrator manually reinstates a seller or approves an appeal, `seller.reinstated_at = timezone.now()` is recorded.
    - `compute_seller_dispute_health` filters evaluated transactions strictly to `created_at__gte=seller.reinstated_at`.
    - This gives reinstated merchants a clean slate and ensures they are not immediately re-suspended by historical transactions during the next Celery health check cycle, requiring 5 new paid transactions before thresholds are evaluated again.
 
-7. **Account Suspension Appeals & Admin Appeals Desk (`/admin-portal`)**:
+9. **Account Suspension Appeals & Admin Appeals Desk (`/admin-portal`)**:
    - **Payment Link Creation Modal UX**: Attempting to generate a payment link while suspended renders a dedicated modal explaining the exact suspension cause and offering an inline appeal form.
    - **Seller Appeal Submission (`POST /api/profile/appeal-suspension`)**: Suspended sellers submit a formal justification with remediation steps.
    - **Stale Appeal Status Isolation (`GET /api/profile/appeal-status`)**: Only appeals created after the current suspension timestamp are evaluated, preventing old rejected appeals from blocking new appeals.
    - **Admin Suspension Appeals Desk (`/admin-portal/dashboard` Tab 4)**: Administrators inspect appeals, review seller metrics, and approve (reinstating the account with `reinstated_at` set) or reject with notes.
 
-8. **Admin Mediation Desk & Resolution Notifications (`/admin-portal`)**:
-   - Dedicated interface displaying all active and past disputes.
-   - Embedded `DisputeChatTimeline` showing full chronological conversation stream and uploaded evidence.
-   - Direct action buttons for Admin Resolution (Full Refund, Release to Seller, Split Settlement, Require Item Return).
-   - Personalized Email & SMS notifications addressing buyers by First Name and sellers by Shop Name with exact Transaction Reference IDs.
+10. **Admin Mediation Desk & Resolution Notifications (`/admin-portal`)**:
+    - Dedicated interface displaying all active and past disputes.
+    - Embedded `DisputeChatTimeline` showing full chronological conversation stream and uploaded evidence.
+    - Direct action buttons for Admin Resolution (Full Refund, Release to Seller, Split Settlement, Require Item Return, External Arbitration Ruling).
+    - Personalized Email & SMS notifications addressing buyers by First Name and sellers by Shop Name with exact Transaction Reference IDs.
 
 #### Database Models (`backend/apps/escrow/models.py`, `backend/apps/users/models.py`)
 - `EscrowDispute`: Holds `escrow`, `raised_by`, `reason`, `description`, `evidence_urls`, `status`, `resolution_notes`, `resolved_by`, `resolved_at`.
+- `Transaction`: Extended with `buyer_dispute_category`, `disputed_at`, `arbiter_escalated_at`, `arbiter_escalated_role`, `arbiter_escalated_by`, and `external_arbitration_order_url`.
 - `SuspensionAppeal`: Holds `user`, `reason`, `status` (`PENDING`, `APPROVED`, `REJECTED`), `admin_notes`, `reviewed_by`, `created_at`, `reviewed_at`.
 - `User`: Extended with `is_suspended`, `suspension_reason`, `suspended_at`, and `reinstated_at`.
 

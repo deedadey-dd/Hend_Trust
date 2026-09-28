@@ -7,6 +7,7 @@ import {
   Gift, Sparkles, Tag, RefreshCw, Check, UserCheck, LogIn
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
+import ConfirmDeliveryReceiptModal from '../components/ConfirmDeliveryReceiptModal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import SEOHead from '../components/SEOHead';
 import TermsModal from '../components/TermsModal';
@@ -15,6 +16,7 @@ import DisputeChatTimeline from '../components/DisputeChatTimeline';
 import { saveReviewToken } from '../utils/reviewStorage';
 import { useEscapeKey } from '../utils/useEscapeKey';
 import { useAuthStore } from '../store/authStore';
+import { useModal } from '../context/ModalContext';
 
 
 interface LinkData {
@@ -50,17 +52,23 @@ interface TxnDetail {
   dispute_retracted_at?: string;
   dispute_retraction_release_hours?: number;
   buyer_dispute_reason?: string;
+  buyer_dispute_category?: string;
   buyer_dispute_photos?: string[];
   seller_dispute_response?: string;
   seller_dispute_photos?: string[];
   manager_dispute_notes?: string;
   manager_dispute_photos?: string[];
+  disputed_at?: string;
+  arbiter_escalated_at?: string;
+  arbiter_escalated_role?: string;
+  arbiter_escalation_hours?: number;
   seller_username?: string;
   shop_name?: string;
   seller_email?: string;
   seller_phone?: string;
   seller_profile_picture_url?: string;
   waybill_photo_url?: string;
+  dispatched_at?: string;
   shipping_timeout_days?: number;
   inspection_hours_allowed?: number;
   buyer_review_token?: string;
@@ -89,6 +97,7 @@ import { STATUS_CONFIG } from '../constants/statusConfig';
 // ─── Transaction Status Screen (post-payment) ──────────────────────────────
 function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string }) {
   const navigate = useNavigate();
+  const modal = useModal();
   const cfg = STATUS_CONFIG[txn.status] || STATUS_CONFIG['AWAITING_PAYMENT'];
   const Icon = cfg.icon;
 
@@ -162,19 +171,33 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   // Rating Modal state
   const [showRatingModal, setShowRatingModal] = useState(false);
 
+const DISPUTE_CATEGORIES = [
+  { value: 'DAMAGED_ITEM', label: 'Item Damaged or Broken in Transit' },
+  { value: 'WRONG_ITEM', label: 'Wrong Item Delivered / Not as Described' },
+  { value: 'DEFECTIVE_OR_FAULTY', label: 'Defective, Malfunctioning or Inoperable' },
+  { value: 'MISSING_PARTS', label: 'Missing Accessories, Parts, or Incomplete Package' },
+  { value: 'COUNTERFEIT_OR_FAKE', label: 'Counterfeit, Fake, or Replica Item' },
+  { value: 'ITEM_NOT_RECEIVED', label: 'Item Not Received / Empty Parcel' },
+  { value: 'OTHER', label: 'Other Issue / Contractual Non-Compliance' },
+];
+
   // Dispute Modal state
   const [showDisputeModal, setShowDisputeModal] = useState(false);
+  const [disputeCategory, setDisputeCategory] = useState('DAMAGED_ITEM');
   const [disputeReason, setDisputeReason] = useState('');
   const [buyerPhotos, setBuyerPhotos] = useState<string[]>([]);
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
   const [isCompressingBuyerPhotos, setIsCompressingBuyerPhotos] = useState(false);
   const [disputeError, setDisputeError] = useState('');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [isRequestingArbiter, setIsRequestingArbiter] = useState(false);
 
   // Retract Dispute Modal state
   const [showRetractModal, setShowRetractModal] = useState(false);
   const [isRetracting, setIsRetracting] = useState(false);
   const [retractError, setRetractError] = useState('');
+
+  const [show1ClickConfirmModal, setShow1ClickConfirmModal] = useState(false);
 
   // OTP Resend Cooldown (60 seconds)
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -183,6 +206,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   useEscapeKey(() => setShowDisputeModal(false), showDisputeModal);
   useEscapeKey(() => setShowRetractModal(false), showRetractModal);
   useEscapeKey(() => setShowRatingModal(false), showRatingModal);
+  useEscapeKey(() => setShow1ClickConfirmModal(false), show1ClickConfirmModal);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -202,16 +226,8 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
 
   const handleOpenConfirmModal = async () => {
     if (isAuthenticated) {
-      // 1-Click direct confirmation with zero SMS
-      setIsConfirming(true);
-      try {
-        await axios.post(`/api/v1/escrow/${txn.id}/buyer-confirm-receipt`);
-        setShowRatingModal(true);
-      } catch (err: any) {
-        alert(err.response?.data?.message || 'Failed to confirm receipt.');
-      } finally {
-        setIsConfirming(false);
-      }
+      // Open confirmation dialog modal to prevent accidental clicks
+      setShow1ClickConfirmModal(true);
       return;
     }
 
@@ -225,21 +241,44 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
       setResendCooldown(60);
       setShowConfirmModal(true);
     } catch (err: any) {
-      alert(err.response?.data?.message || 'Failed to send confirmation code.');
+      await modal.alert({
+        title: "Code Dispatch Error",
+        message: err.response?.data?.message || 'Failed to send confirmation code. Please check your network and try again.',
+        type: "danger"
+      });
     } finally {
       setIsSendingCode(false);
     }
   };
 
   const handleApproveAndRelease = async () => {
-    if (!window.confirm("Are you satisfied with your order? Releasing payment will immediately transfer funds to the seller's wallet.")) return;
+    const confirmed = await modal.confirm({
+      title: "Approve Order & Release Payment",
+      message: "Are you satisfied with your order? Releasing payment will immediately finalize escrow and transfer funds to the seller's wallet.",
+      confirmText: "Release Payment",
+      cancelText: "Keep In Inspection",
+      type: "success",
+      icon: "check",
+      badgeText: "Escrow Finalization"
+    });
+    if (!confirmed) return;
+
     setIsReleasing(true);
     try {
       await axios.post(`/api/v1/escrow/${txn.id}/approve-and-release`);
-      alert('Order approved! Funds released to seller.');
+      await modal.alert({
+        title: "Order Approved & Completed",
+        message: "Escrow payment has been released to the seller. Thank you for using HendAxis Trust!",
+        type: "success",
+        icon: "check"
+      });
       setShowRatingModal(true);
     } catch (err: any) {
-      alert(err.response?.data?.message || err.response?.data?.detail || 'Failed to release funds.');
+      await modal.alert({
+        title: "Payment Release Error",
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to release funds.',
+        type: "danger"
+      });
     } finally {
       setIsReleasing(false);
     }
@@ -323,7 +362,12 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     try {
       await axios.post('/api/v1/auth/send-phone-otp', { uid: signupUid });
       setOtpResendCooldown(60);
-      alert('A new 6-digit verification code has been sent to your phone.');
+      await modal.alert({
+        title: 'OTP Resent',
+        message: 'A new 6-digit verification code has been sent to your phone.',
+        type: 'blue',
+        icon: 'send'
+      });
     } catch (err: any) {
       setBuyerSignupError(err.response?.data?.message || 'Failed to resend verification code.');
     }
@@ -347,7 +391,12 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const handleBuyerPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (buyerPhotos.length + files.length > 5) {
-      alert("You can upload a maximum of 5 evidence photos.");
+      await modal.alert({
+        title: 'Upload Limit Exceeded',
+        message: 'You can upload a maximum of 5 evidence photos.',
+        type: 'warning',
+        icon: 'alert'
+      });
       return;
     }
     setIsCompressingBuyerPhotos(true);
@@ -369,18 +418,27 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
 
   const handleRaiseDisputeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!disputeReason.trim()) {
-      setDisputeError('Please describe the reason for your dispute.');
+    if (disputeReason.trim().length < 10) {
+      setDisputeError('Please provide at least 10 characters explaining the dispute reason in detail.');
       return;
     }
     setDisputeError('');
     setIsSubmittingDispute(true);
     try {
-      await axios.post(`/api/v1/escrow/${txn.id}/raise-dispute`, {
+      const payload: { reason: string; photos: string[]; category?: string } = {
         reason: disputeReason.trim(),
-        photos: buyerPhotos
+        photos: buyerPhotos,
+      };
+      if (!isDisputed) {
+        payload.category = disputeCategory;
+      }
+      await axios.post(`/api/v1/escrow/${txn.id}/raise-dispute`, payload);
+      await modal.alert({
+        title: "Dispute Submitted Successfully",
+        message: "Dispute and evidence photos submitted. Management and the seller have been notified.",
+        type: "danger",
+        icon: "alert"
       });
-      alert('Dispute and evidence photos submitted successfully. Management team will arbitrate.');
       setShowDisputeModal(false);
       window.location.reload();
     } catch (err: any) {
@@ -390,12 +448,50 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
     }
   };
 
+  const handleRequestArbiter = async () => {
+    const confirmed = await modal.confirm({
+      title: "Request Official Arbiter Decision",
+      message: "Escalate this dispute to the certified Platform Arbiter desk? Your case will be placed at the top of the priority arbitration queue for a binding ruling.",
+      confirmText: "Request Arbiter Decision",
+      cancelText: "Keep Direct Chat",
+      type: "orange",
+      icon: "scale",
+      badgeText: "Priority Arbitration"
+    });
+    if (!confirmed) return;
+
+    setIsRequestingArbiter(true);
+    try {
+      await axios.post(`/api/v1/escrow/${txn.id}/request-arbiter-decision`);
+      await modal.alert({
+        title: "Arbiter Decision Requested",
+        message: "Platform arbiter escalation requested successfully. Your case has been placed at the top of the arbitration queue.",
+        type: "orange",
+        icon: "scale"
+      });
+      window.location.reload();
+    } catch (err: any) {
+      await modal.alert({
+        title: "Escalation Error",
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to request arbiter decision.',
+        type: "danger"
+      });
+    } finally {
+      setIsRequestingArbiter(false);
+    }
+  };
+
   const handleRetractDispute = async () => {
     setRetractError('');
     setIsRetracting(true);
     try {
       const res = await axios.post(`/api/v1/escrow/${txn.id}/retract-dispute`);
-      alert(res.data?.message || 'Dispute retracted successfully. Funds will be released to the seller as scheduled.');
+      await modal.alert({
+        title: "Dispute Retracted",
+        message: res.data?.message || 'Dispute retracted successfully. Funds will be released to the seller as scheduled.',
+        type: "success",
+        icon: "shield"
+      });
       setShowRetractModal(false);
       window.location.reload();
     } catch (err: any) {
@@ -461,7 +557,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                         </h4>
                       </div>
                       <span className="bg-indigo-600 text-white text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs shrink-0">
-                        ⚡ 1-Click Access
+                        ⚡ Verified Member
                       </span>
                     </div>
 
@@ -581,15 +677,15 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                       <div className="flex items-center gap-1.5 min-w-0">
                         <Sparkles className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
                         <h4 className="text-xs sm:text-sm font-black text-gray-900 dark:text-white truncate">
-                          Create 1-Click Buyer Account
+                          Create Buyer Account
                         </h4>
                       </div>
                       <span className="bg-indigo-600 text-white text-[9px] sm:text-[10px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs shrink-0">
-                        ⚡ 0-OTP Mode
+                        ⚡ Instant Setup
                       </span>
                     </div>
                     <p className="text-xs text-gray-600 dark:text-slate-300 leading-normal w-full">
-                      Set a password for <strong className="text-indigo-600 dark:text-indigo-400">{txn.buyer_email}</strong>{txn.buyer_phone ? <span> (<strong className="text-indigo-600 dark:text-indigo-400">{txn.buyer_phone}</strong>)</span> : null} to manage purchases, release funds, and track shipments in 1 click.
+                      Set a password for <strong className="text-indigo-600 dark:text-indigo-400">{txn.buyer_email}</strong>{txn.buyer_phone ? <span> (<strong className="text-indigo-600 dark:text-indigo-400">{txn.buyer_phone}</strong>)</span> : null} to manage purchases, track shipments, and release escrow funds.
                     </p>
 
                     <form onSubmit={handleQuickBuyerSignup} className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full">
@@ -796,12 +892,22 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
               buyerReason={txn.buyer_dispute_reason}
               buyerPhotos={txn.buyer_dispute_photos}
               buyerName="You (Buyer)"
+              buyerCategory={txn.buyer_dispute_category}
               sellerResponse={txn.seller_dispute_response}
               sellerPhotos={txn.seller_dispute_photos}
               sellerName={txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller')}
               managerNotes={txn.manager_dispute_notes}
               managerPhotos={txn.manager_dispute_photos}
+              disputedAt={txn.disputed_at || txn.created_at}
+              dispatchedAt={txn.dispatched_at}
+              createdAt={txn.created_at}
+              arbiterEscalatedAt={txn.arbiter_escalated_at}
+              arbiterEscalatedRole={txn.arbiter_escalated_role}
+              arbiterEscalationHours={txn.arbiter_escalation_hours || 48}
+              onRequestArbiterDecision={handleRequestArbiter}
+              isRequestingArbiter={isRequestingArbiter}
               disputeRetractedAt={txn.dispute_retracted_at}
+              waybillPhotoUrl={txn.waybill_photo_url}
             />
           </div>
         )}
@@ -871,7 +977,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
                   disabled={isSendingCode || isConfirming}
                   className="flex-1 py-2.5 px-4 rounded-xl bg-green-600 text-white text-sm font-semibold hover:bg-green-700 transition flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer shadow-sm"
                 >
-                  {isSendingCode || isConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : (isAuthenticated ? '⚡ Confirm Receipt (1-Click)' : '✓ Confirm Receipt')}
+                  {isSendingCode || isConfirming ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Confirm Receipt'}
                 </button>
               )}
               {isInspection && (
@@ -1159,16 +1265,38 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
             </h4>
             {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-100 dark:border-red-900/50">{disputeError}</p>}
             <form onSubmit={handleRaiseDisputeSubmit} className="space-y-4">
+              {!isDisputed && (
+                <div>
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
+                    Dispute Category *
+                  </label>
+                  <select
+                    value={disputeCategory}
+                    onChange={e => setDisputeCategory(e.target.value)}
+                    className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-red-500 outline-none font-medium"
+                  >
+                    {DISPUTE_CATEGORIES.map(cat => (
+                      <option key={cat.value} value={cat.value}>{cat.label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
               <div>
-                <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
-                  {isDisputed ? "Additional Details / Clarification *" : "Reason for Dispute *"}
-                </label>
+                <div className="flex justify-between items-center mb-1">
+                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">
+                    {isDisputed ? "Additional Details / Clarification *" : "Reason for Dispute *"}
+                  </label>
+                  <span className={`text-[11px] font-mono ${disputeReason.trim().length >= 10 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                    {disputeReason.trim().length}/10 min chars
+                  </span>
+                </div>
                 <textarea
                   required
                   rows={3}
                   value={disputeReason}
                   onChange={e => setDisputeReason(e.target.value)}
-                  placeholder={isDisputed ? "Provide additional details, respond to seller, or report further defects..." : "Describe the issue with your item..."}
+                  placeholder={isDisputed ? "Provide additional details, respond to seller, or report further defects (min 10 chars)..." : "Describe the issue with your item (minimum 10 characters)..."}
                   className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-white rounded-xl p-3 text-xs focus:ring-2 focus:ring-red-500 outline-none"
                 />
               </div>
@@ -1215,7 +1343,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
 
               <button
                 type="submit"
-                disabled={isSubmittingDispute || isCompressingBuyerPhotos}
+                disabled={isSubmittingDispute || isCompressingBuyerPhotos || disputeReason.trim().length < 10}
                 className="w-full py-3 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-xs transition shadow-md shadow-red-500/20 disabled:opacity-70 flex justify-center items-center cursor-pointer"
               >
                 {isSubmittingDispute ? <Loader2 className="h-4 w-4 animate-spin" /> : (isDisputed ? "Submit Additional Details" : "Submit Dispute & Evidence")}
@@ -1285,6 +1413,27 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
         />
       )}
 
+      {/* 1-Click Delivery Confirmation Dialog Modal */}
+      {show1ClickConfirmModal && (
+        <ConfirmDeliveryReceiptModal
+          order={{
+            id: txn.id,
+            title: txn.title,
+            paystack_reference: txn.paystack_reference,
+            shop_name: txn.shop_name,
+            seller_username: txn.seller_username,
+            inspection_hours_allowed: txn.inspection_hours_allowed,
+            total_amount_ghs: txn.total_amount_ghs
+          }}
+          onClose={() => setShow1ClickConfirmModal(false)}
+          onConfirm={async () => {
+            await axios.post(`/api/v1/escrow/${txn.id}/buyer-confirm-receipt`);
+            setShow1ClickConfirmModal(false);
+            setShowRatingModal(true);
+          }}
+        />
+      )}
+
       {/* Image Lightbox Modal */}
       <ImageLightboxModal
         src={lightboxImage || ''}
@@ -1297,6 +1446,7 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
 
 // ─── Main Checkout View ────────────────────────────────────────────────────
 export default function PublicCheckoutView() {
+  const modal = useModal();
   const { linkId } = useParams();
   const [link, setLink] = useState<LinkData | null>(null);
   const [loading, setLoading] = useState(true);
@@ -1431,7 +1581,11 @@ export default function PublicCheckoutView() {
   const handleSendOtp = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!acceptedTerms) {
-      alert('Please read and agree to the Terms of Service & Inspection Expiry Rules before proceeding.');
+      await modal.alert({
+        title: "Terms Agreement Required",
+        message: "Please read and agree to the Terms of Service & Inspection Expiry Rules before proceeding.",
+        type: "warning"
+      });
       return;
     }
     setIsProcessing(true);
@@ -1451,7 +1605,11 @@ export default function PublicCheckoutView() {
         });
         window.location.href = res.data.authorization_url;
       } catch (err: any) {
-        alert(err.response?.data?.detail || err.response?.data?.message || 'Checkout initialization failed.');
+        await modal.alert({
+          title: "Checkout Error",
+          message: err.response?.data?.detail || err.response?.data?.message || 'Checkout initialization failed.',
+          type: "danger"
+        });
         setIsProcessing(false);
       }
       return;
@@ -1460,8 +1618,15 @@ export default function PublicCheckoutView() {
     try {
       await axios.post('/api/v1/checkout/send-otp', { phone_number: phone });
       setShowOtpModal(true);
-    } catch { alert('Failed to send OTP. Try again.'); }
-    finally { setIsProcessing(false); }
+    } catch {
+      await modal.alert({
+        title: "OTP Dispatch Error",
+        message: "Failed to send OTP verification code. Please check your phone number and try again.",
+        type: "danger"
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   const handleVerifyOtp = async (e: React.FormEvent) => {
@@ -1481,7 +1646,11 @@ export default function PublicCheckoutView() {
       });
       window.location.href = res.data.authorization_url;
     } catch (err: any) {
-      alert(err.response?.data?.detail || err.response?.data?.message || 'Invalid OTP or verification failed.');
+      await modal.alert({
+        title: "Verification Failed",
+        message: err.response?.data?.detail || err.response?.data?.message || 'Invalid OTP code or verification failed.',
+        type: "danger"
+      });
       setIsProcessing(false);
     }
   };
@@ -1884,7 +2053,7 @@ export default function PublicCheckoutView() {
 
             <button disabled={isProcessing || !acceptedTerms} type="submit"
               className="mt-4 w-full flex justify-center items-center py-3.5 px-4 rounded-xl shadow-lg shadow-[#ff6d1d]/25 text-sm sm:text-base font-black text-white bg-gradient-to-r from-[#ff6d1d] via-[#ff7c33] to-[#ff6d1d] hover:brightness-110 active:scale-[0.99] focus:outline-none focus:ring-4 focus:ring-[#ff6d1d]/30 disabled:opacity-50 disabled:pointer-events-none transition-all cursor-pointer">
-              {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : (isAuthenticated ? '⚡ Proceed to Payment (1-Click)' : 'Continue to Payment')}
+              {isProcessing ? <Loader2 className="animate-spin h-5 w-5" /> : 'Continue to Payment'}
               <ArrowRight className="ml-2 h-4 w-4" />
             </button>
             <p className="text-center text-xs text-gray-500 dark:text-slate-400 flex items-center justify-center mt-4">

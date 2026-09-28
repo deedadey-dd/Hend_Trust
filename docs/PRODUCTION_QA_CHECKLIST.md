@@ -161,7 +161,11 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [x] **Transit Rating Lock**: Verify rating button shows `🔒 Rate Seller (Unlocks upon delivery)` during transit (`DELIVERY_IN_PROGRESS`) and unlocks upon delivery with `#ff6d1d` brand accent.
 - [x] **1 Review Per Transaction**: Verify submitting feedback again updates the initial review instead of creating duplicate records.
 - [x] **$0-Cost Email Edit Link**: Test `/reviews/request-edit-link` fallback for buyers editing feedback from a new device or browser.
-- [ ] **Dispute Flow Test**: On a test order, click **"Raise Dispute"**, select reason (*Damaged / Wrong Item*), upload photo, and submit.
+- [x] **Dispute Reason Categorization & 10-Char Minimum Length**: On a test order, click **"Raise Dispute"**. Verify the 7 standardized category choices (*Item Not Received*, *Item Damaged / Broken*, *Item Different from Description*, *Defective or Non-Functional*, *Wrong Size or Specification*, *Incomplete / Missing Parts*, *Other Violation*). Confirm submission is blocked if explanation is under 10 characters, and verify the live character counter (`{len}/10 min chars`). Upload photo and submit.
+- [x] **Request Arbiter Decision Escalation (48h Window)**:
+  - [x] Before the configured escalation window (`arbiter_escalation_hours`, default 48h), confirm the dispute timeline shows the mediation countdown banner (*"Mediation Queue Escalation unlocks in X hours"*).
+  - [x] After 48 hours elapses (or accelerated test timestamp), verify both Buyer and Seller see the active **"⚡ Request Arbiter Decision"** button.
+  - [x] Click the button. Confirm confirmation prompt, immediate status update to `⚡ ARBITER DECISION REQUESTED`, audit log creation, and SMS/Email notification dispatch.
 - [ ] **Dispute Retraction Grace Release**: When buyer clicks **"Retract Dispute"** to settle privately, confirm auto-release grace timer (`dispute_retraction_release_hours`, default 24h) is scheduled.
 
 ---
@@ -174,10 +178,22 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Live Badge Indicators**: Confirm pending disputes, appeals, and KYC counters highlight with alert badges.
 
 ### 5.2 Dispute Mediation & Arbiter Workflow
-- [ ] **Review Evidence**: Inspect buyer dispute submission, seller dispatch proof images, and dispute chat timeline.
+- [ ] **Review Evidence & Dispute Categories**: Inspect buyer dispute category badge, evidence description, seller dispatch proof images, and dispute chat timeline.
+- [x] **Priority Queue Ordering (`⚡ ARBITER DECISION REQUESTED`)**: Verify disputes where either party clicked "Request Arbiter Decision" sort to the top of the Arbiter Dispute List with an active high-priority amber badge.
 - [ ] **Arbiter Assignment**: In Disputes Center, test assigning an arbiter to an active dispute.
 - [ ] **Arbiter Compensation**: Verify arbiter compensation ledger records standard mediation fee (`arbiter_fee_per_dispute`, default GHS 15.00).
-- [ ] **Resolution Action**: Execute dispute outcome (e.g. **Refund Buyer** or **Release Escrow Funds to Seller**). Confirm balance ledger adjusts accordingly.
+- [x] **Arbiter Non-Resolving Instruction / Notice Flow**:
+  - [x] On an active disputed transaction, click **"Post Instruction / Note"**.
+  - [x] Submit an instruction note (e.g. *"Seller, please upload courier receipt by tomorrow 5 PM."*) with optional photo attachment.
+  - [x] Verify the dispute remains in `DISPUTED` status (not resolved).
+  - [x] Confirm the instruction renders immediately in the center of the dispute dialogue trail with distinct purple badge (`⚖️ Arbiter Instruction`), timestamp, and photo previews.
+  - [x] Verify automated SMS and Email alerts are dispatched to both the buyer and seller with order reference and instruction summary.
+- [ ] **Standard Resolution Action**: Execute standard dispute outcome (e.g. **Refund Buyer** or **Release Escrow Funds to Seller**). Confirm balance ledger adjusts accordingly.
+- [x] **External Arbitration Ruling & Platform Indemnity Flow**:
+  - [x] In the Admin Resolution Modal, toggle **"External Arbitration / Court Ruling"**.
+  - [x] Confirm warning notice displays the legal indemnity disclaimer (*"Parties assume 100% of all legal/arbitration costs. Platform is indemnified and absolved"*).
+  - [x] Confirm that resolution submission is blocked until a valid, certified written order document URL / file upload (`external_order_document_url`) is attached by the arbiter.
+  - [x] Verify resolution log records the ruling order document URL and notes.
 
 ### 5.3 Merchant KYC Approval Queue
 - [ ] **Document Review**: Inspect submitted Ghana Card / National ID photos.
@@ -217,12 +233,12 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [ ] **Role Management**: Promote or adjust staff roles (`ADMIN`, `ARBITER`, `COMPLIANCE_OFFICER`, `FINANCE_ADMIN`, `SUPPORT_AGENT`, `SELLER`).
 - [ ] **Role-Based Access Control (RBAC)**: Verify support agents cannot alter financial payout settings; finance admins have access to ledger and promo subsidies; superusers have unrestricted access.
 
-### 6.4 Production Django Admin (`DJANGO_ADMIN_URL`)
+### 6.4 Production Django Admin & Dynamic Platform Settings (`DJANGO_ADMIN_URL` & `/admin-portal/settings`)
 - [ ] **Secret Path Access**: Access `DJANGO_ADMIN_URL` path (e.g. `/hendaxis-secure-portal-9472/`).
 - [ ] **Decoy Honeypot Verification**: Open `/admin/` in incognito. Confirm decoy login trap renders. Verify intruder IP & attempt logged in backend security logs.
 - [ ] **Staff 2FA**: Confirm superuser login requires TOTP authenticator code.
 - [x] **Manual Admin Suspend & Clean Slate Reinstate**: Locate seller in Admin Portal directory. Click **"Suspend Seller"** (confirm links deactivate and user status locks to suspended) and **"Reinstate"** (confirm account unlocks and `reinstated_at` timestamp is updated).
-- [x] **Dispatch Expiry & Dispute Governance Settings**: In Settings Tab, test adjusting `shipping_timeout_days`, `dispatch_expiry_warning_threshold` (20%), `dispatch_expiry_suspension_threshold` (35%), and `dispute_retraction_release_hours` (24h).
+- [x] **Dispute Escalation & Logistics Governance Settings**: In Settings Tab, test adjusting `arbiter_escalation_hours` (default 48h), `shipping_timeout_days`, `dispatch_expiry_warning_threshold` (20%), `dispatch_expiry_suspension_threshold` (35%), and `dispute_retraction_release_hours` (24h). Confirm adjustments persist and apply globally.
 - [ ] **Security Lockout Audit**: Verify failed login attempts counter (`django-axes` / cache) and unlock blocked IPs if required.
 - [ ] **Developer Webhook Logs**: Audit outbound HMAC webhook delivery logs and retry statuses.
 

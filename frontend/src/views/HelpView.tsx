@@ -155,6 +155,18 @@ const FAQS: FAQItem[] = [
     question: 'How do Buyer Item Returns and Reverse OTP handoffs work?',
     answer: 'When an arbiter ruling requires returning the item, the buyer dispatches the return via courier or bus transport. For informal bus returns, a secret 6-digit Reverse OTP is generated. The seller verifies receipt of the returned item to trigger the full buyer refund.'
   },
+  {
+    id: 'faq-17b',
+    category: 'DISPUTES',
+    question: 'When can either party click "Request Arbiter Decision"?',
+    answer: 'After a 48-hour negotiation window following the initial dispute, both buyer and seller can click "Request Arbiter Decision" on their order panel. This moves the dispute to the top priority queue of certified platform arbiters for an expedited, binding resolution.'
+  },
+  {
+    id: 'faq-17c',
+    category: 'DISPUTES',
+    question: 'What happens if parties take a dispute to external arbitration or legal proceedings?',
+    answer: 'If either party escalates to external arbitration or courts, the disputing parties bear 100% of all third-party legal and administrative costs. HendAxis Trust is held fully harmless and indemnified. Escrow funds will solely be disbursed upon submission and platform arbiter upload of an authentic, certified, written ruling order from the third-party arbitrator or court.'
+  },
 
   // ─── REFERRALS & REWARDS ────────────────────────────────────────────────
   {

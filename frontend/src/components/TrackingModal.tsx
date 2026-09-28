@@ -9,6 +9,7 @@ import DisputeChatTimeline from './DisputeChatTimeline';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
 import { useAuthStore } from '../store/authStore';
+import { useModal } from '../context/ModalContext';
 
 type TabMode = 'SINGLE' | 'HISTORY';
 type SingleStep = 'INPUT' | 'OTP';
@@ -19,6 +20,7 @@ interface TrackingModalProps {
 }
 
 export default function TrackingModal({ onClose }: TrackingModalProps) {
+  const modal = useModal();
   useEscapeKey(onClose);
   const { isAuthenticated, user } = useAuthStore();
   const [tab, setTab] = useState<TabMode>('SINGLE');
@@ -61,14 +63,26 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   const [confirmError, setConfirmError] = useState('');
   const [resendCooldown, setResendCooldown] = useState(0);
 
+const DISPUTE_CATEGORIES = [
+  { value: 'DAMAGED_ITEM', label: 'Item Damaged or Broken in Transit' },
+  { value: 'WRONG_ITEM', label: 'Wrong Item Delivered / Not as Described' },
+  { value: 'DEFECTIVE_OR_FAULTY', label: 'Defective, Malfunctioning or Inoperable' },
+  { value: 'MISSING_PARTS', label: 'Missing Accessories, Parts, or Incomplete Package' },
+  { value: 'COUNTERFEIT_OR_FAKE', label: 'Counterfeit, Fake, or Replica Item' },
+  { value: 'ITEM_NOT_RECEIVED', label: 'Item Not Received / Empty Parcel' },
+  { value: 'OTHER', label: 'Other Issue / Contractual Non-Compliance' },
+];
+
   // Dispute Modal State
   const [disputeTxnId, setDisputeTxnId] = useState<string | null>(null);
+  const [disputeCategory, setDisputeCategory] = useState('DAMAGED_ITEM');
   const [disputeReason, setDisputeReason] = useState('');
   const [buyerPhotos, setBuyerPhotos] = useState<string[]>([]);
   const [isSubmittingDispute, setIsSubmittingDispute] = useState(false);
   const [isCompressingBuyerPhotos, setIsCompressingBuyerPhotos] = useState(false);
   const [disputeError, setDisputeError] = useState('');
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [requestingArbiterId, setRequestingArbiterId] = useState<string | null>(null);
 
   // Cooldown timer effects
   useEffect(() => {
@@ -315,24 +329,68 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
   const handleRaiseDisputeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!disputeTxnId) return;
-    if (!disputeReason.trim()) {
-      setDisputeError('Please describe the reason for your dispute.');
+    if (disputeReason.trim().length < 10) {
+      setDisputeError('Please provide at least 10 characters explaining the dispute reason in detail.');
       return;
     }
     setDisputeError('');
     setIsSubmittingDispute(true);
+    const activeDisputeTxn = txns.find((t: any) => t.id === disputeTxnId);
+    const isDisputedTxn = Boolean(activeDisputeTxn?.buyer_dispute_reason || activeDisputeTxn?.status === 'DISPUTED' || activeDisputeTxn?.buyer_dispute_category);
     try {
-      await axios.post(`/api/v1/escrow/${disputeTxnId}/raise-dispute`, {
+      const payload: { reason: string; photos: string[]; category?: string } = {
         reason: disputeReason.trim(),
-        photos: buyerPhotos
+        photos: buyerPhotos,
+      };
+      if (!isDisputedTxn) {
+        payload.category = disputeCategory;
+      }
+      await axios.post(`/api/v1/escrow/${disputeTxnId}/raise-dispute`, payload);
+      await modal.alert({
+        title: "Dispute Submitted",
+        message: "Dispute and evidence submitted successfully. Management team and seller have been updated.",
+        type: "danger",
+        icon: "alert"
       });
-      alert('Dispute and evidence submitted successfully. Management team will arbitrate.');
       setDisputeTxnId(null);
       window.location.reload();
     } catch (err: any) {
       setDisputeError(getErrorMessage(err));
     } finally {
       setIsSubmittingDispute(false);
+    }
+  };
+
+  const handleRequestArbiter = async (txn: any) => {
+    const confirmed = await modal.confirm({
+      title: "Request Official Arbiter Decision",
+      message: "Escalate this dispute to the certified Platform Arbiter desk? Your case will be placed at the top of the priority arbitration queue for a binding ruling.",
+      confirmText: "Request Arbiter Decision",
+      cancelText: "Keep Direct Chat",
+      type: "orange",
+      icon: "scale",
+      badgeText: "Priority Arbitration"
+    });
+    if (!confirmed) return;
+
+    setRequestingArbiterId(txn.id);
+    try {
+      await axios.post(`/api/v1/escrow/${txn.id}/request-arbiter-decision`);
+      await modal.alert({
+        title: "Arbiter Decision Requested",
+        message: "Platform arbiter escalation requested successfully. Your case has been placed at the top of the arbitration queue.",
+        type: "orange",
+        icon: "scale"
+      });
+      window.location.reload();
+    } catch (err: any) {
+      await modal.alert({
+        title: "Escalation Error",
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to request arbiter decision.',
+        type: "danger"
+      });
+    } finally {
+      setRequestingArbiterId(null);
     }
   };
 
@@ -756,12 +814,22 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
                               buyerReason={txn.buyer_dispute_reason}
                               buyerPhotos={txn.buyer_dispute_photos}
                               buyerName="You (Buyer)"
+                              buyerCategory={txn.buyer_dispute_category}
                               sellerResponse={txn.seller_dispute_response}
                               sellerPhotos={txn.seller_dispute_photos}
                               sellerName={sellerDisplayName}
                               managerNotes={txn.manager_dispute_notes}
                               managerPhotos={txn.manager_dispute_photos}
+                              disputedAt={txn.disputed_at || txn.created_at}
+                              dispatchedAt={txn.dispatched_at}
+                              createdAt={txn.created_at}
+                              arbiterEscalatedAt={txn.arbiter_escalated_at}
+                              arbiterEscalatedRole={txn.arbiter_escalated_role}
+                              arbiterEscalationHours={txn.arbiter_escalation_hours || 48}
+                              onRequestArbiterDecision={() => handleRequestArbiter(txn)}
+                              isRequestingArbiter={requestingArbiterId === txn.id}
                               disputeRetractedAt={txn.dispute_retracted_at}
+                              waybillPhotoUrl={txn.waybill_photo_url}
                             />
                           </div>
                         )}
@@ -897,27 +965,54 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
       )}
 
       {/* Raise Dispute Sub-Modal */}
-      {disputeTxnId && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
-          <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden relative text-gray-900 dark:text-slate-100 my-auto">
-            <div className="px-5 sm:px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between shrink-0">
-              <h4 className="text-base font-bold text-gray-900 dark:text-slate-100">Raise Transaction Dispute</h4>
-              <button onClick={() => setDisputeTxnId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-            
-            <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
-              {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded">{disputeError}</p>}
-              <form onSubmit={handleRaiseDisputeSubmit} className="space-y-3">
+      {disputeTxnId && (() => {
+        const activeModalTxn = txns.find((t: any) => t.id === disputeTxnId);
+        const isAlreadyDisputed = Boolean(activeModalTxn?.buyer_dispute_reason || activeModalTxn?.status === 'DISPUTED' || activeModalTxn?.buyer_dispute_category);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
+            <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden relative text-gray-900 dark:text-slate-100 my-auto">
+              <div className="px-5 sm:px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between shrink-0">
+                <h4 className="text-base font-bold text-gray-900 dark:text-slate-100">
+                  {isAlreadyDisputed ? "Add Dispute Update / Evidence" : "Raise Transaction Dispute"}
+                </h4>
+                <button onClick={() => setDisputeTxnId(null)} className="text-gray-400 hover:text-gray-600 dark:hover:text-slate-200">
+                  <X className="h-5 w-5" />
+                </button>
+              </div>
+              
+              <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
+                {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded">{disputeError}</p>}
+                <form onSubmit={handleRaiseDisputeSubmit} className="space-y-3">
+                  {!isAlreadyDisputed && (
+                    <div>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
+                        Dispute Category *
+                      </label>
+                      <select
+                        value={disputeCategory}
+                        onChange={e => setDisputeCategory(e.target.value)}
+                        className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-red-500 outline-none font-medium"
+                      >
+                        {DISPUTE_CATEGORIES.map(cat => (
+                          <option key={cat.value} value={cat.value}>{cat.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
+
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Reason for Dispute *</label>
+                  <div className="flex justify-between items-center mb-1">
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Reason for Dispute *</label>
+                    <span className={`text-[11px] font-mono ${disputeReason.trim().length >= 10 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : 'text-slate-400'}`}>
+                      {disputeReason.trim().length}/10 min chars
+                    </span>
+                  </div>
                   <textarea
                     required
                     rows={3}
                     value={disputeReason}
                     onChange={e => setDisputeReason(e.target.value)}
-                    placeholder="Describe the issue with your item..."
+                    placeholder="Describe the issue with your item (minimum 10 characters)..."
                     className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-red-500 outline-none"
                   />
                 </div>
@@ -962,8 +1057,8 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
                 <button
                   type="submit"
-                  disabled={isSubmittingDispute || isCompressingBuyerPhotos}
-                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition shadow flex justify-center items-center gap-2 disabled:opacity-70"
+                  disabled={isSubmittingDispute || isCompressingBuyerPhotos || disputeReason.trim().length < 10}
+                  className="w-full py-2.5 bg-red-600 hover:bg-red-700 text-white font-bold rounded-xl text-sm transition shadow flex justify-center items-center gap-2 disabled:opacity-70 cursor-pointer"
                 >
                   {isSubmittingDispute ? (
                     <>
@@ -978,7 +1073,8 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
 
       {/* Rate Seller Sub-Modal */}
       {rateTxn && (

@@ -24,7 +24,7 @@ export const useDisputesListQuery = () => {
 export const useResolveDisputeMutation = () => {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (resolveData: { transaction_id: string; action: string; admin_notes: string }) => {
+    mutationFn: async (resolveData: { transaction_id: string; action: string; admin_notes: string; is_external_arbitration?: boolean; external_order_document_url?: string }) => {
       const { data } = await apiClient.post(`/admin/disputes/${resolveData.transaction_id}/resolve`, resolveData);
       return data;
     },
