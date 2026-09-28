@@ -34,10 +34,48 @@
     <meta name="twitter:url" content="https://trust.hendaxis.com/" />
     <meta name="twitter:title" content="HendAxis Trust — Ghana's Buyer-Seller Escrow Payment Platform" />
     <meta name="twitter:description" content="Protecting online commerce in Ghana with double-entry escrow, verified seller storefronts, and instant MoMo payouts." />
-    <meta name="twitter:image" content="https://trust.hendaxis.com/assets/hero_banner.jpg" />
+    <!-- Critical Pre-hydration & SEO Crawler Styles -->
+    <style>
+      .seo-crawler-content {
+        position: absolute !important;
+        width: 1px !important;
+        height: 1px !important;
+        padding: 0 !important;
+        margin: -1px !important;
+        overflow: hidden !important;
+        clip: rect(0, 0, 0, 0) !important;
+        white-space: nowrap !important;
+        border: 0 !important;
+        opacity: 0 !important;
+        pointer-events: none !important;
+      }
+      .app-pre-loader {
+        min-height: 100vh;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background-color: #020617;
+      }
+      .app-pre-spinner {
+        width: 38px;
+        height: 38px;
+        border: 3.5px solid rgba(3, 99, 255, 0.18);
+        border-top-color: #0363ff;
+        border-radius: 50%;
+        animation: spin-pre 0.75s linear infinite;
+      }
+      @keyframes spin-pre {
+        to { transform: rotate(360deg); }
+      }
+    </style>
   </head>
   <body class="bg-slate-950 text-slate-100 antialiased">
-    <div id="root"></div>
+    <div id="root">
+      <div class="app-pre-loader">
+        <div class="app-pre-spinner"></div>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
