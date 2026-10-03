@@ -10,6 +10,15 @@ export const apiClient = axios.create({
   timeout: 15000, // 15-second timeout — prevents indefinite hangs
 });
 
+// Request Interceptor: Attach Authorization Bearer token from authStore if present
+apiClient.interceptors.request.use((config) => {
+  const token = useAuthStore.getState().token;
+  if (token && !config.headers.Authorization) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
 export function getErrorMessage(err: any): string {
   if (!err) return 'An unexpected error occurred.';
   if (typeof err === 'string') return err;

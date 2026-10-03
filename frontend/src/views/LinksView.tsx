@@ -14,6 +14,10 @@ export interface SellerPaymentLink {
   shipping_fee_ghs: number | string;
   fee_handling: 'PASS_TO_BUYER' | 'ABSORB_FEE';
   intended_buyer_phone?: string;
+  intended_buyer_username?: string;
+  intended_buyer_name?: string;
+  is_direct_order?: boolean;
+  direct_order_status?: 'PENDING' | 'PAID' | 'DECLINED';
   image_url?: string;
   category?: string;
   created_at: string;
@@ -35,6 +39,8 @@ export const LinksView: React.FC = () => {
   // Filters
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState('all'); // 'all', 'active', 'disabled', 'archived'
+  const [deliveryType, setDeliveryType] = useState<'all' | 'public' | 'direct'>('all');
+  const [directStatus, setDirectStatus] = useState('all'); // 'all', 'PENDING', 'PAID', 'DECLINED'
   const [startDate, setStartDate] = useState('');
   const [endDate, setEndDate] = useState('');
 
@@ -50,6 +56,8 @@ export const LinksView: React.FC = () => {
       params.append('offset', offset.toString());
       if (search) params.append('search', search);
       if (statusFilter) params.append('status_filter', statusFilter);
+      if (deliveryType) params.append('delivery_type', deliveryType);
+      if (directStatus && directStatus !== 'all') params.append('direct_status', directStatus);
       if (startDate) params.append('start_date', startDate);
       if (endDate) params.append('end_date', endDate);
 
@@ -61,7 +69,7 @@ export const LinksView: React.FC = () => {
     } finally {
       setLoading(false);
     }
-  }, [offset, search, statusFilter, startDate, endDate]);
+  }, [offset, search, statusFilter, deliveryType, directStatus, startDate, endDate]);
 
   useEffect(() => {
     fetchLinks();
@@ -76,6 +84,8 @@ export const LinksView: React.FC = () => {
   const clearFilters = () => {
     setSearch('');
     setStatusFilter('all');
+    setDeliveryType('all');
+    setDirectStatus('all');
     setStartDate('');
     setEndDate('');
     setOffset(0);
@@ -151,18 +161,19 @@ export const LinksView: React.FC = () => {
     }
   };
 
-  const hasFilters = search || statusFilter !== 'all' || startDate || endDate;
+  const hasFilters = search || statusFilter !== 'all' || deliveryType !== 'all' || directStatus !== 'all' || startDate || endDate;
   const totalPages = Math.ceil(totalCount / limit);
   const currentPage = Math.floor(offset / limit) + 1;
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 animate-fade-in">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 transition-colors">
+      <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
       
       {/* Header */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">My Payment Links</h1>
-          <p className="text-gray-500 dark:text-slate-400 mt-1">Manage, disable, or archive your products and checkout links.</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Payment Links & In-App Invoices</h1>
+          <p className="text-gray-500 dark:text-slate-400 mt-1">Manage public checkout links and direct buyer invoices across your store history.</p>
         </div>
         <RouterLink 
           to="/create-link"
@@ -171,6 +182,43 @@ export const LinksView: React.FC = () => {
           <Plus className="h-4 w-4" />
           Create New Link
         </RouterLink>
+      </div>
+
+      {/* Type Toggle Tabs */}
+      <div className="flex items-center gap-2 border-b border-gray-200 dark:border-slate-800 pb-2 overflow-x-auto">
+        <button
+          type="button"
+          onClick={() => { setDeliveryType('all'); setOffset(0); }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap ${
+            deliveryType === 'all'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+              : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
+          }`}
+        >
+          All Links & Invoices
+        </button>
+        <button
+          type="button"
+          onClick={() => { setDeliveryType('public'); setOffset(0); }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            deliveryType === 'public'
+              ? 'bg-blue-600 text-white shadow-sm shadow-blue-600/30'
+              : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
+          }`}
+        >
+          🌐 Public Links Only
+        </button>
+        <button
+          type="button"
+          onClick={() => { setDeliveryType('direct'); setOffset(0); }}
+          className={`px-4 py-2 rounded-xl text-xs font-bold transition-all cursor-pointer whitespace-nowrap flex items-center gap-1.5 ${
+            deliveryType === 'direct'
+              ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+              : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
+          }`}
+        >
+          👤 Direct In-App Invoices
+        </button>
       </div>
 
       {/* Search & Filters */}
@@ -188,7 +236,7 @@ export const LinksView: React.FC = () => {
               type="text"
               value={search}
               onChange={e => setSearch(e.target.value)}
-              placeholder="Search by product name..."
+              placeholder="Search by title or buyer @username..."
               className="w-full rounded-lg border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 pl-9 pr-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition-all"
             />
           </div>
@@ -204,6 +252,20 @@ export const LinksView: React.FC = () => {
             <option value="disabled">Disabled Links Only</option>
             <option value="archived">Archived (Soft Deleted)</option>
           </select>
+
+          {/* Direct Order Status Filter (when viewing Direct or All) */}
+          {deliveryType !== 'public' && (
+            <select
+              value={directStatus}
+              onChange={e => { setDirectStatus(e.target.value); setOffset(0); }}
+              className="border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2 text-sm bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
+            >
+              <option value="all">All Invoice Statuses</option>
+              <option value="PENDING">⏳ Pending Payment</option>
+              <option value="PAID">✅ Paid / In Escrow</option>
+              <option value="DECLINED">✕ Declined by Buyer</option>
+            </select>
+          )}
 
           {/* Date range */}
           <div className="flex items-center gap-2">
@@ -249,7 +311,7 @@ export const LinksView: React.FC = () => {
         <p className="text-sm text-gray-500 dark:text-slate-400">
           {totalCount === 0
             ? 'No payment links found.'
-            : `Showing ${offset + 1}–${Math.min(offset + limit, totalCount)} of ${totalCount} links`}
+            : `Showing ${offset + 1}–${Math.min(offset + limit, totalCount)} of ${totalCount} items`}
         </p>
       )}
 
@@ -258,7 +320,7 @@ export const LinksView: React.FC = () => {
         {loading ? (
           <div className="p-16 flex flex-col items-center justify-center text-gray-400 dark:text-slate-500">
             <Loader2 className="h-8 w-8 animate-spin mb-3 text-blue-500" />
-            <p className="text-sm">Loading your links...</p>
+            <p className="text-sm">Loading your links & invoices...</p>
           </div>
         ) : links.length === 0 ? (
           <div className="p-16 text-center">
@@ -266,7 +328,7 @@ export const LinksView: React.FC = () => {
               <Link2 className="h-7 w-7 text-blue-400 dark:text-blue-500" />
             </div>
             <p className="font-semibold text-gray-800 dark:text-slate-200">
-              {hasFilters ? 'No links match your filters.' : "You haven't created any payment links yet."}
+              {hasFilters ? 'No items match your filters.' : "You haven't created any links or direct orders yet."}
             </p>
             {!hasFilters && (
               <RouterLink
@@ -283,6 +345,7 @@ export const LinksView: React.FC = () => {
             <thead className="bg-gray-50 dark:bg-slate-900">
               <tr>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">Date</th>
+                <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">Type & Recipient</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">Product Name</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">Price (GHS)</th>
                 <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 dark:text-slate-400 uppercase tracking-wider">Status</th>
@@ -294,6 +357,24 @@ export const LinksView: React.FC = () => {
                 <tr key={link.id} className="hover:bg-gray-50 dark:hover:bg-slate-900/50 transition-colors">
                   <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500 dark:text-slate-400">
                     {new Date(link.created_at).toLocaleDateString()}
+                  </td>
+                  <td className="px-6 py-4 whitespace-nowrap text-xs">
+                    {link.is_direct_order ? (
+                      <div className="space-y-1">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
+                          👤 Direct Invoice
+                        </span>
+                        {link.intended_buyer_username && (
+                          <div className="text-[11px] text-gray-600 dark:text-slate-400 font-mono">
+                            @{link.intended_buyer_username}
+                          </div>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
+                        🌐 Public Link
+                      </span>
+                    )}
                   </td>
                   <td className="px-6 py-4 text-sm font-semibold text-gray-900 dark:text-white">
                     <button
@@ -313,6 +394,14 @@ export const LinksView: React.FC = () => {
                       <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-gray-100 dark:bg-slate-800 text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700">
                         <Archive className="h-3 w-3" /> Archived
                       </span>
+                    ) : link.is_direct_order && link.direct_order_status === 'PAID' ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-emerald-50 dark:bg-emerald-950/50 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                        <span className="w-2 h-2 rounded-full bg-emerald-500" /> Paid / In Escrow
+                      </span>
+                    ) : link.is_direct_order && link.direct_order_status === 'DECLINED' ? (
+                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-bold bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800">
+                        <span className="w-2 h-2 rounded-full bg-rose-500" /> Declined
+                      </span>
                     ) : (
                       <button
                         onClick={() => handleToggleActive(link)}
@@ -324,7 +413,7 @@ export const LinksView: React.FC = () => {
                         title="Click to toggle Active / Disabled state"
                       >
                         <span className={`w-2 h-2 rounded-full ${link.is_active ? 'bg-emerald-500 animate-pulse' : 'bg-amber-500'}`} />
-                        {link.is_active ? 'Active' : 'Disabled'}
+                        {link.is_direct_order ? (link.is_active ? 'Pending Payment' : 'Disabled') : (link.is_active ? 'Active' : 'Disabled')}
                       </button>
                     )}
                   </td>
@@ -487,6 +576,36 @@ export const LinksView: React.FC = () => {
                 )}
               </div>
 
+              {/* Direct Order Recipient Info */}
+              {selectedLink.is_direct_order && (
+                <div className="p-3.5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/40 border border-indigo-200/80 dark:border-indigo-900/60 text-xs space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="font-bold text-indigo-900 dark:text-indigo-200 uppercase tracking-wider text-[10px]">
+                      Direct In-App Invoice Recipient
+                    </span>
+                    <span className={`text-[10px] font-bold px-2 py-0.5 rounded-md ${
+                      selectedLink.direct_order_status === 'PAID'
+                        ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
+                        : selectedLink.direct_order_status === 'DECLINED'
+                        ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300'
+                        : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
+                    }`}>
+                      {selectedLink.direct_order_status === 'PAID' ? '✅ Paid & In Escrow' : selectedLink.direct_order_status === 'DECLINED' ? '✕ Declined by Buyer' : '⏳ Pending Payment'}
+                    </span>
+                  </div>
+                  <div className="flex items-center justify-between text-indigo-950 dark:text-indigo-200">
+                    <span className="text-gray-500 dark:text-slate-400">Target Buyer:</span>
+                    <span className="font-semibold font-mono">@{selectedLink.intended_buyer_username || 'N/A'} {selectedLink.intended_buyer_name ? `(${selectedLink.intended_buyer_name})` : ''}</span>
+                  </div>
+                  {selectedLink.intended_buyer_phone && (
+                    <div className="flex items-center justify-between text-indigo-950 dark:text-indigo-200">
+                      <span className="text-gray-500 dark:text-slate-400">Buyer Phone:</span>
+                      <span className="font-mono">{selectedLink.intended_buyer_phone}</span>
+                    </div>
+                  )}
+                </div>
+              )}
+
               {/* Financial Breakdown Table */}
               {(() => {
                 const itemPrice = Number(selectedLink.price_ghs) || 0;
@@ -564,6 +683,7 @@ export const LinksView: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

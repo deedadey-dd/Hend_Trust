@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useParams, useSearchParams, useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { apiClient } from '../api/client';
 import {
   ShieldCheck, Truck, ArrowRight, Loader2,
   CheckCircle, Clock, AlertTriangle, X, KeyRound, Store, ZoomIn,
@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
 import ConfirmDeliveryReceiptModal from '../components/ConfirmDeliveryReceiptModal';
+import ApproveAndReleaseModal from '../components/ApproveAndReleaseModal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import SEOHead from '../components/SEOHead';
 import TermsModal from '../components/TermsModal';
@@ -33,6 +34,12 @@ interface LinkData {
   seller_phone?: string;
   seller_profile_picture_url?: string;
   shipping_timeout_days?: number;
+  is_direct_order?: boolean;
+  intended_buyer_username?: string;
+  intended_buyer_name?: string;
+  intended_buyer_phone?: string;
+  intended_buyer_email?: string;
+  intended_buyer_address?: string;
 }
 
 interface TxnDetail {
@@ -152,8 +159,6 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
   const [isConfirming, setIsConfirming] = useState(false);
   const [confirmError, setConfirmError] = useState('');
 
-  // 1-Click Approve & Release State
-  const [isReleasing, setIsReleasing] = useState(false);
 
   // Quick Buyer Registration State
   const [buyerPassword, setBuyerPassword] = useState('');
@@ -198,6 +203,7 @@ const DISPUTE_CATEGORIES = [
   const [retractError, setRetractError] = useState('');
 
   const [show1ClickConfirmModal, setShow1ClickConfirmModal] = useState(false);
+  const [showApproveReleaseModal, setShowApproveReleaseModal] = useState(false);
 
   // OTP Resend Cooldown (60 seconds)
   const [resendCooldown, setResendCooldown] = useState(0);
@@ -207,6 +213,7 @@ const DISPUTE_CATEGORIES = [
   useEscapeKey(() => setShowRetractModal(false), showRetractModal);
   useEscapeKey(() => setShowRatingModal(false), showRatingModal);
   useEscapeKey(() => setShow1ClickConfirmModal(false), show1ClickConfirmModal);
+  useEscapeKey(() => setShowApproveReleaseModal(false), showApproveReleaseModal);
 
   useEffect(() => {
     if (resendCooldown <= 0) return;
@@ -237,7 +244,7 @@ const DISPUTE_CATEGORIES = [
     }
     setIsSendingCode(true);
     try {
-      await axios.post(`/api/v1/escrow/${txn.id}/send-confirmation-code`);
+      await apiClient.post(`/escrow/${txn.id}/send-confirmation-code`);
       setResendCooldown(60);
       setShowConfirmModal(true);
     } catch (err: any) {
@@ -251,37 +258,8 @@ const DISPUTE_CATEGORIES = [
     }
   };
 
-  const handleApproveAndRelease = async () => {
-    const confirmed = await modal.confirm({
-      title: "Approve Order & Release Payment",
-      message: "Are you satisfied with your order? Releasing payment will immediately finalize escrow and transfer funds to the seller's wallet.",
-      confirmText: "Release Payment",
-      cancelText: "Keep In Inspection",
-      type: "success",
-      icon: "check",
-      badgeText: "Escrow Finalization"
-    });
-    if (!confirmed) return;
-
-    setIsReleasing(true);
-    try {
-      await axios.post(`/api/v1/escrow/${txn.id}/approve-and-release`);
-      await modal.alert({
-        title: "Order Approved & Completed",
-        message: "Escrow payment has been released to the seller. Thank you for using HendAxis Trust!",
-        type: "success",
-        icon: "check"
-      });
-      setShowRatingModal(true);
-    } catch (err: any) {
-      await modal.alert({
-        title: "Payment Release Error",
-        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to release funds.',
-        type: "danger"
-      });
-    } finally {
-      setIsReleasing(false);
-    }
+  const handleApproveAndRelease = () => {
+    setShowApproveReleaseModal(true);
   };
 
   const handleQuickBuyerSignup = async (e?: React.FormEvent, forceConfirmLogin = false) => {
@@ -297,7 +275,7 @@ const DISPUTE_CATEGORIES = [
       setIsSigningUpBuyer(true);
     }
     try {
-      const res = await axios.post('/api/v1/auth/buyer-quick-register', {
+      const res = await apiClient.post('/auth/buyer-quick-register', {
         email: txn.buyer_email,
         phone_number: txn.buyer_phone || '',
         name: txn.buyer_name || '',
@@ -340,7 +318,7 @@ const DISPUTE_CATEGORIES = [
     setBuyerSignupError('');
     setIsVerifyingPhoneOtp(true);
     try {
-      const res = await axios.post('/api/v1/auth/verify-phone-otp', {
+      const res = await apiClient.post('/auth/verify-phone-otp', {
         uid: signupUid,
         otp_code: phoneOtp.trim()
       });
@@ -360,7 +338,7 @@ const DISPUTE_CATEGORIES = [
     if (otpResendCooldown > 0) return;
     setBuyerSignupError('');
     try {
-      await axios.post('/api/v1/auth/send-phone-otp', { uid: signupUid });
+      await apiClient.post('/auth/send-phone-otp', { uid: signupUid });
       setOtpResendCooldown(60);
       await modal.alert({
         title: 'OTP Resent',
@@ -378,7 +356,7 @@ const DISPUTE_CATEGORIES = [
     setConfirmError('');
     setIsConfirming(true);
     try {
-      await axios.post(`/api/v1/escrow/${txn.id}/confirm-receipt`, { confirmation_code: confirmCode.trim() });
+      await apiClient.post(`/escrow/${txn.id}/confirm-receipt`, { confirmation_code: confirmCode.trim() });
       setShowConfirmModal(false);
       setShowRatingModal(true);
     } catch (err: any) { 
@@ -432,7 +410,7 @@ const DISPUTE_CATEGORIES = [
       if (!isDisputed) {
         payload.category = disputeCategory;
       }
-      await axios.post(`/api/v1/escrow/${txn.id}/raise-dispute`, payload);
+      await apiClient.post(`/escrow/${txn.id}/raise-dispute`, payload);
       await modal.alert({
         title: "Dispute Submitted Successfully",
         message: "Dispute and evidence photos submitted. Management and the seller have been notified.",
@@ -462,7 +440,7 @@ const DISPUTE_CATEGORIES = [
 
     setIsRequestingArbiter(true);
     try {
-      await axios.post(`/api/v1/escrow/${txn.id}/request-arbiter-decision`);
+      await apiClient.post(`/escrow/${txn.id}/request-arbiter-decision`);
       await modal.alert({
         title: "Arbiter Decision Requested",
         message: "Platform arbiter escalation requested successfully. Your case has been placed at the top of the arbitration queue.",
@@ -485,7 +463,7 @@ const DISPUTE_CATEGORIES = [
     setRetractError('');
     setIsRetracting(true);
     try {
-      const res = await axios.post(`/api/v1/escrow/${txn.id}/retract-dispute`);
+      const res = await apiClient.post(`/escrow/${txn.id}/retract-dispute`);
       await modal.alert({
         title: "Dispute Retracted",
         message: res.data?.message || 'Dispute retracted successfully. Funds will be released to the seller as scheduled.',
@@ -506,14 +484,22 @@ const DISPUTE_CATEGORIES = [
   // Auto-check on load if an account already exists for this buyer
   useEffect(() => {
     if (isAuthenticated || !txn?.buyer_email) return;
-    axios.post('/api/v1/auth/check-account-exists', {
+    let isMounted = true;
+    const controller = new AbortController();
+
+    apiClient.post('/auth/check-account-exists', {
       email: txn.buyer_email,
       phone_number: txn.buyer_phone || ''
-    }).then(res => {
-      if (res.data?.exists) {
+    }, { signal: controller.signal }).then(res => {
+      if (isMounted && res.data?.exists) {
         setExistingAccountData(res.data);
       }
     }).catch(() => {});
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [txn?.buyer_email, txn?.buyer_phone, isAuthenticated]);
 
   return (
@@ -983,10 +969,9 @@ const DISPUTE_CATEGORIES = [
               {isInspection && (
                 <button
                   onClick={handleApproveAndRelease}
-                  disabled={isReleasing}
-                  className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer shadow-sm"
+                  className="flex-1 py-2.5 px-4 rounded-xl bg-emerald-600 text-white text-sm font-semibold hover:bg-emerald-700 transition flex items-center justify-center gap-2 cursor-pointer shadow-sm"
                 >
-                  {isReleasing ? <Loader2 className="h-4 w-4 animate-spin" /> : '✓ Approve & Release Payment'}
+                  ✓ Approve & Release Payment
                 </button>
               )}
               {canDispute && (
@@ -1427,8 +1412,36 @@ const DISPUTE_CATEGORIES = [
           }}
           onClose={() => setShow1ClickConfirmModal(false)}
           onConfirm={async () => {
-            await axios.post(`/api/v1/escrow/${txn.id}/buyer-confirm-receipt`);
+            await apiClient.post(`/escrow/${txn.id}/buyer-confirm-receipt`);
             setShow1ClickConfirmModal(false);
+            setShowRatingModal(true);
+          }}
+        />
+      )}
+
+      {/* OTP-Confirmed Approve & Release Modal */}
+      {showApproveReleaseModal && (
+        <ApproveAndReleaseModal
+          order={{
+            id: txn.id,
+            title: txn.title,
+            paystack_reference: txn.paystack_reference,
+            buyer_phone: txn.buyer_phone,
+            buyer_email: txn.buyer_email,
+            shop_name: txn.shop_name,
+            seller_username: txn.seller_username,
+            total_amount_ghs: Number(txn.total_amount_ghs),
+            platform_fee_ghs: Number(txn.platform_fee_ghs || 0)
+          }}
+          onClose={() => setShowApproveReleaseModal(false)}
+          onSuccess={async () => {
+            setShowApproveReleaseModal(false);
+            await modal.alert({
+              title: "Order Approved & Completed",
+              message: "Escrow payment has been released to the seller. Thank you for using HendAxis Trust!",
+              type: "success",
+              icon: "check"
+            });
             setShowRatingModal(true);
           }}
         />
@@ -1486,7 +1499,7 @@ export default function PublicCheckoutView() {
   useEffect(() => {
     if (isAuthenticated && user) {
       if (!name) {
-        const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.name || user.username || '';
+        const fullName = [user.first_name, user.last_name].filter(Boolean).join(' ') || user.name || (user as any).full_name || user.username || '';
         if (fullName) setName(fullName);
       }
       if (!phone && user.phone_number) {
@@ -1496,36 +1509,66 @@ export default function PublicCheckoutView() {
       if (!email && user.email) {
         setEmail(user.email);
       }
+      if (!address && (user.default_shipping_address || (user as any).delivery_address || (user as any).address)) {
+        setAddress(user.default_shipping_address || (user as any).delivery_address || (user as any).address || '');
+      }
+    } else if (link?.is_direct_order) {
+      if (!name && (link.intended_buyer_name || link.intended_buyer_username)) {
+        setName(link.intended_buyer_name || link.intended_buyer_username || '');
+      }
+      if (!phone && link.intended_buyer_phone) {
+        setPhone(link.intended_buyer_phone);
+        validatePromoDiscount(promoCode, applyBuyerCredit, link.intended_buyer_phone);
+      }
+      if (!email && link.intended_buyer_email) {
+        setEmail(link.intended_buyer_email);
+      }
+      if (!address && ((link as any).intended_buyer_address || link.intended_buyer_address)) {
+        setAddress((link as any).intended_buyer_address || link.intended_buyer_address || '');
+      }
     }
-  }, [isAuthenticated, user]);
+  }, [isAuthenticated, user, link]);
 
   useEffect(() => {
+    let isMounted = true;
+    const controller = new AbortController();
+
     const fetchData = async () => {
       try {
         if (txRef) {
-          const res = await axios.get(`/api/v1/checkout/transaction/${txRef}`);
+          const res = await apiClient.get(`/checkout/transaction/${txRef}`, { signal: controller.signal });
+          if (!isMounted) return;
           setTxnDetail(res.data);
           if (res.data.paystack_reference && res.data.buyer_review_token) {
             saveReviewToken(res.data.paystack_reference, res.data.buyer_review_token);
           }
         } else {
           const [linkRes, settingsRes] = await Promise.all([
-            axios.get(`/api/v1/links/${linkId}`),
-            axios.get('/api/v1/escrow/public-settings').catch(() => ({ data: null }))
+            apiClient.get(`/links/${linkId}`, { signal: controller.signal }),
+            apiClient.get('/escrow/public-settings', { signal: controller.signal }).catch(() => ({ data: null }))
           ]);
+          if (!isMounted) return;
           setLink(linkRes.data);
           if (settingsRes?.data) {
             setPublicSettings(settingsRes.data);
           }
         }
       } catch (err: any) {
+        if (err.name === 'CanceledError' || err.name === 'AbortError' || !isMounted) return;
         const backendMessage = err.response?.data?.message || err.response?.data?.detail;
         setError(txRef ? 'Transaction not found.' : (backendMessage || 'Payment link is invalid or inactive. Contact Seller'));
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
     if (linkId) fetchData();
+
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [linkId, txRef]);
 
   const validatePromoDiscount = async (codeToUse?: string, useCredit?: boolean, phoneToUse?: string) => {
@@ -1546,7 +1589,7 @@ export default function PublicCheckoutView() {
     setPromoMessage('');
 
     try {
-      const res = await axios.post('/api/v1/checkout/validate-promo', {
+      const res = await apiClient.post('/checkout/validate-promo', {
         link_id: linkId,
         promo_code: code.trim() || undefined,
         phone_number: targetPhone.trim() || undefined,
@@ -1593,7 +1636,7 @@ export default function PublicCheckoutView() {
     if (isAuthenticated) {
       // 1-Click checkout initialization: no SMS OTP required!
       try {
-        const res = await axios.post('/api/v1/checkout/verify-and-initialize', {
+        const res = await apiClient.post('/checkout/verify-and-initialize', {
           link_id: linkId,
           name: name || user?.name || user?.username || 'Buyer',
           phone_number: phone || user?.phone_number || '',
@@ -1616,7 +1659,7 @@ export default function PublicCheckoutView() {
     }
 
     try {
-      await axios.post('/api/v1/checkout/send-otp', { phone_number: phone });
+      await apiClient.post('/checkout/send-otp', { phone_number: phone });
       setShowOtpModal(true);
     } catch {
       await modal.alert({
@@ -1633,7 +1676,7 @@ export default function PublicCheckoutView() {
     e.preventDefault();
     setIsProcessing(true);
     try {
-      const res = await axios.post('/api/v1/checkout/verify-and-initialize', {
+      const res = await apiClient.post('/checkout/verify-and-initialize', {
         link_id: linkId,
         name,
         phone_number: phone,
@@ -1892,6 +1935,28 @@ export default function PublicCheckoutView() {
         {/* Checkout Form */}
         <div className="p-6">
           <form onSubmit={handleSendOtp} className="space-y-5">
+            {/* Prefill helper notice for logged-in or direct order buyers */}
+            {(isAuthenticated || link.is_direct_order) && (
+              <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200/80 dark:border-blue-900/60 rounded-xl p-3.5 flex items-start gap-3 text-xs text-blue-950 dark:text-blue-200">
+                <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-1.5 font-bold text-xs">
+                    <span>
+                      {isAuthenticated && user
+                        ? `Pre-filled from your @${user.username} profile`
+                        : `Direct Escrow Order for @${link.intended_buyer_username || 'you'}`}
+                    </span>
+                    <span className="bg-blue-200/80 dark:bg-blue-900 text-blue-900 dark:text-blue-100 text-[10px] font-black px-1.5 py-0.2 rounded">
+                      Editable
+                    </span>
+                  </div>
+                  <p className="text-blue-800 dark:text-blue-300 text-[11px] mt-0.5 leading-relaxed">
+                    Your contact information has been filled in. You can modify any details below before continuing to pay.
+                  </p>
+                </div>
+              </div>
+            )}
+
             <div>
               <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Full Name</label>
               <input required type="text" value={name} onChange={e => setName(e.target.value)}

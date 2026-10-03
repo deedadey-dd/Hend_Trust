@@ -252,9 +252,9 @@ export default function Navbar() {
 
                     {/* Grouped Dropdown Menu Card */}
                     {userMenuOpen && (
-                      <div className="absolute right-0 mt-2 w-72 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl py-2 z-50 text-slate-800 dark:text-slate-200 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
+                      <div className="absolute right-0 mt-2 w-72 max-h-[calc(100vh-5rem)] overflow-y-auto overscroll-contain custom-scrollbar rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl py-2 z-50 text-slate-800 dark:text-slate-200 backdrop-blur-xl animate-in fade-in slide-in-from-top-2 duration-150">
                         {/* User Header */}
-                        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800">
+                        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-10">
                           <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{user?.name || user?.username}</p>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
                           <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-[#0363ff]/10 border border-blue-200 dark:border-[#0363ff]/20 text-[10px] font-extrabold text-[#0363ff] dark:text-blue-400 uppercase tracking-wider">
@@ -425,7 +425,7 @@ export default function Navbar() {
                     </button>
 
                     {solutionsOpen && (
-                      <div className="absolute left-0 mt-2 w-[480px] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150 backdrop-blur-xl">
+                      <div className="absolute left-0 mt-2 w-[480px] max-h-[calc(100vh-5rem)] overflow-y-auto overscroll-contain custom-scrollbar rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150 backdrop-blur-xl">
                         <div className="grid grid-cols-2 gap-2">
                           {/* For Buyers */}
                           <Link
@@ -532,7 +532,7 @@ export default function Navbar() {
                     </button>
 
                     {trustOpen && (
-                      <div className="absolute left-0 mt-2 w-[480px] rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150 backdrop-blur-xl">
+                      <div className="absolute left-0 mt-2 w-[480px] max-h-[calc(100vh-5rem)] overflow-y-auto overscroll-contain custom-scrollbar rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl p-3 z-50 animate-in fade-in slide-in-from-top-2 duration-150 backdrop-blur-xl">
                         <div className="grid grid-cols-2 gap-2">
                           {/* How Escrow Works */}
                           <Link
@@ -664,7 +664,7 @@ export default function Navbar() {
 
         {/* Mobile Drawer Menu */}
         {menuOpen && (
-          <div className="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-4 py-5 space-y-4 shadow-2xl text-slate-900 dark:text-white animate-in slide-in-from-top-2 duration-150">
+          <div className="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-4 py-5 space-y-4 shadow-2xl text-slate-900 dark:text-white animate-in slide-in-from-top-2 duration-150 max-h-[calc(100vh-4.5rem)] overflow-y-auto overscroll-contain custom-scrollbar">
             {/* Mobile Theme Switcher Bar */}
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 mb-2">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Theme Preference:</span>

@@ -24,15 +24,6 @@ interface ActiveCourier {
   is_active: boolean;
 }
 
-const DEFAULT_COURIERS: ActiveCourier[] = [
-  { code: 'DHL', name: 'DHL Express', category: 'FORMAL_COURIER', is_active: true },
-  { code: 'SPEEDAF', name: 'Speedaf Express', category: 'FORMAL_COURIER', is_active: true },
-  { code: 'FEDEX', name: 'FedEx', category: 'FORMAL_COURIER', is_active: true },
-  { code: 'UPS', name: 'UPS', category: 'FORMAL_COURIER', is_active: true },
-  { code: 'EMS', name: 'EMS / Ghana Post', category: 'FORMAL_COURIER', is_active: true },
-  { code: 'INFORMAL_BUS', name: 'VIP & Intercity Bus (OTP)', category: 'BUS_STATION', is_active: true }
-];
-
 const BUYER_STEPS = [
   {
     icon: Link2,
@@ -143,7 +134,7 @@ export default function HomeView() {
   const { isAuthenticated } = useAuthStore();
   const [searchQuery, setSearchQuery] = useState('');
   const [activeStepTab, setActiveStepTab] = useState<'BUYER' | 'SELLER'>('BUYER');
-  const [activeCouriers, setActiveCouriers] = useState<ActiveCourier[]>(DEFAULT_COURIERS);
+  const [activeCouriers, setActiveCouriers] = useState<ActiveCourier[]>([]);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [showTrackModal, setShowTrackModal] = useState(false);
   const navigate = useNavigate();
@@ -152,13 +143,12 @@ export default function HomeView() {
   useEffect(() => {
     apiClient.get('/delivery/active-couriers')
       .then(res => {
-        if (Array.isArray(res.data) && res.data.length > 0) {
+        if (Array.isArray(res.data)) {
           setActiveCouriers(res.data);
         }
       })
       .catch(() => {
-        // Fallback to default active couriers
-        setActiveCouriers(DEFAULT_COURIERS);
+        setActiveCouriers([]);
       });
   }, []);
 
@@ -250,22 +240,25 @@ export default function HomeView() {
           </div>
 
           {/* Dynamic Active Couriers from Admin Settings */}
-          <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
-              <Truck className="h-3.5 w-3.5 text-blue-500" /> Integrated Logistics:
-            </span>
-            {activeCouriers.map(courier => (
-              <span
-                key={courier.code}
-                className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-2xs"
-                title={`${courier.name} Verified Partner`}
-              >
-                {courier.name}
+          {activeCouriers.length > 0 && (
+            <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center">
+              <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                <Truck className="h-3.5 w-3.5 text-blue-500" /> Integrated Logistics:
               </span>
-            ))}
-          </div>
+              {activeCouriers.map(courier => (
+                <span
+                  key={courier.code}
+                  className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-medium text-slate-700 dark:text-slate-300 shadow-2xs"
+                  title={`${courier.name} Verified Partner`}
+                >
+                  {courier.name}
+                </span>
+              ))}
+            </div>
+          )}
         </div>
       </section>
+
 
       {/* ── Compact Marketplace & Product Discovery Strip ── */}
       <section className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800 py-6 sm:py-7 px-4 sm:px-6 transition-colors shadow-2xs">

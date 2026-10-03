@@ -6,6 +6,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { useNotificationStore } from '../store/notificationStore';
 
 export interface NotificationItem {
   id: string;
@@ -41,24 +42,17 @@ function formatRelativeTime(dateStr: string): string {
 
 export default function NotificationDropdown() {
   const { isAuthenticated } = useAuthStore();
+  const unreadCount = useNotificationStore((s) => s.unreadCount);
+  const setUnreadCount = useNotificationStore((s) => s.setUnreadCount);
+  const decrementUnreadCount = useNotificationStore((s) => s.decrementUnreadCount);
+  const initPolling = useNotificationStore((s) => s.initPolling);
+
   const navigate = useNavigate();
   const [isOpen, setIsOpen] = useState(false);
-  const [unreadCount, setUnreadCount] = useState<number>(0);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [markingAll, setMarkingAll] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
-
-  // Poll unread count periodically
-  const fetchUnreadCount = async () => {
-    if (!isAuthenticated) return;
-    try {
-      const res = await apiClient.get('/notifications/unread-count');
-      setUnreadCount(res.data?.unread_count || 0);
-    } catch {
-      // ignore
-    }
-  };
 
   const fetchRecentNotifications = async () => {
     if (!isAuthenticated) return;
@@ -77,16 +71,10 @@ export default function NotificationDropdown() {
   };
 
   useEffect(() => {
-    if (!isAuthenticated) {
-      setUnreadCount(0);
-      setNotifications([]);
-      return;
-    }
-
-    fetchUnreadCount();
-    const interval = setInterval(fetchUnreadCount, 30000); // 30s polling
-    return () => clearInterval(interval);
-  }, [isAuthenticated]);
+    if (!isAuthenticated) return;
+    const cleanup = initPolling();
+    return cleanup;
+  }, [isAuthenticated, initPolling]);
 
   // When opening dropdown, load full recent items
   useEffect(() => {
@@ -120,7 +108,7 @@ export default function NotificationDropdown() {
     if (!item.is_read) {
       try {
         await apiClient.patch(`/notifications/${item.id}/read`);
-        setUnreadCount(prev => Math.max(0, prev - 1));
+        decrementUnreadCount(1);
         setNotifications(prev =>
           prev.map(n => (n.id === item.id ? { ...n, is_read: true } : n))
         );

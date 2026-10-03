@@ -33,21 +33,39 @@ class ActiveCourierSchema(Schema):
 def get_active_couriers(request):
     """
     Returns public list of active courier partners.
-    Allows administrators to configure active couriers dynamically.
+    Dynamically respects Platform Settings configured in the Admin Portal (Allowed Delivery Channels & Formal Courier Options).
     """
-    from django.conf import settings
-    default_couriers = [
+    from apps.escrow.api import get_platform_settings
+
+    cfg = get_platform_settings()
+    enabled_methods = cfg.get('enabled_delivery_methods', ['COURIER_API', 'INFORMAL_BUS'])
+    enabled_carriers = cfg.get('enabled_carriers', ['DHL', 'FEDEX', 'UPS', 'EMS', 'SPEEDAF', 'OTHERS'])
+
+    all_couriers = [
         {"code": "DHL", "name": "DHL Express", "category": "FORMAL_COURIER", "is_active": True},
         {"code": "SPEEDAF", "name": "Speedaf Express", "category": "FORMAL_COURIER", "is_active": True},
         {"code": "FEDEX", "name": "FedEx", "category": "FORMAL_COURIER", "is_active": True},
         {"code": "UPS", "name": "UPS", "category": "FORMAL_COURIER", "is_active": True},
         {"code": "EMS", "name": "EMS / Ghana Post", "category": "FORMAL_COURIER", "is_active": True},
-        {"code": "INFORMAL_BUS", "name": "VIP & Intercity State Bus Station (OTP)", "category": "BUS_STATION", "is_active": True},
+        {"code": "INFORMAL_BUS", "name": "VIP & Intercity Bus (OTP)", "category": "BUS_STATION", "is_active": True},
     ]
-    configured_active = getattr(settings, 'ACTIVE_COURIERS', None)
-    if configured_active is not None:
-        return [c for c in default_couriers if c['code'] in configured_active and c.get('is_active', True)]
-    return default_couriers
+
+    active_list = []
+
+    # Path A: Formal Courier API
+    if "COURIER_API" in enabled_methods:
+        for c in all_couriers:
+            if c["category"] == "FORMAL_COURIER" and c["code"] in enabled_carriers:
+                active_list.append(c)
+
+    # Path B: Informal Bus Station
+    if "INFORMAL_BUS" in enabled_methods:
+        for c in all_couriers:
+            if c["category"] == "BUS_STATION":
+                active_list.append(c)
+
+    return active_list
+
 
 
 

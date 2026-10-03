@@ -147,3 +147,61 @@ def test_unresponsive_buyer_safeguard_success(delivery_client, transaction):
         transaction.refresh_from_db()
         assert transaction.status == TransactionStatus.INSPECTION_PERIOD
         assert transaction.inspection_starts_at == future_time
+
+
+@pytest.mark.django_db
+def test_get_active_couriers_respects_platform_settings(delivery_client):
+    from apps.escrow.models import PlatformSetting
+
+    # 1. Default (both formal courier API and informal bus enabled)
+    res = delivery_client.get("/active-couriers")
+    assert res.status_code == 200
+    codes = [c["code"] for c in res.json()]
+    assert "DHL" in codes
+    assert "SPEEDAF" in codes
+    assert "FEDEX" in codes
+    assert "UPS" in codes
+    assert "EMS" in codes
+    assert "INFORMAL_BUS" in codes
+
+    # 2. Disable COURIER_API (only INFORMAL_BUS enabled)
+    PlatformSetting.objects.update_or_create(
+        key="system_config",
+        defaults={"value": {
+            "enabled_delivery_methods": ["INFORMAL_BUS"],
+            "enabled_carriers": ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"]
+        }}
+    )
+    res = delivery_client.get("/active-couriers")
+    assert res.status_code == 200
+    codes = [c["code"] for c in res.json()]
+    assert codes == ["INFORMAL_BUS"]
+
+    # 3. Disable INFORMAL_BUS, and restrict COURIER_API to only DHL and SPEEDAF
+    PlatformSetting.objects.update_or_create(
+        key="system_config",
+        defaults={"value": {
+            "enabled_delivery_methods": ["COURIER_API"],
+            "enabled_carriers": ["DHL", "SPEEDAF"]
+        }}
+    )
+    res = delivery_client.get("/active-couriers")
+    assert res.status_code == 200
+    codes = [c["code"] for c in res.json()]
+    assert "DHL" in codes
+    assert "SPEEDAF" in codes
+    assert "FEDEX" not in codes
+    assert "INFORMAL_BUS" not in codes
+
+    # 4. Disable all delivery methods
+    PlatformSetting.objects.update_or_create(
+        key="system_config",
+        defaults={"value": {
+            "enabled_delivery_methods": [],
+            "enabled_carriers": []
+        }}
+    )
+    res = delivery_client.get("/active-couriers")
+    assert res.status_code == 200
+    assert res.json() == []
+

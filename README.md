@@ -120,6 +120,13 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Dynamic Role-Adaptive Navbar**: Navigation bar dynamically adapts its desktop links, profile dropdown menu, and mobile drawer between `BUYER` (My Purchases, Verified Shops, Track Order), `SELLER` (Dashboard, Create Link, My Links, Shops, Wallet Balance), and `ADMIN` roles.
 - **Dynamic Admin Courier Sync**: Logistics section on public landing pages and directories dynamically syncs with active administrative settings.
 
+### 15. Promotions, Seasonal Fee Overrides, Cashback Rewards & Double-Sided Referral Engine
+- **Promo Codes**: Support for `PERCENTAGE` (with optional `max_discount_cap_ghs` ceiling) and `FIXED_GHS` fee deductions, constrained by `min_order_amount_ghs`, global usage limits, per-buyer limits, role restrictions (`ALL`, `BUYER_ONLY`, `SELLER_ONLY`), and automatic expiration dates.
+- **Seasonal / Festive Fee Overrides (`SeasonalFeeCampaign`)**: Automated site-wide fee relief during peak shopping periods across 5 rule types (`WAIVED`, `PERCENTAGE_DISCOUNT`, `FIXED_DISCOUNT`, `REDUCED_PERCENTAGE`, `REDUCED_FIXED`) with min order criteria and discount caps.
+- **Transaction Cashback & Fee-Offset Credits (`TransactionRewardCampaign`)**: Automated issuance of flat or volume-percentage bonus credits upon order completion for buyers and merchants.
+- **Double-Sided Referral Program (`/referrals`)**: Unique referral link generator (`/ref/:code`) granting dual rewards (Referrer GHS 10.00 / Referee GHS 5.00) upon the referee's first qualifying order completion ($\ge \text{GHS } 50.00$) with strict anti-self-referral safeguards.
+- **Calculation Precedence & Seller Payout Protection**: Strict calculation hierarchy (Base Fee $\to$ Seasonal Override $\to$ Promo Code $\to$ Wallet Credit $\to$ Fee Floor $\ge \text{GHS } 0.00$). Promotional subsidies never reduce the seller's agreed merchandise or delivery earnings.
+
 ---
 
 ## 🏗 Architecture Overview
@@ -129,13 +136,14 @@ The repository is structured as a Monorepo:
 ### Backend (Django Ninja)
 - **Framework**: Django 5.x + Django Ninja (FastAPI-style routing, type-safe schemas, OpenAPI `/api/docs`)
 - **Database**: PostgreSQL / SQLite (Relational schema, double-entry financial ledger state, buyer-seller records)
-- **Caching & Queues**: Redis & Celery (Handles 4-day dispatch expiry, 24h settlements, progressive reminders, and auto-deliveries)
+- **Caching & Queues**: Redis & Celery (Handles 4-day dispatch expiry, 24h settlements, progressive reminders, auto-deliveries, and referral reward dispatch)
+- **Promotions & Discount Engine**: Promo code validation, seasonal fee campaigns, cashback ledger, and referral reward distributor
 - **Authentication**: JWT via HTTP-only secure cookies (`django-ninja-jwt`)
 
 ### Frontend (React + Vite)
 - **Framework**: React 18 + TypeScript + Vite
 - **Styling**: Vanilla Tailwind CSS with dark/light themes & glassmorphism
-- **Views**: Buyer & Seller Dashboard, Profile & Verification Setup, Public Checkout with 1-Click Init, Tracking Portal with Upfront OTP & 1-Click Auth Mode, Marketplace Directory (`/shops`), Public Seller Storefronts (`/store/:username`), and Manager Operations Center.
+- **Views**: Buyer & Seller Dashboard, Profile & Verification Setup, Public Checkout with 1-Click Init & Promo Code redemption, Tracking Portal with Upfront OTP & 1-Click Auth Mode, Marketplace Directory (`/shops`), Public Seller Storefronts (`/store/:username`), Promotions & Referrals Hub (`/referrals`), and Manager Operations Center.
 - **SEO Engine**: Static HTML route pre-rendering for all public indexing routes with canonical tags and Schema.org metadata.
 
 ---

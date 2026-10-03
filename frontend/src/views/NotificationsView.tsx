@@ -8,6 +8,7 @@ import {
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { useNotificationStore } from '../store/notificationStore';
 import { useModal } from '../context/ModalContext';
 
 interface NotificationRecord {
@@ -85,7 +86,9 @@ export default function NotificationsView() {
       const res = await apiClient.get(`/notifications/?${params.toString()}`);
       setNotifications(res.data?.items || []);
       setTotalCount(res.data?.total_count || 0);
-      setUnreadCount(res.data?.unread_count || 0);
+      const unread = res.data?.unread_count || 0;
+      setUnreadCount(unread);
+      useNotificationStore.getState().setUnreadCount(unread);
     } catch (err) {
       console.error('Failed to load notifications', err);
     } finally {
@@ -108,6 +111,7 @@ export default function NotificationsView() {
       await apiClient.post('/notifications/mark-all-read');
       setNotifications(prev => prev.map(n => ({ ...n, is_read: true })));
       setUnreadCount(0);
+      useNotificationStore.getState().setUnreadCount(0);
       modal.alert({
         title: 'All Notifications Read',
         message: 'All unread notifications have been marked as read.',

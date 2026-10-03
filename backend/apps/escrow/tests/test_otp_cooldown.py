@@ -7,7 +7,8 @@ from django.core.cache import cache
 from apps.users.models import User
 from apps.links.models import PaymentLink
 from apps.escrow.models import Transaction, TransactionStatus
-from apps.escrow.api import send_confirmation_code, confirm_receipt
+from apps.escrow.api import send_confirmation_code, confirm_receipt, send_release_otp, buyer_approve_and_release_funds, ApproveAndReleaseSchema
+from ninja.errors import HttpError
 from apps.delivery.services import resend_delivery_otp
 from apps.users.api import _send_user_phone_otp, request_momo_otp, RequestMomoOTPSchema
 
@@ -113,3 +114,48 @@ def test_user_phone_and_momo_otp_cooldown(buyer_seller_and_tx):
         assert seller.momo_otp_code == momo_code1
         assert mock_mnotify.call_count == 1
         assert "recently" in r2["message"] or "Resend available" in r2["message"]
+
+@pytest.mark.django_db
+def test_send_release_otp_and_approve_and_release(buyer_seller_and_tx):
+    seller, tx = buyer_seller_and_tx
+    tx.status = TransactionStatus.INSPECTION_PERIOD
+    tx.save()
+    cache.clear()
+    req = make_dummy_request()
+
+    with patch('apps.core.tasks.dispatch_sms_task.delay') as mock_sms, \
+         patch('apps.core.tasks.dispatch_email_task.delay') as mock_email, \
+         patch('apps.escrow.api.execute_payout_for_transaction') as mock_payout:
+
+        # 1. Send Release OTP
+        res1 = send_release_otp(req, tx.id)
+        tx.refresh_from_db()
+        release_code = tx.delivery_confirmation_code
+        assert release_code != ""
+        assert len(release_code) == 6
+        assert mock_sms.call_count == 1
+        assert mock_email.call_count == 1
+        assert "Release confirmation code sent" in res1["message"]
+
+        # 2. Cooldown check - immediate second call within 60s
+        res2 = send_release_otp(req, tx.id)
+        tx.refresh_from_db()
+        assert tx.delivery_confirmation_code == release_code
+        assert mock_sms.call_count == 1  # No duplicate SMS sent
+        assert mock_email.call_count == 1
+        assert "recently" in res2["message"]
+
+        # 3. Approve and Release with INVALID code should fail with HttpError 400
+        with pytest.raises(HttpError) as exc_info:
+            buyer_approve_and_release_funds(req, tx.id, ApproveAndReleaseSchema(confirmation_code="000000"))
+        assert exc_info.value.status_code == 400
+        assert "Invalid or expired confirmation code" in str(exc_info.value.message)
+
+        # 4. Approve and Release with VALID code succeeds
+        release_res = buyer_approve_and_release_funds(req, tx.id, ApproveAndReleaseSchema(confirmation_code=release_code))
+        tx.refresh_from_db()
+        assert tx.status == TransactionStatus.COMPLETED
+        assert tx.delivery_confirmation_code == ""  # OTP cleared after successful release
+        assert mock_payout.call_count == 1
+        assert "Order approved with verified OTP" in release_res["message"]
+

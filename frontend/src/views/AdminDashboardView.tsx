@@ -7,6 +7,7 @@ import {
   ExternalLink, MessageSquare, Bell, CheckCheck, Trash2
 } from 'lucide-react';
 import NotificationDropdown from '../components/NotificationDropdown';
+import { useNotificationStore } from '../store/notificationStore';
 import { 
   useAdminMetricsQuery, 
   useAdminTransactionsQuery, 
@@ -934,20 +935,12 @@ export const AdminDashboardView: React.FC = () => {
   const [staffNotifications, setStaffNotifications] = useState<any[]>([]);
   const [staffNotificationsLoading, setStaffNotificationsLoading] = useState(false);
   const [staffTotalCount, setStaffTotalCount] = useState(0);
-  const [staffUnreadCount, setStaffUnreadCount] = useState(0);
+  const staffUnreadCount = useNotificationStore(s => s.unreadCount);
+  const setStaffUnreadCount = useNotificationStore(s => s.setUnreadCount);
   const [staffTaskFilter, setStaffTaskFilter] = useState<'ALL' | 'DISPUTES' | 'VERIFICATIONS' | 'APPEALS' | 'ROLES'>('ALL');
   const [staffStatusFilter, setStaffStatusFilter] = useState<'ALL' | 'UNREAD' | 'READ'>('ALL');
   const [staffSearch, setStaffSearch] = useState('');
   const [staffActionLoadingId, setStaffActionLoadingId] = useState<string | null>(null);
-
-  const fetchStaffUnreadCount = async () => {
-    try {
-      const res = await apiClient.get('/notifications/unread-count');
-      setStaffUnreadCount(res.data?.unread_count || 0);
-    } catch {
-      // ignore
-    }
-  };
 
   const fetchStaffNotifications = async () => {
     setStaffNotificationsLoading(true);
@@ -972,12 +965,6 @@ export const AdminDashboardView: React.FC = () => {
       setStaffNotificationsLoading(false);
     }
   };
-
-  useEffect(() => {
-    fetchStaffUnreadCount();
-    const interval = setInterval(fetchStaffUnreadCount, 30000);
-    return () => clearInterval(interval);
-  }, []);
 
   useEffect(() => {
     if (activeTab === 'NOTIFICATIONS') {

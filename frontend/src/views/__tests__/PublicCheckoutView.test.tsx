@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import axios from 'axios';
+import { apiClient } from '../../api/client';
 import PublicCheckoutView from '../PublicCheckoutView';
 
 describe('PublicCheckoutView Integration Tests', () => {
@@ -27,28 +28,36 @@ describe('PublicCheckoutView Integration Tests', () => {
 
   let getSpy: any;
   let postSpy: any;
+  let clientGetSpy: any;
+  let clientPostSpy: any;
 
   beforeEach(() => {
     vi.clearAllMocks();
     getSpy = vi.spyOn(axios, 'get');
     postSpy = vi.spyOn(axios, 'post');
+    clientGetSpy = vi.spyOn(apiClient, 'get');
+    clientPostSpy = vi.spyOn(apiClient, 'post');
   });
 
   afterEach(() => {
     getSpy.mockRestore();
     postSpy.mockRestore();
+    clientGetSpy.mockRestore();
+    clientPostSpy.mockRestore();
   });
 
   it('renders checkout details and computes baseline 1.5% + GHS 10 escrow fee for buyer', async () => {
-    getSpy.mockImplementation((url: string) => {
-      if (url.includes(`/api/v1/links/${mockLinkId}`)) {
+    const handleGet = (url: string) => {
+      if (url.includes(`/links/${mockLinkId}`)) {
         return Promise.resolve({ data: mockLinkDataPassToBuyer });
       }
-      if (url.includes('/api/v1/escrow/public-settings')) {
+      if (url.includes('/escrow/public-settings')) {
         return Promise.resolve({ data: mockPublicSettings });
       }
       return Promise.reject(new Error('not found'));
-    });
+    };
+    getSpy.mockImplementation(handleGet);
+    clientGetSpy.mockImplementation(handleGet);
 
     render(
       <MemoryRouter initialEntries={[`/l/${mockLinkId}`]}>
@@ -71,18 +80,20 @@ describe('PublicCheckoutView Integration Tests', () => {
   });
 
   it('dynamically updates Net Escrow Fee and Total Buyer Payment when promo code is applied', async () => {
-    getSpy.mockImplementation((url: string) => {
-      if (url.includes(`/api/v1/links/${mockLinkId}`)) {
+    const handleGet = (url: string) => {
+      if (url.includes(`/links/${mockLinkId}`)) {
         return Promise.resolve({ data: mockLinkDataPassToBuyer });
       }
-      if (url.includes('/api/v1/escrow/public-settings')) {
+      if (url.includes('/escrow/public-settings')) {
         return Promise.resolve({ data: mockPublicSettings });
       }
       return Promise.reject(new Error('not found'));
-    });
+    };
+    getSpy.mockImplementation(handleGet);
+    clientGetSpy.mockImplementation(handleGet);
 
-    postSpy.mockImplementation((url: string) => {
-      if (url.includes('/api/v1/checkout/validate-promo')) {
+    const handlePost = (url: string) => {
+      if (url.includes('/checkout/validate-promo')) {
         return Promise.resolve({
           data: {
             valid: true,
@@ -98,7 +109,9 @@ describe('PublicCheckoutView Integration Tests', () => {
         });
       }
       return Promise.reject(new Error('not found'));
-    });
+    };
+    postSpy.mockImplementation(handlePost);
+    clientPostSpy.mockImplementation(handlePost);
 
     render(
       <MemoryRouter initialEntries={[`/l/${mockLinkId}`]}>
@@ -140,15 +153,17 @@ describe('PublicCheckoutView Integration Tests', () => {
       fee_handling: 'ABSORB_FEES',
     };
 
-    getSpy.mockImplementation((url: string) => {
-      if (url.includes(`/api/v1/links/${mockLinkId}`)) {
+    const handleGet = (url: string) => {
+      if (url.includes(`/links/${mockLinkId}`)) {
         return Promise.resolve({ data: mockLinkDataAbsorb });
       }
-      if (url.includes('/api/v1/escrow/public-settings')) {
+      if (url.includes('/escrow/public-settings')) {
         return Promise.resolve({ data: mockPublicSettings });
       }
       return Promise.reject(new Error('not found'));
-    });
+    };
+    getSpy.mockImplementation(handleGet);
+    clientGetSpy.mockImplementation(handleGet);
 
     render(
       <MemoryRouter initialEntries={[`/l/${mockLinkId}`]}>
@@ -167,18 +182,20 @@ describe('PublicCheckoutView Integration Tests', () => {
   });
 
   it('displays error message when promo code has reached its maximum global redemptions', async () => {
-    getSpy.mockImplementation((url: string) => {
-      if (url.includes(`/api/v1/links/${mockLinkId}`)) {
+    const handleGet = (url: string) => {
+      if (url.includes(`/links/${mockLinkId}`)) {
         return Promise.resolve({ data: mockLinkDataPassToBuyer });
       }
-      if (url.includes('/api/v1/escrow/public-settings')) {
+      if (url.includes('/escrow/public-settings')) {
         return Promise.resolve({ data: mockPublicSettings });
       }
       return Promise.reject(new Error('not found'));
-    });
+    };
+    getSpy.mockImplementation(handleGet);
+    clientGetSpy.mockImplementation(handleGet);
 
-    postSpy.mockImplementation((url: string) => {
-      if (url.includes('/api/v1/checkout/validate-promo')) {
+    const handlePost = (url: string) => {
+      if (url.includes('/checkout/validate-promo')) {
         return Promise.resolve({
           data: {
             valid: false,
@@ -194,7 +211,9 @@ describe('PublicCheckoutView Integration Tests', () => {
         });
       }
       return Promise.reject(new Error('not found'));
-    });
+    };
+    postSpy.mockImplementation(handlePost);
+    clientPostSpy.mockImplementation(handlePost);
 
     render(
       <MemoryRouter initialEntries={[`/l/${mockLinkId}`]}>
@@ -221,18 +240,20 @@ describe('PublicCheckoutView Integration Tests', () => {
   });
 
   it('displays error when buyer has already redeemed the promo code maximum allowed times', async () => {
-    getSpy.mockImplementation((url: string) => {
-      if (url.includes(`/api/v1/links/${mockLinkId}`)) {
+    const handleGet = (url: string) => {
+      if (url.includes(`/links/${mockLinkId}`)) {
         return Promise.resolve({ data: mockLinkDataPassToBuyer });
       }
-      if (url.includes('/api/v1/escrow/public-settings')) {
+      if (url.includes('/escrow/public-settings')) {
         return Promise.resolve({ data: mockPublicSettings });
       }
       return Promise.reject(new Error('not found'));
-    });
+    };
+    getSpy.mockImplementation(handleGet);
+    clientGetSpy.mockImplementation(handleGet);
 
-    postSpy.mockImplementation((url: string) => {
-      if (url.includes('/api/v1/checkout/validate-promo')) {
+    const handlePost = (url: string) => {
+      if (url.includes('/checkout/validate-promo')) {
         return Promise.resolve({
           data: {
             valid: false,
@@ -248,7 +269,9 @@ describe('PublicCheckoutView Integration Tests', () => {
         });
       }
       return Promise.reject(new Error('not found'));
-    });
+    };
+    postSpy.mockImplementation(handlePost);
+    clientPostSpy.mockImplementation(handlePost);
 
     render(
       <MemoryRouter initialEntries={[`/l/${mockLinkId}`]}>

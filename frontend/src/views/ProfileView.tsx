@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { 
   User, Wallet, Zap, PiggyBank, Phone, Building2, 
   Save, Loader2, CheckCircle, AlertTriangle, ShieldCheck, FileCheck, Store, Clock, XCircle, 
-  Image as ImageIcon, Camera, X, ShoppingBag, Sparkles, Lock, BadgeCheck, Mail, Link2
+  Image as ImageIcon, Camera, X, ShoppingBag, Sparkles, Lock, BadgeCheck, Mail, Link2, MapPin
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -43,6 +43,7 @@ interface ProfileData {
   national_id_photo_url: string;
   business_license_photo_url: string;
   verification_rejection_reason: string;
+  default_shipping_address?: string;
   verified_at?: string;
   is_2fa_enabled?: boolean;
 }
@@ -76,6 +77,7 @@ export default function ProfileView() {
   // Editable Profile fields
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
+  const [defaultShippingAddress, setDefaultShippingAddress] = useState('');
   const [payoutMode, setPayoutMode] = useState<'INSTANT' | 'MANUAL'>('INSTANT');
   const [payoutType, setPayoutType] = useState<'MOMO' | 'BANK'>('MOMO');
   const [momoNumber, setMomoNumber] = useState('');
@@ -116,6 +118,7 @@ export default function ProfileView() {
       setIs2FAEnabled(Boolean(data.is_2fa_enabled));
       setFirstName(data.first_name || '');
       setLastName(data.last_name || '');
+      setDefaultShippingAddress(data.default_shipping_address || '');
       setPayoutMode(data.payout_mode || 'INSTANT');
       setPayoutType(data.preferred_payout_type || 'MOMO');
       setMomoNumber(data.momo_number || '');
@@ -327,6 +330,7 @@ export default function ProfileView() {
       const payload: Record<string, any> = {
         first_name: firstName,
         last_name: lastName,
+        default_shipping_address: defaultShippingAddress.trim(),
       };
 
       if (!isBuyer) {
@@ -340,6 +344,11 @@ export default function ProfileView() {
       }
 
       await apiClient.patch('/profile/', payload);
+      updateUser({
+        first_name: firstName,
+        last_name: lastName,
+        default_shipping_address: defaultShippingAddress.trim()
+      });
       setSuccess('Profile updated successfully!');
       setTimeout(() => setSuccess(''), 4000);
       fetchProfile();
@@ -602,6 +611,28 @@ export default function ProfileView() {
                     <Mail className="h-4 w-4 text-slate-400" />
                     <span>{profile?.email || 'No email associated'}</span>
                   </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                      Default Shipping & Delivery Address
+                    </label>
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                      Auto-prefilled at escrow checkout
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={defaultShippingAddress}
+                    onChange={e => setDefaultShippingAddress(e.target.value)}
+                    placeholder="e.g., House No. 14, Ring Road Central, near Danquah Circle, Osu, Accra"
+                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed"
+                  />
+                  <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-1">
+                    Include your street name, house number, prominent landmarks, city, and region for smooth courier dispatch.
+                  </p>
                 </div>
               </div>
             </div>
@@ -1084,6 +1115,25 @@ export default function ProfileView() {
                       {profile?.phone_number}
                     </div>
                   </div>
+                </div>
+
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
+                      <MapPin className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                      Default Shipping & Delivery Address
+                    </label>
+                    <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
+                      Auto-prefilled when you checkout as a buyer
+                    </span>
+                  </div>
+                  <textarea
+                    rows={2}
+                    value={defaultShippingAddress}
+                    onChange={e => setDefaultShippingAddress(e.target.value)}
+                    placeholder="e.g., Shop 4B, Accra Mall Commercial Wing / House 12, Cantonments, Accra"
+                    className="w-full rounded-xl border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 px-4 py-2.5 text-xs focus:ring-2 focus:ring-blue-500 outline-none leading-relaxed"
+                  />
                 </div>
               </div>
             </div>

@@ -18,6 +18,11 @@ def confirm_transaction_payment(transaction: Transaction) -> bool:
         transaction.is_archived = False
         transaction.save(update_fields=['status', 'is_archived', 'updated_at'])
 
+        if transaction.link and getattr(transaction.link, 'is_direct_order', False):
+            transaction.link.direct_order_status = 'PAID'
+            transaction.link.save(update_fields=['direct_order_status'])
+
+
         from apps.ledger.services import record_buyer_deposit
         try:
             gateway_fee = (transaction.total_amount_ghs * Decimal('0.0195')).quantize(Decimal('0.01'))

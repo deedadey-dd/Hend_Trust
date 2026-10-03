@@ -111,6 +111,7 @@ class LoginResponseSchema(Schema):
     uid: Optional[str] = None
     is_superuser: bool = False
     is_staff: bool = False
+    default_shipping_address: Optional[str] = ""
 
 class ForgotPasswordSchema(Schema):
     email: str
@@ -364,6 +365,7 @@ def buyer_quick_register(request, data: QuickBuyerRegisterSchema, response: Http
                     "uid": None,
                     "is_superuser": bool(getattr(existing_user, 'is_superuser', False)),
                     "is_staff": bool(getattr(existing_user, 'is_staff', False)),
+                    "default_shipping_address": getattr(existing_user, 'default_shipping_address', '') or "",
                 }
 
             # User explicitly confirmed logging in to their existing account
@@ -387,6 +389,7 @@ def buyer_quick_register(request, data: QuickBuyerRegisterSchema, response: Http
                     "uid": uid,
                     "is_superuser": bool(getattr(user, 'is_superuser', False)),
                     "is_staff": bool(getattr(user, 'is_staff', False)),
+                    "default_shipping_address": getattr(user, 'default_shipping_address', '') or "",
                 }
             refresh = RefreshToken.for_user(user)
             set_auth_cookies(response, refresh, remember=True)
@@ -407,6 +410,7 @@ def buyer_quick_register(request, data: QuickBuyerRegisterSchema, response: Http
                 "uid": None,
                 "is_superuser": bool(getattr(user, 'is_superuser', False)),
                 "is_staff": bool(getattr(user, 'is_staff', False)),
+                "default_shipping_address": getattr(user, 'default_shipping_address', '') or "",
             }
         else:
             raise HttpError(400, "An account with this email or phone number already exists with a different password. Please log in with your existing password or continue as a guest.")
@@ -640,6 +644,7 @@ def verify_phone_otp(request, data: VerifyPhoneOtpSchema, response: HttpResponse
             "phone_number": user.phone_number or "",
             "is_superuser": bool(getattr(user, 'is_superuser', False)),
             "is_staff": bool(getattr(user, 'is_staff', False)),
+            "default_shipping_address": getattr(user, 'default_shipping_address', '') or "",
         }
 
     if not user.phone_otp_code or not data.otp_code.strip():
@@ -673,6 +678,7 @@ def verify_phone_otp(request, data: VerifyPhoneOtpSchema, response: HttpResponse
         "phone_number": user.phone_number or "",
         "is_superuser": bool(getattr(user, 'is_superuser', False)),
         "is_staff": bool(getattr(user, 'is_staff', False)),
+        "default_shipping_address": getattr(user, 'default_shipping_address', '') or "",
     }
 
 @auth_router.post("/resend-activation", response=MessageSchema)
@@ -821,6 +827,7 @@ def login(request, data: LoginSchema, response: HttpResponse):
         "is_phone_verified": bool(getattr(user, 'is_phone_verified', False)),
         "is_superuser": bool(getattr(user, 'is_superuser', False)),
         "is_staff": bool(getattr(user, 'is_staff', False)),
+        "default_shipping_address": getattr(user, 'default_shipping_address', '') or "",
     }
 
 @auth_router.post("/refresh", response=MessageSchema)
@@ -878,10 +885,12 @@ class ProfileResponse(Schema):
     verification_rejection_reason: Optional[str] = ""
     verified_at: Optional[str] = None
     is_2fa_enabled: bool = False
+    default_shipping_address: Optional[str] = ""
 
 class ProfileUpdateRequest(Schema):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    default_shipping_address: Optional[str] = None
     payout_mode: Optional[str] = None
     preferred_payout_type: Optional[str] = None
     momo_number: Optional[str] = None
@@ -947,6 +956,7 @@ def _build_profile_response(user) -> dict:
         "verification_rejection_reason": user.verification_rejection_reason or "",
         "verified_at": user.verified_at.isoformat() if user.verified_at else None,
         "is_2fa_enabled": bool(user.is_2fa_enabled),
+        "default_shipping_address": getattr(user, 'default_shipping_address', '') or "",
     }
     try:
         wallet = user.wallet
@@ -1042,6 +1052,8 @@ def update_profile(request, data: ProfileUpdateRequest):
         user.first_name = data.first_name
     if data.last_name is not None:
         user.last_name = data.last_name
+    if data.default_shipping_address is not None:
+        user.default_shipping_address = data.default_shipping_address.strip()
     if data.payout_mode is not None:
         if data.payout_mode not in [PayoutMode.INSTANT, PayoutMode.MANUAL]:
             raise HttpError(400, "Invalid payout_mode. Must be 'INSTANT' or 'MANUAL'.")

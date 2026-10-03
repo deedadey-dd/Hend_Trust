@@ -143,6 +143,14 @@ const formatGHS = (val?: number | null | string): string => {
   return isNaN(num) ? '0.00' : num.toFixed(2);
 };
 
+const toLocalInputDateTime = (dateObjOrStr?: Date | string | null): string => {
+  if (!dateObjOrStr) return '';
+  const d = typeof dateObjOrStr === 'string' ? new Date(dateObjOrStr) : dateObjOrStr;
+  if (isNaN(d.getTime())) return '';
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 const promoExportHeaders: ExportColumn[] = [
   { label: 'Code', key: 'code' },
   { label: 'Description', key: 'description' },
@@ -325,6 +333,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
   const [loadingRedemptions, setLoadingRedemptions] = useState(false);
 
   const [createModalOpen, setCreateModalOpen] = useState(false);
+  const [createModalError, setCreateModalError] = useState('');
   const [isSubmittingCode, setIsSubmittingCode] = useState(false);
   const [newCode, setNewCode] = useState({
     code: '',
@@ -340,6 +349,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
   });
 
   const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editModalError, setEditModalError] = useState('');
   const [editingCode, setEditingCode] = useState<AdminPromoCode | null>(null);
   const [isSubmittingEdit, setIsSubmittingEdit] = useState(false);
   const [editForm, setEditForm] = useState({
@@ -357,6 +367,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
   });
 
   const [grantModalOpen, setGrantModalOpen] = useState(false);
+  const [grantModalError, setGrantModalError] = useState('');
   const [isGrantingCredit, setIsGrantingCredit] = useState(false);
   const [grantForm, setGrantForm] = useState({
     target_type: 'BUYER' as 'BUYER' | 'SELLER',
@@ -367,6 +378,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
   });
 
   const [seasonalModalOpen, setSeasonalModalOpen] = useState(false);
+  const [seasonalModalError, setSeasonalModalError] = useState('');
   const [editingSeasonal, setEditingSeasonal] = useState<SeasonalFeeCampaign | null>(null);
   const [isSubmittingSeasonal, setIsSubmittingSeasonal] = useState(false);
   const [seasonalForm, setSeasonalForm] = useState({
@@ -375,12 +387,14 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
     fee_rule_type: 'WAIVED',
     rule_value: 0,
     min_order_amount_ghs: 0,
+    max_discount_cap_ghs: '' as number | '',
     start_date: '',
     end_date: '',
     is_active: true
   });
 
   const [rewardModalOpen, setRewardModalOpen] = useState(false);
+  const [rewardModalError, setRewardModalError] = useState('');
   const [editingReward, setEditingReward] = useState<TransactionRewardCampaign | null>(null);
   const [isSubmittingReward, setIsSubmittingReward] = useState(false);
   const [rewardForm, setRewardForm] = useState({
@@ -658,7 +672,19 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
 
   const handleCreatePromoCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newCode.code.trim()) return;
+    setCreateModalError('');
+    if (!newCode.code.trim()) {
+      setCreateModalError('Coupon code is required.');
+      return;
+    }
+    if (newCode.discount_type === 'PERCENTAGE' && (newCode.discount_value <= 0 || newCode.discount_value > 100)) {
+      setCreateModalError('Percentage discount must be between 1% and 100%.');
+      return;
+    }
+    if (newCode.discount_type === 'FIXED_GHS' && newCode.discount_value <= 0) {
+      setCreateModalError('Fixed discount amount must be greater than GHS 0.00.');
+      return;
+    }
 
     setIsSubmittingCode(true);
     setActionMsg('');
@@ -696,7 +722,9 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       fetchPromoCodes();
       setTimeout(() => setActionMsg(''), 4000);
     } catch (err: any) {
-      setActionError(err.response?.data?.detail || 'Failed to create promo code.');
+      const msg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to create promo code.';
+      setCreateModalError(msg);
+      setActionError(msg);
     } finally {
       setIsSubmittingCode(false);
     }
@@ -704,6 +732,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
 
   const handleOpenEditModal = (codeItem: AdminPromoCode) => {
     setEditingCode(codeItem);
+    setEditModalError('');
     setEditForm({
       code: codeItem.code,
       description: codeItem.description || '',
@@ -714,7 +743,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       usage_limit: codeItem.usage_limit ?? '',
       per_buyer_limit: codeItem.per_buyer_limit ?? 1,
       eligible_role: codeItem.eligible_role,
-      expires_at: codeItem.expires_at ? new Date(codeItem.expires_at).toISOString().slice(0, 16) : '',
+      expires_at: toLocalInputDateTime(codeItem.expires_at),
       is_active: codeItem.is_active
     });
     setEditModalOpen(true);
@@ -722,7 +751,11 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
 
   const handleUpdatePromoCode = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!editingCode || !editForm.code.trim()) return;
+    setEditModalError('');
+    if (!editingCode || !editForm.code.trim()) {
+      setEditModalError('Coupon code is required.');
+      return;
+    }
 
     setIsSubmittingEdit(true);
     setActionMsg('');
@@ -749,7 +782,9 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       fetchPromoCodes();
       setTimeout(() => setActionMsg(''), 4000);
     } catch (err: any) {
-      setActionError(err.response?.data?.detail || 'Failed to update promo code.');
+      const msg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to update promo code.';
+      setEditModalError(msg);
+      setActionError(msg);
     } finally {
       setIsSubmittingEdit(false);
     }
@@ -798,14 +833,18 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
   // --- Seasonal Campaigns Handlers ---
   const handleOpenCreateSeasonalModal = () => {
     setEditingSeasonal(null);
+    setSeasonalModalError('');
+    const now = new Date();
+    const nextWeek = new Date(Date.now() + 7 * 24 * 3600 * 1000);
     setSeasonalForm({
       name: '',
       description: '',
       fee_rule_type: 'WAIVED',
       rule_value: 0,
       min_order_amount_ghs: 0,
-      start_date: new Date().toISOString().slice(0, 16),
-      end_date: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString().slice(0, 16),
+      max_discount_cap_ghs: '',
+      start_date: toLocalInputDateTime(now),
+      end_date: toLocalInputDateTime(nextWeek),
       is_active: true
     });
     setSeasonalModalOpen(true);
@@ -813,14 +852,16 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
 
   const handleOpenEditSeasonalModal = (camp: SeasonalFeeCampaign) => {
     setEditingSeasonal(camp);
+    setSeasonalModalError('');
     setSeasonalForm({
       name: camp.name,
       description: camp.description || '',
       fee_rule_type: camp.fee_rule_type,
       rule_value: camp.rule_value,
       min_order_amount_ghs: camp.min_order_amount_ghs,
-      start_date: camp.start_date ? new Date(camp.start_date).toISOString().slice(0, 16) : '',
-      end_date: camp.end_date ? new Date(camp.end_date).toISOString().slice(0, 16) : '',
+      max_discount_cap_ghs: camp.max_discount_cap_ghs ?? '',
+      start_date: toLocalInputDateTime(camp.start_date),
+      end_date: toLocalInputDateTime(camp.end_date),
       is_active: camp.is_active
     });
     setSeasonalModalOpen(true);
@@ -828,7 +869,30 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
 
   const handleSaveSeasonalCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!seasonalForm.name.trim()) return;
+    setSeasonalModalError('');
+
+    if (!seasonalForm.name.trim()) {
+      setSeasonalModalError('Please enter a campaign name.');
+      return;
+    }
+
+    const startDate = seasonalForm.start_date ? new Date(seasonalForm.start_date) : new Date();
+    const endDate = seasonalForm.end_date ? new Date(seasonalForm.end_date) : new Date(Date.now() + 7 * 86400000);
+
+    if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+      setSeasonalModalError('Please enter valid start and end dates.');
+      return;
+    }
+
+    if (endDate <= startDate) {
+      setSeasonalModalError('Campaign end date must be strictly after the start date.');
+      return;
+    }
+
+    if (seasonalForm.fee_rule_type !== 'WAIVED' && (!seasonalForm.rule_value || Number(seasonalForm.rule_value) <= 0)) {
+      setSeasonalModalError('Please enter a valid rule value greater than 0.');
+      return;
+    }
 
     setIsSubmittingSeasonal(true);
     setActionMsg('');
@@ -839,16 +903,17 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
         name: seasonalForm.name.trim(),
         description: seasonalForm.description.trim(),
         fee_rule_type: seasonalForm.fee_rule_type,
-        rule_value: Number(seasonalForm.rule_value) || 0,
+        rule_value: seasonalForm.fee_rule_type === 'WAIVED' ? 0 : Number(seasonalForm.rule_value) || 0,
         min_order_amount_ghs: Number(seasonalForm.min_order_amount_ghs) || 0,
-        start_date: seasonalForm.start_date ? new Date(seasonalForm.start_date).toISOString() : new Date().toISOString(),
-        end_date: seasonalForm.end_date ? new Date(seasonalForm.end_date).toISOString() : new Date(Date.now() + 7 * 86400000).toISOString(),
+        max_discount_cap_ghs: seasonalForm.max_discount_cap_ghs ? Number(seasonalForm.max_discount_cap_ghs) : null,
+        start_date: startDate.toISOString(),
+        end_date: endDate.toISOString(),
         is_active: seasonalForm.is_active
       };
 
       if (editingSeasonal) {
         await apiClient.put(`/escrow/admin/seasonal-fees/${editingSeasonal.id}`, payload);
-        setActionMsg(`Seasonal fee campaign "${payload.name}" updated!`);
+        setActionMsg(`Seasonal fee campaign "${payload.name}" updated successfully!`);
       } else {
         await apiClient.post('/escrow/admin/seasonal-fees', payload);
         setActionMsg(`Seasonal fee campaign "${payload.name}" created successfully!`);
@@ -859,7 +924,9 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       fetchSeasonalCampaigns();
       setTimeout(() => setActionMsg(''), 4000);
     } catch (err: any) {
-      setActionError(err.response?.data?.detail || 'Failed to save seasonal campaign.');
+      const msg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to save seasonal campaign.';
+      setSeasonalModalError(msg);
+      setActionError(msg);
     } finally {
       setIsSubmittingSeasonal(false);
     }
@@ -908,6 +975,9 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
   // --- Reward Campaigns Handlers ---
   const handleOpenCreateRewardModal = () => {
     setEditingReward(null);
+    setRewardModalError('');
+    const now = new Date();
+    const nextMonth = new Date(Date.now() + 30 * 24 * 3600 * 1000);
     setRewardForm({
       name: '',
       description: '',
@@ -917,8 +987,8 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       min_order_amount_ghs: 0,
       max_reward_cap_ghs: '',
       validity_days: 180,
-      start_date: new Date().toISOString().slice(0, 16),
-      end_date: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString().slice(0, 16),
+      start_date: toLocalInputDateTime(now),
+      end_date: toLocalInputDateTime(nextMonth),
       is_active: true
     });
     setRewardModalOpen(true);
@@ -926,6 +996,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
 
   const handleOpenEditRewardModal = (camp: TransactionRewardCampaign) => {
     setEditingReward(camp);
+    setRewardModalError('');
     setRewardForm({
       name: camp.name,
       description: camp.description || '',
@@ -935,8 +1006,8 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       min_order_amount_ghs: camp.min_order_amount_ghs,
       max_reward_cap_ghs: camp.max_reward_cap_ghs ?? '',
       validity_days: camp.validity_days || 180,
-      start_date: camp.start_date ? new Date(camp.start_date).toISOString().slice(0, 16) : '',
-      end_date: camp.end_date ? new Date(camp.end_date).toISOString().slice(0, 16) : '',
+      start_date: toLocalInputDateTime(camp.start_date),
+      end_date: toLocalInputDateTime(camp.end_date),
       is_active: camp.is_active
     });
     setRewardModalOpen(true);
@@ -944,7 +1015,17 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
 
   const handleSaveRewardCampaign = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!rewardForm.name.trim()) return;
+    setRewardModalError('');
+
+    if (!rewardForm.name.trim()) {
+      setRewardModalError('Please enter a campaign name.');
+      return;
+    }
+
+    if (!rewardForm.reward_value || Number(rewardForm.reward_value) <= 0) {
+      setRewardModalError('Please enter a valid reward value greater than 0.');
+      return;
+    }
 
     setIsSubmittingReward(true);
     setActionMsg('');
@@ -967,7 +1048,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
 
       if (editingReward) {
         await apiClient.put(`/escrow/admin/reward-campaigns/${editingReward.id}`, payload);
-        setActionMsg(`Reward campaign "${payload.name}" updated!`);
+        setActionMsg(`Reward campaign "${payload.name}" updated successfully!`);
       } else {
         await apiClient.post('/escrow/admin/reward-campaigns', payload);
         setActionMsg(`Reward campaign "${payload.name}" created successfully!`);
@@ -978,7 +1059,9 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       fetchRewardCampaigns();
       setTimeout(() => setActionMsg(''), 4000);
     } catch (err: any) {
-      setActionError(err.response?.data?.detail || 'Failed to save reward campaign.');
+      const msg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to save reward campaign.';
+      setRewardModalError(msg);
+      setActionError(msg);
     } finally {
       setIsSubmittingReward(false);
     }
@@ -1027,7 +1110,11 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
   // --- Manual Credit Handlers ---
   const handleGrantCredit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!grantForm.target_identifier.trim() || !grantForm.amount_ghs) return;
+    setGrantModalError('');
+    if (!grantForm.target_identifier.trim() || !grantForm.amount_ghs) {
+      setGrantModalError('Target identifier and credit amount are required.');
+      return;
+    }
 
     setIsGrantingCredit(true);
     setActionMsg('');
@@ -1053,7 +1140,9 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
       });
       setTimeout(() => setActionMsg(''), 4000);
     } catch (err: any) {
-      setActionError(err.response?.data?.detail || 'Failed to grant promotional credit.');
+      const msg = err.response?.data?.detail || err.response?.data?.message || err.message || 'Failed to grant promotional credit.';
+      setGrantModalError(msg);
+      setActionError(msg);
     } finally {
       setIsGrantingCredit(false);
     }
@@ -2899,6 +2988,13 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
               </button>
             </div>
 
+            {createModalError && (
+              <div className="mt-4 p-3 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+                <span>{createModalError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleCreatePromoCode} className="mt-4 space-y-4 text-xs">
               <div>
                 <label className="block font-mono font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -2935,7 +3031,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                   <select
                     value={newCode.discount_type}
                     onChange={e => setNewCode({ ...newCode, discount_type: e.target.value as any })}
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                   >
                     <option value="PERCENTAGE">Percentage (%)</option>
                     <option value="FIXED_GHS">Fixed Amount (GHS)</option>
@@ -3021,7 +3117,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                   <select
                     value={newCode.eligible_role}
                     onChange={e => setNewCode({ ...newCode, eligible_role: e.target.value as any })}
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                   >
                     <option value="ALL">All Users</option>
                     <option value="BUYER_ONLY">Buyers Only</option>
@@ -3082,6 +3178,13 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
               </button>
             </div>
 
+            {editModalError && (
+              <div className="mt-4 p-3 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+                <span>{editModalError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleUpdatePromoCode} className="mt-4 space-y-4 text-xs">
               <div>
                 <label className="block font-mono font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -3116,7 +3219,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                   <select
                     value={editForm.discount_type}
                     onChange={e => setEditForm({ ...editForm, discount_type: e.target.value as any })}
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                   >
                     <option value="PERCENTAGE">Percentage (%)</option>
                     <option value="FIXED_GHS">Fixed Amount (GHS)</option>
@@ -3202,7 +3305,7 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                   <select
                     value={editForm.eligible_role}
                     onChange={e => setEditForm({ ...editForm, eligible_role: e.target.value as any })}
-                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-blue-500 font-medium"
                   >
                     <option value="ALL">All Users</option>
                     <option value="BUYER_ONLY">Buyers Only</option>
@@ -3276,6 +3379,13 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
               </button>
             </div>
 
+            {seasonalModalError && (
+              <div className="mt-4 p-3 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+                <span>{seasonalModalError}</span>
+              </div>
+            )}
+
             <form onSubmit={handleSaveSeasonalCampaign} className="mt-4 space-y-4 text-xs">
               <div>
                 <label className="block font-mono font-bold text-slate-700 dark:text-slate-300 mb-1">
@@ -3317,13 +3427,18 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                     <option value="WAIVED">100% Waived (Zero Platform Fee)</option>
                     <option value="PERCENTAGE_DISCOUNT">Percentage Discount on Standard Fee (%)</option>
                     <option value="FIXED_DISCOUNT">Fixed Fee Discount (GHS)</option>
-                    <option value="OVERRIDE_PERCENTAGE">Flat Fee Override (% of Order Total)</option>
+                    <option value="REDUCED_PERCENTAGE">Reduced Variable Fee Rate (%)</option>
+                    <option value="REDUCED_FIXED">Reduced Fixed Fee Base (GHS)</option>
                   </select>
                 </div>
 
                 <div>
                   <label className="block font-mono font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    RULE VALUE
+                    {seasonalForm.fee_rule_type === 'PERCENTAGE_DISCOUNT' || seasonalForm.fee_rule_type === 'REDUCED_PERCENTAGE'
+                      ? 'DISCOUNT / RATE (%) *'
+                      : seasonalForm.fee_rule_type === 'FIXED_DISCOUNT' || seasonalForm.fee_rule_type === 'REDUCED_FIXED'
+                        ? 'DISCOUNT / BASE (GHS) *'
+                        : 'RULE VALUE'}
                   </label>
                   <input
                     type="number"
@@ -3333,6 +3448,36 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                     value={seasonalForm.rule_value}
                     onChange={e => setSeasonalForm({ ...seasonalForm, rule_value: parseFloat(e.target.value) || 0 })}
                     className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500 disabled:opacity-50"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block font-mono font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    MIN ORDER AMOUNT (GHS)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="0.00 (All orders)"
+                    value={seasonalForm.min_order_amount_ghs}
+                    onChange={e => setSeasonalForm({ ...seasonalForm, min_order_amount_ghs: parseFloat(e.target.value) || 0 })}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="block font-mono font-bold text-slate-700 dark:text-slate-300 mb-1">
+                    MAX DISCOUNT CAP (GHS)
+                  </label>
+                  <input
+                    type="number"
+                    step="0.01"
+                    placeholder="Optional cap"
+                    value={seasonalForm.max_discount_cap_ghs}
+                    onChange={e => setSeasonalForm({ ...seasonalForm, max_discount_cap_ghs: e.target.value ? parseFloat(e.target.value) : '' })}
+                    className="w-full p-2.5 bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl font-mono text-slate-900 dark:text-white outline-none focus:ring-2 focus:ring-amber-500"
                   />
                 </div>
               </div>
@@ -3415,6 +3560,13 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {rewardModalError && (
+              <div className="mt-4 p-3 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+                <span>{rewardModalError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleSaveRewardCampaign} className="mt-4 space-y-4 text-xs">
               <div>
@@ -3610,6 +3762,13 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
                 <X className="h-5 w-5" />
               </button>
             </div>
+
+            {grantModalError && (
+              <div className="mt-4 p-3 rounded-xl text-xs font-semibold bg-rose-500/10 text-rose-700 dark:text-rose-300 border border-rose-500/30 flex items-center gap-2">
+                <AlertCircle className="h-4 w-4 shrink-0 text-rose-600 dark:text-rose-400" />
+                <span>{grantModalError}</span>
+              </div>
+            )}
 
             <form onSubmit={handleGrantCredit} className="mt-4 space-y-4 text-xs">
               <div>
