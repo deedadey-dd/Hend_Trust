@@ -979,7 +979,7 @@ def get_recent_reviews_feed(request, limit: int = 15):
     user = None
     try:
         auth = JWTCookieAuth()
-        user = auth.authenticate(request, None)
+        user = auth(request)
     except Exception:
         pass
 

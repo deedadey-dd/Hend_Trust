@@ -17,6 +17,7 @@ interface User {
   is_phone_verified?: boolean;
   is_superuser?: boolean;
   is_staff?: boolean;
+  default_shipping_address?: string;
 }
 
 interface AuthState {

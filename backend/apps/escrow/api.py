@@ -153,11 +153,11 @@ def get_seller_transactions(request, search: Optional[str] = None, status: Optio
             "destination_station": latest_log.destination_station if latest_log else None,
             "buyer_dispute_category": getattr(t, 'buyer_dispute_category', '') or None,
             "buyer_dispute_reason": t.buyer_dispute_reason,
-            "buyer_dispute_photos": t.buyer_dispute_photos or [],
+            "buyer_dispute_photos": [],
             "seller_dispute_response": t.seller_dispute_response,
-            "seller_dispute_photos": t.seller_dispute_photos or [],
+            "seller_dispute_photos": [],
             "manager_dispute_notes": t.manager_dispute_notes,
-            "manager_dispute_photos": t.manager_dispute_photos or [],
+            "manager_dispute_photos": [],
             "disputed_at": t.disputed_at.isoformat() if getattr(t, 'disputed_at', None) else None,
             "arbiter_escalated_at": t.arbiter_escalated_at.isoformat() if getattr(t, 'arbiter_escalated_at', None) else None,
             "arbiter_escalated_role": getattr(t, 'arbiter_escalated_role', '') or None,
@@ -1009,6 +1009,49 @@ def open_dispute(request, transaction_id: uuid.UUID):
 class ConfirmReceiptSchema(Schema):
     confirmation_code: str
 
+class ApproveAndReleaseSchema(Schema):
+    confirmation_code: str
+
+@escrow_router.post("/{transaction_id}/send-release-otp", response=MessageResponse, auth=None)
+@rate_limit('send_release_otp', max_calls=5, window_seconds=300)
+def send_release_otp(request, transaction_id: uuid.UUID):
+    """Sends a critical 6-digit confirmation OTP to buyer's phone and email for approving and releasing escrow funds."""
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    if transaction.status not in [TransactionStatus.INSPECTION_PERIOD, TransactionStatus.DELIVERY_IN_PROGRESS]:
+        raise HttpError(400, "Cannot send release OTP for this transaction state.")
+
+    import time
+    from django.core.cache import cache
+    now_ts = int(time.time())
+    sent_key = f"release_otp_sent_at_{transaction.id}"
+    last_sent_ts = cache.get(sent_key)
+    COOLDOWN_SECONDS = 60
+
+    if last_sent_ts and (now_ts - last_sent_ts) < COOLDOWN_SECONDS and transaction.delivery_confirmation_code:
+        remaining = COOLDOWN_SECONDS - (now_ts - last_sent_ts)
+        return {
+            "message": f"Release confirmation code already sent recently. Please check your phone/email. (Resend available in {remaining}s)."
+        }
+
+    code = str(secrets.randbelow(900000) + 100000)
+    transaction.delivery_confirmation_code = code
+    transaction.save(update_fields=['delivery_confirmation_code'])
+    cache.set(sent_key, now_ts, timeout=300)
+
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*60)
+        print(f"🔑 DEV ESCROW RELEASE OTP FOR {transaction.buyer_phone}: {code}")
+        print("⚠️  SECURITY NOTICE: Critical OTP required to approve payout to seller!")
+        print("="*60 + "\n")
+
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    msg = f"Your HendAxis Trust order ({transaction.paystack_reference}) release confirmation code is: {code}. Enter this code ONLY if you are fully satisfied with the item and ready to release funds to the seller."
+    dispatch_sms_task.delay(transaction.buyer_phone, msg)
+    if transaction.buyer_email:
+        dispatch_email_task.delay(transaction.buyer_email, "Escrow Payout Release OTP", msg)
+
+    return {"message": "Release confirmation code sent to your phone and email."}
+
 @escrow_router.post("/{transaction_id}/send-confirmation-code", response=MessageResponse, auth=None)
 @rate_limit('send_confirmation_code', max_calls=5, window_seconds=300)
 def send_confirmation_code(request, transaction_id: uuid.UUID):
@@ -1034,7 +1077,7 @@ def send_confirmation_code(request, transaction_id: uuid.UUID):
     transaction.delivery_confirmation_code = code
     transaction.save(update_fields=['delivery_confirmation_code'])
     cache.set(sent_key, now_ts, timeout=300)
-    
+
     if getattr(settings, 'DEBUG', False):
         print("\n" + "="*50)
         print(f"DEV CONFIRMATION CODE FOR {transaction.buyer_phone}: {code}")
@@ -1045,22 +1088,22 @@ def send_confirmation_code(request, transaction_id: uuid.UUID):
     dispatch_sms_task.delay(transaction.buyer_phone, msg)
     if transaction.buyer_email:
         dispatch_email_task.delay(transaction.buyer_email, "Delivery Confirmation Code", msg)
-        
+
     return {"message": "Confirmation code sent to your phone and email."}
 
 @escrow_router.post("/{transaction_id}/confirm-receipt", response=MessageResponse, auth=None)
 def confirm_receipt(request, transaction_id: uuid.UUID, data: ConfirmReceiptSchema):
     """Buyer confirms they received the item - starts inspection period."""
     transaction = get_object_or_404(Transaction, id=transaction_id)
-    
+
     if transaction.status != TransactionStatus.DELIVERY_IN_PROGRESS:
         raise HttpError(400, f"Cannot confirm receipt in {transaction.status} state. Only applicable when in transit.")
-        
+
     # Check if user is authenticated and is the buyer of this transaction
     is_buyer_auth = False
     try:
         auth_helper = JWTCookieAuth()
-        user = auth_helper.authenticate(request, None)
+        user = auth_helper(request)
         if user and user.is_authenticated:
             user_phone = getattr(user, 'phone_number', '') or ''
             user_email = getattr(user, 'email', '') or ''
@@ -1074,10 +1117,10 @@ def confirm_receipt(request, transaction_id: uuid.UUID, data: ConfirmReceiptSche
         from apps.delivery.services import verify_delivery_otp
         is_valid_code = (transaction.delivery_confirmation_code and transaction.delivery_confirmation_code == data.confirmation_code)
         is_valid_otp = verify_delivery_otp(str(transaction.id), data.confirmation_code)
-        
+
         if not (is_valid_code or is_valid_otp):
             raise HttpError(400, "Invalid confirmation code or delivery OTP.")
-        
+
     transaction.status = TransactionStatus.INSPECTION_PERIOD
     from django.utils import timezone
     transaction.inspection_starts_at = timezone.now()
@@ -1116,26 +1159,48 @@ def buyer_confirm_receipt_authenticated(request, transaction_id: uuid.UUID):
     notify_seller_delivery_confirmed_task.delay(transaction.id)
     return {"message": "Receipt confirmed. Inspection period started."}
 
-@escrow_router.post("/{transaction_id}/approve-and-release", response=MessageResponse, auth=JWTCookieAuth())
-def buyer_approve_and_release_funds(request, transaction_id: uuid.UUID):
-    """Authenticated buyer approves the item early and immediately releases funds to the seller."""
+@escrow_router.post("/{transaction_id}/approve-and-release", response=MessageResponse, auth=None)
+def buyer_approve_and_release_funds(request, transaction_id: uuid.UUID, data: ApproveAndReleaseSchema):
+    """Buyer approves the item and enters the 6-digit confirmation OTP to immediately release funds to the seller."""
     transaction = get_object_or_404(Transaction, id=transaction_id)
     if transaction.status not in [TransactionStatus.INSPECTION_PERIOD, TransactionStatus.DELIVERY_IN_PROGRESS]:
         raise HttpError(400, f"Cannot release funds for transaction in {transaction.status} state.")
 
-    user = request.user
-    user_phone = getattr(user, 'phone_number', '') or ''
-    user_email = getattr(user, 'email', '') or ''
-    is_owner = (
-        (user_phone and (user_phone == transaction.buyer_phone or user_phone == getattr(transaction.buyer_identity, 'phone_number', None))) or
-        (user_email and (user_email.lower() == (transaction.buyer_email or '').lower() or user_email.lower() == getattr(transaction.buyer_identity, 'email', '').lower())) or
-        user.is_staff or user.is_superuser
-    )
-    if not is_owner:
-        raise HttpError(403, "You are not authorized to approve and release funds for this transaction.")
+    # Check if user is authenticated and verify ownership
+    try:
+        auth_helper = JWTCookieAuth()
+        user = auth_helper(request)
+        if user and user.is_authenticated:
+            user_phone = getattr(user, 'phone_number', '') or ''
+            user_email = getattr(user, 'email', '') or ''
+            is_owner = (
+                (user_phone and (user_phone == transaction.buyer_phone or user_phone == getattr(transaction.buyer_identity, 'phone_number', None))) or
+                (user_email and (user_email.lower() == (transaction.buyer_email or '').lower() or user_email.lower() == getattr(transaction.buyer_identity, 'email', '').lower())) or
+                user.is_staff or user.is_superuser
+            )
+            if not is_owner:
+                raise HttpError(403, "You are not authorized to approve and release funds for this transaction.")
+    except HttpError:
+        raise
+    except Exception:
+        pass
 
+    # Validate OTP confirmation code
+    code_entered = (data.confirmation_code or '').strip()
+    if not code_entered:
+        raise HttpError(400, "Confirmation OTP is required to release escrow funds.")
+
+    is_valid_code = bool(transaction.delivery_confirmation_code and transaction.delivery_confirmation_code == code_entered)
+    from apps.delivery.services import verify_delivery_otp
+    is_valid_otp = verify_delivery_otp(str(transaction.id), code_entered)
+
+    if not (is_valid_code or is_valid_otp):
+        raise HttpError(400, "Invalid or expired confirmation code. Please enter the 6-digit code sent to your phone or email.")
+
+    # Clear code so it cannot be re-used
+    transaction.delivery_confirmation_code = ""
     transaction.status = TransactionStatus.COMPLETED
-    transaction.save(update_fields=['status', 'updated_at'])
+    transaction.save(update_fields=['status', 'delivery_confirmation_code', 'updated_at'])
 
     # Execute payout to seller
     execute_payout_for_transaction(transaction)
@@ -1151,7 +1216,8 @@ def buyer_approve_and_release_funds(request, transaction_id: uuid.UUID):
     if s_email:
         dispatch_email_task.delay(s_email, f"Payment Released - Order {transaction.paystack_reference}", s_msg)
 
-    return {"message": "Inspection approved. Escrow funds released immediately to the seller."}
+    return {"message": "Order approved with verified OTP. Escrow funds released immediately to the seller."}
+
     
 def process_and_optimize_dispute_photos(photos: list[str], max_dim: int = 1200, quality: int = 75) -> list[str]:
     """
@@ -1547,6 +1613,9 @@ def request_arbiter_decision(request, transaction_id: uuid.UUID, data: Optional[
 
     # Notify counterpart
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from apps.notifications.services import create_notification
+    from apps.notifications.models import NotificationType
+    from apps.users.models import Role
     seller = transaction.link.seller
     ref = transaction.paystack_reference
     product = transaction.link.title
@@ -1563,6 +1632,21 @@ def request_arbiter_decision(request, transaction_id: uuid.UUID, data: Optional[
             dispatch_sms_task.delay(transaction.buyer_phone, msg)
         if transaction.buyer_email:
             dispatch_email_task.delay(transaction.buyer_email, f"Arbiter Decision Requested: Order #{ref}", msg)
+
+    # Notify all active Arbiters & Admins
+    arbiters = User.objects.filter(
+        Q(role=Role.ARBITER) | Q(role=Role.ADMIN) | Q(is_superuser=True), 
+        is_active=True
+    )
+    for arb in arbiters:
+        create_notification(
+            user=arb,
+            title=f"Arbiter Decision Requested: #{ref}",
+            message=f"Dispute on order #{ref} ({product}) was escalated by {caller_role.lower()} and is pending arbiter review.",
+            notif_type=NotificationType.IN_APP,
+            action_url=f"/admin-portal/dashboard?tab=disputes&search={ref}",
+            metadata={"transaction_id": str(transaction.id), "paystack_reference": ref, "task_type": "ARBITER_ESCALATION"}
+        )
 
     return {"message": "Arbiter Decision requested successfully. Your case has been prioritized in the arbitration queue."}
 
@@ -1927,6 +2011,30 @@ def assign_dispute_arbiter(request, id: uuid.UUID, data: AssignArbiterSchema):
             seller_amount_ghs=Decimal('0.00'),
             platform_retained_fee_ghs=Decimal('0.00'),
         )
+
+        # Notify assigned arbiter
+        from apps.notifications.services import create_notification
+        from apps.notifications.models import NotificationType
+        from apps.core.tasks import dispatch_email_task
+        from django.conf import settings
+
+        create_notification(
+            user=target_arbiter,
+            title=f"Dispute Assigned: #{transaction.paystack_reference}",
+            message=f"You were assigned to arbitrate the dispute on order #{transaction.paystack_reference} ({transaction.link.title}). Please inspect evidence and issue ruling.",
+            notif_type=NotificationType.IN_APP,
+            action_url=f"/admin-portal/dashboard?tab=disputes&search={transaction.paystack_reference}",
+            metadata={"transaction_id": str(transaction.id), "paystack_reference": transaction.paystack_reference, "task_type": "DISPUTE_ASSIGNMENT"}
+        )
+
+        if getattr(target_arbiter, 'email', None):
+            default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
+            frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
+            dispatch_email_task.delay(
+                target_arbiter.email,
+                f"Dispute Case Assigned: Order #{transaction.paystack_reference}",
+                f"Hello {target_arbiter.first_name or target_arbiter.username},\n\nYou have been assigned as the Arbiter for order #{transaction.paystack_reference} ({transaction.link.title}).\n\nPlease log in to the Manager Portal to review evidence and issue rulings.\n\nManager Portal: {frontend_url}/admin-portal/dashboard"
+            )
         
     return {
         "message": f"Dispute successfully assigned to @{target_arbiter.username}.",
@@ -5050,6 +5158,18 @@ def update_staff_role(request, user_id: uuid.UUID, data: UpdateStaffRoleSchema):
         
     target_user.save()
     
+    # Notify staff member of role update
+    from apps.notifications.services import create_notification
+    from apps.notifications.models import NotificationType
+    create_notification(
+        user=target_user,
+        title=f"Role Assignment: {target_user.role}",
+        message=f"Your staff role has been updated to {target_user.role}. You can now manage operations in the Manager Portal.",
+        notif_type=NotificationType.IN_APP,
+        action_url="/admin-portal/dashboard",
+        metadata={"role": target_user.role, "task_type": "STAFF_ROLE_ASSIGNMENT"}
+    )
+    
     return {
         "message": f"Updated role for @{target_user.username} to {target_user.role}.",
         "user": {
@@ -5080,6 +5200,18 @@ def create_staff_member(request, data: CreateStaffMemberSchema):
         if data.last_name:
             existing.last_name = data.last_name
         existing.save()
+
+        from apps.notifications.services import create_notification
+        from apps.notifications.models import NotificationType
+        create_notification(
+            user=existing,
+            title=f"Staff Promotion: {existing.role}",
+            message=f"You have been granted staff access as {existing.role} in the HendAxis Trust Manager Portal.",
+            notif_type=NotificationType.IN_APP,
+            action_url="/admin-portal/dashboard",
+            metadata={"role": existing.role, "task_type": "STAFF_ROLE_ASSIGNMENT"}
+        )
+
         return {
             "message": f"Existing user @{existing.username} promoted to staff role {data.role}.",
             "user": {

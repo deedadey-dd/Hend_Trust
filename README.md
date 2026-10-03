@@ -95,8 +95,11 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Dynamic Configuration**: Configurable parameters (`shipping_timeout_days`, `auto_delivery_hours`, `return_dispatch_days`, `return_auto_refund_hours`, tiered inspection hours, `dispute_min_sample_size`, `dispute_warning_threshold`, `dispute_suspension_threshold`, `dispatch_expiry_warning_threshold`, `dispatch_expiry_suspension_threshold`) editable live in the Admin Portal.
 - **Strict Superuser Authorization**: Settings tab access strictly restricted to `is_superuser == True`.
 
-### 11. Multi-Channel Event Notification Suite
-- Automated SMS & Email notifications for payment receipts, dispatch tracking, 24h & 6h pre-dispatch warnings, delivery reminders, dispute alerts, return pickup OTPs, return refund confirmations, and payout completions.
+### 11. Multi-Channel Event Notification Suite & Staff Task Hub
+- **Automated Event Notifications**: Automated SMS & Email notifications for payment receipts, dispatch tracking, 24h & 6h pre-dispatch warnings, delivery reminders, dispute alerts, return pickup OTPs, return refund confirmations, and payout completions.
+- **Dedicated Notification Center (`/notifications`)**: High-contrast, multi-channel activity audit log aggregating Email, SMS, and in-app notices with intelligent deep linking, search, date range filters, and strict OTP privacy exclusion.
+- **Navbar Real-Time Alert Bell (`NotificationDropdown.tsx`)**: Global notification dropdown with live unread badge polling.
+- **Admin Portal Staff Task Alerts (`/admin-portal/dashboard?tab=notifications`)**: Automated work assignment alerts for staff roles (Dispute Arbitration assignments, 48h arbitration queue escalations, KYC Ghana Card review alerts, and suspension appeals).
 
 ### 12. Seller Health Governance, Appeals Desk & Clean Slate Reinstatement
 - **Dispute & Non-Dispatch Governance**: Multi-window calculations evaluating dispute rates and dispatch expiry rates (warn at 20%, auto-suspend at 35% expiry / 40% disputes with min sample size >= 5).
@@ -117,6 +120,13 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Dynamic Role-Adaptive Navbar**: Navigation bar dynamically adapts its desktop links, profile dropdown menu, and mobile drawer between `BUYER` (My Purchases, Verified Shops, Track Order), `SELLER` (Dashboard, Create Link, My Links, Shops, Wallet Balance), and `ADMIN` roles.
 - **Dynamic Admin Courier Sync**: Logistics section on public landing pages and directories dynamically syncs with active administrative settings.
 
+### 15. Promotions, Seasonal Fee Overrides, Cashback Rewards & Double-Sided Referral Engine
+- **Promo Codes**: Support for `PERCENTAGE` (with optional `max_discount_cap_ghs` ceiling) and `FIXED_GHS` fee deductions, constrained by `min_order_amount_ghs`, global usage limits, per-buyer limits, role restrictions (`ALL`, `BUYER_ONLY`, `SELLER_ONLY`), and automatic expiration dates.
+- **Seasonal / Festive Fee Overrides (`SeasonalFeeCampaign`)**: Automated site-wide fee relief during peak shopping periods across 5 rule types (`WAIVED`, `PERCENTAGE_DISCOUNT`, `FIXED_DISCOUNT`, `REDUCED_PERCENTAGE`, `REDUCED_FIXED`) with min order criteria and discount caps.
+- **Transaction Cashback & Fee-Offset Credits (`TransactionRewardCampaign`)**: Automated issuance of flat or volume-percentage bonus credits upon order completion for buyers and merchants.
+- **Double-Sided Referral Program (`/referrals`)**: Unique referral link generator (`/ref/:code`) granting dual rewards (Referrer GHS 10.00 / Referee GHS 5.00) upon the referee's first qualifying order completion ($\ge \text{GHS } 50.00$) with strict anti-self-referral safeguards.
+- **Calculation Precedence & Seller Payout Protection**: Strict calculation hierarchy (Base Fee $\to$ Seasonal Override $\to$ Promo Code $\to$ Wallet Credit $\to$ Fee Floor $\ge \text{GHS } 0.00$). Promotional subsidies never reduce the seller's agreed merchandise or delivery earnings.
+
 ---
 
 ## 🏗 Architecture Overview
@@ -126,13 +136,14 @@ The repository is structured as a Monorepo:
 ### Backend (Django Ninja)
 - **Framework**: Django 5.x + Django Ninja (FastAPI-style routing, type-safe schemas, OpenAPI `/api/docs`)
 - **Database**: PostgreSQL / SQLite (Relational schema, double-entry financial ledger state, buyer-seller records)
-- **Caching & Queues**: Redis & Celery (Handles 4-day dispatch expiry, 24h settlements, progressive reminders, and auto-deliveries)
+- **Caching & Queues**: Redis & Celery (Handles 4-day dispatch expiry, 24h settlements, progressive reminders, auto-deliveries, and referral reward dispatch)
+- **Promotions & Discount Engine**: Promo code validation, seasonal fee campaigns, cashback ledger, and referral reward distributor
 - **Authentication**: JWT via HTTP-only secure cookies (`django-ninja-jwt`)
 
 ### Frontend (React + Vite)
 - **Framework**: React 18 + TypeScript + Vite
 - **Styling**: Vanilla Tailwind CSS with dark/light themes & glassmorphism
-- **Views**: Buyer & Seller Dashboard, Profile & Verification Setup, Public Checkout with 1-Click Init, Tracking Portal with Upfront OTP & 1-Click Auth Mode, Marketplace Directory (`/shops`), Public Seller Storefronts (`/store/:username`), and Manager Operations Center.
+- **Views**: Buyer & Seller Dashboard, Profile & Verification Setup, Public Checkout with 1-Click Init & Promo Code redemption, Tracking Portal with Upfront OTP & 1-Click Auth Mode, Marketplace Directory (`/shops`), Public Seller Storefronts (`/store/:username`), Promotions & Referrals Hub (`/referrals`), and Manager Operations Center.
 - **SEO Engine**: Static HTML route pre-rendering for all public indexing routes with canonical tags and Schema.org metadata.
 
 ---

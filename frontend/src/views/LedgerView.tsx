@@ -132,7 +132,8 @@ export const LedgerView: React.FC = () => {
   };
 
   return (
-    <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-6 animate-fade-in">
+    <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 py-8 px-4 sm:px-6 lg:px-8 transition-colors">
+      <div className="max-w-7xl mx-auto space-y-6 animate-fade-in">
 
       {/* Header + Balance Card */}
       <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
@@ -620,6 +621,7 @@ export const LedgerView: React.FC = () => {
           </div>
         </div>
       )}
+      </div>
     </div>
   );
 };

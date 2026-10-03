@@ -44,6 +44,7 @@ class User(AbstractUser):
     advertised_until = models.DateTimeField(null=True, blank=True, help_text="Timestamp until which the shop is featured as a paid ad.")
     profile_picture_url = models.TextField(blank=True, default='')
     banner_url = models.TextField(blank=True, default='')
+    default_shipping_address = models.TextField(blank=True, default='', help_text="Default shipping and delivery address for buyer checkout prefilling.")
 
     # Verification Documents & Manual Approval
     verification_status = models.CharField(

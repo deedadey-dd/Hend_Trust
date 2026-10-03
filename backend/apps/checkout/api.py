@@ -536,7 +536,7 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
     else:
         try:
             auth_helper = JWTCookieAuth()
-            user = auth_helper.authenticate(request, None)
+            user = auth_helper(request)
             if user and user.is_authenticated:
                 request.user = user
                 is_auth = True

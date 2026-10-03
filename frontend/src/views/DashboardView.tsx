@@ -5,7 +5,7 @@ import {
   X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
   ShieldAlert, MapPin, Copy, Lock, ZoomIn, Archive, ArchiveRestore, MessageSquare,
   Gift, Award, Printer, Plus, ShoppingCart, ExternalLink, Sparkles,
-  Star, ShieldCheck, Store, Clock
+  Star, ShieldCheck, Store, Clock, Inbox, ArrowRight
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
 import { apiClient } from '../api/client';
@@ -20,6 +20,7 @@ import EmbeddableTrustBadge from '../components/EmbeddableTrustBadge';
 import BuyerReviewsTab from '../components/BuyerReviewsTab';
 import SellerReviewsTab from '../components/SellerReviewsTab';
 import ConfirmDeliveryReceiptModal from '../components/ConfirmDeliveryReceiptModal';
+import ApproveAndReleaseModal from '../components/ApproveAndReleaseModal';
 import { useAuthStore } from '../store/authStore';
 import { useModal } from '../context/ModalContext';
 
@@ -1045,6 +1046,7 @@ interface BuyerOrderDetailModalProps {
   onOpenDispute: (order: any) => void;
   onOpenRetract: (order: any) => void;
   onOpenConfirmReceipt: (order: any) => void;
+  onOpenApproveRelease: (order: any) => void;
 }
 
 function BuyerOrderDetailModal({
@@ -1055,12 +1057,12 @@ function BuyerOrderDetailModal({
   onOpenRating,
   onOpenDispute,
   onOpenRetract,
-  onOpenConfirmReceipt
+  onOpenConfirmReceipt,
+  onOpenApproveRelease
 }: BuyerOrderDetailModalProps) {
   const modal = useModal();
   useEscapeKey(onClose);
   const [copiedRef, setCopiedRef] = useState(false);
-  const [isReleasing, setIsReleasing] = useState(false);
   const [requestingArbiter, setRequestingArbiter] = useState(false);
 
   const statusCfg = STATUS_CONFIG[order.status] || STATUS_CONFIG['PAYMENT_RECEIVED'];
@@ -1083,38 +1085,8 @@ function BuyerOrderDetailModal({
     onOpenConfirmReceipt(order);
   };
 
-  const handleApproveRelease = async () => {
-    const confirmed = await modal.confirm({
-      title: "Approve Order & Release Payment",
-      message: "Are you satisfied with your order? Releasing payment will immediately finalize escrow and transfer funds to the seller's wallet.",
-      confirmText: "Release Payment",
-      cancelText: "Keep In Inspection",
-      type: "success",
-      icon: "check",
-      badgeText: "Escrow Finalization"
-    });
-    if (!confirmed) return;
-
-    setIsReleasing(true);
-    try {
-      await apiClient.post(`/escrow/${order.id}/approve-and-release`);
-      await modal.alert({
-        title: "Order Approved & Completed",
-        message: "Escrow payment released to seller. Thank you for using HendAxis Trust!",
-        type: "success",
-        icon: "check"
-      });
-      onRefresh();
-      onOpenRating(order);
-    } catch (err: any) {
-      await modal.alert({
-        title: "Payment Release Error",
-        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to release payment.',
-        type: "danger"
-      });
-    } finally {
-      setIsReleasing(false);
-    }
+  const handleApproveRelease = () => {
+    onOpenApproveRelease(order);
   };
 
   const handleRequestArbiter = async () => {
@@ -1468,10 +1440,9 @@ function BuyerOrderDetailModal({
             {isInspection && (
               <button
                 onClick={handleApproveRelease}
-                disabled={isReleasing}
-                className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+                className="py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer"
               >
-                {isReleasing ? <Loader2 className="w-4 h-4 animate-spin" /> : '✓ Approve & Release Payout'}
+                ✓ Approve & Release Payout
               </button>
             )}
 
@@ -1775,18 +1746,34 @@ function BuyerPurchasesTab() {
   const [searchParams] = useSearchParams();
   const newOrderRef = (searchParams.get('new_order') || '').trim();
   const [purchases, setPurchases] = useState<any[]>([]);
+  const [incomingOrders, setIncomingOrders] = useState<any[]>([]);
+  const [incomingOrdersFilter, setIncomingOrdersFilter] = useState<'PENDING' | 'ALL'>('PENDING');
+  const [loadingIncoming, setLoadingIncoming] = useState(false);
+  const [decliningOrderId, setDecliningOrderId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [statusFilter, setStatusFilter] = useState<'ALL' | 'DELIVERY_IN_PROGRESS' | 'INSPECTION_PERIOD' | 'DISPUTED' | 'COMPLETED'>('ALL');
-  const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
 
   // Modal states for interactive order management
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [confirmingReceiptOrder, setConfirmingReceiptOrder] = useState<any | null>(null);
+  const [approveReleaseOrder, setApproveReleaseOrder] = useState<any | null>(null);
   const [disputeOrder, setDisputeOrder] = useState<any | null>(null);
   const [retractOrder, setRetractOrder] = useState<any | null>(null);
   const [ratingOrder, setRatingOrder] = useState<any | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+
+  const fetchIncomingOrders = async () => {
+    try {
+      setLoadingIncoming(true);
+      const res = await apiClient.get(`/links/incoming-orders?status=${incomingOrdersFilter}`);
+      setIncomingOrders(res.data?.orders || res.data?.items || []);
+    } catch (err) {
+      console.error('Failed to fetch incoming direct orders', err);
+    } finally {
+      setLoadingIncoming(false);
+    }
+  };
 
   const fetchPurchases = async () => {
     setLoading(true);
@@ -1814,6 +1801,42 @@ function BuyerPurchasesTab() {
     fetchPurchases();
   }, [newOrderRef]);
 
+  useEffect(() => {
+    fetchIncomingOrders();
+  }, [incomingOrdersFilter]);
+
+  const handleDeclineDirectOrder = async (orderId: string, orderTitle: string) => {
+    const confirmed = await modal.confirm({
+      title: "Decline Direct Order",
+      message: `Are you sure you want to decline this direct escrow invoice for "${orderTitle}"? The seller will be notified.`,
+      confirmText: "Decline Order",
+      cancelText: "Keep Order",
+      type: "danger",
+      icon: "alert"
+    });
+    if (!confirmed) return;
+
+    setDecliningOrderId(orderId);
+    try {
+      await apiClient.post(`/links/${orderId}/decline-direct-order`);
+      await modal.alert({
+        title: "Order Declined",
+        message: "You have declined this direct escrow order. The seller has been notified.",
+        type: "info",
+        icon: "check"
+      });
+      fetchIncomingOrders();
+    } catch (err: any) {
+      await modal.alert({
+        title: "Error",
+        message: err.response?.data?.detail || "Failed to decline order.",
+        type: "danger"
+      });
+    } finally {
+      setDecliningOrderId(null);
+    }
+  };
+
   const handle1ClickConfirm = (txnOrOrder: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     const targetOrder = typeof txnOrOrder === 'string' 
@@ -1822,46 +1845,10 @@ function BuyerPurchasesTab() {
     setConfirmingReceiptOrder(targetOrder);
   };
 
-  const handleApproveRelease = async (txnId: string, orderObj?: any, e?: React.MouseEvent) => {
+  const handleApproveRelease = (txnId: string, orderObj?: any, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
-    const confirmed = await modal.confirm({
-      title: "Approve Order & Release Payment",
-      message: "Are you satisfied with this order? Releasing payment will immediately finalize escrow and transfer funds to the seller's wallet.",
-      confirmText: "Release Payment",
-      cancelText: "Keep In Inspection",
-      type: "success",
-      icon: "check",
-      badgeText: "Escrow Finalization"
-    });
-    if (!confirmed) return;
-
-    setActionLoadingId(txnId);
-    try {
-      await apiClient.post(`/escrow/${txnId}/approve-and-release`);
-      await modal.alert({
-        title: "Order Approved & Completed",
-        message: "Escrow payment released to seller. Thank you for using HendAxis Trust!",
-        type: "success",
-        icon: "check"
-      });
-      await fetchPurchases();
-      if (orderObj) {
-        setRatingOrder(orderObj);
-      }
-      if (selectedOrder && selectedOrder.id === txnId) {
-        const res = await apiClient.get('/checkout/buyer/my-orders');
-        const found = (res.data || []).find((x: any) => x.id === txnId);
-        if (found) setSelectedOrder(found);
-      }
-    } catch (err: any) {
-      await modal.alert({
-        title: "Payment Release Error",
-        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to release payment.',
-        type: "danger"
-      });
-    } finally {
-      setActionLoadingId(null);
-    }
+    const targetOrder = orderObj || purchases.find(p => p.id === txnId) || { id: txnId };
+    setApproveReleaseOrder(targetOrder);
   };
 
   const filtered = purchases.filter(p => {
@@ -2001,6 +1988,171 @@ function BuyerPurchasesTab() {
         </div>
       </div>
 
+      {/* Direct In-Platform Orders Awaiting Payment or History */}
+      {(incomingOrders.length > 0 || incomingOrdersFilter === 'ALL') && (
+        <div className="bg-gradient-to-r from-indigo-500/10 via-purple-500/10 to-blue-500/10 border-2 border-indigo-500/40 rounded-3xl p-5 sm:p-6 space-y-4 shadow-lg">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-9 h-9 rounded-xl bg-indigo-600 text-white flex items-center justify-center shadow-md shadow-indigo-600/30">
+                <Inbox className="w-5 h-5" />
+              </div>
+              <div>
+                <h3 className="text-base font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                  Direct Escrow Orders & Invoices
+                  {incomingOrders.filter(o => o.status === 'PENDING').length > 0 && (
+                    <span className="bg-indigo-600 text-white text-[11px] font-black px-2 py-0.5 rounded-full">
+                      {incomingOrders.filter(o => o.status === 'PENDING').length} Pending
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-gray-500 dark:text-slate-400">
+                  Orders sellers generated and sent directly to your @account.
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2 self-start sm:self-auto">
+              <div className="flex items-center bg-white dark:bg-slate-900 p-1 rounded-xl border border-indigo-200 dark:border-indigo-900/60 text-xs">
+                <button
+                  type="button"
+                  onClick={() => setIncomingOrdersFilter('PENDING')}
+                  className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
+                    incomingOrdersFilter === 'PENDING'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-gray-600 dark:text-slate-400 hover:text-gray-900'
+                  }`}
+                >
+                  Pending Action
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIncomingOrdersFilter('ALL')}
+                  className={`px-3 py-1 rounded-lg font-bold transition cursor-pointer ${
+                    incomingOrdersFilter === 'ALL'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-gray-600 dark:text-slate-400 hover:text-gray-900'
+                  }`}
+                >
+                  All Invoices History
+                </button>
+              </div>
+              <button
+                onClick={fetchIncomingOrders}
+                disabled={loadingIncoming}
+                className="text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 p-1.5 rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-white dark:bg-slate-900 flex items-center gap-1 cursor-pointer"
+                title="Refresh direct orders"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${loadingIncoming ? 'animate-spin' : ''}`} />
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {incomingOrders.map((order) => {
+              const itemPrice = parseFloat(order.price_ghs || '0');
+              const shippingFee = parseFloat(order.shipping_fee_ghs || '0');
+              const totalAmount = itemPrice + shippingFee;
+
+              return (
+                <div
+                  key={order.id}
+                  className="bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-900/60 rounded-2xl p-4 flex flex-col justify-between shadow-sm hover:border-indigo-400 dark:hover:border-indigo-700 transition"
+                >
+                  <div className="flex items-start gap-3.5">
+                    {order.image_url ? (
+                      <img
+                        src={order.image_url}
+                        alt={order.title}
+                        className="w-16 h-16 object-cover rounded-xl border border-gray-200 dark:border-slate-800 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-16 h-16 rounded-xl bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800 flex items-center justify-center text-indigo-600 dark:text-indigo-400 shrink-0">
+                        <Package className="w-7 h-7" />
+                      </div>
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center justify-between gap-1">
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-indigo-600 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/80 px-2 py-0.5 rounded-md">
+                          Direct Escrow Order
+                        </span>
+                        <span className="text-[11px] text-gray-400 dark:text-slate-500">
+                          {new Date(order.created_at).toLocaleDateString()}
+                        </span>
+                      </div>
+                      <h4 className="text-sm font-bold text-gray-900 dark:text-white mt-1 truncate" title={order.title}>
+                        {order.title}
+                      </h4>
+                      <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5 flex items-center gap-1.5">
+                        <span>From:</span>
+                        <strong className="text-gray-700 dark:text-slate-200">
+                          {order.shop_name || `@${order.seller_username || 'Seller'}`}
+                        </strong>
+                      </p>
+                      <div className="mt-2 text-xs font-mono">
+                        <span className="text-gray-500 dark:text-slate-400">Total: </span>
+                        <span className="font-bold text-gray-900 dark:text-slate-100 text-sm">
+                          GHS {totalAmount.toFixed(2)}
+                        </span>
+                        {shippingFee > 0 && (
+                          <span className="text-[11px] text-gray-400 ml-1">
+                            (incl. GHS {shippingFee.toFixed(2)} delivery)
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 pt-3 mt-3 border-t border-gray-100 dark:border-slate-800">
+                    {order.status === 'PAID' ? (
+                      <div className="flex items-center justify-between w-full">
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/60 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                          <CheckCircle className="w-3.5 h-3.5" /> Paid / Active Escrow
+                        </span>
+                        <Link
+                          to={`/l/${order.id}`}
+                          className="text-xs font-bold text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1"
+                        >
+                          View Receipt <ExternalLink className="w-3 h-3" />
+                        </Link>
+                      </div>
+                    ) : order.status === 'DECLINED' ? (
+                      <div className="flex items-center justify-between w-full">
+                        <span className="inline-flex items-center gap-1 text-xs font-bold text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-950/60 px-2.5 py-1 rounded-lg border border-rose-200 dark:border-rose-800">
+                          ✕ Declined by You
+                        </span>
+                        <Link
+                          to={`/l/${order.id}`}
+                          className="text-xs font-bold text-gray-500 hover:underline"
+                        >
+                          View Details
+                        </Link>
+                      </div>
+                    ) : (
+                      <>
+                        <button
+                          type="button"
+                          disabled={decliningOrderId === order.id}
+                          onClick={() => handleDeclineDirectOrder(order.id, order.title)}
+                          className="px-3 py-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-600 dark:text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-semibold hover:bg-rose-50 dark:hover:bg-rose-950/30 transition disabled:opacity-50 cursor-pointer"
+                        >
+                          {decliningOrderId === order.id ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : 'Decline'}
+                        </button>
+                        <Link
+                          to={`/l/${order.id}`}
+                          className="flex-1 py-2 px-3 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold text-center flex items-center justify-center gap-1.5 shadow-md shadow-indigo-600/20 transition cursor-pointer"
+                        >
+                          <span>Review & Pay</span>
+                          <ArrowRight className="w-3.5 h-3.5" />
+                        </Link>
+                      </>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* New Order Welcome & Highlight Banner */}
       {newOrderRef && (
         <div className="bg-gradient-to-r from-emerald-500/15 via-teal-500/10 to-indigo-500/15 border-2 border-emerald-500/50 rounded-2xl p-4 sm:p-5 flex items-start gap-3.5 shadow-md">
@@ -2105,7 +2257,6 @@ function BuyerPurchasesTab() {
           {filtered.map(p => {
             const statusCfg = STATUS_CONFIG[p.status] || STATUS_CONFIG['PAYMENT_RECEIVED'];
             const StatusIcon = statusCfg.icon;
-            const isProcessingThis = actionLoadingId === p.id;
             const isNewOrder = Boolean(newOrderRef && (p.paystack_reference === newOrderRef || p.id === newOrderRef || p.link_id === newOrderRef));
 
             return (
@@ -2194,10 +2345,9 @@ function BuyerPurchasesTab() {
                   {p.status === 'INSPECTION_PERIOD' && (
                     <button
                       onClick={(e) => handleApproveRelease(p.id, p, e)}
-                      disabled={isProcessingThis}
-                      className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1 cursor-pointer disabled:opacity-50"
+                      className="flex-1 py-2 px-3 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition shadow-xs flex items-center justify-center gap-1 cursor-pointer"
                     >
-                      {isProcessingThis ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : '✓ Approve & Release'}
+                      ✓ Approve & Release
                     </button>
                   )}
 
@@ -2233,6 +2383,38 @@ function BuyerPurchasesTab() {
           onOpenDispute={ord => setDisputeOrder(ord)}
           onOpenRetract={ord => setRetractOrder(ord)}
           onOpenConfirmReceipt={ord => setConfirmingReceiptOrder(ord)}
+          onOpenApproveRelease={ord => { setSelectedOrder(null); setApproveReleaseOrder(ord); }}
+        />
+      )}
+
+      {approveReleaseOrder && (
+        <ApproveAndReleaseModal
+          order={{
+            id: approveReleaseOrder.id,
+            title: approveReleaseOrder.title || 'Order Item',
+            paystack_reference: approveReleaseOrder.paystack_reference || approveReleaseOrder.id,
+            buyer_phone: approveReleaseOrder.buyer_phone,
+            buyer_email: approveReleaseOrder.buyer_email,
+            shop_name: approveReleaseOrder.shop_name,
+            seller_username: approveReleaseOrder.seller_username,
+            total_amount_ghs: Number(approveReleaseOrder.total_amount_ghs),
+            platform_fee_ghs: Number(approveReleaseOrder.platform_fee_ghs || 0)
+          }}
+          onClose={() => setApproveReleaseOrder(null)}
+          onSuccess={async () => {
+            const finishedOrder = approveReleaseOrder;
+            setApproveReleaseOrder(null);
+            await fetchPurchases();
+            await modal.alert({
+              title: "Order Approved & Completed",
+              message: "Escrow payment released to seller. Thank you for using HendAxis Trust!",
+              type: "success",
+              icon: "check"
+            });
+            if (finishedOrder) {
+              setRatingOrder(finishedOrder);
+            }
+          }}
         />
       )}
 
@@ -2564,14 +2746,29 @@ export default function DashboardView() {
 
   useEffect(() => {
     const tabParam = searchParams.get('tab');
-    if (tabParam && ['transactions', 'purchases', 'referrals', 'badges', 'reviews'].includes(tabParam)) {
+    if (tabParam && ['transactions', 'seller_reviews', 'purchases', 'referrals', 'badges', 'reviews'].includes(tabParam)) {
       setActiveTab(tabParam as any);
     }
-    fetchTransactions();
-    fetchMetrics();
-    fetchAppealStatus();
+    const currentTab = tabParam || (user?.role === 'BUYER' ? 'purchases' : 'transactions');
+    if (currentTab === 'transactions' && user?.role !== 'BUYER') {
+      fetchTransactions();
+      fetchMetrics();
+    }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  }, [searchParams, user?.role]);
+
+  // Load detailed transaction info (dispute photos, carrier logs) on-demand when inspecting
+  useEffect(() => {
+    if (!selectedTxn?.id) return;
+    let isMounted = true;
+    const ref = selectedTxn.paystack_reference || selectedTxn.id;
+    apiClient.get(`/checkout/transaction/${ref}`).then(res => {
+      if (isMounted && res.data) {
+        setSelectedTxn(prev => (prev && prev.id === selectedTxn.id ? { ...prev, ...res.data } : prev));
+      }
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, [selectedTxn?.id]);
 
 
   const applyFilters = (e: React.FormEvent) => {

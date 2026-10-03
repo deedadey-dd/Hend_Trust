@@ -1,6 +1,10 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, Image as ImageIcon, Loader2, ShieldAlert, Send, Package, Tag } from 'lucide-react';
+import { 
+  ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, 
+  Image as ImageIcon, Loader2, ShieldAlert, Send, Package, Tag, 
+  Globe, Search, UserCheck, ShieldCheck, AtSign, CheckCircle2 
+} from 'lucide-react';
 import { apiClient } from '../api/client';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { QRCodeDisplay } from '../components/QRCodeDisplay';
@@ -26,6 +30,14 @@ export default function CreatePaymentLinkView() {
   const [copied, setCopied] = useState(false);
   const [showModal, setShowModal] = useState(false);
 
+  // Direct In-Platform Delivery vs Public Social Link
+  const [deliveryMode, setDeliveryMode] = useState<'PUBLIC' | 'DIRECT'>('PUBLIC');
+  const [buyerQuery, setBuyerQuery] = useState('');
+  const [buyerResults, setBuyerResults] = useState<any[]>([]);
+  const [selectedBuyer, setSelectedBuyer] = useState<any | null>(null);
+  const [isSearchingBuyer, setIsSearchingBuyer] = useState(false);
+  const [isDirectCreated, setIsDirectCreated] = useState(false);
+
   // Suspension & Appeal handling
   const [suspensionError, setSuspensionError] = useState<{ isSuspended: boolean; message: string } | null>(null);
   const [appealReason, setAppealReason] = useState('');
@@ -40,6 +52,41 @@ export default function CreatePaymentLinkView() {
   const [pastLinks, setPastLinks] = useState<any[]>([]);
   const [selectedPastId, setSelectedPastId] = useState('');
   const [autofillNotice, setAutofillNotice] = useState('');
+
+  // Dynamic Platform Settings (Shipping Timeout Days from Admin Settings)
+  const [shippingTimeoutDays, setShippingTimeoutDays] = useState(4);
+
+  useEffect(() => {
+    apiClient.get('/escrow/public-settings')
+      .then(res => {
+        if (res.data?.shipping_timeout_days) {
+          setShippingTimeoutDays(res.data.shipping_timeout_days);
+        }
+      })
+      .catch(err => console.error('Failed to load public settings for shipping timeout:', err));
+  }, []);
+
+  // Debounced search for registered platform buyers
+  useEffect(() => {
+    if (!buyerQuery.trim() || buyerQuery.trim().length < 2 || selectedBuyer) {
+      setBuyerResults([]);
+      return;
+    }
+
+    const timer = setTimeout(async () => {
+      setIsSearchingBuyer(true);
+      try {
+        const res = await apiClient.get(`/links/search-buyer?query=${encodeURIComponent(buyerQuery.trim())}`);
+        setBuyerResults(res.data?.results || []);
+      } catch (err) {
+        console.error('Failed to search buyers:', err);
+      } finally {
+        setIsSearchingBuyer(false);
+      }
+    }, 300);
+
+    return () => clearTimeout(timer);
+  }, [buyerQuery, selectedBuyer]);
 
   // Prefill from inquiry URL parameters if available
   useEffect(() => {
@@ -147,6 +194,16 @@ export default function CreatePaymentLinkView() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (deliveryMode === 'DIRECT' && !selectedBuyer) {
+      await modal.alert({
+        title: 'Buyer Selection Required',
+        message: 'Please search for and select a registered HendAxis buyer to dispatch this direct order to.',
+        type: 'warning',
+        icon: 'alert'
+      });
+      return;
+    }
+
     try {
       const response = await apiClient.post('/links/create', {
         title,
@@ -155,10 +212,13 @@ export default function CreatePaymentLinkView() {
         shipping_fee_ghs: parseFloat(shipping),
         fee_handling: feeHandling,
         image_url: imageUrl,
-        category: category
+        category: category,
+        is_direct_order: deliveryMode === 'DIRECT',
+        intended_buyer_username: deliveryMode === 'DIRECT' && selectedBuyer ? selectedBuyer.username : undefined,
       });
       const url = response.data.url.replace('https://pay.hendaxis.com', window.location.origin);
       setCreatedUrl(url);
+      setIsDirectCreated(deliveryMode === 'DIRECT' && Boolean(selectedBuyer));
       setShowModal(true);
     } catch (err: any) {
       console.error(err);
@@ -230,7 +290,7 @@ export default function CreatePaymentLinkView() {
             </div>
             <p className="text-xs text-amber-800 dark:text-amber-300 mt-1 leading-relaxed font-medium">
               Only create payment links for items <strong>physically in stock and ready to ship</strong>. 
-              Orders not dispatched within your <strong>4-day shipping window</strong> are automatically cancelled, 100% refunded to the buyer, and incur gateway fee deductions plus dispatch default penalties against your seller account standing.
+              Orders not dispatched within your <strong>{shippingTimeoutDays}-day shipping window</strong> are automatically cancelled, 100% refunded to the buyer, and incur gateway fee deductions plus dispatch default penalties against your seller account standing.
             </p>
           </div>
         </div>
@@ -275,6 +335,180 @@ export default function CreatePaymentLinkView() {
 
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden transition-colors">
           <form onSubmit={handleSubmit} className="p-8 space-y-6">
+            {/* Delivery Mode Selector */}
+            <div className="space-y-3 pb-2 border-b border-gray-100 dark:border-slate-800/80">
+              <label className="block text-xs font-bold uppercase tracking-wider text-gray-700 dark:text-slate-300">
+                Link Delivery Mode
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setDeliveryMode('PUBLIC');
+                    setSelectedBuyer(null);
+                    setBuyerQuery('');
+                  }}
+                  className={`p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                    deliveryMode === 'PUBLIC'
+                      ? 'border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 text-blue-950 dark:text-blue-200 shadow-sm ring-2 ring-blue-500/20'
+                      : 'border-gray-200 dark:border-slate-800 hover:border-gray-300 dark:hover:border-slate-700 text-gray-700 dark:text-slate-300 bg-gray-50/50 dark:bg-slate-900/50'
+                  }`}
+                >
+                  <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                    deliveryMode === 'PUBLIC' ? 'bg-blue-600 text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-600 dark:text-slate-400'
+                  }`}>
+                    <Globe className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="font-bold text-sm block">Public Social Link</span>
+                    <span className="text-xs text-gray-500 dark:text-slate-400 block mt-0.5 leading-snug">
+                      Share via WhatsApp, IG, DM, or TikTok. Anyone with link can checkout.
+                    </span>
+                  </div>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setDeliveryMode('DIRECT')}
+                  className={`p-3.5 rounded-xl border text-left flex items-start gap-3 transition-all cursor-pointer ${
+                    deliveryMode === 'DIRECT'
+                      ? 'border-indigo-500 bg-indigo-50/70 dark:bg-indigo-950/40 text-indigo-950 dark:text-indigo-200 shadow-sm ring-2 ring-indigo-500/20'
+                      : 'border-gray-200 dark:border-slate-800 hover:border-gray-300 dark:hover:border-slate-700 text-gray-700 dark:text-slate-300 bg-gray-50/50 dark:bg-slate-900/50'
+                  }`}
+                >
+                  <div className={`p-2 rounded-lg shrink-0 mt-0.5 ${
+                    deliveryMode === 'DIRECT' ? 'bg-indigo-600 text-white' : 'bg-gray-200 dark:bg-slate-800 text-gray-600 dark:text-slate-400'
+                  }`}>
+                    <UserCheck className="h-4 w-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-sm block">Direct to Buyer Account</span>
+                      <span className="text-[10px] font-black uppercase tracking-wider bg-indigo-200 dark:bg-indigo-900 text-indigo-800 dark:text-indigo-200 px-1.5 py-0.2 rounded">
+                        In-App
+                      </span>
+                    </div>
+                    <span className="text-xs text-gray-500 dark:text-slate-400 block mt-0.5 leading-snug">
+                      Deliver straight into registered buyer's dashboard & send them an instant push/SMS.
+                    </span>
+                  </div>
+                </button>
+              </div>
+
+              {/* Direct Buyer Search Section */}
+              {deliveryMode === 'DIRECT' && (
+                <div className="mt-3 p-4 rounded-xl bg-indigo-50/40 dark:bg-indigo-950/20 border border-indigo-200/80 dark:border-indigo-900/50 space-y-3">
+                  {!selectedBuyer ? (
+                    <div className="space-y-2 relative">
+                      <label className="block text-xs font-bold text-indigo-950 dark:text-indigo-200 flex items-center justify-between">
+                        <span className="flex items-center gap-1.5">
+                          <Search className="h-3.5 w-3.5 text-indigo-600 dark:text-indigo-400" />
+                          Find Registered Buyer (@username, phone, or email) *
+                        </span>
+                        {isSearchingBuyer && (
+                          <span className="text-[11px] text-indigo-600 dark:text-indigo-400 flex items-center gap-1">
+                            <Loader2 className="h-3 w-3 animate-spin" /> Searching platform...
+                          </span>
+                        )}
+                      </label>
+                      <div className="relative">
+                        <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
+                          <AtSign className="h-4 w-4 text-gray-400 dark:text-slate-500" />
+                        </div>
+                        <input
+                          type="text"
+                          value={buyerQuery}
+                          onChange={(e) => setBuyerQuery(e.target.value)}
+                          placeholder="Type @username, buyer phone number, or email..."
+                          className="pl-9 pr-4 py-2.5 w-full text-sm rounded-xl border border-indigo-200 dark:border-indigo-800/80 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 placeholder-gray-400 focus:ring-2 focus:ring-indigo-500 outline-none"
+                          autoFocus
+                        />
+                      </div>
+
+                      {/* Dropdown Search Results */}
+                      {buyerResults.length > 0 && (
+                        <div className="absolute z-20 left-0 right-0 mt-1 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl shadow-xl max-h-60 overflow-y-auto divide-y divide-gray-100 dark:divide-slate-800">
+                          {buyerResults.map((buyer) => (
+                            <button
+                              key={buyer.id}
+                              type="button"
+                              onClick={() => {
+                                setSelectedBuyer(buyer);
+                                setBuyerQuery('');
+                                setBuyerResults([]);
+                              }}
+                              className="w-full text-left p-3 hover:bg-indigo-50/70 dark:hover:bg-indigo-950/50 flex items-center justify-between transition cursor-pointer"
+                            >
+                              <div className="flex items-center gap-2.5 min-w-0">
+                                <div className="h-8 w-8 rounded-full bg-gradient-to-tr from-indigo-600 to-blue-500 text-white font-bold flex items-center justify-center text-xs shrink-0 shadow-sm">
+                                  {buyer.username?.[0]?.toUpperCase() || 'U'}
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="font-bold text-xs text-gray-900 dark:text-slate-100 truncate">
+                                      @{buyer.username}
+                                    </span>
+                                    {buyer.is_verified && (
+                                      <span title="Verified User">
+                                        <ShieldCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                                      </span>
+                                    )}
+                                  </div>
+                                  <p className="text-[11px] text-gray-500 dark:text-slate-400 truncate">
+                                    {buyer.full_name || buyer.phone_number || buyer.email}
+                                  </p>
+                                </div>
+                              </div>
+                              <span className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 shrink-0 bg-indigo-50 dark:bg-indigo-900/40 px-2 py-1 rounded-md">
+                                Select
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+
+                      {buyerQuery.trim().length >= 2 && !isSearchingBuyer && buyerResults.length === 0 && (
+                        <p className="text-[11px] text-amber-700 dark:text-amber-400 font-medium">
+                          No registered user matching "{buyerQuery}". Please ensure they have a HendAxis account or switch to "Public Social Link".
+                        </p>
+                      )}
+                    </div>
+                  ) : (
+                    <div className="flex items-center justify-between p-3 bg-white dark:bg-slate-900 rounded-xl border border-indigo-300 dark:border-indigo-800 shadow-sm">
+                      <div className="flex items-center gap-3 min-w-0">
+                        <div className="h-10 w-10 rounded-full bg-indigo-600 text-white font-bold flex items-center justify-center text-sm shadow-inner shrink-0">
+                          {selectedBuyer.username?.[0]?.toUpperCase() || 'U'}
+                        </div>
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <span className="font-bold text-sm text-gray-900 dark:text-slate-100 truncate">
+                              @{selectedBuyer.username}
+                            </span>
+                            <span className="bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 text-[10px] font-bold px-1.5 py-0.5 rounded flex items-center gap-1">
+                              <CheckCircle2 className="h-3 w-3" /> Selected Buyer
+                            </span>
+                          </div>
+                          <p className="text-xs text-gray-500 dark:text-slate-400 truncate mt-0.5">
+                            {[selectedBuyer.full_name, selectedBuyer.phone_number, selectedBuyer.email].filter(Boolean).join(' • ')}
+                          </p>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setSelectedBuyer(null);
+                          setBuyerQuery('');
+                        }}
+                        className="text-xs text-rose-600 dark:text-rose-400 hover:text-rose-800 font-bold px-2 py-1 rounded-lg hover:bg-rose-50 dark:hover:bg-rose-950/40 transition"
+                      >
+                        Change Buyer
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             <div className="space-y-4">
               <div>
                 <div className="flex items-center justify-between">
@@ -441,15 +675,27 @@ export default function CreatePaymentLinkView() {
               </div>
             </div>
 
-            <button type="submit" className="w-full flex justify-center items-center py-3 px-4 border border-transparent rounded-lg shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-colors">
-              Generate Payment Link <ArrowRight className="ml-2 h-4 w-4" />
+            <button type="submit" className="w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all cursor-pointer">
+              {deliveryMode === 'DIRECT' ? (
+                <>
+                  <Send className="mr-2 h-4 w-4" /> Dispatch Escrow Order to @{selectedBuyer?.username || 'Buyer'}
+                </>
+              ) : (
+                <>
+                  Generate Payment Link <ArrowRight className="ml-2 h-4 w-4" />
+                </>
+              )}
             </button>
           </form>
 
           {/* Inline Success Area */}
           {createdUrl && (
             <div className="p-6 bg-green-50 dark:bg-emerald-950/30 border-t border-green-100 dark:border-emerald-900/40">
-              <p className="text-sm text-green-800 dark:text-emerald-300 font-medium mb-3 text-center">Link created successfully! Share it with your buyer.</p>
+              <p className="text-sm text-green-800 dark:text-emerald-300 font-medium mb-3 text-center">
+                {isDirectCreated
+                  ? `Direct escrow order dispatched to @${selectedBuyer?.username}! Share backup link if desired:`
+                  : 'Link created successfully! Share it with your buyer.'}
+              </p>
               <div className="flex items-center gap-2 bg-white dark:bg-slate-900 rounded-lg border border-green-200 dark:border-emerald-800/60 p-3">
                 <LinkIcon className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                 <a
@@ -488,13 +734,21 @@ export default function CreatePaymentLinkView() {
                 <X className="h-5 w-5" />
               </button>
               
-              <div className="w-16 h-16 bg-green-100 dark:bg-emerald-900/40 rounded-full flex items-center justify-center mx-auto mb-4">
-                <Check className="h-8 w-8 text-green-600 dark:text-emerald-400" />
+              <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/40 rounded-full flex items-center justify-center mx-auto mb-4 text-emerald-600 dark:text-emerald-400">
+                {isDirectCreated ? <Send className="h-8 w-8" /> : <Check className="h-8 w-8" />}
               </div>
               
-              <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 mb-2">Payment Link Ready!</h3>
-              <p className="text-gray-500 dark:text-slate-400 mb-6 text-sm">
-                Your secure escrow link has been generated. Share it with your buyer to get paid.
+              <h3 className="text-xl font-bold text-gray-900 dark:text-slate-100 mb-2">
+                {isDirectCreated ? 'Direct Order Dispatched!' : 'Payment Link Ready!'}
+              </h3>
+              <p className="text-gray-600 dark:text-slate-400 mb-5 text-xs sm:text-sm leading-relaxed">
+                {isDirectCreated ? (
+                  <>
+                    Sent directly to <strong className="text-indigo-600 dark:text-indigo-400">@{selectedBuyer?.username}</strong>'s HendAxis account. They have received an in-app alert & notification to review and pay.
+                  </>
+                ) : (
+                  'Your secure escrow link has been generated. Share it with your buyer to get paid.'
+                )}
               </p>
 
               <div className="flex items-center gap-2 bg-gray-50 dark:bg-slate-900 rounded-xl border border-gray-200 dark:border-slate-800 p-3 mb-4">

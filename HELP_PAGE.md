@@ -247,4 +247,57 @@ To protect buyers and ensure high merchant reliability, HendAxis Trust actively 
    - When an administrator reinstates a seller or approves an appeal, `reinstated_at = timezone.now()` is set.
    - Subsequent health checks only evaluate orders created **after** reinstatement, protecting reinstated merchants from immediate re-suspension and requiring 5 new transactions before threshold evaluation restarts.
 
+---
+
+## 14. Promotions, Seasonal Fee Overrides, Cashback & Referral Program (`/referrals`)
+HendAxis Trust incorporates a promotion, discount, and user loyalty engine designed to reward active buyers and merchants while maintaining double-entry financial integrity:
+
+1. **Promo Codes & Checkout Reductions**:
+   - **Supported Code Types**:
+     - `PERCENTAGE`: Percentage deduction off the platform fee (e.g., 20% off platform escrow fee, with optional `max_discount_cap_ghs` cap).
+     - `FIXED_GHS`: Flat pesewa-level fee deduction (e.g., GHS 10.00 off the platform escrow fee).
+   - **Application at Checkout**: Buyers or sellers enter promo codes during checkout on `/l/:id` or payment modal initialization. Codes are validated via `POST /api/v1/escrow/validate-promo-code`.
+   - **Eligibility & Usage Caps**:
+     - `min_order_amount_ghs`: Minimum transaction value required to apply the code.
+     - `usage_limit`: Maximum global redemptions across all users.
+     - `per_buyer_limit`: Maximum redemptions permitted per individual user or phone number (e.g., 1 per customer).
+     - `eligible_role`: Restrictions targeting `ALL`, `BUYER_ONLY`, or `SELLER_ONLY`.
+     - `expires_at`: Automatic expiration timestamp.
+
+2. **Seasonal / Festive Fee Overrides (`SeasonalFeeCampaign`)**:
+   - Platform administrators can launch scheduled, site-wide fee relief campaigns during holidays and peak shopping periods (e.g., Black Friday, Christmas, Easter, Independence Day sales).
+   - **5 Campaign Rule Types**:
+     - `WAIVED`: 100% zero platform escrow fee (100% fee waiver).
+     - `PERCENTAGE_DISCOUNT`: Percentage discount applied against the calculated escrow fee (e.g., 50% off standard fee).
+     - `FIXED_DISCOUNT`: Flat deduction off the fee (e.g., GHS 5.00 off standard fee).
+     - `REDUCED_PERCENTAGE`: Overrides the standard 1.5% variable fee rate to a lower rate (e.g., 0.5%).
+     - `REDUCED_FIXED`: Overrides the standard GHS 10.00 base fee to a reduced fixed rate (e.g., GHS 5.00).
+   - **Campaign Constraints**: Configurable `min_order_amount_ghs`, `max_discount_cap_ghs`, and active date ranges (`start_date` to `end_date`).
+   - **Visual Prominence**: When active, promotional banners and discounted fee breakdowns automatically display across the Escrow Fee Calculator, `/how-it-works`, and checkout pages.
+
+3. **Transaction Cashback & Reward Campaigns (`TransactionRewardCampaign`)**:
+   - Automated reward issuance triggered upon delivery confirmation and inspection completion (`TRANSACTION_COMPLETED`).
+   - **Reward Modes**: `FIXED_GHS` (flat bonus credit) or `PERCENTAGE_VOLUME` (percentage of escrow transaction GMV).
+   - **Target Audiences**: Configurable for `BUYER_ONLY`, `SELLER_ONLY` (merchant platform fee offset credits), or `ALL`.
+   - Rewards are automatically credited to the user's HendAxis Trust promotional credit balance.
+
+4. **Double-Sided Referral Program (`/referrals` & `/dashboard?tab=referrals`)**:
+   - **Unique Referral Links**: Every registered user receives a unique referral code and shareable invite link (`https://hendaxistrust.com/ref/:code`).
+   - **Dual Reward Incentive**:
+     - **Referrer Reward**: Default GHS 10.00 credited to the referrer upon successful referee qualification.
+     - **Referee Reward**: Default GHS 5.00 welcome fee offset credit applied to the newly registered user.
+   - **Qualification Trigger**: Referral rewards are unlocked the moment the invited referee completes their first successful escrow order of $\ge \text{GHS } 50.00$.
+   - **Anti-Abuse Controls**: Built-in verification prevents self-referrals (same phone, email, device, or identity document). Users can earn rewards up to a platform maximum of 50 successful referrals.
+
+5. **Manual Promotional Credits & Goodwill Fee Offsets**:
+   - Management can issue manual promotional or compensatory credit grants (`CashbackLedgerRecord`) to any user by phone number, email address, or username with itemized audit remarks.
+   - Credits can be applied against platform escrow fees on subsequent purchases or merchant sales.
+
+6. **Discount Stacking Precedence & Financial Safety Guarantee**:
+   - **Calculation Hierarchy**:
+     $$\text{Base Fee} \longrightarrow \text{Seasonal Campaign Override} \longrightarrow \text{Promo Code Deduction} \longrightarrow \text{Wallet Cashback Credit} \longrightarrow \text{Fee Floor } (\ge \text{GHS } 0.00)$$
+   - **Zero Negative Fee**: Stacking discounts cannot produce a negative platform fee; the lowest platform fee floor is GHS 0.00.
+   - **Seller Payout Inviolability**: Discounts exclusively reduce platform escrow fees or are absorbed by marketing subsidies (`EXPENSE:PROMOTIONS_SUBSIDY`). The seller's agreed merchandise and shipping payout is **100% protected and never reduced by buyer promotions**.
+
+
 

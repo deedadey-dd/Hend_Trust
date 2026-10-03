@@ -120,8 +120,12 @@ graph TD
 
 #### Key Features & Workflows
 1. **Dynamic & Fixed Payment Link Creation (`/links` & `/create-link`)**:
+   - **Delivery Modes**:
+     - **`🌐 Public Social Link`**: Generates a shareable URL and QR code for posting on Instagram, WhatsApp status, TikTok, Facebook, or web storefronts.
+     - **`👤 Direct to HendAxis Buyer`**: Enables sellers knowing a buyer's `@username`, phone number, or email to dispatch an in-platform direct escrow order. The system triggers real-time debounced user lookups (`GET /api/v1/links/search-buyer`), links the registered buyer account, and delivers an instant in-app notification + email/SMS alert to the buyer.
    - **Product-Level Category Selection**: Sellers choose the precise category (from the 16 platform categories) when generating payment links, auto-defaulted to the merchant's store niche.
    - **WhatsApp 1-Click Escrow Generator**: When buyers inquire on WhatsApp via marketplace product cards, the message contains a prefilled `/create-link?title=...&price=...&category=...&img=...` URL. Sellers tap the link, input the agreed shipping fee for the buyer's destination, tap *"Create Escrow Payment Link"*, and return the checkout link to the buyer.
+   - **Dynamic Ready-to-Ship Advisory**: Informs sellers of the strict shipping window based on platform-configured `shipping_timeout_days` (from Admin portal settings) to avoid automatic refunds and penalty deductions.
    - **Fixed Price Links**: Pre-set product title, category, price, description, and item image. Ideal for standard products.
    - **Autofill from Past Products**: Suggests and autofills previous products with 1 click.
    - **Delivery Configuration**: Set delivery fee options (Pickup, Fixed Delivery Fee, or Dynamic Courier Delivery).
@@ -136,8 +140,11 @@ graph TD
    - **Stale Transaction Management & Auto-Archiving**: Unpaid transactions older than the platform's configured duration (`unpaid_auto_archive_days`, default: 3 days) automatically archive (`is_archived = True`). Sellers can click **"Check Payment"** on `AWAITING_PAYMENT` entries to manually query gateway completion before archiving occurs. Confirmed payments automatically restore transactions (`is_archived = False`).
    - **Archiving & Expiration**: Deactivate or archive stale links without breaking existing escrow histories.
 
-2. **Public Checkout Page (`/pay/:slug` & `/l/:id`)**:
+2. **Public & Direct Checkout Page (`/pay/:slug` & `/l/:id`)**:
    - Clean, conversion-focused responsive checkout UI.
+   - **Auto-Prefill & Inline Editability for Registered Buyers**:
+     - When an authenticated buyer or targeted direct buyer visits `/l/:id`, their full name, phone number, email address, and saved delivery address are pre-filled automatically.
+     - An informational notice badge (`✨ Pre-filled from your @username profile`) informs the buyer that all pre-filled fields remain completely editable before continuing to payment.
    - **Dual-Flow Checkout Initialization**:
      - **Authenticated Buyer (1-Click Init, 0 SMS OTPs)**: System auto-populates buyer name, phone, and email, initializing checkout with Paystack without triggering an SMS OTP modal.
      - **Guest Shopper**: Follows the original secure upfront SMS phone OTP verification modal before initializing payment.
@@ -147,11 +154,14 @@ graph TD
      - **Debit / Credit Card**: Visa, Mastercard.
      - **GhanaQR**: Instant QR code scan & pay.
    - Direct integration with Paystack / Hubtel inline modal or redirect API.
+   - **Incoming Direct Orders Hub in Dashboard (`/dashboard?tab=purchases`)**:
+     - Registered buyers receive an **"Incoming Escrow Orders & Invoices"** notification section with 1-click **"Review & Pay"** and **"Decline"** actions.
+     - Declining an order updates `direct_order_status = 'DECLINED'` and alerts the seller immediately.
    - **1-Click Post-Checkout Buyer Registration Card**: Displayed on `/l/:id` immediately following payment so guest buyers can set a password in 10 seconds, auto-login, and eliminate future checkout/tracking OTPs.
    - Upon successful payment verification, the transaction instantly transitions into an active **Held in Escrow** state.
 
 #### Database Models (`backend/apps/links/models.py`)
-- `PaymentLink`: Holds `title`, `slug`, `price_ghs`, `shipping_fee_ghs`, `fee_handling` (`PASS_TO_BUYER` / `ABSORB_FEE`), `is_dynamic_amount`, `description`, `image_url`, `is_archived`, `created_at`.
+- `PaymentLink`: Holds `title`, `slug`, `price_ghs`, `shipping_fee_ghs`, `fee_handling` (`PASS_TO_BUYER` / `ABSORB_FEE`), `is_dynamic_amount`, `description`, `image_url`, `is_archived`, `created_at`, `intended_buyer` (`ForeignKey(User)`), `is_direct_order` (`BooleanField`), `direct_order_status` (`PENDING`, `PAID`, `DECLINED`, `CANCELLED`).
 
 ---
 
@@ -500,6 +510,74 @@ stateDiagram-v2
    - Generates branded, styled PDF reports with HendTrust logo headers, execution metadata (Timestamp, Admin User), clean table grids, and page numbers.
    - Available across all admin data tables and financial ledger views.
 
+### Module: Notification Engine, Activity Audit Logs & Staff Task Routing
+
+#### Key Features & Workflows
+1. **Multi-Channel Notification Aggregation (`/notifications`)**:
+   - Aggregates all transaction-related SMS notices, email dispatches, and in-app updates into a centralized audit log.
+   - **Security Exclusion**: Explicitly filters out one-time passwords (OTPs) and security verification codes to prevent unauthorized credential leakage.
+   - **Intelligent Deep Linking**: Automatically detects order references (`ORD-XXXX`, `TRK-XXXX`), dispute contexts, review notices, and promotional rewards to generate 1-click action links to the target route (e.g. `/track?code=...`, `/dashboard?tab=seller_reviews`, `/referrals`).
+   - **High-Contrast Dark & Light Design**: Clean `bg-slate-50 dark:bg-slate-950` backdrop with pure white/slate-900 cards, bold text hierarchy, left status borders, channel filter pills (*All Channels*, *In-App*, *Emails*, *SMS*), read/unread status filters, real-time debounced keyword search, date range pickers, and bulk actions (*Mark All Read*, *Clear Read*).
+
+2. **Navbar Notification Bell & Live Polling (`NotificationDropdown.tsx`)**:
+   - Interactive bell button embedded into the global navigation bar for authenticated buyers and sellers.
+   - Real-time unread bubble counter badge polling lightweight `/api/v1/notifications/unread-count`.
+   - Flyout dropdown panel displaying recent activity, 1-click mark-as-read, quick navigation links, and a direct button to the full `/notifications` center.
+
+3. **Admin Portal Staff Task Alerts & Work Routing (`/admin-portal/dashboard?tab=notifications`)**:
+   - Embedded notification dropdown and a dedicated **"Staff Task Alerts"** tab in the manager portal.
+   - **Automated Work Assignment Alerts**:
+     - `DISPUTE_ASSIGNMENT`: Direct notifications dispatched when a staff member is assigned as primary arbiter.
+     - `ARBITER_ESCALATION`: High-priority notices dispatched when either party triggers 48-hour arbitration queue escalation.
+     - `KYC_VERIFICATION`: Instant compliance notifications when a merchant uploads Ghana Card documents for review.
+     - `SUSPENSION_APPEAL`: Compliance alerts when a suspended merchant submits a remediation appeal.
+     - `STAFF_ROLE_ASSIGNMENT`: Alerts dispatched upon staff permission or role modifications.
+   - Work category filter pills (⚡ *Disputes & Arbitration*, 🛡️ *KYC Verifications*, ⚖️ *Suspension Appeals*, 👤 *Staff & Roles*), unread status filters, live search, and 1-click jump actions.
+
+---
+
+### Module M: Promotions, Seasonal Fee Overrides, Cashback & Referral Engine
+
+#### Key Features & Workflows
+1. **Multi-Tier Discount & Fee Subsidy Architecture**:
+   - **Order of Evaluation**:
+     1. **Base Platform Fee**: Calculated authoritative rate: $(\text{Gross Merchandise Total} \times 1.5\%) + \text{GHS } 10.00$.
+     2. **Seasonal / Festive Campaign Deduction**: Applied first automatically without requiring customer coupon input.
+     3. **Promo Code Coupon Deduction**: Evaluated against remaining fee capacity up to coupon cap.
+     4. **Promotional Wallet Credit**: Applied against any remaining fee up to global platform cap (`max_promo_discount_cap_ghs`, default GHS 50.00).
+     5. **Fee Floor & Payout Protection**: Platform fee is floored at `GHS 0.00` (cannot be negative). The seller's settled payout $(\text{Item Price} + \text{Shipping Fee})$ is 100% protected—all promotional savings are absorbed directly by HendTrust as an operational marketing expense (`EXPENSE:PROMOTIONS_SUBSIDY`).
+
+2. **Promo Code Engine (`PromoCode` & `PromoCodeRedemption`)**:
+   - **Discount Types**: `PERCENTAGE` (with optional ceiling `max_discount_cap_ghs`) and `FIXED_GHS`.
+   - **Usage & Access Limits**: `min_order_amount_ghs` (minimum qualifying order total), `usage_limit` (global maximum redeems), `per_buyer_limit` (max redeems per user/phone), `eligible_role` (`ALL`, `BUYER_ONLY`, `SELLER_ONLY`), and `expires_at`.
+   - **Real-Time Simulation Endpoint (`POST /api/v1/checkout/validate-promo`)**: Simulates discounts live during checkout without writing uncommitted mutations to database.
+
+3. **Seasonal / Festive Fee Override Campaigns (`SeasonalFeeCampaign`)**:
+   - Automated site-wide fee relief during peak holiday seasons (Easter, Black Friday, Christmas, Ramadan).
+   - **Supported Rule Types (`SeasonalFeeRuleType`)**:
+     - `WAIVED`: 100% fee waiver (Zero platform fee).
+     - `PERCENTAGE_DISCOUNT`: Percentage discount on standard total fee (e.g. 50% off).
+     - `FIXED_DISCOUNT`: Fixed GHS discount on total fee (e.g. GHS 5.00 off).
+     - `REDUCED_PERCENTAGE`: Reduced variable fee percentage rate (e.g. 0.5% instead of standard 1.5%).
+     - `REDUCED_FIXED`: Reduced fixed base fee (e.g. GHS 5.00 instead of standard GHS 10.00).
+   - **Constraints & Audit**: Supports `min_order_amount_ghs`, `max_discount_cap_ghs`, `start_date`, and `end_date`. Tracks aggregated order volume and subsidy totals.
+
+4. **Transaction Reward & Automated Cashback Campaigns (`TransactionRewardCampaign`)**:
+   - Automated reward issuance upon confirmed order delivery.
+   - **Target Beneficiaries**: `ALL`, `BUYER_ONLY`, `SELLER_ONLY` (merchant platform fee offset credits).
+   - **Reward Modes**: `FIXED_GHS` vs `PERCENTAGE_VOLUME` (% of settled trade value).
+   - Configurable validity lifespan (default 90–180 days) with auto-expiry.
+
+5. **Double-Sided Referral Engine (`ReferralAuditRecord`)**:
+   - Users invite merchants and buyers using unique referral links (`/register?ref=CODE`).
+   - Configurable dual incentive: Referrer Reward (default GHS 10.00) + Referee Reward (default GHS 5.00).
+   - Rewards trigger automatically when referee completes their first qualifying escrow transaction ($\ge$ `min_order_amount_for_referral_ghs`, default GHS 50.00).
+   - Anti-abuse maximum referrals cap per account (`max_referrals_per_user`, default 50).
+
+6. **Manual Promotional Credit & Compensatory Grants (`CashbackLedgerRecord`)**:
+   - Admin tool for issuing goodwill credits, VIP compensation, or direct trade incentives to any buyer or seller by phone, email, or username.
+   - Full double-entry financial audit trail recorded in platform ledger.
+
 ---
 
 ## 4. Frontend Route & Page Sitemap
@@ -529,9 +607,10 @@ stateDiagram-v2
 | `/links/create` | `CreatePaymentLinkView.tsx` | Authenticated (Seller) | Form for building dynamic or fixed price payment links with Account Suspended modal appeal integration. |
 | `/ledger` | `LedgerView.tsx` | Authenticated (Seller) | Financial wallet, balance breakdown, and withdrawal requests. |
 | `/profile` | `ProfileView.tsx` | Authenticated | User profile management, security settings, embeddable trust badges, and Ghana Card KYC upload. |
+| `/notifications` | `NotificationsView.tsx` | Authenticated | Dedicated notification center with multi-channel filtering (SMS, Email, In-App), search, and date presets. |
 | `/developer` | `DeveloperView.tsx` | Authenticated (Seller) | Developer documentation, API overview, and webhook configuration. |
 | `/developer/keys` | `DeveloperKeysView.tsx` | Authenticated (Seller) | API Key management portal (Live vs Sandbox keys). |
-| `/admin-portal` | `AdminDashboardView.tsx` | Admin Only | Master operations dashboard, disputes desk, KYC approvals, suspension appeals desk, ledger audits, and platform settings. |
+| `/admin-portal` | `AdminDashboardView.tsx` | Admin Only | Master operations dashboard, disputes desk, KYC approvals, suspension appeals desk, staff task alerts, ledger audits, and platform settings. |
 
 ---
 
@@ -549,6 +628,16 @@ stateDiagram-v2
 - `POST /api/v1/users/verify-bank-account`: Validate MoMo/Bank account details against Paystack/Hubtel lookup API.
 - `POST /api/v1/profile/appeal-suspension`: Submit account suspension appeal with detailed remediation justification.
 - `GET /api/v1/profile/appeal-status`: Check current active appeal status and admin ruling notes.
+
+### Notifications & Staff Task Endpoints (`/api/v1/notifications/`)
+- `GET /api/v1/notifications/`: Filtered notification list with pagination, channel filter (`SMS`, `EMAIL`, `IN_APP`), keyword search, and date ranges.
+- `GET /api/v1/notifications/unread-count`: Fast unread count endpoint for navbar badge updates.
+- `POST /api/v1/notifications/mark-all-read`: Marks all unread notifications as read.
+- `DELETE /api/v1/notifications/clear-read`: Bulk deletes read notifications.
+- `PATCH /api/v1/notifications/{id}/read`: Marks a single notification as read.
+- `PATCH /api/v1/notifications/{id}/toggle-read`: Toggles read/unread status.
+- `DELETE /api/v1/notifications/{id}`: Deletes a specific notification.
+
 
 ### Checkout & Order Tracking Endpoints (`/api/v1/checkout/`)
 - `POST /api/v1/checkout/verify-and-initialize`: Initialize payment with Paystack (OTP bypass for authenticated buyers; SMS OTP required for guests).

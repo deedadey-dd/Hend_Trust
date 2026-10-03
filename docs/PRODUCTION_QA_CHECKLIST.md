@@ -100,12 +100,15 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [x] **Dispute Health & Risk Banners**: Verify Dispute Banners (Yellow Alert ≥20%, Orange Warning ≥30%, Red Suspension ≥40%), Rating Caution (<3.0★), and Non-Dispatch Expiry Warning (≥20% non-dispatch rate).
 - [ ] **Merchant Trust Badges (`/dashboard?tab=badges`)**: Test copying embeddable JavaScript widget code (`/badge/:username.js`) and downloading shareable proof cards.
 
-### 3.2 Payment Link Creation (`/create-link`)
-- [ ] **Product Category Selection**: Verify dropdown contains all 16 standardized platform categories, pre-defaulting to seller's primary store niche.
-- [ ] **1-Click WhatsApp Prefill Flow**: Open `/create-link?title=iPhone%2015&price=6500&category=Phones%20%26%20Tablets`. Confirm title, price, and category are auto-prefilled with an informational banner prompting seller to enter agreed shipping fee.
-- [ ] **Authoritative Fee Calculation**: Verify platform fee is calculated transparently as $(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$.
-- [ ] **Fee Preference Toggle**: Test toggling between `PASS_TO_BUYER` and `ABSORB_FEE`.
-- [ ] **QR Code Generator**: Click **"Generate QR Poster"**. Download PNG poster.
+### 3.2 Payment Link & Direct In-Platform Escrow Order Creation (`/create-link`)
+- [x] **Delivery Mode Switcher**: Toggle between `🌐 Public Social Link` (general shareable link) and `👤 Direct to HendAxis Buyer` (in-platform targeted delivery).
+- [x] **Debounced Buyer Search Autocomplete**: In Direct Mode, type `@username`, phone number, or email. Confirm real-time search dropdown (`GET /api/v1/links/search-buyer`), verified user badges, and clear buyer card selection.
+- [x] **Product Category Selection**: Verify dropdown contains all 16 standardized platform categories, pre-defaulting to seller's primary store niche.
+- [x] **1-Click WhatsApp Prefill Flow**: Open `/create-link?title=iPhone%2015&price=6500&category=Phones%20%26%20Tablets`. Confirm title, price, and category are auto-prefilled with an informational banner prompting seller to enter agreed shipping fee.
+- [x] **Dynamic Ready-to-Ship Advisory**: Verify warning badge uses dynamically configured `shipping_timeout_days` from admin settings instead of hardcoded 4-day copy.
+- [x] **Authoritative Fee Calculation**: Verify platform fee is calculated transparently as $(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$.
+- [x] **Fee Preference Toggle**: Test toggling between `PASS_TO_BUYER` and `ABSORB_FEE`.
+- [x] **QR Code & Direct Dispatch Modal**: When generating a direct order, confirm success modal confirms direct in-app notification dispatch to buyer while still providing WhatsApp and link copying options.
 - [x] **Suspension Modal & Inline Appeal**: Confirm suspended sellers attempting to create links receive the dedicated **Account Suspended Modal** with exact suspension reason and inline justification appeal submission form.
 
 ### 3.3 My Payment Links (`/links`)
@@ -126,24 +129,55 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 ## 🛒 Phase 4: Buyer Persona (Public Checkout, Delivery & Purchases Hub)
 
 ### 4.1 Public Escrow Checkout & Dual-Flow Initialization (`/l/:link_code`)
+- [x] **Pre-filled Contact Info & Default Shipping Address for Registered Buyers**: When authenticated buyer visits `/l/:id`, verify full name, phone number, email, and saved `default_shipping_address` from user profile (or direct order recipient address) are pre-filled automatically with full in-line editability.
+- [x] **Authenticated 1-Click Checkout to Paystack (Zero "Invalid OTP" Error)**: When authenticated buyer clicks "Continue to Payment", verify `apiClient` sends auth credentials/Bearer token, bypassing the guest SMS OTP verification and redirecting immediately to Paystack authorization.
 - [ ] **Brand Theme Styling**: Confirm page features Brand Blue (`#0363ff`) gradient header, glowing ambient accents, Brand Orange (`#ff6d1d`) "Continue to Payment" button, and `"Escrow Protected"` badges.
 - [ ] **Link Access & Security**: Open seller payment link in incognito or guest browser. Confirm HTTP 403 page if link belongs to a suspended seller.
 - [ ] **Authoritative Pricing Breakdown**: Verify Item Price + Delivery Fee + Platform Escrow Fee ($(\text{Item Price} + \text{Shipping Fee}) \times 1.5\% + \text{GHS } 10.00$).
 - [ ] **Location-Based Shipping Agreement**: Confirm delivery agreement rules and fee breakdown.
 - [ ] **Dual-Flow Checkout Verification**:
-  - [ ] **Authenticated Buyer (1-Click Init)**: Log in as a buyer and open `/l/:id`. Confirm buyer details autofill and clicking "Continue to Payment" immediately launches Paystack checkout **without displaying an SMS OTP modal**.
+  - [x] **Authenticated Buyer (1-Click Init)**: Log in as a buyer and open `/l/:id`. Confirm buyer details autofill and clicking "Continue to Payment" immediately launches Paystack checkout **without displaying an SMS OTP modal**.
   - [ ] **Guest Shopper (SMS OTP)**: Open in an incognito window without logging in. Confirm mandatory 6-digit SMS OTP modal appears before Paystack redirection.
-- [ ] **Promotions & Discount Engine**:
-  - [ ] **Promo Code Application**: Expand the **"Have a Promo Code or Reward Credit?"** accordion. Enter a valid promo code (e.g. `WELCOME10`).
-  - [ ] **Live Simulation (`/api/v1/checkout/validate-promo`)**: Verify real-time calculation shows discounted platform fee and net total. Confirm item price and shipping are untouched.
-  - [ ] **Guest Buyer Credit Lookup**: Enter phone number (`024XXXXXXX`) with existing credits. Confirm available credit is detected and can be applied up to `max_promo_discount_cap_ghs` (default GHS 50.00).
+- [ ] **Comprehensive Promotions & Discount Engine Verification**:
+  - [ ] **Seasonal / Festive Auto-Discount Application**:
+    - [ ] Open payment link during an active seasonal campaign (e.g. `WAIVED` 100% or `PERCENTAGE_DISCOUNT` 50%).
+    - [ ] Verify festive badge and platform fee discount are automatically deducted without needing a promo code.
+    - [ ] Confirm item price and shipping fee are 100% untouched.
+  - [ ] **Promo Code Application (`PERCENTAGE` vs `FIXED_GHS`)**:
+    - [ ] Expand the **"Have a Promo Code or Reward Credit?"** accordion.
+    - [ ] Enter a Percentage promo code (e.g. `PROMO20` for 20% off). Confirm discount calculation respects `max_discount_cap_ghs` (e.g. 20% of fee capped at GHS 25.00).
+    - [ ] Enter a Fixed GHS promo code (e.g. `SAVE15` for GHS 15.00 off). Confirm fee is reduced by exactly GHS 15.00.
+  - [ ] **Live Simulation & Dynamic Recalculation (`POST /api/v1/checkout/validate-promo`)**:
+    - [ ] Verify typing or removing code triggers real-time recalculation of net platform fee and gross checkout total.
+    - [ ] Confirm seller payout estimate remains identical to $(Item + Shipping)$ regardless of promo discounts.
+  - [ ] **Guest & Authenticated Wallet Credit Lookup**:
+    - [ ] Enter phone number (`+233XXXXXXXXX`) or log in with an account that has stored promotional/cashback credits.
+    - [ ] Confirm available credit balance is detected and displayed.
+    - [ ] Apply credit: confirm deduction is capped at `max_promo_discount_cap_ghs` (default GHS 50.00).
+  - [ ] **Discount Stacking & Precedence Validation**:
+    - [ ] Test combination of Seasonal Fee Override + Promo Code + Wallet Credit on a single checkout.
+    - [ ] Verify precedence: Base Platform Fee $\to$ Seasonal Reduction $\to$ Promo Code $\to$ Wallet Credit.
+    - [ ] Verify floor rule: Platform fee cannot drop below `GHS 0.00` (no negative fees or cash extraction).
+  - [ ] **Negative & Constraint Error Handlers**:
+    - [ ] Enter an expired promo code. Confirm inline error: *"Promo code has expired."*
+    - [ ] Enter a code whose `min_order_amount_ghs` is higher than current order total. Confirm inline error: *"Order total must be at least GHS X.XX to use this code."*
+    - [ ] Enter a code whose global `usage_limit` is exhausted. Confirm inline error: *"Promo code usage limit has been reached."*
+    - [ ] Attempt redeeming a single-use code a second time with the same phone/user. Confirm error: *"You have already reached the redemption limit for this code."*
+    - [ ] Test role-restricted promo codes (`BUYER_ONLY` vs `SELLER_ONLY`). Confirm role mismatch is rejected.
 - [ ] **Payment Processing**: Select Payment Method (MoMo / Card via Paystack). Complete test transaction.
 
 ### 4.2 Buyer Purchases & Orders Hub (`/dashboard?tab=purchases`)
+- [x] **Incoming Escrow Orders & Invoices Banner**: When seller creates a direct order targeted at buyer, confirm a highlighted card appears in Buyer Purchases tab (`GET /api/v1/links/incoming-orders`) with **"Review & Pay"** (direct 1-click checkout) and **"Decline"** (with modal confirmation and seller notification).
+- [x] **Direct Invoices History Toggle**: Toggle between **"Pending Action"** and **"All Invoices History"** to review past paid and declined direct escrow invoices with real-time status badges.
 - [ ] **Dedicated Buyer Hub**: Log in as a buyer and navigate to `/dashboard`. Confirm default view loads **"My Purchases & Orders"** tab.
 - [ ] **Order Metrics Cards**: Verify summary counts for *Active In-Flight Orders*, *In Inspection Period*, and *Completed Orders*.
 - [ ] **Search & Filter**: Test filtering orders by search query (item title, merchant shop name, reference).
 - [ ] **Order Card Details**: Confirm product thumbnail, seller store link, courier tracking link, and live state tags render cleanly.
+
+### 4.3 Seller Payment Links & In-App Invoice History Hub (`/links`)
+- [x] **Delivery Type Filter Tabs**: Filter links by **All Links & Invoices**, **🌐 Public Links Only**, and **👤 Direct In-App Invoices**.
+- [x] **Direct Invoice Status Badges**: View direct order payment statuses (**⏳ Pending Payment**, **✅ Paid / In Escrow**, **✕ Declined by Buyer**) and recipient `@username` / name.
+- [x] **Link Detail & QR Code Modal**: Open link details to view recipient info, fee breakdown, direct link sharing, and instant QR code.
 
 ### 4.3 Order Tracking & Parcel Handover
 - [ ] **SMS Notification**: Verify buyer receives order tracking code via SMS.
@@ -167,6 +201,14 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
   - [x] After 48 hours elapses (or accelerated test timestamp), verify both Buyer and Seller see the active **"⚡ Request Arbiter Decision"** button.
   - [x] Click the button. Confirm confirmation prompt, immediate status update to `⚡ ARBITER DECISION REQUESTED`, audit log creation, and SMS/Email notification dispatch.
 - [ ] **Dispute Retraction Grace Release**: When buyer clicks **"Retract Dispute"** to settle privately, confirm auto-release grace timer (`dispute_retraction_release_hours`, default 24h) is scheduled.
+
+### 4.5 Notification Center & Activity Hub (`/notifications`)
+- [x] **Light & Dark Theme Contrast**: Verify page renders with crisp high contrast (`bg-slate-50 dark:bg-slate-950` with high-contrast text and cards).
+- [x] **Multi-Channel Filters**: Toggle between **All Channels**, **Emails**, **SMS**, and **In-App Alerts**.
+- [x] **Search & Date Range**: Test live search by keyword and filtering by date preset (*Today*, *Last 7 Days*, *Last 30 Days*, *Custom Range*).
+- [x] **OTP Filtering**: Confirm one-time passwords and SMS verification codes are strictly omitted from the notification list.
+- [x] **Action Deep Linking**: Click notification card action buttons to verify deep navigation to tracking, reviews, or dashboard.
+- [x] **Read Management**: Test Mark All as Read, Clear Read, and toggle individual read states.
 
 ---
 
@@ -204,22 +246,70 @@ This comprehensive testing protocol walks you through verifying your HendAxis Tr
 - [x] **Approve Appeal & Clean Slate Reinstatement**: Approve appeal. Verify seller account reinstates (`is_suspended = False`), `reinstated_at = timezone.now()` is set, and seller can create payment links again.
 - [x] **Reject Appeal**: Provide administrative feedback notes. Verify seller dashboard reflects rejection notes and allows re-submission.
 
+### 5.5 Staff Tasks & Work Assignment Alerts (Tab: `NOTIFICATIONS`)
+- [x] **Top Header Dropdown**: Verify bell icon in sticky top header displays live unread counter and quick preview drawer.
+- [x] **Work Category Filters**: Test filtering staff alerts by **Disputes & Arbitration**, **KYC Verifications**, **Suspension Appeals**, and **Staff & Roles**.
+- [x] **Deep Action Links**: Click quick view buttons to ensure direct transition to the corresponding dispute mediation modal, verification review card, or appeal desk.
+- [x] **Automated Triggering**:
+  - [x] Verify arbiter assignment generates targeted in-app notification.
+  - [x] Verify 48h arbitration queue escalation generates high-priority arbiter alerts.
+  - [x] Verify KYC Ghana Card document submission alerts compliance officers.
+  - [x] Verify merchant suspension appeal submission alerts compliance officers.
+
 ---
 
 ## ⚡ Phase 6: Superuser & Admin Persona (System Governance & Promotions Engine)
 
-### 6.1 Promotions & Rewards Management (Tab: `PROMOTIONS`)
-- [ ] **Dedicated Tab Access**: Navigate to `Promotions & Rewards` tab in the side panel navigation.
-- [ ] **Master Campaign Switch**: Toggle `promotions_active` on and off. Verify live status badge in sidebar (`Active` vs standard).
-- [ ] **Campaign Expiry Date**: Set a campaign expiration date (`promotions_expires_at`). Confirm expired campaigns automatically cease granting new rewards.
-- [ ] **Reward Rates Configuration**: Update `buyer_reward_rate_percent` (1.0%), `seller_reward_per_completed_order_ghs` (GHS 5.00), and `max_promo_discount_cap_ghs` (GHS 50.00).
-- [ ] **Promo Code CRUD**:
-  - [ ] Click **"Create Promo Code"**. Enter code (e.g. `LAUNCH2026`), discount type (*Percentage* / *Fixed*), amount, max usage count, and expiry date.
-  - [ ] Test deactivating and reactivating a promo code.
-- [ ] **Manual Credit Grant Modal**:
-  - [ ] Grant manual credit to a guest buyer by phone number (`+233XXXXXXXXX`).
-  - [ ] Grant manual bonus credit to an authenticated seller.
-  - [ ] Verify ledger entry and updated balance.
+### 6.1 Promotions, Seasonal Fees, Cashback & Referral Engine (Tab: `PROMOTIONS`)
+- [ ] **Navigation & Sub-Tab Architecture**: Confirm seamless switching across all 5 promotion sub-tabs:
+  1. `Active Campaigns & Program Settings`
+  2. `Promo Code Redemptions Audit`
+  3. `Seasonal Fee Reductions & Orders`
+  4. `Referral Tracking & Audit`
+  5. `Cashback & Fee Offset Ledger`
+- [ ] **Master Platform Controls & Expiration**:
+  - [ ] Toggle master `promotions_active` switch. Confirm live status indicator changes (`PROMOTIONS ACTIVE` vs `PROMOTIONS DISABLED`).
+  - [ ] Set `promotions_expires_at` timestamp. Test clearing expiry back to perpetual.
+  - [ ] Update global ceiling cap `max_promo_discount_cap_ghs` (default GHS 50.00). Confirm checkout enforces cap.
+- [ ] **Promo Code Engine (CRUD & Rule Limits)**:
+  - [ ] **Creation & Parameter Matrix**: Click **"Create Promo Code"** and test creating:
+    - `PERCENTAGE` code (e.g. `VIP30` with 30% discount, `max_discount_cap_ghs: 35.00`, `min_order_amount_ghs: 100.00`).
+    - `FIXED_GHS` code (e.g. `FLAT10` with GHS 10.00 discount, `per_buyer_limit: 1`, `usage_limit: 50`).
+    - Role-targeted code (`BUYER_ONLY` vs `SELLER_ONLY` vs `ALL`).
+    - Expiration datetime (`expires_at`).
+  - [ ] **Inline Form Validation**: Test invalid submissions (empty code, 0% discount, end date in the past). Confirm clear inline error alert renders inside modal without closing.
+  - [ ] **Edit & Status Toggle**: Edit existing promo code (change discount cap, extend expiry). Toggle active/inactive switch and verify immediate status update.
+  - [ ] **Delete Protection**: Test delete action with modal confirmation.
+  - [ ] **Redemptions History Modal**: Click **"View Redemptions"** on a promo code row. Verify table shows redemption timestamp, order reference, buyer phone/email, and subsidized GHS discount.
+- [ ] **Seasonal / Festive Fee Overrides Engine**:
+  - [ ] **Campaign Creation Matrix**: Click **"Create Seasonal Fee Campaign"** and verify all 5 rule types:
+    1. `WAIVED` (100% Zero Platform Fee)
+    2. `PERCENTAGE_DISCOUNT` (e.g. 50% discount on standard fee)
+    3. `FIXED_DISCOUNT` (e.g. GHS 5.00 deduction from standard fee)
+    4. `REDUCED_PERCENTAGE` (e.g. 0.5% variable rate instead of standard 1.5%)
+    5. `REDUCED_FIXED` (e.g. GHS 5.00 base fee instead of standard GHS 10.00)
+  - [ ] **Thresholds & Limits**: Configure `min_order_amount_ghs` (e.g. GHS 200.00) and optional `max_discount_cap_ghs` (e.g. GHS 30.00).
+  - [ ] **Strict Date Scheduling**: Set start and end datetimes. Test validation rule: end date must be strictly after start date.
+  - [ ] **Real-Time Audit & Tracking**: In `Seasonal Fee Reductions & Orders` sub-tab, verify orders benefiting from seasonal fee reductions display campaign name, standard fee vs discount granted, and net fee collected.
+- [ ] **Transaction Reward & Automated Cashback Campaigns**:
+  - [ ] Click **"Create Transaction Reward Campaign"**. Configure cashback incentives:
+    - Target: `ALL`, `BUYER_ONLY`, or `SELLER_ONLY` (merchant platform fee offset credits).
+    - Type: `FIXED_GHS` (e.g. GHS 5.00) vs `PERCENTAGE_VOLUME` (e.g. 1.0% volume cashback).
+    - Minimum order amount (`min_order_amount_ghs`) and max reward cap (`max_reward_cap_ghs`).
+    - Credit validity window (e.g. 90 or 180 days).
+  - [ ] Complete an escrow order matching campaign criteria. Verify buyer/seller wallet receives automated credit upon order delivery confirmation.
+- [ ] **Referral Program Settings & Double-Sided Tracking**:
+  - [ ] In `Referral Tracking & Audit` sub-tab, configure program settings:
+    - `referral_program_active` toggle.
+    - `referrer_reward_ghs` (default GHS 10.00) and `referee_reward_ghs` (default GHS 5.00).
+    - `min_order_amount_for_referral_ghs` (qualifying first order threshold, default GHS 50.00).
+    - `max_referrals_per_user` anti-abuse limit (default 50).
+  - [ ] Verify referral registration tracking table displays referrer handle, referee name, qualifying order ref, and reward completion timestamps.
+- [ ] **Manual Credit Grant Modal (Customer Goodwill & Offsets)**:
+  - [ ] Open **"Grant Manual Promotional Credit"** modal.
+  - [ ] Grant GHS 20.00 credit to a buyer by phone number (`+233XXXXXXXXX`) with reason notes.
+  - [ ] Grant fee offset credit to a merchant store handle with reason notes.
+  - [ ] In `Cashback & Fee Offset Ledger` sub-tab, verify credit grant entry, balance addition, and expiry date.
 
 ### 6.2 Double-Entry Ledger & Platform Funds Audit
 - [ ] **Promotions Subsidy Accounting**: Verify that promo discounts create proper ledger entries:

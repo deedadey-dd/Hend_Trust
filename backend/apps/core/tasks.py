@@ -10,9 +10,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 @shared_task
-def dispatch_sms_task(phone: str, message: str):
+def dispatch_sms_task(phone: str, message: str, action_url: str = None, user_id = None, title: str = None):
     """
-    Asynchronously sends an SMS via MNotify.
+    Asynchronously sends an SMS via MNotify and logs as in-app notification if user is matched (excluding OTPs).
     """
     if getattr(settings, 'DEBUG', False):
         print("\n" + "="*60, flush=True)
@@ -21,11 +21,41 @@ def dispatch_sms_task(phone: str, message: str):
         print(f"Message: {message}", flush=True)
         print("="*60 + "\n", flush=True)
         logger.info(f"DEV MOCKED SMS -> To: {phone} | Msg: {message}")
-        return True
-        
-    success = MNotifyService.send_sms(phone, message)
-    if not success:
-        logger.warning(f"Failed to dispatch SMS to {phone}")
+        success = True
+    else:
+        success = MNotifyService.send_sms(phone, message)
+        if not success:
+            logger.warning(f"Failed to dispatch SMS to {phone}")
+
+    # Automatically record non-OTP SMS in user's in-app notification center
+    try:
+        from apps.notifications.services import create_notification, is_otp_message
+        from apps.notifications.models import NotificationType
+
+        sms_title = title or "SMS Notification"
+        if not is_otp_message(sms_title, message):
+            target_user = None
+            if user_id:
+                target_user = User.objects.filter(id=user_id).first()
+            if not target_user and phone:
+                normalized_phone = phone.strip()
+                target_user = User.objects.filter(phone_number=normalized_phone).first()
+                if not target_user and normalized_phone.startswith('+233'):
+                    target_user = User.objects.filter(phone_number='0' + normalized_phone[4:]).first()
+                elif not target_user and normalized_phone.startswith('233'):
+                    target_user = User.objects.filter(phone_number='0' + normalized_phone[3:]).first()
+
+            if target_user:
+                create_notification(
+                    user=target_user,
+                    title=sms_title,
+                    message=message,
+                    notif_type=NotificationType.SMS,
+                    action_url=action_url
+                )
+    except Exception as err:
+        logger.warning(f"Could not auto-log SMS notification: {err}")
+
     return success
 
 def _build_default_html_email(subject: str, message: str, html_message: str = None) -> str:
@@ -82,9 +112,9 @@ def _build_default_html_email(subject: str, message: str, html_message: str = No
 </html>"""
 
 @shared_task
-def dispatch_email_task(email: str, subject: str, message: str, html_message: str = None):
+def dispatch_email_task(email: str, subject: str, message: str, html_message: str = None, action_url: str = None, user_id = None):
     """
-    Asynchronously sends an Email. Guarantees all emails contain clickable action links.
+    Asynchronously sends an Email and logs as in-app notification if user is matched (excluding OTPs).
     """
     html_message = _build_default_html_email(subject, message, html_message)
 
@@ -96,30 +126,55 @@ def dispatch_email_task(email: str, subject: str, message: str, html_message: st
         print(f"Message: {message}")
         print(f"HTML Link Included: Yes")
         print("="*50 + "\n")
-        return True
+        sent_success = True
+    else:
+        try:
+            send_mail(
+                subject=subject,
+                message=message,
+                from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxistrust.com'),
+                recipient_list=[email],
+                fail_silently=False,
+                html_message=html_message
+            )
+            sent_success = True
+        except Exception as e:
+            logger.error(f"Failed to dispatch Email to {email}: {e}")
+            sent_success = False
 
+    # Automatically record non-OTP Email in user's in-app notification center
     try:
-        send_mail(
-            subject=subject,
-            message=message,
-            from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxistrust.com'),
-            recipient_list=[email],
-            fail_silently=False,
-            html_message=html_message
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Failed to dispatch Email to {email}: {e}")
-        return False
+        from apps.notifications.services import create_notification, is_otp_message
+        from apps.notifications.models import NotificationType
+
+        if not is_otp_message(subject, message):
+            target_user = None
+            if user_id:
+                target_user = User.objects.filter(id=user_id).first()
+            if not target_user and email:
+                target_user = User.objects.filter(email__iexact=email.strip()).first()
+
+            if target_user:
+                create_notification(
+                    user=target_user,
+                    title=subject,
+                    message=message,
+                    notif_type=NotificationType.EMAIL,
+                    action_url=action_url
+                )
+    except Exception as err:
+        logger.warning(f"Could not auto-log Email notification: {err}")
+
+    return sent_success
 
 @shared_task
-def notify_user_task(user_id, title: str, message: str, notif_type: str = NotificationType.IN_APP):
+def notify_user_task(user_id, title: str, message: str, notif_type: str = NotificationType.IN_APP, action_url: str = None):
     """
-    Asynchronously creates a notification for a user.
+    Asynchronously creates an in-app notification for a user.
     """
     try:
         user = User.objects.get(id=user_id)
-        create_notification(user, title, message, notif_type)
+        create_notification(user, title, message, notif_type, action_url=action_url)
     except User.DoesNotExist:
         logger.error(f"User {user_id} not found for notification.")
 
@@ -585,8 +640,28 @@ def celery_heartbeat_ping():
     heartbeat_url = os.environ.get('BETTERSTACK_CELERY_HEARTBEAT_URL', '').strip()
     if heartbeat_url:
         try:
-            resp = requests.get(heartbeat_url, timeout=8)
-            logger.info(f"Better Stack Celery heartbeat pinged successfully (HTTP {resp.status_code})")
+            from urllib3.util import Retry
+            from requests.adapters import HTTPAdapter
+
+            session = requests.Session()
+            retries = Retry(
+                total=2,
+                backoff_factor=1,
+                status_forcelist=[500, 502, 503, 504],
+                raise_on_status=False
+            )
+            adapter = HTTPAdapter(max_retries=retries)
+            session.mount("https://", adapter)
+            session.mount("http://", adapter)
+
+            resp = session.get(heartbeat_url, timeout=(5, 12))
+            if resp.status_code < 400:
+                logger.info(f"Better Stack Celery heartbeat pinged successfully (HTTP {resp.status_code})")
+            else:
+                logger.warning(f"Better Stack Celery heartbeat returned non-success HTTP {resp.status_code}")
+        except (requests.exceptions.Timeout, requests.exceptions.ConnectionError) as exc:
+            # Transient network timeout / DNS blip - log as warning to prevent Sentry error alert noise
+            logger.warning(f"Transient network timeout pinging Better Stack heartbeat ({heartbeat_url}): {exc}")
         except Exception as exc:
-            logger.error(f"Failed to ping Better Stack Celery heartbeat URL ({heartbeat_url}): {exc}")
+            logger.warning(f"Failed to ping Better Stack Celery heartbeat URL ({heartbeat_url}): {exc}")
 

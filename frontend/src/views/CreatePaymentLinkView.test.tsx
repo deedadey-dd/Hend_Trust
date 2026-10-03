@@ -44,4 +44,20 @@ describe('CreatePaymentLinkView Component', () => {
     });
     expect(titleInput.value).toBe('iPhone 15 Pro Max');
   });
+
+  it('renders Ready-to-Ship Advisory with dynamic shipping timeout days', async () => {
+    await act(async () => {
+      render(
+        <ModalProvider>
+          <BrowserRouter>
+            <CreatePaymentLinkView />
+          </BrowserRouter>
+        </ModalProvider>
+      );
+    });
+
+    expect(screen.getByText(/Ready-to-Ship Advisory/i)).toBeDefined();
+    expect(screen.getByText(/shipping window/i)).toBeDefined();
+  });
 });
+
