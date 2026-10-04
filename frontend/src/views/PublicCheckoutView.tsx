@@ -95,6 +95,8 @@ interface TxnDetail {
   base_platform_fee_ghs?: number;
   promo_discount_ghs?: number;
   credit_discount_ghs?: number;
+  seasonal_fee_discount_ghs?: number;
+  seasonal_campaign_name?: string;
   promo_code_applied?: string;
   fee_handling?: string;
 }
@@ -295,7 +297,19 @@ const DISPUTE_CATEGORIES = [
         setBuyerSignupStep('OTP');
         setOtpResendCooldown(60);
       } else {
-        authLogin(res.data.user_id, res.data);
+        authLogin('', {
+          id: res.data.user_id,
+          role: res.data.role || 'BUYER',
+          email: res.data.email || txn.buyer_email || '',
+          name: res.data.name || res.data.username || txn.buyer_name,
+          username: res.data.username,
+          first_name: res.data.first_name,
+          last_name: res.data.last_name,
+          phone_number: res.data.phone_number || txn.buyer_phone,
+          is_superuser: Boolean(res.data.is_superuser),
+          is_staff: Boolean(res.data.is_staff),
+          default_shipping_address: res.data.default_shipping_address
+        });
         setBuyerSignupSuccess(true);
         setTimeout(() => {
           navigate(`/dashboard?tab=purchases&new_order=${encodeURIComponent(txRef || txn.paystack_reference || txn.id)}`);
@@ -322,7 +336,19 @@ const DISPUTE_CATEGORIES = [
         uid: signupUid,
         otp_code: phoneOtp.trim()
       });
-      authLogin(res.data.user_id, res.data);
+      authLogin('', {
+        id: res.data.user_id,
+        role: res.data.role || 'BUYER',
+        email: res.data.email || txn.buyer_email || '',
+        name: res.data.name || res.data.username || txn.buyer_name,
+        username: res.data.username,
+        first_name: res.data.first_name,
+        last_name: res.data.last_name,
+        phone_number: res.data.phone_number || txn.buyer_phone,
+        is_superuser: Boolean(res.data.is_superuser),
+        is_staff: Boolean(res.data.is_staff),
+        default_shipping_address: res.data.default_shipping_address
+      });
       setBuyerSignupSuccess(true);
       setTimeout(() => {
         navigate(`/dashboard?tab=purchases&new_order=${encodeURIComponent(txRef || txn.paystack_reference || txn.id)}`);
@@ -738,10 +764,16 @@ const DISPUTE_CATEGORIES = [
                   <div className="space-y-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-700">
                     <div className="flex justify-between items-center text-slate-700 dark:text-slate-300">
                       <span className="flex items-center gap-1 font-medium"><ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" /> Escrow Protection Fee</span>
-                      <span className={(txn.promo_discount_ghs || 0) > 0 || (txn.credit_discount_ghs || 0) > 0 ? 'line-through text-slate-400 text-[11px]' : 'font-bold'}>
+                      <span className={(txn.seasonal_fee_discount_ghs || 0) > 0 || (txn.promo_discount_ghs || 0) > 0 || (txn.credit_discount_ghs || 0) > 0 ? 'line-through text-slate-400 text-[11px]' : 'font-bold'}>
                         GHS {Number(txn.base_platform_fee_ghs || (Number(txn.price_ghs + (txn.shipping_fee_ghs || 0)) * 0.015 + 10)).toFixed(2)}
                       </span>
                     </div>
+                    {(txn.seasonal_fee_discount_ghs || 0) > 0 && (
+                      <div className="flex justify-between items-center text-blue-600 dark:text-blue-400 pl-4 font-semibold text-[11px]">
+                        <span className="flex items-center gap-1"><Sparkles className="h-3 w-3 text-blue-500" /> Seasonal Promo ({txn.seasonal_campaign_name || 'Campaign'})</span>
+                        <span>- GHS {Number(txn.seasonal_fee_discount_ghs).toFixed(2)}</span>
+                      </div>
+                    )}
                     {(txn.promo_discount_ghs || 0) > 0 && (
                       <div className="flex justify-between items-center text-purple-600 dark:text-purple-400 pl-4 font-semibold text-[11px]">
                         <span className="flex items-center gap-1"><Tag className="h-3 w-3" /> Promo Code ({txn.promo_code_applied})</span>
@@ -754,7 +786,7 @@ const DISPUTE_CATEGORIES = [
                         <span>- GHS {Number(txn.credit_discount_ghs).toFixed(2)}</span>
                       </div>
                     )}
-                    {((txn.promo_discount_ghs || 0) > 0 || (txn.credit_discount_ghs || 0) > 0) && (
+                    {((txn.seasonal_fee_discount_ghs || 0) > 0 || (txn.promo_discount_ghs || 0) > 0 || (txn.credit_discount_ghs || 0) > 0) && (
                       <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 pl-4 font-bold text-[11px] pt-0.5">
                         <span>Net Escrow Fee Paid</span>
                         <span>{Number(txn.platform_fee_ghs || 0) === 0 ? 'GHS 0.00 (100% Subsidized)' : `GHS ${Number(txn.platform_fee_ghs).toFixed(2)}`}</span>
@@ -1536,6 +1568,12 @@ export default function PublicCheckoutView() {
     const fetchData = async () => {
       try {
         if (txRef) {
+          // Normalize browser address bar to clean ?reference=... if duplicate or gateway params exist
+          if (window.location.search.includes('&') || window.location.search.includes('trxref') || window.location.search.includes('tx_ref')) {
+            const cleanUrl = `${window.location.pathname}?reference=${encodeURIComponent(txRef)}`;
+            window.history.replaceState(null, '', cleanUrl);
+          }
+
           const res = await apiClient.get(`/checkout/transaction/${txRef}`, { signal: controller.signal });
           if (!isMounted) return;
           setTxnDetail(res.data);
@@ -1552,6 +1590,17 @@ export default function PublicCheckoutView() {
           if (settingsRes?.data) {
             setPublicSettings(settingsRes.data);
           }
+
+          // Automatically simulate / check active seasonal campaigns and promotions on page load
+          apiClient.post('/checkout/validate-promo', {
+            link_id: linkId,
+            phone_number: user?.phone_number || undefined,
+            apply_buyer_credit: false
+          }, { signal: controller.signal }).then(promoRes => {
+            if (isMounted && promoRes.data) {
+              setPromoSimulation(promoRes.data);
+            }
+          }).catch(() => {});
         }
       } catch (err: any) {
         if (err.name === 'CanceledError' || err.name === 'AbortError' || !isMounted) return;
@@ -1576,13 +1625,6 @@ export default function PublicCheckoutView() {
     const code = codeToUse !== undefined ? codeToUse : promoCode;
     const credit = useCredit !== undefined ? useCredit : applyBuyerCredit;
     const targetPhone = phoneToUse !== undefined ? phoneToUse : phone;
-    
-    if (!code.trim() && !credit && !targetPhone.trim()) {
-      setPromoSimulation(null);
-      setPromoMessage('');
-      setPromoError('');
-      return;
-    }
 
     setIsValidatingPromo(true);
     setPromoError('');
@@ -1615,7 +1657,6 @@ export default function PublicCheckoutView() {
       }
     } catch (err: any) {
       setPromoError(err.response?.data?.detail || err.response?.data?.message || 'Failed to validate promo code.');
-      setPromoSimulation(null);
     } finally {
       setIsValidatingPromo(false);
     }
@@ -1750,8 +1791,11 @@ export default function PublicCheckoutView() {
     ? promoSimulation.total_buyer_pays
     : (promoSimulation?.net_total_to_pay_ghs !== undefined ? promoSimulation.net_total_to_pay_ghs : standardTotalToPay);
 
+  const seasonalDiscountGhs = promoSimulation?.seasonal_fee_discount_ghs || 0;
+  const seasonalCampaignName = promoSimulation?.seasonal_campaign_name || null;
   const promoDiscountGhs = promoSimulation?.promo_discount_ghs || 0;
   const creditDiscountGhs = promoSimulation?.credit_discount_ghs || 0;
+  const hasAnyDiscount = seasonalDiscountGhs > 0 || promoDiscountGhs > 0 || creditDiscountGhs > 0;
 
   const isPromoExpired = Boolean(
     publicSettings?.promotions_expires_at &&
@@ -1891,10 +1935,19 @@ export default function PublicCheckoutView() {
             <div className="space-y-1 pt-1">
               <div className="flex justify-between items-center text-slate-700 dark:text-slate-200">
                 <span className="flex items-center font-medium"><ShieldCheck className="h-4 w-4 mr-1.5 text-[#ff6d1d]" /> Escrow Protection Fee</span>
-                <span className={`font-extrabold text-base ${promoDiscountGhs > 0 || creditDiscountGhs > 0 ? 'text-slate-400 line-through text-xs' : 'text-emerald-700 dark:text-emerald-400'}`}>
+                <span className={`font-extrabold text-base ${hasAnyDiscount ? 'text-slate-400 line-through text-xs' : 'text-emerald-700 dark:text-emerald-400'}`}>
                   GHS {basePlatformFee.toFixed(2)}
                 </span>
               </div>
+
+              {seasonalDiscountGhs > 0 && (
+                <div className="flex justify-between items-center text-blue-600 dark:text-blue-400 text-xs font-semibold pl-6">
+                  <span className="flex items-center gap-1">
+                    <Sparkles className="h-3 w-3 text-blue-500" /> Seasonal Promo ({seasonalCampaignName || 'Campaign'})
+                  </span>
+                  <span>- GHS {seasonalDiscountGhs.toFixed(2)}</span>
+                </div>
+              )}
 
               {promoDiscountGhs > 0 && (
                 <div className="flex justify-between items-center text-purple-600 dark:text-purple-400 text-xs font-semibold pl-6">
@@ -1914,7 +1967,7 @@ export default function PublicCheckoutView() {
                 </div>
               )}
 
-              {(promoDiscountGhs > 0 || creditDiscountGhs > 0) && (
+              {hasAnyDiscount && (
                 <div className="flex justify-between items-center text-emerald-700 dark:text-emerald-400 font-bold text-xs pl-6 pt-0.5">
                   <span>Net Escrow Fee</span>
                   <span>{finalPlatformFee === 0 ? 'GHS 0.00 (100% Subsidized)' : `GHS ${finalPlatformFee.toFixed(2)}`}</span>
@@ -1933,7 +1986,22 @@ export default function PublicCheckoutView() {
         </div>
 
         {/* Checkout Form */}
-        <div className="p-6">
+        <div className="p-6 space-y-4">
+          {/* Active Seasonal Campaign Promotion Banner */}
+          {seasonalDiscountGhs > 0 && (
+            <div className="bg-gradient-to-r from-blue-500/10 via-indigo-500/10 to-purple-500/10 border border-blue-500/30 rounded-2xl p-3.5 flex items-center justify-between gap-3 text-xs text-blue-900 dark:text-blue-100 shadow-xs">
+              <div className="flex items-center gap-2.5 font-bold min-w-0">
+                <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0 animate-pulse" />
+                <span className="truncate">
+                  🎉 Active Promotion Applied: <strong>{seasonalCampaignName}</strong> (-GHS {seasonalDiscountGhs.toFixed(2)} Platform Fee Discount)
+                </span>
+              </div>
+              <span className="bg-blue-600 text-white text-[10px] font-black uppercase px-2.5 py-0.5 rounded-full shadow-xs shrink-0">
+                Auto Applied
+              </span>
+            </div>
+          )}
+
           <form onSubmit={handleSendOtp} className="space-y-5">
             {/* Prefill helper notice for logged-in or direct order buyers */}
             {(isAuthenticated || link.is_direct_order) && (

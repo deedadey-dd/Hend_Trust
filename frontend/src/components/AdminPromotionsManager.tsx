@@ -614,7 +614,11 @@ export const AdminPromotionsManager: React.FC<AdminPromotionsManagerProps> = ({
 
   const handleTogglePromoActive = async () => {
     const nextState = !platformSettings.promotions_active;
-    await onUpdateSettings({ promotions_active: nextState });
+    if (nextState && isPromoExpired) {
+      await onUpdateSettings({ promotions_active: true, promotions_expires_at: null });
+    } else {
+      await onUpdateSettings({ promotions_active: nextState });
+    }
   };
 
   // --- Promo Code Handlers ---

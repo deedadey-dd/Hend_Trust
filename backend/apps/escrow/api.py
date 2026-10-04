@@ -3633,6 +3633,13 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     # Promotions Settings Updates
     if data.promotions_active is not None:
         current["promotions_active"] = bool(data.promotions_active)
+        # If enabling promotions and the current expiration timestamp is in the past, clear the expired date
+        if bool(data.promotions_active) and current.get("promotions_expires_at") and data.promotions_expires_at is None:
+            from django.utils.dateparse import parse_datetime
+            from django.utils import timezone
+            exp = parse_datetime(current["promotions_expires_at"])
+            if exp and exp <= timezone.now():
+                current["promotions_expires_at"] = None
 
     if data.promotions_expires_at is not None:
         current["promotions_expires_at"] = data.promotions_expires_at if data.promotions_expires_at else None
