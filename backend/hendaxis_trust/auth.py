@@ -8,18 +8,24 @@ class JWTCookieAuth(JWTAuth):
     """
     def __call__(self, request):
         # 1. Try to get token from header using parent HttpBearer
-        user = super().__call__(request)
-        if user:
-            request.user = user
-            return user
+        try:
+            user = super().__call__(request)
+            if user:
+                request.user = user
+                return user
+        except Exception:
+            pass
             
         # 2. Try to get token from cookie
         cookie_name = settings.NINJA_JWT.get('AUTH_COOKIE', 'access_token')
         if cookie_name and cookie_name in request.COOKIES:
             cookie_token = request.COOKIES[cookie_name]
-            u = self.authenticate(request, cookie_token)
-            if u:
-                request.user = u
-                return u
+            try:
+                u = self.authenticate(request, cookie_token)
+                if u:
+                    request.user = u
+                    return u
+            except Exception:
+                pass
             
         return None

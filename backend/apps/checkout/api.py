@@ -68,6 +68,8 @@ class ValidatePromoResponseSchema(Schema):
     discount_amount_ghs: float = 0.0
     promo_discount_ghs: float
     credit_discount_ghs: float
+    seasonal_fee_discount_ghs: float = 0.0
+    seasonal_campaign_name: Optional[str] = None
     total_fee_subsidy_ghs: float
     effective_platform_fee: float
     final_platform_fee_ghs: float
@@ -143,6 +145,8 @@ class TransactionStatusSchema(Schema):
     base_platform_fee_ghs: Optional[float] = None
     promo_discount_ghs: Optional[float] = 0.0
     credit_discount_ghs: Optional[float] = 0.0
+    seasonal_fee_discount_ghs: Optional[float] = 0.0
+    seasonal_campaign_name: Optional[str] = None
     promo_code_applied: Optional[str] = None
     fee_handling: Optional[str] = "PASS_TO_BUYER"
 
@@ -271,6 +275,8 @@ def _build_txn_status_dict(t):
         "base_platform_fee_ghs": round(float(((t.link.price_ghs + t.link.shipping_fee_ghs) * Decimal('0.015')) + Decimal('10.00')), 2) if (t.link and t.link.fee_handling == 'PASS_TO_BUYER') else 0.0,
         "promo_discount_ghs": float(t.promo_discount_ghs or 0.0),
         "credit_discount_ghs": float(t.credit_discount_ghs or 0.0),
+        "seasonal_fee_discount_ghs": float(getattr(t, 'seasonal_fee_discount_ghs', None) or 0.0),
+        "seasonal_campaign_name": t.seasonal_fee_campaign.name if getattr(t, 'seasonal_fee_campaign', None) else None,
         "promo_code_applied": t.promo_code.code if t.promo_code else None,
         "fee_handling": t.link.fee_handling if t.link else "PASS_TO_BUYER",
     }
@@ -479,6 +485,8 @@ def validate_promo(request, data: ValidatePromoRequestSchema):
         "discount_amount_ghs": float(pricing["promo_discount_ghs"]),
         "promo_discount_ghs": float(pricing["promo_discount_ghs"]),
         "credit_discount_ghs": float(pricing["credit_discount_ghs"]),
+        "seasonal_fee_discount_ghs": float(pricing.get("seasonal_fee_discount_ghs", Decimal('0.00'))),
+        "seasonal_campaign_name": pricing.get("seasonal_campaign_name"),
         "total_fee_subsidy_ghs": float(pricing["total_fee_subsidy_ghs"]),
         "effective_platform_fee": float(pricing["effective_platform_fee"]),
         "final_platform_fee_ghs": float(pricing["effective_platform_fee"]),
@@ -606,6 +614,9 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
         except Exception as reserve_err:
             raise HttpError(400, f"Unable to apply promotional credit: {str(reserve_err)}")
 
+    seasonal_discount = Decimal(str(pricing.get("seasonal_fee_discount_ghs", Decimal('0.00'))))
+    seasonal_campaign_obj = pricing.get("seasonal_fee_campaign")
+
     # Create transaction
     txn = Transaction.objects.create(
         link=link,
@@ -619,6 +630,8 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
         promo_code=promo_obj,
         promo_discount_ghs=promo_discount,
         credit_discount_ghs=credit_discount,
+        seasonal_fee_discount_ghs=seasonal_discount,
+        seasonal_fee_campaign=seasonal_campaign_obj,
         status=TransactionStatus.AWAITING_PAYMENT,
         paystack_reference=paystack_ref
     )
@@ -628,7 +641,7 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
         default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://pay.hendaxis.com'
         fallback_origin = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
         origin = request.headers.get('origin') or fallback_origin
-        cb_url = f"{origin}/l/{link.id}?reference={paystack_ref}"
+        cb_url = f"{origin}/l/{link.id}"
         
         from apps.escrow.api import get_platform_settings
         active_gw = get_platform_settings().get('active_payment_gateway', 'PAYSTACK')

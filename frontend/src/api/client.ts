@@ -10,10 +10,10 @@ export const apiClient = axios.create({
   timeout: 15000, // 15-second timeout — prevents indefinite hangs
 });
 
-// Request Interceptor: Attach Authorization Bearer token from authStore if present
+// Request Interceptor: Attach Authorization Bearer token from authStore if present and valid JWT format
 apiClient.interceptors.request.use((config) => {
   const token = useAuthStore.getState().token;
-  if (token && !config.headers.Authorization) {
+  if (token && typeof token === 'string' && token.split('.').length === 3 && !config.headers.Authorization) {
     config.headers.Authorization = `Bearer ${token}`;
   }
   return config;
