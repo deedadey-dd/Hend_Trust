@@ -92,19 +92,34 @@ describe('PublicCheckoutView Integration Tests', () => {
     getSpy.mockImplementation(handleGet);
     clientGetSpy.mockImplementation(handleGet);
 
-    const handlePost = (url: string) => {
+    const handlePost = (url: string, data?: any) => {
       if (url.includes('/checkout/validate-promo')) {
+        if (data?.promo_code === 'PROMO10') {
+          return Promise.resolve({
+            data: {
+              valid: true,
+              promo_code_applied: 'PROMO10',
+              promo_discount_ghs: 10.0,
+              credit_discount_ghs: 0.0,
+              base_platform_fee: 13.75,
+              effective_platform_fee: 3.75,
+              final_platform_fee_ghs: 3.75,
+              total_buyer_pays: 253.75,
+              net_total_to_pay_ghs: 253.75,
+            },
+          });
+        }
         return Promise.resolve({
           data: {
             valid: true,
-            promo_code_applied: 'PROMO10',
-            promo_discount_ghs: 10.0,
+            promo_code_applied: null,
+            promo_discount_ghs: 0.0,
             credit_discount_ghs: 0.0,
             base_platform_fee: 13.75,
-            effective_platform_fee: 3.75,
-            final_platform_fee_ghs: 3.75,
-            total_buyer_pays: 253.75,
-            net_total_to_pay_ghs: 253.75,
+            effective_platform_fee: 13.75,
+            final_platform_fee_ghs: 13.75,
+            total_buyer_pays: 263.75,
+            net_total_to_pay_ghs: 263.75,
           },
         });
       }
