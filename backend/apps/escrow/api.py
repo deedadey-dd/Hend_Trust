@@ -3350,6 +3350,11 @@ DEFAULT_SYSTEM_SETTINGS = {
 
 
 def get_platform_settings():
+    from django.core.cache import cache
+    cached = cache.get("system_platform_settings")
+    if cached is not None:
+        return cached
+
     admin_url = getattr(settings, 'DJANGO_ADMIN_URL', 'admin/').strip('/') + '/'
     try:
         setting = PlatformSetting.objects.filter(key="system_config").first()
@@ -3368,6 +3373,7 @@ def get_platform_settings():
             if exp and exp <= timezone.now():
                 res["promotions_active"] = False
 
+        cache.set("system_platform_settings", res, timeout=60)
         return res
     except Exception:
         res = DEFAULT_SYSTEM_SETTINGS.copy()
@@ -3662,6 +3668,9 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     setting, _ = PlatformSetting.objects.get_or_create(key="system_config")
     setting.value = current
     setting.save()
+
+    from django.core.cache import cache
+    cache.delete("system_platform_settings")
 
     return current
 

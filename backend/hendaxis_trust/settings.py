@@ -146,10 +146,15 @@ WSGI_APPLICATION = 'hendaxis_trust.wsgi.application'
 # Database
 # SQLite for development, PostgreSQL for production
 if not DEBUG and env('DATABASE_URL', default=''):
-    # Production: PostgreSQL
+    # Production: PostgreSQL with persistent connection pooling
     import dj_database_url
+    conn_max_age = env.int('DATABASE_CONN_MAX_AGE', default=60)
     DATABASES = {
-        'default': dj_database_url.config(default=env('DATABASE_URL'))
+        'default': dj_database_url.config(
+            default=env('DATABASE_URL'),
+            conn_max_age=conn_max_age,
+            conn_health_checks=True
+        )
     }
 else:
     # Development: SQLite — one database per git branch
@@ -206,19 +211,15 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'users.User'
 
 # Cache Configuration
-# Django's cache is used by rate limiting and OTP storage.
+# Django's cache is used by rate limiting, hot queries, and OTP storage.
 # In dev/test, use LocMemCache (single-process, fast).
-# In production, override CACHE_URL in .env to use Redis.
-_cache_url = env('CACHE_URL', default='')
+# In production, use RedisCache (Django 5 native backend).
+_cache_url = env('CACHE_URL', default=env('REDIS_URL', default=''))
 if _cache_url:
-    import django_redis  # noqa: F401  # ensure django-redis is installed in prod
     CACHES = {
         'default': {
-            'BACKEND': 'django_redis.cache.RedisCache',
+            'BACKEND': 'django.core.cache.backends.redis.RedisCache',
             'LOCATION': _cache_url,
-            'OPTIONS': {
-                'CLIENT_CLASS': 'django_redis.client.DefaultClient',
-            }
         }
     }
 else:
