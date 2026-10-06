@@ -131,3 +131,14 @@ backend/staticfiles/**
 backend/EOF
 backend/from
 backend/try:
+
+# Stress Test & Capacity Reports (Prevent deploy.sh git conflicts)
+reports/
+reports/**
+scripts/reports/
+scripts/reports/**
+*.report.html
+*.report.pdf
+stress_test_report_*.md
+stress_test_report_*.html
+stress_test_report_*.pdf
