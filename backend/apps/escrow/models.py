@@ -324,6 +324,22 @@ class PlatformSetting(models.Model):
     value = models.JSONField(default=dict)
     updated_at = models.DateTimeField(auto_now=True)
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        try:
+            from django.core.cache import cache
+            cache.delete("system_platform_settings")
+        except Exception:
+            pass
+
+    def delete(self, *args, **kwargs):
+        try:
+            from django.core.cache import cache
+            cache.delete("system_platform_settings")
+        except Exception:
+            pass
+        return super().delete(*args, **kwargs)
+
     def __str__(self):
         return f"Setting: {self.key}"
 

@@ -562,6 +562,12 @@ class MarketplaceDirectorySchema(Schema):
 
 @reviews_router.get("/shops", response=MarketplaceDirectorySchema, auth=None)
 def get_marketplace_directory(request, query: Optional[str] = None, category: Optional[str] = None):
+    from django.core.cache import cache
+    cache_key = f"marketplace_dir:{query or ''}:{category or ''}"
+    cached_payload = cache.get(cache_key)
+    if cached_payload is not None:
+        return cached_payload
+
     from django.db.models import Q, Prefetch, Count, Avg
     from apps.links.models import PaymentLink
     from apps.users.models import VerificationStatus
@@ -822,11 +828,13 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
         else:
             standard_list.append(shop_data)
 
-    return {
+    result = {
         "matched_products": matched_products_list,
         "featured_shops": featured_list,
         "standard_shops": standard_list
     }
+    cache.set(cache_key, result, timeout=30)
+    return result
 
 
 

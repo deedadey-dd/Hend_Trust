@@ -80,8 +80,8 @@ echo -e "${GREEN}✓ Celery Worker launched in background.${NC}"
 nohup celery -A hendaxis_trust beat -l info > celery_beat.log 2>&1 &
 echo -e "${GREEN}✓ Celery Beat launched in background.${NC}"
 
-nohup gunicorn --workers 4 --bind 127.0.0.1:8000 hendaxis_trust.wsgi:application > gunicorn.log 2>&1 &
-echo -e "${GREEN}✓ Gunicorn WSGI Server launched in background.${NC}\n"
+nohup gunicorn --worker-class gthread --workers 5 --threads 8 --worker-connections 1000 --max-requests 5000 --max-requests-jitter 500 --bind 127.0.0.1:8000 hendaxis_trust.wsgi:application > gunicorn.log 2>&1 &
+echo -e "${GREEN}✓ Gunicorn WSGI Server (gthread: 5 workers x 8 threads = 40 concurrency slots) launched in background.${NC}\n"
 
 # 5. BUILD FRONTEND ASSETS
 echo -e "${YELLOW}[5/6] Installing dependencies & building frontend production bundle...${NC}"

@@ -123,15 +123,16 @@ python manage.py createsuperuser
 ### Service 1: Gunicorn WSGI Server (`/etc/systemd/system/hendaxis-backend.service`)
 ```ini
 [Unit]
-Description=HendAxis Trust Gunicorn Daemon
+Description=HendAxis Trust Gunicorn Daemon (High-Concurrency gthread)
 After=network.target postgresql.service redis.service
 
 [Service]
 User=root
 Group=www-data
 WorkingDirectory=/var/www/hendaxis/backend
-ExecStart=/var/www/hendaxis/venv/bin/gunicorn --workers 4 --bind 127.0.0.1:8000 hendaxis_trust.wsgi:application
+ExecStart=/var/www/hendaxis/venv/bin/gunicorn --worker-class gthread --workers 5 --threads 8 --worker-connections 1000 --max-requests 5000 --max-requests-jitter 500 --bind 127.0.0.1:8000 hendaxis_trust.wsgi:application
 Restart=always
+RestartSec=3
 
 [Install]
 WantedBy=multi-user.target
@@ -191,6 +192,11 @@ npm run build
 
 ### B. Configure Nginx (`/etc/nginx/sites-available/hendaxis`)
 ```nginx
+upstream hendaxis_backend {
+    server 127.0.0.1:8000;
+    keepalive 64;
+}
+
 server {
     server_name trust.hendaxis.com pay.hendaxis.com api.hendaxis.com;
 
@@ -204,11 +210,15 @@ server {
     # Backend Django Static Files
     location /static/ {
         alias /var/www/hendaxis/backend/static/;
+        expires 30d;
+        add_header Cache-Control "public, no-transform";
     }
 
-    # API Proxy to Gunicorn
+    # API Proxy to Gunicorn with HTTP/1.1 Keepalive
     location /api/ {
-        proxy_pass http://127.0.0.1:8000/api/;
+        proxy_pass http://hendaxis_backend/api/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
@@ -217,7 +227,9 @@ server {
 
     # Django Native Admin Proxy to Gunicorn
     location /django-admin/ {
-        proxy_pass http://127.0.0.1:8000/admin/;
+        proxy_pass http://hendaxis_backend/admin/;
+        proxy_http_version 1.1;
+        proxy_set_header Connection "";
         proxy_set_header Host $host;
         proxy_set_header X-Real-IP $remote_addr;
         proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
