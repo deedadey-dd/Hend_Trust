@@ -84,13 +84,17 @@ class HendAxisStressTester:
         
         self.timestamp_str = datetime.now().strftime("%Y%m%d_%H%M%S")
         self.session = requests.Session()
+        adapter = requests.adapters.HTTPAdapter(pool_connections=1000, pool_maxsize=1000, max_retries=1)
+        self.session.mount("http://", adapter)
+        self.session.mount("https://", adapter)
         
         # Test Scenarios definition
         self.scenarios = [
-            {"name": "GET /api/v1/shops/ (Marketplace)", "method": "GET", "path": "/api/v1/shops/", "payload": None, "weight": 4},
-            {"name": "GET /api/v1/shops/?search=phone (Search)", "method": "GET", "path": "/api/v1/shops/?search=phone", "payload": None, "weight": 3},
-            {"name": "GET /api/v1/escrow/public-settings (Config)", "method": "GET", "path": "/api/v1/escrow/public-settings", "payload": None, "weight": 2},
-            {"name": "GET /api/v1/shops/?category=Phones (Category)", "method": "GET", "path": "/api/v1/shops/?category=Phones%20%26%20Tablets", "payload": None, "weight": 2},
+            {"name": "GET /api/v1/reviews/shops (Marketplace)", "method": "GET", "path": "/api/v1/reviews/shops", "payload": None, "weight": 4},
+            {"name": "GET /api/v1/reviews/shops?query=phone (Search)", "method": "GET", "path": "/api/v1/reviews/shops?query=phone", "payload": None, "weight": 3},
+            {"name": "GET /api/v1/escrow/public-settings (Config)", "method": "GET", "path": "/api/v1/escrow/public-settings", "payload": None, "weight": 3},
+            {"name": "GET /api/v1/reviews/recent (Recent Reviews)", "method": "GET", "path": "/api/v1/reviews/recent", "payload": None, "weight": 2},
+            {"name": "GET /api/v1/reviews/shops?category=Phones (Category)", "method": "GET", "path": "/api/v1/reviews/shops?category=Phones%20%26%20Tablets", "payload": None, "weight": 2},
             {"name": "POST /api/v1/checkout/validate-promo (Promo)", "method": "POST", "path": "/api/v1/checkout/validate-promo", 
              "payload": {"link_id": "00000000-0000-0000-0000-000000000000", "promo_code": "BETA2026", "apply_buyer_credit": False}, "weight": 1},
         ]
@@ -162,7 +166,7 @@ class HendAxisStressTester:
             scenario = random.choice(scenario_list)
             res = self._execute_single_request(scenario)
             results.append(res)
-            time.sleep(random.uniform(0.02, 0.08))
+            time.sleep(random.uniform(0.001, 0.005))
         return results
 
     def run_step(self, worker_count: int) -> dict:
@@ -660,7 +664,7 @@ def main():
     parser = argparse.ArgumentParser(description="HendAxis Trust Production Stress & Capacity Tester")
     parser.add_argument("--url", default="http://127.0.0.1:8000", help="Target server URL (e.g. https://staging.hendaxistrust.com or http://127.0.0.1:8000)")
     parser.add_argument("--mode", choices=["breakpoint", "load", "spike", "quick"], default="breakpoint", help="Test mode: breakpoint (step-up), load, spike, quick")
-    parser.add_argument("--max-workers", type=int, default=150, help="Maximum concurrent virtual workers to test")
+    parser.add_argument("--max-workers", "--users", "-u", dest="max_workers", type=int, default=150, help="Maximum concurrent virtual workers/users to test")
     parser.add_argument("--step-size", type=int, default=25, help="Worker increment size per step (breakpoint mode)")
     parser.add_argument("--duration", type=int, default=10, help="Duration in seconds per concurrency tier")
     parser.add_argument("--timeout", type=float, default=5.0, help="HTTP request timeout in seconds")
