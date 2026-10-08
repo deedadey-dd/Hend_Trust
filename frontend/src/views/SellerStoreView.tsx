@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
   Shield, ShieldCheck, Star, Award, CheckCircle2, MessageSquare, Loader2, 
-  Calendar, PackageCheck, Send, Zap, ChevronRight, Pencil, Package, ExternalLink, 
-  MessageCircle, Info, Phone, Truck, AlertTriangle, X, Tag
+  Calendar, PackageCheck, Send, Zap, ChevronRight, ChevronLeft, Pencil, Package, ExternalLink, 
+  MessageCircle, Info, Phone, AlertTriangle, X, Tag, Search, Flame, 
+  ShoppingBag, ArrowUpDown, ChevronDown
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -59,6 +60,8 @@ interface RecommendedShop {
   shop_description: string;
   profile_picture_url?: string;
   avg_overall: number;
+  is_featured?: boolean;
+  advertised_until?: string | null;
 }
 
 interface SellerStorefront {
@@ -83,6 +86,10 @@ interface SellerStorefront {
   active_products?: ProductCard[];
 }
 
+const OVERVIEW_ITEMS_PER_PAGE = 6; // 3 x 2 Grid for compact overview
+const CATALOG_ITEMS_PER_PAGE = 9;   // 3 x 3 Grid for full catalog browsing
+const REVIEWS_PER_PAGE = 6;
+
 export default function SellerStoreView() {
   const modal = useModal();
   const { username } = useParams<{ username: string }>();
@@ -91,6 +98,25 @@ export default function SellerStoreView() {
   const [recommendedShops, setRecommendedShops] = useState<RecommendedShop[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+
+  // Tab State: 'overview' | 'products' | 'reviews'
+  const [activeTab, setActiveTab] = useState<'overview' | 'products' | 'reviews'>('overview');
+
+  // Products Pagination & Filtering State
+  const [overviewProductPage, setOverviewProductPage] = useState(1);
+  const [catalogProductPage, setCatalogProductPage] = useState(1);
+  const [productSearch, setProductSearch] = useState('');
+  const [productCategoryFilter, setProductCategoryFilter] = useState('ALL');
+  const [productSortBy, setProductSortBy] = useState<'popular' | 'newest' | 'price_low' | 'price_high'>('popular');
+
+  // Reviews Tab Filtering & Search State
+  const [reviewSearch, setReviewSearch] = useState('');
+  const [reviewRatingFilter, setReviewRatingFilter] = useState<number | 'ALL'>('ALL');
+  const [reviewPage, setReviewPage] = useState(1);
+
+  // Carousel ref for Overview tab reviews
+  const reviewCarouselRef = useRef<HTMLDivElement>(null);
+  const productsSectionRef = useRef<HTMLDivElement>(null);
 
   // Selected review for detail modal
   const [selectedReview, setSelectedReview] = useState<RecentReview | null>(null);
@@ -119,11 +145,8 @@ export default function SellerStoreView() {
   const fetchRecommendedShops = async () => {
     try {
       const res = await apiClient.get('/reviews/shops');
-      const allShops: RecommendedShop[] = [
-        ...(res.data.featured_shops || []),
-        ...(res.data.standard_shops || [])
-      ];
-      setRecommendedShops(allShops);
+      // Only include shops that have an active paid advertisement (featured_shops)
+      setRecommendedShops(res.data.featured_shops || []);
     } catch {
       /* ignore */
     }
@@ -133,6 +156,9 @@ export default function SellerStoreView() {
     if (username) {
       fetchStorefront();
       fetchRecommendedShops();
+      setOverviewProductPage(1);
+      setCatalogProductPage(1);
+      setReviewPage(1);
     }
   }, [username]);
 
@@ -183,24 +209,136 @@ export default function SellerStoreView() {
     }
   };
 
+  const scrollReviewCarousel = (direction: 'left' | 'right') => {
+    if (reviewCarouselRef.current) {
+      const { scrollLeft, clientWidth } = reviewCarouselRef.current;
+      const scrollAmount = clientWidth * 0.75;
+      reviewCarouselRef.current.scrollTo({
+        left: direction === 'left' ? scrollLeft - scrollAmount : scrollLeft + scrollAmount,
+        behavior: 'smooth'
+      });
+    }
+  };
+
+  // ── Sorted Products Logic for Overview (Top 3 Popular in Row 1, then Recent) ──
+  const overviewOrderedProducts = useMemo(() => {
+    if (!store?.active_products || store.active_products.length === 0) return [];
+    return [...store.active_products];
+  }, [store?.active_products]);
+
+  // Paginated products for Overview (3x2 = 6 per page)
+  const totalOverviewPages = Math.ceil((overviewOrderedProducts.length || 0) / OVERVIEW_ITEMS_PER_PAGE);
+  const currentOverviewProducts = useMemo(() => {
+    const start = (overviewProductPage - 1) * OVERVIEW_ITEMS_PER_PAGE;
+    return overviewOrderedProducts.slice(start, start + OVERVIEW_ITEMS_PER_PAGE);
+  }, [overviewOrderedProducts, overviewProductPage]);
+
+  // ── Filtered & Sorted Products for Catalog Tab ──
+  const availableCategories = useMemo(() => {
+    if (!store?.active_products) return [];
+    const cats = new Set<string>();
+    store.active_products.forEach(p => {
+      if (p.category) cats.add(p.category);
+    });
+    return Array.from(cats);
+  }, [store?.active_products]);
+
+  const catalogFilteredProducts = useMemo(() => {
+    if (!store?.active_products) return [];
+    let list = [...store.active_products];
+
+    // Search filter
+    if (productSearch.trim()) {
+      const q = productSearch.toLowerCase();
+      list = list.filter(p => p.title.toLowerCase().includes(q) || (p.description && p.description.toLowerCase().includes(q)));
+    }
+
+    // Category filter
+    if (productCategoryFilter !== 'ALL') {
+      list = list.filter(p => p.category === productCategoryFilter);
+    }
+
+    // Sorting
+    if (productSortBy === 'newest') {
+      list.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+    } else if (productSortBy === 'price_low') {
+      list.sort((a, b) => a.price_ghs - b.price_ghs);
+    } else if (productSortBy === 'price_high') {
+      list.sort((a, b) => b.price_ghs - a.price_ghs);
+    }
+
+    return list;
+  }, [store?.active_products, productSearch, productCategoryFilter, productSortBy]);
+
+  const totalCatalogPages = Math.ceil((catalogFilteredProducts.length || 0) / CATALOG_ITEMS_PER_PAGE);
+  const currentCatalogProducts = useMemo(() => {
+    const start = (catalogProductPage - 1) * CATALOG_ITEMS_PER_PAGE;
+    return catalogFilteredProducts.slice(start, start + CATALOG_ITEMS_PER_PAGE);
+  }, [catalogFilteredProducts, catalogProductPage]);
+
+  // ── Sorted Reviews for Carousel (Recent First) ──
+  const sortedReviews = useMemo(() => {
+    if (!store?.reviews) return [];
+    return [...store.reviews].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+  }, [store?.reviews]);
+
+  // ── Filtered Reviews for Reviews Tab ──
+  const filteredReviewsList = useMemo(() => {
+    if (!store?.reviews) return [];
+    let list = [...store.reviews].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+    if (reviewRatingFilter !== 'ALL') {
+      list = list.filter(r => Math.round(r.rating_overall) === reviewRatingFilter);
+    }
+
+    if (reviewSearch.trim()) {
+      const q = reviewSearch.toLowerCase();
+      list = list.filter(r => 
+        r.buyer_name.toLowerCase().includes(q) || 
+        r.item_title.toLowerCase().includes(q) || 
+        (r.comment && r.comment.toLowerCase().includes(q))
+      );
+    }
+
+    return list;
+  }, [store?.reviews, reviewRatingFilter, reviewSearch]);
+
+  const totalReviewPages = Math.ceil((filteredReviewsList.length || 0) / REVIEWS_PER_PAGE);
+  const currentPaginatedReviews = useMemo(() => {
+    const start = (reviewPage - 1) * REVIEWS_PER_PAGE;
+    return filteredReviewsList.slice(start, start + REVIEWS_PER_PAGE);
+  }, [filteredReviewsList, reviewPage]);
+
+  // Rating breakdown stats
+  const ratingCounts = useMemo(() => {
+    const counts: Record<number, number> = { 5: 0, 4: 0, 3: 0, 2: 0, 1: 0 };
+    if (store?.reviews) {
+      store.reviews.forEach(r => {
+        const rounded = Math.min(5, Math.max(1, Math.round(r.rating_overall)));
+        counts[rounded] = (counts[rounded] || 0) + 1;
+      });
+    }
+    return counts;
+  }, [store?.reviews]);
+
   if (loading) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
       <Loader2 className="animate-spin text-blue-600 h-8 w-8" />
     </div>
   );
 
   if (error || !store) return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 text-red-500 font-medium">{error}</div>
+    <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950 text-red-500 font-medium">{error}</div>
   );
 
-  const isOwner = user && (
+  const isOwner = Boolean(user && (
     user.id === store.seller_id || 
     (user.email && user.email.split('@')[0].toLowerCase() === store.seller_username.toLowerCase()) ||
     (user.username && user.username.toLowerCase() === store.seller_username.toLowerCase())
-  );
+  ));
 
-  // Filter recommended shops to exclude current seller
-  const filteredAds = recommendedShops.filter(
+  // Filter recommended paid advertised shops to exclude current seller
+  const paidFeaturedAds = recommendedShops.filter(
     s => s.seller_username.toLowerCase() !== store.seller_username.toLowerCase()
   );
 
@@ -219,8 +357,132 @@ export default function SellerStoreView() {
     } : undefined
   };
 
+  // Reusable Compact Product Card Component
+  const renderProductCard = (prod: ProductCard, isPopularRow: boolean = false) => (
+    <div
+      key={prod.link_id}
+      className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200/90 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-lg transition-all flex flex-col overflow-hidden group relative"
+    >
+      {/* Product Image */}
+      <div 
+        onClick={() => setShippingModalProduct(prod)}
+        className="h-36 sm:h-40 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0 cursor-pointer"
+      >
+        {prod.image_url ? (
+          <img
+            src={prod.image_url}
+            alt={prod.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-indigo-950 text-slate-400 p-3 text-center">
+            <Package className="h-8 w-8 text-slate-500 mb-1" />
+            <span className="text-xs font-semibold text-slate-300 line-clamp-1">{prod.title}</span>
+          </div>
+        )}
+
+        {/* Popular Badge if in first row / top items */}
+        {isPopularRow && (
+          <div className="absolute top-2 left-2">
+            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500 text-white font-black text-[10px] uppercase tracking-wider shadow-md">
+              <Flame className="h-3 w-3 fill-white" /> Popular
+            </span>
+          </div>
+        )}
+
+        {/* Floating Price Tag */}
+        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1">
+          <span className="px-2 py-0.5 rounded-lg bg-slate-950/90 backdrop-blur-md text-emerald-400 font-extrabold text-[11px] sm:text-xs shadow-lg border border-emerald-500/30 font-mono">
+            GH₵ {Number(prod.price_ghs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          {prod.category && (
+            <span className="px-1.5 py-0.5 rounded-md bg-slate-900/80 backdrop-blur-md text-slate-300 text-[9.5px] font-medium truncate max-w-[110px]">
+              {prod.category}
+            </span>
+          )}
+        </div>
+      </div>
+
+      {/* Card Content */}
+      <div className="p-3 sm:p-3.5 flex flex-col flex-1 justify-between gap-2.5">
+        <div>
+          <h4 
+            onClick={() => setShippingModalProduct(prod)}
+            className="font-bold text-gray-900 dark:text-white text-xs sm:text-sm line-clamp-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors cursor-pointer"
+            title={prod.title}
+          >
+            {prod.title}
+          </h4>
+          {prod.description && (
+            <p className="text-[11px] text-gray-500 dark:text-slate-400 line-clamp-1 mt-0.5">
+              {prod.description}
+            </p>
+          )}
+        </div>
+
+        {/* Shipping Notice Trigger (Compact 1-line) */}
+        <button
+          type="button"
+          onClick={() => setShippingModalProduct(prod)}
+          className="w-full flex items-center justify-between text-[10.5px] text-slate-600 dark:text-slate-400 bg-slate-100/90 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 transition cursor-pointer text-left"
+        >
+          <div className="flex items-center gap-1 truncate">
+            <span className="text-[9.5px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider shrink-0">📦 Shipping:</span>
+            <span className="truncate">Based on location</span>
+          </div>
+          <ChevronRight className="h-3 w-3 text-slate-400 shrink-0 ml-1" />
+        </button>
+
+        {/* Action Buttons: 1-line Compact Buy Button + Contact Icons */}
+        <div className="pt-1.5 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between gap-1.5">
+          <button
+            type="button"
+            onClick={() => setShippingModalProduct(prod)}
+            className="flex-1 py-1.5 px-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center whitespace-nowrap truncate cursor-pointer"
+          >
+            <span className="truncate">Buy via Escrow</span>
+          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {prod.seller_phone && (
+              <a
+                href={`tel:${prod.seller_phone}`}
+                className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/60 dark:hover:text-blue-400 text-slate-700 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition shadow-2xs cursor-pointer"
+                title={`Call seller (${prod.seller_phone})`}
+                aria-label={`Call seller at ${prod.seller_phone}`}
+              >
+                <Phone className="w-3 h-3 text-blue-600 dark:text-blue-400" />
+              </a>
+            )}
+            {prod.whatsapp_contact_url ? (
+              <a
+                href={prod.whatsapp_contact_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-7 w-7 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
+                title="Chat with seller on WhatsApp"
+                aria-label="Chat with seller on WhatsApp"
+              >
+                <MessageCircle className="w-3.5 h-3.5" />
+              </a>
+            ) : (
+              <Link
+                to={`/l/${prod.link_id}`}
+                className="h-7 w-7 rounded-lg bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-xs transition"
+                title="View Payment Link"
+                aria-label="View Payment Link"
+              >
+                <ExternalLink className="w-3 h-3" />
+              </Link>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
   return (
-    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 pb-12 transition-colors">
+    <div className="min-h-screen bg-gray-50 dark:bg-slate-950 pb-16 transition-colors">
       <SEOHead
         title={storeTitle}
         description={storeDesc}
@@ -228,10 +490,11 @@ export default function SellerStoreView() {
         ogImage={store.profile_picture_url || 'https://trust.hendaxis.com/og_preview_banner.jpg'}
         jsonLd={storeJsonLd}
       />
-      {/* Sticky Top Shop Header Bar (Comprehensive Storefront Identity & Trust Bar) */}
+
+      {/* Sticky Top Shop Header Bar (Storefront Identity & Trust Bar) */}
       <div className="sticky top-16 z-30 bg-white/90 dark:bg-slate-900/90 backdrop-blur-md border-b border-gray-200/80 dark:border-slate-800 px-4 sm:px-6 lg:px-8 py-3 shadow-xs transition-colors">
         <div className="max-w-4xl mx-auto flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4">
-          {/* Left: Shop Logo + Name + Verified Badges + Username + Member Since */}
+          {/* Left: Shop Logo + Name + Verified Badges + Username */}
           <div className="flex items-center gap-3 min-w-0">
             {store.profile_picture_url ? (
               <img
@@ -280,13 +543,11 @@ export default function SellerStoreView() {
 
           {/* Right: Escrows Count & Rating Stats Chips */}
           <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-            {/* Completed Escrows Pill */}
             <span className="inline-flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-2.5 sm:px-3 py-1 rounded-xl text-xs shadow-2xs">
               <PackageCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
               <span>{store.total_completed_escrows} Escrows</span>
             </span>
 
-            {/* Overall Rating Pill */}
             <span className="inline-flex items-center gap-1 font-bold text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 sm:px-3 py-1 rounded-xl text-xs">
               <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
               <span>{store.avg_overall.toFixed(1)}</span>
@@ -298,9 +559,9 @@ export default function SellerStoreView() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto space-y-8 px-4 sm:px-6 lg:px-8 pt-6">
+      <div className="max-w-4xl mx-auto space-y-6 px-4 sm:px-6 lg:px-8 pt-6">
         
-        {/* 1. SELLER COVER BANNER (Undarkened, Clean Banner Image) */}
+        {/* 1. SELLER COVER BANNER */}
         <div className="rounded-3xl h-44 sm:h-56 md:h-64 w-full relative overflow-hidden shadow-md bg-slate-900 border border-gray-200/60 dark:border-slate-800">
           {store.banner_url ? (
             <img 
@@ -315,9 +576,8 @@ export default function SellerStoreView() {
           )}
         </div>
 
-        {/* 2. COMPACT 3-AXIS RATING SCORECARDS (Reduced vertical height & overlapping banner bottom) */}
+        {/* 2. COMPACT 3-AXIS RATING SCORECARDS */}
         <div className="-mt-6 sm:-mt-7 relative z-10 grid grid-cols-3 gap-2.5 sm:gap-4 px-3 sm:px-6">
-          {/* Overall Rating Card */}
           <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md py-1.5 sm:py-2 px-2.5 sm:px-4 rounded-xl sm:rounded-2xl border border-gray-200/90 dark:border-slate-800 shadow-md flex flex-col sm:flex-row items-center justify-between gap-1 sm:gap-2 transition-all hover:shadow-lg">
             <span className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
               Overall
@@ -334,7 +594,6 @@ export default function SellerStoreView() {
             </div>
           </div>
 
-          {/* Speed Rating Card */}
           <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md py-1.5 sm:py-2 px-2.5 sm:px-4 rounded-xl sm:rounded-2xl border border-gray-200/90 dark:border-slate-800 shadow-md flex flex-col sm:flex-row items-center justify-between gap-1 sm:gap-2 transition-all hover:shadow-lg">
             <span className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
               Speed
@@ -351,7 +610,6 @@ export default function SellerStoreView() {
             </div>
           </div>
 
-          {/* Communication Rating Card */}
           <div className="bg-white/95 dark:bg-slate-900/95 backdrop-blur-md py-1.5 sm:py-2 px-2.5 sm:px-4 rounded-xl sm:rounded-2xl border border-gray-200/90 dark:border-slate-800 shadow-md flex flex-col sm:flex-row items-center justify-between gap-1 sm:gap-2 transition-all hover:shadow-lg">
             <span className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">
               Comm
@@ -372,7 +630,6 @@ export default function SellerStoreView() {
         {/* 2.5 STORE INFORMATION, CATEGORIES & BIO */}
         <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 shadow-sm border border-gray-200 dark:border-slate-800 transition-colors flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-2.5 max-w-2xl">
-            {/* Category Badges */}
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1">
                 <Tag className="h-3 w-3 text-blue-600 dark:text-blue-400" /> Categories:
@@ -390,7 +647,6 @@ export default function SellerStoreView() {
               )}
             </div>
 
-            {/* Shop Description / Bio */}
             {store.shop_description && (
               <p className="text-sm text-gray-700 dark:text-slate-300 leading-relaxed">
                 {store.shop_description}
@@ -398,206 +654,639 @@ export default function SellerStoreView() {
             )}
           </div>
 
-          {/* Quick Shop Escrow Badge */}
           <div className="shrink-0 flex items-center gap-2 self-start sm:self-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 px-3.5 py-2 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 shadow-2xs">
             <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
             <span>Escrow Protected Store</span>
           </div>
         </div>
 
-        {/* 3. ACTIVE PRODUCTS & ESCROW OFFERS SECTION */}
-        {store.active_products && store.active_products.length > 0 && (
-          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden transition-colors">
-            <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-              <div>
-                <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                  <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Products & Available Payment Links ({store.active_products.length})
-                </h3>
-                <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                  Order directly via verified Escrow protection or contact seller for custom delivery quotes.
-                </p>
+        {/* ── STORE NAVIGATION TABS (Overview, Products, Reviews) ── */}
+        <div className="flex items-center gap-2 border-b border-gray-200 dark:border-slate-800 pb-2 overflow-x-auto scrollbar-none">
+          <button
+            type="button"
+            onClick={() => setActiveTab('overview')}
+            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+              activeTab === 'overview'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-slate-400 border border-gray-200/80 dark:border-slate-800 hover:bg-gray-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <span>Overview</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('products')}
+            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+              activeTab === 'products'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-slate-400 border border-gray-200/80 dark:border-slate-800 hover:bg-gray-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <ShoppingBag className="h-4 w-4" />
+            <span>All Products</span>
+            {store.active_products && store.active_products.length > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
+                activeTab === 'products' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+              }`}>
+                {store.active_products.length}
+              </span>
+            )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveTab('reviews')}
+            className={`px-4 py-2.5 rounded-2xl text-xs sm:text-sm font-extrabold transition-all flex items-center gap-2 shrink-0 cursor-pointer ${
+              activeTab === 'reviews'
+                ? 'bg-blue-600 text-white shadow-md shadow-blue-600/20'
+                : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-slate-400 border border-gray-200/80 dark:border-slate-800 hover:bg-gray-100 dark:hover:bg-slate-800'
+            }`}
+          >
+            <MessageSquare className="h-4 w-4" />
+            <span>Customer Reviews</span>
+            {store.reviews && store.reviews.length > 0 && (
+              <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
+                activeTab === 'reviews' ? 'bg-white/20 text-white' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300'
+              }`}>
+                {store.reviews.length}
+              </span>
+            )}
+          </button>
+        </div>
+
+        {/* ══════════════════════════════════════════════════════════
+            TAB 1: OVERVIEW TAB
+            - 3x2 Paginated Products (Row 1 Popular, then Recent)
+            - Reviews Carousel (Recent First with Horizontal Navigation)
+            - Featured / Recommended Escrow Merchants (Paid Ads Only)
+           ══════════════════════════════════════════════════════════ */}
+        {activeTab === 'overview' && (
+          <div className="space-y-8">
+            {/* Products Section (3x2 Grid = 6 items with Pagination) */}
+            <div ref={productsSectionRef} className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden transition-colors">
+              <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                      <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Store Products & Offers
+                    </h3>
+                    <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/80">
+                      {store.active_products?.length || 0}
+                    </span>
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                    First row features popular items, followed by recent catalog additions.
+                  </p>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-1 rounded-xl shrink-0" title="Shipping fees are based on your location.">
+                    <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
+                    <span>Shipping based on location</span>
+                  </div>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 text-[11px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-1 rounded-xl shrink-0" title="Shipping fees are based on your location and agreed upon with the seller.">
-                <Info className="h-3.5 w-3.5 text-amber-600 dark:text-amber-400" />
-                <span>Shipping cost is based on your location</span>
+
+              <div className="p-6 space-y-6">
+                {currentOverviewProducts.length === 0 ? (
+                  <div className="p-12 text-center text-gray-500 dark:text-slate-400">
+                    <Package className="h-12 w-12 mx-auto text-gray-300 dark:text-slate-600 mb-3" />
+                    <p className="font-semibold text-gray-700 dark:text-slate-300 text-base">No active products listed yet.</p>
+                    <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">Products and instant checkout links from this seller will appear here.</p>
+                  </div>
+                ) : (
+                  <>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 sm:gap-5">
+                      {currentOverviewProducts.map((prod, idx) => {
+                        // First 3 items (Row 1) on Page 1 are tagged as Popular
+                        const isPopular = overviewProductPage === 1 && idx < 3;
+                        return renderProductCard(prod, isPopular);
+                      })}
+                    </div>
+
+                    {/* 3x2 Pagination Controls */}
+                    {totalOverviewPages > 1 && (
+                      <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                        <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">
+                          Showing <strong className="text-gray-900 dark:text-white font-bold">{((overviewProductPage - 1) * OVERVIEW_ITEMS_PER_PAGE) + 1}</strong> - <strong className="text-gray-900 dark:text-white font-bold">{Math.min(overviewProductPage * OVERVIEW_ITEMS_PER_PAGE, overviewOrderedProducts.length)}</strong> of <strong className="text-gray-900 dark:text-white font-bold">{overviewOrderedProducts.length}</strong> products
+                        </span>
+
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={overviewProductPage === 1}
+                            onClick={() => {
+                              setOverviewProductPage(p => Math.max(1, p - 1));
+                              productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                            className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                            aria-label="Previous product page"
+                          >
+                            <ChevronLeft className="h-4 w-4" />
+                          </button>
+
+                          {Array.from({ length: totalOverviewPages }).map((_, i) => {
+                            const pageNum = i + 1;
+                            return (
+                              <button
+                                key={pageNum}
+                                type="button"
+                                onClick={() => {
+                                  setOverviewProductPage(pageNum);
+                                  productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                                }}
+                                className={`h-8 w-8 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                  overviewProductPage === pageNum
+                                    ? 'bg-blue-600 text-white shadow-xs'
+                                    : 'border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800'
+                                }`}
+                              >
+                                {pageNum}
+                              </button>
+                            );
+                          })}
+
+                          <button
+                            type="button"
+                            disabled={overviewProductPage === totalOverviewPages}
+                            onClick={() => {
+                              setOverviewProductPage(p => Math.min(totalOverviewPages, p + 1));
+                              productsSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                            }}
+                            className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                            aria-label="Next product page"
+                          >
+                            <ChevronRight className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="p-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
-                {store.active_products.map((prod) => (
-                  <div
-                    key={prod.link_id}
-                    className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200/90 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-lg transition-all flex flex-col overflow-hidden group"
-                  >
-                    {/* Product Image */}
-                    <div 
-                      onClick={() => setShippingModalProduct(prod)}
-                      className="h-44 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0 cursor-pointer"
-                    >
-                      {prod.image_url ? (
-                        <img
-                          src={prod.image_url}
-                          alt={prod.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-indigo-950 text-slate-400 p-4 text-center">
-                          <Package className="h-10 w-10 text-slate-500 mb-1" />
-                          <span className="text-xs font-semibold text-slate-300 line-clamp-1">{prod.title}</span>
-                        </div>
-                      )}
+            {/* ── Shop's Customer Reviews Carousel (Recent Reviews First) ── */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 p-6 space-y-4 transition-colors">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <MessageSquare className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Store Feedback & Reviews ({sortedReviews.length})
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                    Verified purchase reviews from confirmed escrow transactions.
+                  </p>
+                </div>
 
-                      {/* Floating Price Tag */}
-                      <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1">
-                        <span className="px-2.5 py-1 rounded-xl bg-slate-950/90 backdrop-blur-md text-emerald-400 font-extrabold text-xs shadow-lg border border-emerald-500/30">
-                          GHS {Number(prod.price_ghs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                        </span>
-                      </div>
+                <div className="flex items-center gap-2">
+                  {/* Carousel Left / Right Arrows */}
+                  {sortedReviews.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      <button
+                        type="button"
+                        onClick={() => scrollReviewCarousel('left')}
+                        className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 transition cursor-pointer"
+                        aria-label="Scroll reviews left"
+                      >
+                        <ChevronLeft className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => scrollReviewCarousel('right')}
+                        className="p-2 rounded-xl bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-200 transition cursor-pointer"
+                        aria-label="Scroll reviews right"
+                      >
+                        <ChevronRight className="w-4 h-4" />
+                      </button>
                     </div>
+                  )}
 
-                    {/* Card Content */}
-                    <div className="p-4 flex flex-col flex-1 justify-between gap-3">
-                      <div>
-                        <h4 
-                          onClick={() => setShippingModalProduct(prod)}
-                          className="font-bold text-gray-900 dark:text-white text-sm line-clamp-2 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors cursor-pointer"
-                        >
-                          {prod.title}
-                        </h4>
-                        {prod.description && (
-                          <p className="text-xs text-gray-500 dark:text-slate-400 line-clamp-2 mt-1">
-                            {prod.description}
+                  <button
+                    type="button"
+                    onClick={() => setActiveTab('reviews')}
+                    className="px-3 py-1.5 bg-blue-50 dark:bg-blue-950/60 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-blue-700 dark:text-blue-300 font-bold text-xs rounded-xl border border-blue-200/80 dark:border-blue-800/80 transition flex items-center gap-1 cursor-pointer"
+                  >
+                    <span>View All Reviews</span>
+                    <ChevronRight className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+              </div>
+
+              {sortedReviews.length === 0 ? (
+                <div className="p-8 text-center text-gray-500 dark:text-slate-400">
+                  <Shield className="h-10 w-10 mx-auto text-gray-300 dark:text-slate-600 mb-2" />
+                  <p className="font-semibold text-gray-700 dark:text-slate-300 text-sm">No verified reviews yet.</p>
+                  <p className="text-xs text-gray-400 dark:text-slate-500 mt-0.5">Reviews appear here once buyers confirm receipt of orders.</p>
+                </div>
+              ) : (
+                <div
+                  ref={reviewCarouselRef}
+                  className="flex items-stretch gap-4 overflow-x-auto pb-3 pt-1 scrollbar-none snap-x snap-mandatory"
+                >
+                  {sortedReviews.map((r) => (
+                    <div
+                      key={r.id}
+                      onClick={() => openReviewModal(r)}
+                      className="w-[300px] sm:w-[340px] md:w-[360px] shrink-0 snap-start bg-gray-50/80 dark:bg-slate-800/70 p-4 rounded-2xl border border-gray-200/80 dark:border-slate-700/80 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition flex flex-col justify-between cursor-pointer group"
+                    >
+                      <div className="space-y-2.5">
+                        {/* Header: Buyer Name + 3 Axis Ratings */}
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="font-bold text-gray-900 dark:text-white text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 transition block truncate max-w-[150px]">
+                              {r.buyer_name}
+                            </span>
+                            <span className="inline-flex items-center gap-1 text-[10px] text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/80 px-2 py-0.2 rounded-full font-semibold mt-0.5">
+                              <CheckCircle2 className="h-3 w-3" /> Verified Buyer
+                            </span>
+                          </div>
+
+                          <div className="flex flex-col items-end text-right">
+                            <div className="flex items-center gap-1">
+                              <div className="flex items-center gap-0.5 text-amber-400">
+                                {[1, 2, 3, 4, 5].map(s => (
+                                  <Star key={s} className={`h-3 w-3 ${s <= r.rating_overall ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
+                                ))}
+                              </div>
+                              <span className="text-xs font-black text-slate-900 dark:text-slate-100">{r.rating_overall.toFixed(1)}</span>
+                            </div>
+                            <span className="text-[10px] text-gray-400 dark:text-slate-500 mt-0.5">
+                              Speed {r.rating_speed.toFixed(1)} • Comm {r.rating_communication.toFixed(1)}
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Purchased Item Title */}
+                        <div className="text-[11px] py-1 px-2.5 bg-white dark:bg-slate-900/90 rounded-lg border border-gray-200/80 dark:border-slate-700/80 flex items-center justify-between gap-1">
+                          <span className="text-gray-600 dark:text-slate-300 truncate">
+                            Item: <strong className="font-bold text-gray-900 dark:text-white">{r.item_title}</strong>
+                          </span>
+                          <span className="italic text-[10px] text-gray-400 dark:text-slate-500 shrink-0">
+                            {new Date(r.created_at).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                          </span>
+                        </div>
+
+                        {/* Review Comment */}
+                        {r.comment && (
+                          <p className="text-xs text-gray-700 dark:text-slate-300 leading-relaxed italic line-clamp-3 bg-white/70 dark:bg-slate-900/60 p-2.5 rounded-xl border border-gray-100 dark:border-slate-800">
+                            "{r.comment}"
                           </p>
                         )}
                       </div>
 
-                      {/* Transparent Shipping Disclaimer Pill / Trigger Modal */}
-                      <button
-                        type="button"
-                        onClick={() => setShippingModalProduct(prod)}
-                        className="w-full flex items-center justify-between text-[11px] text-slate-600 dark:text-slate-400 bg-slate-100 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 transition cursor-pointer text-left"
-                      >
-                        <div className="flex items-center gap-1 truncate">
-                          <span className="text-[10px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider shrink-0">📦 Shipping:</span>
-                          <span className="truncate">Based on location</span>
+                      {/* Seller Reply preview */}
+                      {r.seller_reply && (
+                        <div className="mt-2.5 border-l-2 border-blue-600 bg-blue-50/50 dark:bg-blue-950/30 p-2 rounded-r-lg text-[11px] text-blue-900 dark:text-blue-200">
+                          <span className="font-bold text-blue-600 dark:text-blue-400 text-[10px] uppercase tracking-wider block">Seller Reply:</span>
+                          <span className="line-clamp-1">{r.seller_reply}</span>
                         </div>
-                        <ChevronRight className="h-3 w-3 text-slate-400 shrink-0 ml-1" />
-                      </button>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
 
-                      {/* Clean Action Buttons: Confirm & Buy Button + Contact Icons */}
-                      <div className="pt-2 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => setShippingModalProduct(prod)}
-                          className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center gap-1.5 cursor-pointer"
-                        >
-                          <Truck className="w-3.5 h-3.5" />
-                          <span>Buy via Escrow</span>
-                        </button>
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          {prod.seller_phone && (
-                            <a
-                              href={`tel:${prod.seller_phone}`}
-                              className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/60 dark:hover:text-blue-400 text-slate-700 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition shadow-2xs cursor-pointer"
-                              title={`Call seller (${prod.seller_phone})`}
-                              aria-label={`Call seller at ${prod.seller_phone}`}
-                            >
-                              <Phone className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                            </a>
-                          )}
-                          {prod.whatsapp_contact_url ? (
-                            <a
-                              href={prod.whatsapp_contact_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="h-8 w-8 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
-                              title="Chat with seller on WhatsApp"
-                              aria-label="Chat with seller on WhatsApp"
-                            >
-                              <MessageCircle className="w-4 h-4" />
-                            </a>
-                          ) : (
-                            <Link
-                              to={`/l/${prod.link_id}`}
-                              className="h-8 w-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-xs transition"
-                              title="View Payment Link"
-                              aria-label="View Payment Link"
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                            </Link>
-                          )}
+            {/* ── Featured & Sponsored Escrow Merchants (Paid Advertisements Only) ── */}
+            {paidFeaturedAds.length > 0 && (
+              <div className="bg-gradient-to-br from-slate-900 via-indigo-950 to-blue-950 rounded-3xl p-6 text-white shadow-md border border-amber-400/30 space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-400/20 px-2.5 py-0.5 rounded-full border border-amber-400/30">
+                      <Zap className="h-3 w-3 fill-amber-400" /> Sponsored Merchants
+                    </span>
+                    <h3 className="text-lg font-extrabold text-white mt-1">Featured Stores</h3>
+                  </div>
+                  <Link
+                    to="/shops"
+                    className="text-xs font-bold text-blue-200 hover:text-white flex items-center gap-1 transition"
+                  >
+                    <span>Browse All Shops</span>
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+                  {paidFeaturedAds.slice(0, 3).map((adShop) => (
+                    <div
+                      key={adShop.seller_id}
+                      className="bg-white/10 backdrop-blur-md rounded-2xl p-4 border border-white/10 flex flex-col justify-between gap-3 hover:bg-white/15 transition group"
+                    >
+                      <div className="flex items-center gap-3">
+                        {adShop.profile_picture_url ? (
+                          <img src={adShop.profile_picture_url} alt={adShop.shop_name} className="h-11 w-11 rounded-xl object-cover border border-white/20 shrink-0" />
+                        ) : (
+                          <div className="h-11 w-11 rounded-xl bg-amber-500 text-white font-black text-base flex items-center justify-center shrink-0">
+                            {adShop.shop_name.charAt(0).toUpperCase()}
+                          </div>
+                        )}
+                        <div className="min-w-0">
+                          <h4 className="font-bold text-sm text-white truncate group-hover:text-amber-300 transition">
+                            {adShop.shop_name}
+                          </h4>
+                          <div className="flex items-center gap-1 text-xs text-amber-300 mt-0.5">
+                            <Star className="h-3 w-3 fill-amber-400 text-amber-400" />
+                            <span className="font-bold">{adShop.avg_overall.toFixed(1)}</span>
+                            <span className="text-blue-200 font-mono text-[11px]">@{adShop.seller_username}</span>
+                          </div>
                         </div>
                       </div>
+
+                      {adShop.shop_description && (
+                        <p className="text-xs text-blue-100/80 line-clamp-2">
+                          {adShop.shop_description}
+                        </p>
+                      )}
+
+                      <Link
+                        to={`/store/${adShop.seller_username}`}
+                        className="w-full py-2 bg-white/20 hover:bg-amber-400 hover:text-slate-950 text-white font-bold text-xs rounded-xl transition flex items-center justify-center gap-1.5"
+                      >
+                        <span>Visit Store</span>
+                        <ChevronRight className="h-3.5 w-3.5" />
+                      </Link>
                     </div>
-                  </div>
-                ))}
+                  ))}
+                </div>
               </div>
-            </div>
+            )}
           </div>
         )}
 
-        {/* Public Reviews List */}
-        <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 overflow-hidden transition-colors">
-          <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-              <MessageSquare className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Customer Feedback & Reviews ({store.reviews.length})
-            </h3>
-            <span className="text-xs text-gray-400 dark:text-slate-500 font-mono">100% Verified Escrow Buyers</span>
-          </div>
+        {/* ══════════════════════════════════════════════════════════
+            TAB 2: DEDICATED PRODUCTS TAB
+            - Full Product Catalog with Search, Category Filter, Sort
+            - 3x3 Paginated Grid (9 items per page)
+           ══════════════════════════════════════════════════════════ */}
+        {activeTab === 'products' && (
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 p-6 space-y-6 transition-colors">
+            {/* Header + Search + Filter Controls */}
+            <div className="space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div>
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
+                    <ShoppingBag className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Complete Store Catalog ({catalogFilteredProducts.length})
+                  </h3>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
+                    Browse all available products and create secure escrow checkouts.
+                  </p>
+                </div>
+              </div>
 
-          {store.reviews.length === 0 ? (
-            <div className="p-12 text-center text-gray-500 dark:text-slate-400">
-              <Shield className="h-12 w-12 mx-auto text-gray-300 dark:text-slate-600 mb-3" />
-              <p className="font-semibold text-gray-700 dark:text-slate-300 text-base">No verified reviews yet.</p>
-              <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">Reviews appear here once buyers confirm receipt of their orders.</p>
+              {/* Search, Category Filter & Sorting Row */}
+              <div className="grid grid-cols-1 sm:grid-cols-12 gap-3 pt-2">
+                {/* Search Bar */}
+                <div className="sm:col-span-5 relative">
+                  <Search className="h-4 w-4 text-gray-400 dark:text-slate-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={productSearch}
+                    onChange={(e) => {
+                      setProductSearch(e.target.value);
+                      setCatalogProductPage(1);
+                    }}
+                    placeholder="Search store products..."
+                    className="w-full pl-9 pr-4 py-2.5 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 text-gray-900 dark:text-slate-100 text-xs sm:text-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {productSearch && (
+                    <button
+                      onClick={() => { setProductSearch(''); setCatalogProductPage(1); }}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Category Dropdown */}
+                <div className="sm:col-span-4 relative">
+                  <select
+                    value={productCategoryFilter}
+                    onChange={(e) => {
+                      setProductCategoryFilter(e.target.value);
+                      setCatalogProductPage(1);
+                    }}
+                    className="w-full px-3 py-2.5 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 text-gray-900 dark:text-slate-100 text-xs sm:text-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                  >
+                    <option value="ALL">All Categories ({store.active_products?.length || 0})</option>
+                    {availableCategories.map(cat => (
+                      <option key={cat} value={cat}>{cat}</option>
+                    ))}
+                  </select>
+                  <ChevronDown className="h-4 w-4 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+
+                {/* Sort Dropdown */}
+                <div className="sm:col-span-3 relative">
+                  <select
+                    value={productSortBy}
+                    onChange={(e) => {
+                      setProductSortBy(e.target.value as any);
+                      setCatalogProductPage(1);
+                    }}
+                    className="w-full px-3 py-2.5 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 text-gray-900 dark:text-slate-100 text-xs sm:text-sm rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 appearance-none cursor-pointer"
+                  >
+                    <option value="popular">Popular First</option>
+                    <option value="newest">Newest First</option>
+                    <option value="price_low">Price: Low to High</option>
+                    <option value="price_high">Price: High to Low</option>
+                  </select>
+                  <ArrowUpDown className="h-3.5 w-3.5 text-gray-400 absolute right-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+                </div>
+              </div>
             </div>
-          ) : (
-            <div className="p-6">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {store.reviews.map((r, idx) => {
-                  const adIndex = Math.floor(idx / 3) % (filteredAds.length || 1);
-                  const showAd = (idx > 0 && idx % 3 === 0 && filteredAds.length > 0);
-                  const adShop = filteredAds[adIndex];
 
-                  return (
-                    <React.Fragment key={r.id}>
-                      {/* Dynamic Recommended Shop Advert Card in Review Feed */}
-                      {showAd && adShop && (
-                        <div className="col-span-1 md:col-span-2 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-950 p-5 rounded-2xl text-white shadow-md flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 border border-blue-400/30 my-2">
-                          <div className="flex items-center gap-3">
-                            {adShop.profile_picture_url ? (
-                              <img src={adShop.profile_picture_url} alt={adShop.shop_name} className="h-12 w-12 rounded-xl object-cover border border-white/20 shadow-sm" />
-                            ) : (
-                              <div className="h-12 w-12 rounded-xl bg-amber-500 text-white font-black text-lg flex items-center justify-center shadow-sm">
-                                {adShop.shop_name.charAt(0).toUpperCase()}
-                              </div>
-                            )}
-                            <div>
-                              <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-400/20 px-2 py-0.5 rounded-full border border-amber-400/30">
-                                <Zap className="h-3 w-3 fill-amber-400" /> Featured Escrow Merchant
-                              </span>
-                              <h4 className="font-bold text-base text-white mt-1">{adShop.shop_name}</h4>
-                              <p className="text-xs text-blue-200 line-clamp-1">{adShop.shop_description}</p>
-                            </div>
-                          </div>
-                          <Link
-                            to={`/store/${adShop.seller_username}`}
-                            className="px-4 py-2 bg-amber-400 hover:bg-amber-500 text-slate-950 font-bold text-xs rounded-xl shadow transition shrink-0 flex items-center gap-1 self-stretch sm:self-auto justify-center"
-                          >
-                            Explore Shop <ChevronRight className="h-4 w-4" />
-                          </Link>
+            {/* Products 3x3 Grid */}
+            {currentCatalogProducts.length === 0 ? (
+              <div className="p-12 text-center text-gray-500 dark:text-slate-400">
+                <Package className="h-12 w-12 mx-auto text-gray-300 dark:text-slate-600 mb-3" />
+                <p className="font-semibold text-gray-700 dark:text-slate-300 text-base">No matching products found.</p>
+                <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">Try adjusting your search terms or category filter.</p>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+                {currentCatalogProducts.map((prod, idx) => {
+                  const isPopular = productSortBy === 'popular' && catalogProductPage === 1 && idx < 3;
+                  return renderProductCard(prod, isPopular);
+                })}
+              </div>
+            )}
+
+            {/* Catalog 3x3 Pagination */}
+            {totalCatalogPages > 1 && (
+              <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">
+                  Showing <strong className="text-gray-900 dark:text-white font-bold">{((catalogProductPage - 1) * CATALOG_ITEMS_PER_PAGE) + 1}</strong> - <strong className="text-gray-900 dark:text-white font-bold">{Math.min(catalogProductPage * CATALOG_ITEMS_PER_PAGE, catalogFilteredProducts.length)}</strong> of <strong className="text-gray-900 dark:text-white font-bold">{catalogFilteredProducts.length}</strong> products
+                </span>
+
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    disabled={catalogProductPage === 1}
+                    onClick={() => setCatalogProductPage(p => Math.max(1, p - 1))}
+                    className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                    aria-label="Previous product page"
+                  >
+                    <ChevronLeft className="h-4 w-4" />
+                  </button>
+
+                  {Array.from({ length: totalCatalogPages }).map((_, i) => {
+                    const pageNum = i + 1;
+                    return (
+                      <button
+                        key={pageNum}
+                        type="button"
+                        onClick={() => setCatalogProductPage(pageNum)}
+                        className={`h-8 w-8 rounded-xl text-xs font-bold transition cursor-pointer ${
+                          catalogProductPage === pageNum
+                            ? 'bg-blue-600 text-white shadow-xs'
+                            : 'border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        {pageNum}
+                      </button>
+                    );
+                  })}
+
+                  <button
+                    type="button"
+                    disabled={catalogProductPage === totalCatalogPages}
+                    onClick={() => setCatalogProductPage(p => Math.min(totalCatalogPages, p + 1))}
+                    className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                    aria-label="Next product page"
+                  >
+                    <ChevronRight className="h-4 w-4" />
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* ══════════════════════════════════════════════════════════
+            TAB 3: DEDICATED REVIEWS TAB
+            - Rating Distribution Breakdown Scorecards
+            - Filter by Star Rating (5, 4, 3, 2, 1) & Search
+            - Comprehensive Reviews Feed with Seller Replies & Modal
+           ══════════════════════════════════════════════════════════ */}
+        {activeTab === 'reviews' && (
+          <div className="space-y-6">
+            {/* Reviews Summary Breakdown Box */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 p-6 transition-colors">
+              <div className="grid grid-cols-1 md:grid-cols-12 gap-6 items-center">
+                {/* Left: Overall Score big block */}
+                <div className="md:col-span-4 text-center md:text-left space-y-1.5 md:border-r border-gray-100 dark:border-slate-800 md:pr-6">
+                  <span className="text-4xl sm:text-5xl font-black text-gray-900 dark:text-white font-mono">
+                    {store.avg_overall.toFixed(1)}
+                  </span>
+                  <div className="flex items-center justify-center md:justify-start gap-1 text-amber-400">
+                    {[1, 2, 3, 4, 5].map(s => (
+                      <Star key={s} className={`h-4 w-4 ${s <= Math.round(store.avg_overall) ? 'fill-amber-400 text-amber-400' : 'text-gray-200 dark:text-slate-700'}`} />
+                    ))}
+                  </div>
+                  <p className="text-xs text-gray-500 dark:text-slate-400 font-medium">
+                    Based on {store.total_reviews_count} verified buyer review{store.total_reviews_count === 1 ? '' : 's'}
+                  </p>
+                </div>
+
+                {/* Right: Star Filter Bars */}
+                <div className="md:col-span-8 space-y-1.5">
+                  {[5, 4, 3, 2, 1].map(stars => {
+                    const count = ratingCounts[stars] || 0;
+                    const percent = store.total_reviews_count > 0 ? (count / store.total_reviews_count) * 100 : 0;
+                    const isSelected = reviewRatingFilter === stars;
+
+                    return (
+                      <button
+                        key={stars}
+                        type="button"
+                        onClick={() => {
+                          setReviewRatingFilter(isSelected ? 'ALL' : stars);
+                          setReviewPage(1);
+                        }}
+                        className={`w-full flex items-center gap-2 text-xs py-1 px-2 rounded-xl transition cursor-pointer ${
+                          isSelected ? 'bg-blue-50 dark:bg-blue-950/60 font-bold' : 'hover:bg-gray-50 dark:hover:bg-slate-800/50'
+                        }`}
+                      >
+                        <span className="w-12 text-left font-semibold text-gray-700 dark:text-slate-300 shrink-0">
+                          {stars} star{stars === 1 ? '' : 's'}
+                        </span>
+                        <div className="flex-1 bg-gray-100 dark:bg-slate-800 h-2.5 rounded-full overflow-hidden">
+                          <div
+                            className="bg-amber-400 h-full rounded-full transition-all duration-500"
+                            style={{ width: `${percent}%` }}
+                          />
                         </div>
-                      )}
+                        <span className="w-8 text-right text-gray-500 dark:text-slate-400 font-mono text-[11px] shrink-0">
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
 
-                      {/* Review Card */}
+            {/* Filter & Reviews List Feed */}
+            <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 p-6 space-y-6 transition-colors">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-2">
+                  <h3 className="text-base font-bold text-gray-900 dark:text-white">
+                    Verified Customer Reviews ({filteredReviewsList.length})
+                  </h3>
+                  {reviewRatingFilter !== 'ALL' && (
+                    <button
+                      onClick={() => { setReviewRatingFilter('ALL'); setReviewPage(1); }}
+                      className="px-2 py-0.5 rounded-full bg-blue-100 dark:bg-blue-900/60 text-blue-700 dark:text-blue-300 text-[11px] font-bold flex items-center gap-1"
+                    >
+                      <span>Filtered: {reviewRatingFilter}★</span>
+                      <X className="h-3 w-3" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Search in reviews */}
+                <div className="relative min-w-[220px]">
+                  <Search className="h-3.5 w-3.5 text-gray-400 absolute left-3 top-1/2 -translate-y-1/2" />
+                  <input
+                    type="text"
+                    value={reviewSearch}
+                    onChange={(e) => {
+                      setReviewSearch(e.target.value);
+                      setReviewPage(1);
+                    }}
+                    placeholder="Search reviews..."
+                    className="w-full pl-8 pr-3 py-1.5 bg-gray-50 dark:bg-slate-800/80 border border-gray-200 dark:border-slate-700 text-gray-900 dark:text-slate-100 text-xs rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {reviewSearch && (
+                    <button
+                      onClick={() => { setReviewSearch(''); setReviewPage(1); }}
+                      className="absolute right-2.5 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-slate-300"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {filteredReviewsList.length === 0 ? (
+                <div className="p-12 text-center text-gray-500 dark:text-slate-400">
+                  <Shield className="h-12 w-12 mx-auto text-gray-300 dark:text-slate-600 mb-3" />
+                  <p className="font-semibold text-gray-700 dark:text-slate-300 text-base">No reviews match your filters.</p>
+                  <p className="text-sm text-gray-400 dark:text-slate-500 mt-1">Try resetting the star rating or search query.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {currentPaginatedReviews.map((r) => (
                       <div
+                        key={r.id}
                         onClick={() => openReviewModal(r)}
                         className="bg-gray-50/70 dark:bg-slate-800/70 p-5 rounded-2xl border border-gray-200/90 dark:border-slate-700/80 space-y-3 hover:bg-white dark:hover:bg-slate-800 hover:shadow-md transition flex flex-col justify-between cursor-pointer group"
                       >
                         <div className="space-y-3">
-                          {/* Top Row: Buyer Name + Verified Badge (Left) and Vertically Stacked Ratings (Right) */}
+                          {/* Top Row: Buyer Name + Verified Badge and Vertically Stacked Ratings */}
                           <div className="flex items-start justify-between gap-3">
                             <div>
                               <div className="flex items-center gap-2 flex-wrap">
@@ -608,9 +1297,8 @@ export default function SellerStoreView() {
                               </div>
                             </div>
 
-                            {/* Vertically Stacked Overall, Speed, and Comm Ratings */}
+                            {/* Ratings Stack */}
                             <div className="flex flex-col items-end gap-0.5 shrink-0 text-right">
-                              {/* Overall Rating */}
                               <div className="flex items-center gap-1.5">
                                 <span className="text-[10px] sm:text-xs font-bold text-gray-500 dark:text-slate-400 uppercase tracking-wider">Overall:</span>
                                 <div className="flex items-center gap-0.5 text-amber-400">
@@ -621,7 +1309,6 @@ export default function SellerStoreView() {
                                 <span className="text-xs font-black text-slate-900 dark:text-slate-100">{r.rating_overall.toFixed(1)}</span>
                               </div>
 
-                              {/* Speed Rating */}
                               <div className="flex items-center gap-1 text-[11px] sm:text-xs text-gray-600 dark:text-slate-400">
                                 <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">Speed:</span>
                                 <div className="flex items-center gap-0.5 text-amber-400">
@@ -632,7 +1319,6 @@ export default function SellerStoreView() {
                                 <span className="font-bold text-gray-800 dark:text-slate-200">{r.rating_speed.toFixed(1)}</span>
                               </div>
 
-                              {/* Communication Rating */}
                               <div className="flex items-center gap-1 text-[11px] sm:text-xs text-gray-600 dark:text-slate-400">
                                 <span className="text-[10px] font-bold text-gray-400 dark:text-slate-500 uppercase tracking-wider">Comm:</span>
                                 <div className="flex items-center gap-0.5 text-amber-400">
@@ -645,7 +1331,7 @@ export default function SellerStoreView() {
                             </div>
                           </div>
 
-                          {/* Horizontal Row across the card: Purchased Item Name and Date (in italics) */}
+                          {/* Purchased Item & Date */}
                           <div className="flex items-center justify-between gap-2 text-xs py-1.5 px-3 bg-white dark:bg-slate-900/90 rounded-xl border border-gray-200/80 dark:border-slate-700/80 shadow-2xs">
                             <span className="text-gray-600 dark:text-slate-300 truncate">
                               Purchased: <strong className="font-bold text-gray-900 dark:text-white">{r.item_title}</strong>
@@ -660,14 +1346,14 @@ export default function SellerStoreView() {
                             </span>
                           </div>
 
-                          {/* Customer Feedback Comment */}
+                          {/* Comment */}
                           {r.comment && (
                             <p className="text-sm text-gray-800 dark:text-slate-200 bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-gray-200/80 dark:border-slate-700 leading-relaxed italic shadow-2xs">
                               "{r.comment}"
                             </p>
                           )}
 
-                          {/* Seller Reply Display with Edit Option */}
+                          {/* Seller Reply */}
                           {r.seller_reply && replyingReviewId !== r.id && (
                             <div className="border-l-4 border-blue-600 dark:border-blue-500 bg-blue-50/70 dark:bg-blue-950/40 p-3.5 rounded-r-xl space-y-1.5 mt-2">
                               <div className="flex items-center justify-between text-xs font-bold text-blue-900 dark:text-blue-200">
@@ -697,7 +1383,7 @@ export default function SellerStoreView() {
                           )}
                         </div>
 
-                        {/* Seller Reply Form (For creating new reply OR editing existing reply) */}
+                        {/* Seller Reply Form */}
                         {isOwner && (replyingReviewId === r.id || !r.seller_reply) && (
                           <div className="pt-2 border-t border-gray-200/60 dark:border-slate-700 mt-2" onClick={e => e.stopPropagation()}>
                             {replyingReviewId === r.id ? (
@@ -747,13 +1433,62 @@ export default function SellerStoreView() {
                           </div>
                         )}
                       </div>
-                    </React.Fragment>
-                  );
-                })}
-              </div>
+                    ))}
+                  </div>
+
+                  {/* Reviews Pagination */}
+                  {totalReviewPages > 1 && (
+                    <div className="pt-4 border-t border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
+                      <span className="text-xs text-gray-500 dark:text-slate-400 font-medium">
+                        Showing <strong className="text-gray-900 dark:text-white font-bold">{((reviewPage - 1) * REVIEWS_PER_PAGE) + 1}</strong> - <strong className="text-gray-900 dark:text-white font-bold">{Math.min(reviewPage * REVIEWS_PER_PAGE, filteredReviewsList.length)}</strong> of <strong className="text-gray-900 dark:text-white font-bold">{filteredReviewsList.length}</strong> reviews
+                      </span>
+
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          disabled={reviewPage === 1}
+                          onClick={() => setReviewPage(p => Math.max(1, p - 1))}
+                          className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                          aria-label="Previous review page"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </button>
+
+                        {Array.from({ length: totalReviewPages }).map((_, i) => {
+                          const pageNum = i + 1;
+                          return (
+                            <button
+                              key={pageNum}
+                              type="button"
+                              onClick={() => setReviewPage(pageNum)}
+                              className={`h-8 w-8 rounded-xl text-xs font-bold transition cursor-pointer ${
+                                reviewPage === pageNum
+                                  ? 'bg-blue-600 text-white shadow-xs'
+                                  : 'border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800'
+                              }`}
+                            >
+                              {pageNum}
+                            </button>
+                          );
+                        })}
+
+                        <button
+                          type="button"
+                          disabled={reviewPage === totalReviewPages}
+                          onClick={() => setReviewPage(p => Math.min(totalReviewPages, p + 1))}
+                          className="p-2 rounded-xl border border-gray-200 dark:border-slate-700 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 disabled:opacity-40 disabled:cursor-not-allowed transition cursor-pointer"
+                          aria-label="Next review page"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
-          )}
-        </div>
+          </div>
+        )}
 
       </div>
 
@@ -772,7 +1507,7 @@ export default function SellerStoreView() {
             <div className="flex items-start justify-between gap-3">
               <div className="flex items-center gap-2.5">
                 <div className="h-10 w-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <Truck className="h-5 w-5" />
+                  <Package className="h-5 w-5" />
                 </div>
                 <div>
                   <h3 className="font-bold text-slate-900 dark:text-white text-base leading-tight">
