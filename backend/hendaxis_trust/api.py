@@ -13,12 +13,23 @@ from apps.reviews.api import reviews_router
 from apps.developer.api import developer_router
 from apps.developer.v1_api import v1_developer_router
 
+from django.core.exceptions import RequestDataTooBig
+
 api = NinjaAPI(
     title="HendAxis Trust API",
     version="1.0.0",
     docs_url="/docs/" if getattr(settings, 'ENABLE_PUBLIC_DOCS', settings.DEBUG) else None,
     openapi_url="/openapi.json" if getattr(settings, 'ENABLE_PUBLIC_DOCS', settings.DEBUG) else None
 )
+
+
+@api.exception_handler(RequestDataTooBig)
+def on_request_data_too_big(request, exc):
+    return api.create_response(
+        request,
+        {"message": "Uploaded files or request payload is too large. Please upload smaller images (under 15MB)."},
+        status=413,
+    )
 
 
 api.add_router("/auth", auth_router)

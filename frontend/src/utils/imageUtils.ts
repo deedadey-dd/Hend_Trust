@@ -12,7 +12,8 @@ import logoSvg from '../assets/hendaxis_trust_logo.svg';
 export const compressImageToWebP = (
   file: File,
   maxDimension: number = 1200,
-  quality: number = 0.75
+  quality: number = 0.75,
+  includeWatermark: boolean = false
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
     if (!file.type.startsWith('image/')) {
@@ -54,10 +55,6 @@ export const compressImageToWebP = (
         // Draw original uploaded image on canvas
         ctx.drawImage(img, 0, 0, width, height);
 
-        // Load HendAxis Trust Logo for Hologram Watermark
-        const watermark = new Image();
-        watermark.src = logoSvg;
-
         const finishCompression = () => {
           let dataUrl = canvas.toDataURL('image/webp', quality);
           if (!dataUrl.startsWith('data:image/webp')) {
@@ -65,6 +62,15 @@ export const compressImageToWebP = (
           }
           resolve(dataUrl);
         };
+
+        if (!includeWatermark) {
+          finishCompression();
+          return;
+        }
+
+        // Load HendAxis Trust Logo for Hologram Watermark
+        const watermark = new Image();
+        watermark.src = logoSvg;
 
         watermark.onload = () => {
           try {
