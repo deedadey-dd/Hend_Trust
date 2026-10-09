@@ -420,3 +420,7 @@ NIA_API_KEY = env('NIA_API_KEY', default='')
 NIA_CLIENT_ID = env('NIA_CLIENT_ID', default='')
 PREMBLY_API_KEY = env('PREMBLY_API_KEY', default='')
 
+# File & Request Body Upload Limits (15MB)
+DATA_UPLOAD_MAX_MEMORY_SIZE = env.int('DATA_UPLOAD_MAX_MEMORY_SIZE', default=15 * 1024 * 1024)
+FILE_UPLOAD_MAX_MEMORY_SIZE = env.int('FILE_UPLOAD_MAX_MEMORY_SIZE', default=15 * 1024 * 1024)
+

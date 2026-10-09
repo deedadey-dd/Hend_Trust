@@ -103,6 +103,8 @@ export default function ProfileView() {
   const [idNumber, setIdNumber] = useState('');
   const [idPhoto, setIdPhoto] = useState('');
   const [licensePhoto, setLicensePhoto] = useState('');
+  const [isCompressingIdPhoto, setIsCompressingIdPhoto] = useState(false);
+  const [isCompressingLicensePhoto, setIsCompressingLicensePhoto] = useState(false);
 
   const fetchProfile = async () => {
     try {
@@ -440,19 +442,49 @@ export default function ProfileView() {
     }
   };
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, setPhotoFn: (s: string) => void) => {
+  const handleDocumentUpload = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setPhotoFn: (s: string) => void,
+    setCompressingFn: (b: boolean) => void,
+    docLabel: string
+  ) => {
     const file = e.target.files?.[0];
-    if (file) {
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        if (reader.result) setPhotoFn(reader.result as string);
-      };
-      reader.readAsDataURL(file);
+    if (!file) return;
+
+    if (!file.type.startsWith('image/')) {
+      await modal.alert({
+        title: 'Unsupported File Format',
+        message: `Please select a valid image file (JPG, PNG, WebP) for ${docLabel}.`,
+        type: 'warning',
+        icon: 'alert'
+      });
+      return;
+    }
+
+    setCompressingFn(true);
+    setError('');
+    try {
+      // Compress to high-clarity WebP (1600px max, 85% quality) to preserve Ghana Card text & details while shrinking file from 10MB to ~200KB
+      const webp = await compressImageToWebP(file, 1600, 0.85, false);
+      setPhotoFn(webp);
+    } catch {
+      await modal.alert({
+        title: 'Image Processing Error',
+        message: `Failed to process ${docLabel}. Please ensure the image is valid and try again.`,
+        type: 'danger',
+        icon: 'alert'
+      });
+    } finally {
+      setCompressingFn(false);
     }
   };
 
   const handleSubmitVerification = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (isCompressingIdPhoto || isCompressingLicensePhoto) {
+      setError('Please wait for image optimization to finish before submitting.');
+      return;
+    }
     if (!idNumber.trim()) {
       setError('Please enter your National ID / Ghana Card number.');
       return;
@@ -474,7 +506,13 @@ export default function ProfileView() {
       setTimeout(() => setSuccess(''), 5000);
       await fetchProfile();
     } catch (err: any) {
-      setError(err.response?.data?.message || 'Failed to submit verification documents.');
+      const errorMsg =
+        err.response?.data?.message ||
+        err.response?.data?.detail ||
+        (err.response?.status === 413
+          ? 'Uploaded image files are too large. Please upload smaller or clearer pictures.'
+          : 'Failed to submit verification documents.');
+      setError(errorMsg);
     } finally {
       setSubmittingVerif(false);
     }
@@ -764,11 +802,28 @@ export default function ProfileView() {
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={e => handleFileUpload(e, setIdPhoto)}
-                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
+                          disabled={isCompressingIdPhoto}
+                          onChange={e => handleDocumentUpload(e, setIdPhoto, setIsCompressingIdPhoto, 'Ghana Card photo')}
+                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50"
                         />
-                        {idPhoto && (
-                          <img src={idPhoto} alt="National ID" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
+                        {isCompressingIdPhoto && (
+                          <div className="mt-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Optimizing image clarity and size...</span>
+                          </div>
+                        )}
+                        {idPhoto && !isCompressingIdPhoto && (
+                          <div className="relative mt-2 inline-block">
+                            <img src={idPhoto} alt="National ID" className="h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
+                            <button
+                              type="button"
+                              onClick={() => setIdPhoto('')}
+                              className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full shadow hover:bg-red-700 transition"
+                              title="Remove photo"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
 
@@ -780,18 +835,35 @@ export default function ProfileView() {
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={e => handleFileUpload(e, setLicensePhoto)}
-                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
+                          disabled={isCompressingLicensePhoto}
+                          onChange={e => handleDocumentUpload(e, setLicensePhoto, setIsCompressingLicensePhoto, 'Business Certificate photo')}
+                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50"
                         />
-                        {licensePhoto && (
-                          <img src={licensePhoto} alt="Business License" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
+                        {isCompressingLicensePhoto && (
+                          <div className="mt-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Optimizing image clarity and size...</span>
+                          </div>
+                        )}
+                        {licensePhoto && !isCompressingLicensePhoto && (
+                          <div className="relative mt-2 inline-block">
+                            <img src={licensePhoto} alt="Business License" className="h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
+                            <button
+                              type="button"
+                              onClick={() => setLicensePhoto('')}
+                              className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full shadow hover:bg-red-700 transition"
+                              title="Remove photo"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
 
                     <button
                       type="submit"
-                      disabled={submittingVerif}
+                      disabled={submittingVerif || isCompressingIdPhoto || isCompressingLicensePhoto}
                       className="w-full py-3 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-bold rounded-xl text-xs transition shadow-md flex justify-center items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submittingVerif ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
@@ -896,11 +968,28 @@ export default function ProfileView() {
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={e => handleFileUpload(e, setIdPhoto)}
-                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
+                          disabled={isCompressingIdPhoto}
+                          onChange={e => handleDocumentUpload(e, setIdPhoto, setIsCompressingIdPhoto, 'National ID photo')}
+                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50"
                         />
-                        {idPhoto && (
-                          <img src={idPhoto} alt="National ID" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700" />
+                        {isCompressingIdPhoto && (
+                          <div className="mt-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Optimizing image clarity and size...</span>
+                          </div>
+                        )}
+                        {idPhoto && !isCompressingIdPhoto && (
+                          <div className="relative mt-2 inline-block">
+                            <img src={idPhoto} alt="National ID" className="h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
+                            <button
+                              type="button"
+                              onClick={() => setIdPhoto('')}
+                              className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full shadow hover:bg-red-700 transition"
+                              title="Remove photo"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
 
@@ -910,19 +999,36 @@ export default function ProfileView() {
                         <input
                           type="file"
                           accept="image/*"
-                          onChange={e => handleFileUpload(e, setLicensePhoto)}
-                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer"
+                          disabled={isCompressingLicensePhoto}
+                          onChange={e => handleDocumentUpload(e, setLicensePhoto, setIsCompressingLicensePhoto, 'Business License photo')}
+                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50"
                         />
-                        {licensePhoto && (
-                          <img src={licensePhoto} alt="Business License" className="mt-2 h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700" />
+                        {isCompressingLicensePhoto && (
+                          <div className="mt-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                            <span>Optimizing image clarity and size...</span>
+                          </div>
+                        )}
+                        {licensePhoto && !isCompressingLicensePhoto && (
+                          <div className="relative mt-2 inline-block">
+                            <img src={licensePhoto} alt="Business License" className="h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
+                            <button
+                              type="button"
+                              onClick={() => setLicensePhoto('')}
+                              className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full shadow hover:bg-red-700 transition"
+                              title="Remove photo"
+                            >
+                              <X className="h-3 w-3" />
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>
 
                     <button
                       type="submit"
-                      disabled={submittingVerif}
-                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer"
+                      disabled={submittingVerif || isCompressingIdPhoto || isCompressingLicensePhoto}
+                      className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submittingVerif ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
                       Submit for Auto / Manager Verification
