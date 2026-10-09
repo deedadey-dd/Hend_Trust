@@ -31,15 +31,15 @@ def transition_to_inspection(transaction: Transaction) -> None:
     transaction.save(update_fields=['status', 'delivered_at', 'inspection_starts_at', 'updated_at'])
 
 
-def _build_delivery_sms(transaction: Transaction, otp: str, is_resend: bool = False) -> str:
-    """Build a rich SMS message for the buyer with driver info, OTP, and anti-fraud warning."""
+def _build_delivery_sms(transaction: Transaction, otp: str = None, is_resend: bool = False) -> str:
+    """Build a message for the buyer with driver info and pickup instructions."""
     # Fetch the latest informal bus delivery log for this transaction
     log = DeliveryLog.objects.filter(
         transaction=transaction,
         delivery_method='INFORMAL_BUS'
     ).order_by('-created_at').first()
 
-    header = f"Your order {transaction.paystack_reference} delivery OTP (Resent):" if is_resend else f"Your order {transaction.paystack_reference} is on its way!"
+    header = f"Your order {transaction.paystack_reference} delivery details (Resent):" if is_resend else f"Your order {transaction.paystack_reference} is on its way!"
     parts = [header]
 
     if log:
@@ -50,9 +50,7 @@ def _build_delivery_sms(transaction: Transaction, otp: str, is_resend: bool = Fa
         if log.destination_station:
             parts.append(f"Destination station: {log.destination_station}")
 
-    parts.append(f"Secret OTP: {otp}")
-    parts.append("Show your ID + this OTP at pickup.")
-    parts.append("⚠️ SECURITY NOTICE: Giving this OTP to the seller confirms you have received your package. ONLY share this OTP after physically receiving and inspecting your item!")
+    parts.append("Show your ID at pickup.")
 
     return "\n".join(parts)
 
@@ -75,7 +73,7 @@ def generate_delivery_otp(transaction_id: str) -> str:
         if txn.buyer_email:
             dispatch_email_task.delay(
                 txn.buyer_email,
-                "Your HendAxis Trust Delivery OTP",
+                "Your HendAxis Order Delivery Details",
                 msg
             )
     except Transaction.DoesNotExist:
@@ -118,7 +116,7 @@ def resend_delivery_otp(transaction_id: str) -> str:
         if txn.buyer_email:
             dispatch_email_task.delay(
                 txn.buyer_email,
-                "Your HendAxis Trust Delivery OTP (Resent)",
+                "Your HendAxis Order Delivery Details (Resent)",
                 msg
             )
     except Transaction.DoesNotExist:
