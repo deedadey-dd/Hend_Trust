@@ -286,6 +286,14 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.escrow.tasks.check_pending_payments',
         'schedule': 900.0, # 15 minutes
     },
+    'check-pending-cancellations-every-5-mins': {
+        'task': 'apps.escrow.tasks.check_pending_cancellation_requests',
+        'schedule': 300.0, # 5 minutes
+    },
+    'process-cancellation-payout-holds-every-15-mins': {
+        'task': 'apps.escrow.tasks.process_cancellation_payout_holds',
+        'schedule': 900.0, # 15 minutes
+    },
 }
 
 

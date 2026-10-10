@@ -395,3 +395,137 @@ def check_pending_payments():
 
     return f"Verified {verified_count} pending payments. Auto-archived {archived_count} unpaid transactions older than {archive_days} days."
 
+
+@shared_task
+def check_pending_cancellation_requests():
+    """
+    Periodic task: Auto-resolves pending buyer cancellation requests if the seller
+    fails to respond within the configured dispatch grace window (default: 90 minutes).
+    Places the confirmed cancellation into the delayed payout hold buffer (default: 90 hours).
+    """
+    from apps.escrow.api import get_platform_settings
+    from decimal import Decimal, ROUND_HALF_UP
+    from django.db.models import Q
+    now = timezone.now()
+    cfg = get_platform_settings()
+    grace_mins = int(cfg.get("cancellation_dispatch_grace_minutes", 90))
+    hold_mins = int(cfg.get("cancellation_payout_hold_minutes", cfg.get("cancellation_payout_hold_hours", 90)))
+    resp_hours = int(cfg.get("seller_cancel_response_window_hours", 6))
+    payout_pct = Decimal(str(cfg.get("payout_transfer_fee_percent", 1.95)))
+    rate_factor = payout_pct / Decimal('100.0')
+
+    # Find pending requests whose grace period or fallback response window has expired
+    pending_requests = Transaction.objects.filter(
+        status=TransactionStatus.PAYMENT_RECEIVED
+    ).filter(
+        Q(cancellation_payout_status='PENDING_CONFIRMATION', cancellation_grace_until__lte=now) |
+        Q(cancellation_payout_status='PENDING_CONFIRMATION', cancellation_grace_until__isnull=True, cancellation_requested_at__lte=now - timedelta(minutes=grace_mins)) |
+        Q(cancellation_payout_status='', cancellation_requested_at__isnull=False, cancellation_requested_at__lte=now - timedelta(hours=resp_hours))
+    ).select_related('link', 'link__seller', 'buyer_identity')
+
+    auto_cancelled_count = 0
+    from apps.ledger.services import execute_buyer_cancellation_settlement
+    from apps.escrow.services_promo import credit_buyer_refund_wallet, reverse_promotional_rewards, get_or_create_buyer_identity
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+
+    for tx in pending_requests:
+        refund_target = tx.cancellation_refund_target or 'WALLET'
+        gross = tx.total_amount_ghs
+        platform_fee = tx.platform_fee_ghs or Decimal('0.00')
+        gateway_fee = (gross * rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+        net_before_payout = max(Decimal('0.00'), gross - platform_fee - gateway_fee)
+        payout_fee = (net_before_payout * rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if refund_target == 'MOMO_PAYOUT' else Decimal('0.00')
+        net_refund = max(Decimal('0.00'), net_before_payout - payout_fee)
+        fee_deducted = gross - net_refund
+
+        tx.status = TransactionStatus.REFUNDED
+        tx.buyer_cancelled = True
+        tx.cancellation_auto_resolved = True
+        tx.cancellation_refund_amount_ghs = net_refund
+        tx.cancellation_fee_deducted_ghs = fee_deducted
+        tx.cancellation_payout_status = 'HELD_DELAYED'
+        tx.cancellation_payout_hold_until = now + timedelta(minutes=hold_mins)
+        tx.save(update_fields=[
+            'status', 'buyer_cancelled', 'cancellation_auto_resolved', 
+            'cancellation_refund_amount_ghs', 'cancellation_fee_deducted_ghs', 
+            'cancellation_payout_status', 'cancellation_payout_hold_until', 'updated_at'
+        ])
+
+        execute_buyer_cancellation_settlement(
+            reference_id=str(tx.id),
+            gross_amount=gross,
+            platform_fee=platform_fee,
+            gateway_fee=gateway_fee,
+            payout_fee=payout_fee,
+            net_refund_amount=net_refund,
+            refund_target=refund_target,
+            buyer_phone=tx.buyer_phone,
+            buyer_email=tx.buyer_email
+        )
+
+        if refund_target == 'WALLET':
+            buyer = tx.buyer_identity or get_or_create_buyer_identity(tx.buyer_phone, tx.buyer_email, tx.buyer_name)
+            credit_buyer_refund_wallet(buyer, net_refund, tx)
+
+        reverse_promotional_rewards(tx)
+
+        dest_label = "In-App Wallet" if refund_target == 'WALLET' else f"phone ({tx.buyer_phone})"
+        b_msg = (
+            f"Cancellation Confirmed (No Dispatch Reported): Your cancellation for Order {tx.paystack_reference} "
+            f"({tx.link.title}) has been confirmed. Net refund of GHS {net_refund:.2f} has been scheduled to your {dest_label}."
+        )
+        dispatch_sms_task.delay(tx.buyer_phone, b_msg)
+        if tx.buyer_email:
+            dispatch_email_task.delay(tx.buyer_email, f"Order Cancellation Auto-Confirmed - #{tx.paystack_reference}", b_msg)
+
+        seller = tx.link.seller
+        s_phone = getattr(seller, 'phone_number', None)
+        s_email = getattr(seller, 'email', None)
+        s_msg = (
+            f"Order Cancellation Auto-Confirmed: Order {tx.paystack_reference} ({tx.link.title}) was auto-cancelled "
+            f"because no dispatch proof was provided within {grace_mins} mins. You have {hold_mins} minutes to report prior dispatch if this was shipped."
+        )
+        if s_phone:
+            dispatch_sms_task.delay(s_phone, s_msg)
+        if s_email:
+            dispatch_email_task.delay(s_email, f"Cancellation Auto-Confirmed - #{tx.paystack_reference}", s_msg)
+
+        auto_cancelled_count += 1
+
+    return f"Auto-resolved {auto_cancelled_count} expired buyer cancellation requests."
+
+
+@shared_task
+def process_cancellation_payout_holds():
+    """
+    Periodic task: Releases delayed MoMo refund payouts once the safety hold buffer (default: 90 hours)
+    has elapsed without any seller dispatch dispute report.
+    """
+    now = timezone.now()
+    ready_payouts = Transaction.objects.filter(
+        cancellation_payout_status='HELD_DELAYED',
+        cancellation_payout_hold_until__lte=now
+    ).select_related('link', 'link__seller', 'buyer_identity')
+
+    processed_count = 0
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+
+    for tx in ready_payouts:
+        tx.cancellation_payout_status = 'PROCESSED'
+        tx.save(update_fields=['cancellation_payout_status', 'updated_at'])
+
+        refund_target = tx.cancellation_refund_target or 'WALLET'
+        if refund_target == 'MOMO_PAYOUT':
+            b_msg = (
+                f"Refund Payout Completed: Net refund of GHS {tx.cancellation_refund_amount_ghs or 0.00:.2f} "
+                f"for Order {tx.paystack_reference} has completed its safety hold and has been sent to your Mobile Money account ({tx.buyer_phone})."
+            )
+            dispatch_sms_task.delay(tx.buyer_phone, b_msg)
+            if tx.buyer_email:
+                dispatch_email_task.delay(tx.buyer_email, f"Refund Payout Completed - #{tx.paystack_reference}", b_msg)
+
+        processed_count += 1
+
+    return f"Processed {processed_count} matured cancellation payout holds."
+
+

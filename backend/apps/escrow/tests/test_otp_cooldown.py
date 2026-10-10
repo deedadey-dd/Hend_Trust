@@ -75,14 +75,12 @@ def test_informal_bus_delivery_otp_cooldown(buyer_seller_and_tx):
     cache.clear()
 
     with patch('apps.core.tasks.dispatch_sms_task.delay') as mock_sms:
-        # First call: generates OTP & sends SMS
-        otp1 = resend_delivery_otp(str(tx.id))
-        assert otp1 != ""
+        # First call: sends bus delivery notice SMS
+        resend_delivery_otp(str(tx.id))
         assert mock_sms.call_count == 1
 
-        # Second call within 60s cooldown: returns same OTP, NO extra SMS
-        otp2 = resend_delivery_otp(str(tx.id))
-        assert otp2 == otp1
+        # Second call within 60s cooldown: NO extra SMS
+        resend_delivery_otp(str(tx.id))
         assert mock_sms.call_count == 1
 
 @pytest.mark.django_db

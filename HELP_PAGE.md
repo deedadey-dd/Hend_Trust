@@ -299,5 +299,42 @@ HendAxis Trust incorporates a promotion, discount, and user loyalty engine desig
    - **Zero Negative Fee**: Stacking discounts cannot produce a negative platform fee; the lowest platform fee floor is GHS 0.00.
    - **Seller Payout Inviolability**: Discounts exclusively reduce platform escrow fees or are absorbed by marketing subsidies (`EXPENSE:PROMOTIONS_SUBSIDY`). The seller's agreed merchandise and shipping payout is **100% protected and never reduced by buyer promotions**.
 
+---
+
+## 11. Order Cancellations, 90-Minute Seller Dispatch Grace & 90-Minute Delayed Payout Hold Buffer
+
+### For Buyers: How to Cancel an Order
+1. **Locate Your Order**: Open your order tracking link or navigate to **My Purchases** on your dashboard (`/dashboard?tab=purchases`).
+2. **Click "Cancel Order"**: If the order has not been dispatched (`PAYMENT_RECEIVED`), click the cancellation button to open the **Live Cancellation Fee Breakdown Modal**.
+3. **Transparent Deductions**:
+   - The platform transparently displays your gross payment, the deducted non-refundable Platform Escrow Fee, and the payment provider transfer fee (1.95% Paystack processing fee).
+   - You can choose to receive your net refund into your **In-App Wallet** ($0 transfer fee) or direct to your **Mobile Money account** (subject to payment provider transfer fee).
+4. **90-Minute Seller Verification Grace Window**:
+   - Once submitted, the seller is sent an immediate urgent SMS alert with a **90-minute window** to verify if the parcel has already been shipped.
+   - If the seller has not shipped, they can accept the cancellation immediately. If unconfirmed after 90 minutes, the platform auto-confirms the cancellation.
+5. **90-Minute Delayed Payout Safety Buffer**:
+   - Once confirmed, the refund enters a 90-minute safety buffer before final release, protecting both parties against offline logistics delays.
+6. **Account Creation Requirement for Guest Shoppers**:
+   - Guest shoppers must set a password during cancellation. This automatically creates their verified buyer account so refunded wallet balances can be accessed securely.
+7. **Monthly Rate Limit**: Buyers are permitted a maximum of **2 cancellations per rolling 30-day period** to prevent bad-faith cancellation spam.
+
+---
+
+### For Sellers: How to Respond to a Buyer Cancellation Request
+1. **Urgent Alert Received**: When a buyer requests cancellation, you receive an immediate SMS & Email notification alerting you of the 90-minute verification grace window.
+2. **If You HAVE NOT Shipped Yet**:
+   - Open your Seller Dashboard, locate the transaction marked with the amber **"Cancel Grace Period"** tag, and click **"Accept Cancel"**.
+   - The cancellation is confirmed, and the buyer is scheduled for their net refund after the 90-minute safety buffer. You will not be penalized.
+3. **If You ALREADY Shipped the Item**:
+   - Click **"I Already Shipped"** on your dashboard before the 90-minute window expires.
+   - Enter the carrier name (e.g. Speedaf, VIP Bus), waybill / tracking number, and dispatch notes.
+   - Submitting this immediately halts the cancellation, records your dispatch proof, and advances the order to **In Transit / Delivery In Progress** (`DELIVERY_IN_PROGRESS`).
+4. **Reporting Shipped During the 90-Minute Payout Hold Buffer**:
+   - If an order was auto-confirmed because you were offline during the 90m window, but you physically shipped prior to cancellation, click **"Report Shipped (Freeze)"** during the 90-minute payout hold.
+   - Enter your waybill and tracking evidence to immediately **freeze outbound refund payouts** and escalate the transaction to HendAxis Arbitration for review.
+5. **Platform Protection & Legal Indemnity Rule**:
+   - **Important**: Sellers must record dispatch details on the platform before handover. HendAxis Trust accepts zero financial liability for offline arrangements not recorded in platform tracking.
+
+
 
 

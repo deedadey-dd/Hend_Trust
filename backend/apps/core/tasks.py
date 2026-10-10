@@ -119,13 +119,14 @@ def dispatch_email_task(email: str, subject: str, message: str, html_message: st
     html_message = _build_default_html_email(subject, message, html_message)
 
     if getattr(settings, 'DEBUG', False):
-        print("\n" + "="*50)
-        print("DEV MOCKED EMAIL NOTIFICATION")
-        print(f"To: {email}")
-        print(f"Subject: {subject}")
-        print(f"Message: {message}")
-        print(f"HTML Link Included: Yes")
-        print("="*50 + "\n")
+        print("\n" + "="*60, flush=True)
+        print("📧 DEV MOCKED EMAIL NOTIFICATION", flush=True)
+        print(f"To: {email}", flush=True)
+        print(f"Subject: {subject}", flush=True)
+        print(f"Message: {message}", flush=True)
+        print(f"HTML Link Included: Yes", flush=True)
+        print("="*60 + "\n", flush=True)
+        logger.info(f"DEV MOCKED EMAIL -> To: {email} | Sub: {subject}")
         sent_success = True
     else:
         try:

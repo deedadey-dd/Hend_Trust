@@ -187,6 +187,7 @@ export default function Navbar() {
                   {user?.role === 'BUYER' ? (
                     <>
                       {navLink('/dashboard?tab=purchases', 'My Purchases', <ShoppingBag className="h-4 w-4 text-[#0363ff]" />)}
+                      {navLink('/ledger', 'Wallet & Payouts', <Wallet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />)}
                       {navLink('/dashboard?tab=reviews', 'My Reviews', <Star className="h-4 w-4 text-amber-500 fill-amber-500" />)}
                       {navLink('/shops', 'Verified Shops', <Store className="h-4 w-4" />)}
                       <button
@@ -210,12 +211,12 @@ export default function Navbar() {
                   
                   <div className="w-px h-5 bg-slate-200 dark:bg-slate-800 mx-1" />
 
-                  {/* Wallet Balance Badge (Hidden for pure buyers if 0/null) */}
-                  {balance !== null && user?.role !== 'BUYER' && (
+                  {/* Wallet Balance Badge */}
+                  {balance !== null && (
                     <Link
                       to="/ledger"
                       className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-blue-50 dark:bg-[#0363ff]/10 text-[#0363ff] dark:text-blue-400 font-bold text-xs hover:bg-blue-100 dark:hover:bg-[#0363ff]/20 transition-colors border border-blue-200 dark:border-[#0363ff]/20 shadow-sm"
-                      title="View Wallet Ledger"
+                      title="View Wallet Ledger & Withdrawals"
                     >
                       <Wallet className="h-4 w-4" />
                       GHS {Number(balance).toFixed(2)}
@@ -278,6 +279,14 @@ export default function Navbar() {
                               >
                                 <ShoppingBag className="h-4 w-4 text-[#0363ff]" />
                                 My Purchases & Orders
+                              </Link>
+                              <Link
+                                to="/ledger"
+                                onClick={() => setUserMenuOpen(false)}
+                                className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-emerald-600 dark:text-emerald-400 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-colors"
+                              >
+                                <Wallet className="h-4 w-4 text-emerald-500" />
+                                Wallet & Withdrawals
                               </Link>
                               <Link
                                 to="/dashboard?tab=reviews"
@@ -699,6 +708,7 @@ export default function Navbar() {
                     <>
                       <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-1">Buyer Hub</p>
                       {navLink('/dashboard?tab=purchases', 'My Purchases & Orders', <ShoppingBag className="h-4 w-4 text-[#0363ff]" />)}
+                      {navLink('/ledger', 'Wallet & Withdrawals', <Wallet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />)}
                       {navLink('/dashboard?tab=reviews', 'My Reviews & Ratings', <Star className="h-4 w-4 text-amber-500 fill-amber-500" />)}
                       {navLink('/shops', 'Verified Shops Directory', <Store className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />)}
                       {navLink('/dashboard?tab=referrals', 'Referrals & Rewards', <Gift className="h-4 w-4 text-purple-500" />)}

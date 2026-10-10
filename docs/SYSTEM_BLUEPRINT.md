@@ -220,8 +220,26 @@ stateDiagram-v2
    - Automated name-matching validation using gateway lookup (Paystack / Hubtel Bank Resolve API).
    - Verification records (account name, account number, bank/network name) are recorded permanently against every withdrawal transaction in the ledger for future auditability.
 
+7. **Buyer Order Cancellation, 90-Minute Seller Dispatch Grace Window & 90-Minute Delayed Payout Hold Buffer**:
+   - **90-Minute Seller Dispatch Verification Grace Period (`cancellation_dispatch_grace_minutes: 90`)**:
+     - When a buyer requests cancellation on an undispatched order (`PAYMENT_RECEIVED`), the transaction initiates a **90-minute Seller Verification Window** (`cancellation_payout_status = 'PENDING_CONFIRMATION'`, `cancellation_grace_until = now + 90m`).
+     - Automated high-priority SMS and email alerts are sent to the Seller instructing them to confirm if the package has already been handed over to a courier or transporter.
+     - **Seller Reject / Shipped Proof (`POST /api/v1/escrow/seller/transactions/{id}/reject-cancellation-shipped`)**: Seller inputs carrier name, waybill / tracking code, and dispatch notes. This immediately halts the cancellation, records `cancellation_seller_reported_shipped = True`, and advances the order to `DELIVERY_IN_PROGRESS`.
+     - **Seller Accept Cancellation (`POST /api/v1/escrow/seller/transactions/{id}/accept-cancellation`)**: Seller confirms non-dispatch. The order transitions to `CANCELLED` and enters the **90-Minute Delayed Payout Safety Buffer**.
+     - **Auto-Confirmation on Expiry**: If 90 minutes elapse with no seller action, Celery task `check_pending_cancellation_requests` auto-confirms the cancellation and activates the 90-minute safety hold.
+   - **90-Minute Delayed Payout Safety Hold Buffer & Arbitration Freeze (`cancellation_payout_hold_minutes: 90`)**:
+     - Confirmed cancellations hold outbound refund payouts for **90 minutes** (`cancellation_payout_status = 'HELD_DELAYED'`, `cancellation_payout_hold_until = now + 90m`).
+     - **Seller Report Shipped & Payout Freeze (`POST /api/v1/escrow/seller/transactions/{id}/report-shipped-freeze`)**: If the seller physically dispatched prior to cancellation but was delayed in updating the system, submitting carrier proof during this 90-minute hold **immediately freezes the payout** and escalates the order to `DISPUTED` under HendAxis Arbitration.
+     - **Matured Payout Auto-Release**: Periodic task `process_cancellation_payout_holds` releases delayed refunds to the buyer's Mobile Money or Wallet once 90 minutes elapse with zero dispute reports.
+   - **Guest Buyer Account Enforcement**: Guest buyers must supply a password when cancelling to create/verify an account. Net refunds are credited directly to their In-App Wallet (or MoMo) with zero risk of unclaimable refunds.
+   - **Anti-Abuse Monthly Cancellation Rate Limiting (`buyer_monthly_cancel_limit: 2`)**: Restricts buyers to a maximum of 2 cancellations per calendar month.
+   - **Refund Deduction Breakdown**:
+     $$\text{Net Refund (Wallet)} = \text{Gross Amount} - \text{Platform Fee} - (\text{Gross Amount} \times 1.95\%)$$
+     $$\text{Net Refund (MoMo)} = \text{Net Refund (Wallet)} - (\text{Net Refund (Wallet)} \times 1.95\%)$$
+   - **Platform Indemnity & Protection Clause**: Sellers must record package dispatch on the platform prior to handover. HendAxis Trust accepts zero financial liability for offline dispatch arrangements not recorded in platform tracking.
+
 #### Database Models (`backend/apps/escrow/models.py`)
-- `EscrowTransaction`: Holds `transaction_ref`, `buyer`, `seller`, `payment_link`, `amount`, `delivery_fee`, `platform_fee`, `status`, `delivery_pin`, `return_confirmation_code`, `return_waybill_photo_url`, `reminder_24h_dispatch_sent`, `auto_cancelled_non_dispatch`, `auto_release_at`, `created_at`, `updated_at`.
+- `Transaction`: Holds `link`, `buyer_name`, `buyer_phone`, `buyer_email`, `shipping_address`, `status`, `total_amount_ghs`, `platform_fee_ghs`, `shipping_fee_ghs`, `paystack_reference`, `delivery_method`, `courier_name`, `tracking_number`, `dispatched_at`, `delivered_at`, `inspection_starts_at`, `buyer_cancelled`, `cancellation_requested_at`, `cancellation_reason`, `cancellation_refund_target`, `cancellation_refund_amount_ghs`, `cancellation_fee_deducted_ghs`, `cancellation_auto_resolved`, `cancellation_grace_until`, `cancellation_payout_hold_until`, `cancellation_payout_status`, `cancellation_seller_reported_shipped`, `cancellation_seller_carrier`, `cancellation_seller_waybill`, `cancellation_seller_proof_url`, `cancellation_seller_proof_notes`, `created_at`, `updated_at`.
 
 ---
 
