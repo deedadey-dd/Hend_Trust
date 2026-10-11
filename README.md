@@ -120,12 +120,23 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Dynamic Role-Adaptive Navbar**: Navigation bar dynamically adapts its desktop links, profile dropdown menu, and mobile drawer between `BUYER` (My Purchases, Verified Shops, Track Order), `SELLER` (Dashboard, Create Link, My Links, Shops, Wallet Balance), and `ADMIN` roles.
 - **Dynamic Admin Courier Sync**: Logistics section on public landing pages and directories dynamically syncs with active administrative settings.
 
-### 15. Promotions, Seasonal Fee Overrides, Cashback Rewards & Double-Sided Referral Engine
-- **Promo Codes**: Support for `PERCENTAGE` (with optional `max_discount_cap_ghs` ceiling) and `FIXED_GHS` fee deductions, constrained by `min_order_amount_ghs`, global usage limits, per-buyer limits, role restrictions (`ALL`, `BUYER_ONLY`, `SELLER_ONLY`), and automatic expiration dates.
-- **Seasonal / Festive Fee Overrides (`SeasonalFeeCampaign`)**: Automated site-wide fee relief during peak shopping periods across 5 rule types (`WAIVED`, `PERCENTAGE_DISCOUNT`, `FIXED_DISCOUNT`, `REDUCED_PERCENTAGE`, `REDUCED_FIXED`) with min order criteria and discount caps.
-- **Transaction Cashback & Fee-Offset Credits (`TransactionRewardCampaign`)**: Automated issuance of flat or volume-percentage bonus credits upon order completion for buyers and merchants.
-- **Double-Sided Referral Program (`/referrals`)**: Unique referral link generator (`/ref/:code`) granting dual rewards (Referrer GHS 10.00 / Referee GHS 5.00) upon the referee's first qualifying order completion ($\ge \text{GHS } 50.00$) with strict anti-self-referral safeguards.
-- **Calculation Precedence & Seller Payout Protection**: Strict calculation hierarchy (Base Fee $\to$ Seasonal Override $\to$ Promo Code $\to$ Wallet Credit $\to$ Fee Floor $\ge \text{GHS } 0.00$). Promotional subsidies never reduce the seller's agreed merchandise or delivery earnings.
+### 16. Buyer Order Cancellation, 90-Minute Seller Dispatch Grace Window & 90-Minute Delayed Payout Safety Buffer
+- **90-Minute Seller Dispatch Verification Grace Period (`cancellation_dispatch_grace_minutes: 90`)**:
+  - When a buyer initiates an order cancellation, the transaction enters an active **90-minute Seller Verification Grace Window** (`cancellation_payout_status = 'PENDING_CONFIRMATION'`).
+  - An urgent SMS & Email alert is immediately dispatched to the Seller prompting them to confirm if the package has already been handed over to a courier or station driver.
+  - **Seller Actions During Grace Window**:
+    - **Accept Cancellation (`POST /api/v1/escrow/seller/transactions/{id}/accept-cancellation`)**: Confirms the item was not shipped. Transitions order to `CANCELLED` and places outbound payout into the 90-minute safety buffer.
+    - **I Already Shipped (`POST /api/v1/escrow/seller/transactions/{id}/reject-cancellation-shipped`)**: Seller inputs the carrier name (e.g. Speedaf, VIP Bus), waybill / tracking code, and dispatch notes. This immediately halts the cancellation and advances the order to `DELIVERY_IN_PROGRESS`.
+  - **Automated Grace Expiration**: If the seller fails to respond within 90 minutes, Celery periodic tasks (`check_pending_cancellation_requests`) auto-confirm the cancellation and transition the order into the 90-minute delayed payout safety hold.
+- **90-Minute Delayed Payout Safety Hold Buffer & Arbitration Freeze (`cancellation_payout_hold_minutes: 90`)**:
+  - After a cancellation is confirmed, outbound refund disbursement is held for **90 minutes** (`cancellation_payout_status = 'HELD_DELAYED'`).
+  - **Seller Emergency Dispatch Report & Payout Freeze (`POST /api/v1/escrow/seller/transactions/{id}/report-shipped-freeze`)**: If the seller physically shipped prior to cancellation but was delayed in recording it, they can submit carrier waybill proof during the 90-minute hold. This immediately **freezes the refund payout** and escalates the order to `DISPUTED` under HendAxis Arbitration.
+  - **Automated Payout Release**: Celery task `process_cancellation_payout_holds` releases delayed refunds automatically once 90 minutes elapse with zero dispute reports.
+- **Guest Buyer Account Requirement**: Guest buyers must set a password during cancellation to create/verify an account. Net refunds are credited directly to their In-App Wallet (or Mobile Money) and securely accessible.
+- **Anti-Abuse Monthly Cancellation Rate Limit (`buyer_monthly_cancel_limit: 2`)**: Buyers are restricted to a maximum of 2 cancellations per rolling 30-day period to prevent order spam.
+- **Deduction & Payment Provider Fee Transparency**: Cancellation refunds transparently deduct the non-refundable Platform Escrow Fee and the payment provider transaction fee (Paystack transfer percentage of 1.95%).
+- **Platform Indemnity & Legal Protection Clause**:
+  > *Sellers are legally required to record parcel dispatch on the platform prior to physical handover. HendAxis Trust bears zero financial liability for unrecorded offline dispatch arrangements.*
 
 ---
 

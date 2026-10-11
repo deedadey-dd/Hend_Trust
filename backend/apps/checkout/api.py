@@ -12,6 +12,7 @@ from django.db.models import Q
 from hendaxis_trust.auth import JWTCookieAuth
 from typing import Optional, List
 from decimal import Decimal
+from django.utils import timezone
 import uuid
 
 checkout_router = Router(tags=["Guest Checkout"])
@@ -149,6 +150,25 @@ class TransactionStatusSchema(Schema):
     seasonal_campaign_name: Optional[str] = None
     promo_code_applied: Optional[str] = None
     fee_handling: Optional[str] = "PASS_TO_BUYER"
+    # Cancellation fields
+    buyer_cancelled: Optional[bool] = False
+    cancellation_requested: Optional[bool] = False
+    cancellation_requested_at: Optional[str] = None
+    cancellation_grace_until: Optional[str] = None
+    cancellation_payout_hold_until: Optional[str] = None
+    cancellation_payout_status: Optional[str] = None
+    cancellation_grace_remaining_minutes: Optional[int] = None
+    cancellation_payout_hold_remaining_minutes: Optional[int] = None
+    cancellation_reason: Optional[str] = None
+    cancellation_refund_target: Optional[str] = None
+    cancellation_refund_amount_ghs: Optional[float] = None
+    cancellation_fee_deducted_ghs: Optional[float] = None
+    instant_cancel_window_hours: Optional[int] = 2
+    is_instant_cancel_eligible: Optional[bool] = False
+    instant_cancel_remaining_minutes: Optional[int] = 0
+    seller_cancel_response_window_hours: Optional[int] = 6
+    seller_cancel_response_remaining_minutes: Optional[int] = 0
+    payout_transfer_fee_ghs: Optional[float] = 2.0
 
 class InitializeResponse(Schema):
     authorization_url: str
@@ -275,10 +295,33 @@ def _build_txn_status_dict(t):
         "base_platform_fee_ghs": round(float(((t.link.price_ghs + t.link.shipping_fee_ghs) * Decimal('0.015')) + Decimal('10.00')), 2) if (t.link and t.link.fee_handling == 'PASS_TO_BUYER') else 0.0,
         "promo_discount_ghs": float(t.promo_discount_ghs or 0.0),
         "credit_discount_ghs": float(t.credit_discount_ghs or 0.0),
-        "seasonal_fee_discount_ghs": float(getattr(t, 'seasonal_fee_discount_ghs', None) or 0.0),
-        "seasonal_campaign_name": t.seasonal_fee_campaign.name if getattr(t, 'seasonal_fee_campaign', None) else None,
         "promo_code_applied": t.promo_code.code if t.promo_code else None,
         "fee_handling": t.link.fee_handling if t.link else "PASS_TO_BUYER",
+        # Cancellation state & timer details
+        "buyer_cancelled": getattr(t, 'buyer_cancelled', False),
+        "cancellation_requested": bool(getattr(t, 'cancellation_requested_at', None) or getattr(t, 'cancellation_payout_status', '') == 'PENDING_CONFIRMATION'),
+        "cancellation_requested_at": t.cancellation_requested_at.isoformat() if getattr(t, 'cancellation_requested_at', None) else None,
+        "cancellation_grace_until": t.cancellation_grace_until.isoformat() if getattr(t, 'cancellation_grace_until', None) else None,
+        "cancellation_payout_hold_until": t.cancellation_payout_hold_until.isoformat() if getattr(t, 'cancellation_payout_hold_until', None) else None,
+        "cancellation_payout_status": getattr(t, 'cancellation_payout_status', '') or None,
+        "cancellation_grace_remaining_minutes": max(0, int((t.cancellation_grace_until - timezone.now()).total_seconds() // 60)) if getattr(t, 'cancellation_grace_until', None) else None,
+        "cancellation_payout_hold_remaining_minutes": max(0, int((t.cancellation_payout_hold_until - timezone.now()).total_seconds() // 60)) if getattr(t, 'cancellation_payout_hold_until', None) else None,
+        "cancellation_reason": getattr(t, 'cancellation_reason', '') or None,
+        "cancellation_refund_target": getattr(t, 'cancellation_refund_target', '') or None,
+        "cancellation_refund_amount_ghs": float(t.cancellation_refund_amount_ghs) if getattr(t, 'cancellation_refund_amount_ghs', None) is not None else None,
+        "cancellation_fee_deducted_ghs": float(t.cancellation_fee_deducted_ghs) if getattr(t, 'cancellation_fee_deducted_ghs', None) is not None else None,
+        "instant_cancel_window_hours": int(cfg.get("buyer_instant_cancel_window_hours", 2)),
+        "is_instant_cancel_eligible": bool(
+            t.status == 'PAYMENT_RECEIVED' and 
+            t.created_at and 
+            ((timezone.now() - t.created_at).total_seconds() < int(cfg.get("buyer_instant_cancel_window_hours", 2)) * 3600.0)
+        ),
+        "instant_cancel_remaining_minutes": max(0, int((int(cfg.get("buyer_instant_cancel_window_hours", 2)) * 3600.0 - (timezone.now() - t.created_at).total_seconds()) // 60)) if (t.status == 'PAYMENT_RECEIVED' and t.created_at) else 0,
+        "seller_cancel_response_window_hours": int(cfg.get("seller_cancel_response_window_hours", 6)),
+        "seller_cancel_response_remaining_minutes": max(0, int((t.cancellation_grace_until - timezone.now()).total_seconds() // 60)) if getattr(t, 'cancellation_grace_until', None) else (
+            max(0, int((int(cfg.get("cancellation_dispatch_grace_minutes", 90)) * 60.0 - (timezone.now() - t.cancellation_requested_at).total_seconds()) // 60)) if getattr(t, 'cancellation_requested_at', None) else 0
+        ),
+        "payout_transfer_fee_ghs": float(cfg.get("payout_transfer_fee_ghs", 2.0)),
     }
 
 @checkout_router.post("/track", response=list[TransactionStatusSchema])

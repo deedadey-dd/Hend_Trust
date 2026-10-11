@@ -354,4 +354,110 @@ def execute_non_dispatch_auto_refund(reference_id: str, seller_user_id, gross_am
         wallet.save(update_fields=['available_balance_ghs', 'updated_at'])
 
 
+@transaction.atomic()
+def execute_buyer_cancellation_settlement(
+    reference_id: str,
+    gross_amount: Decimal,
+    platform_fee: Decimal,
+    gateway_fee: Decimal,
+    payout_fee: Decimal,
+    net_refund_amount: Decimal,
+    refund_target: str,
+    buyer_phone: str = "",
+    buyer_email: str = ""
+):
+    """
+    Settles a buyer-initiated cancellation in the double-entry ledger:
+    1. Debits BUYER_ESCROW_DEPOSIT for gross_amount.
+    2. Credits PLATFORM_FEE_REVENUE for platform_fee (service retained).
+    3. Credits PAYSTACK_FEE_EXPENSE for gateway_fee (1.95% payment inflow cost retained).
+    4. If payout_fee > 0, credits PLATFORM_FEE_REVENUE.
+    5. If refund_target == 'MOMO_PAYOUT', credits SYSTEM_BANK_ASSET and triggers automated payout transfer.
+    """
+    escrow = _get_system_account('BUYER_ESCROW_DEPOSIT', AccountType.LIABILITY)
+    sys_bank = _get_system_account('SYSTEM_BANK_ASSET', AccountType.ASSET)
+    revenue = _get_system_account('PLATFORM_FEE_REVENUE', AccountType.REVENUE)
+    fee_expense = _get_system_account('PAYSTACK_FEE_EXPENSE', AccountType.EXPENSE)
+
+    # 1. Retain Platform Fee Revenue
+    if platform_fee > Decimal('0.00'):
+        LedgerEntry.objects.create(
+            reference_id=reference_id,
+            debit_account=escrow,
+            credit_account=revenue,
+            amount_ghs=platform_fee,
+            entry_type="BUYER_CANCEL_PLATFORM_FEE_RETAINED"
+        )
+        _apply_entry_to_balances(escrow, revenue, platform_fee)
+
+    # 2. Retain Gateway Processing Fee
+    if gateway_fee > Decimal('0.00'):
+        LedgerEntry.objects.create(
+            reference_id=reference_id,
+            debit_account=escrow,
+            credit_account=fee_expense,
+            amount_ghs=gateway_fee,
+            entry_type="BUYER_CANCEL_GATEWAY_FEE_RETAINED"
+        )
+        _apply_entry_to_balances(escrow, fee_expense, gateway_fee)
+
+    # 3. Retain Payout Fee if applicable
+    if payout_fee > Decimal('0.00'):
+        LedgerEntry.objects.create(
+            reference_id=reference_id,
+            debit_account=escrow,
+            credit_account=revenue,
+            amount_ghs=payout_fee,
+            entry_type="BUYER_CANCEL_PAYOUT_FEE_RETAINED"
+        )
+        _apply_entry_to_balances(escrow, revenue, payout_fee)
+
+    # 4. Settle Net Refund if external payout or wallet
+    if refund_target == 'MOMO_PAYOUT':
+        LedgerEntry.objects.create(
+            reference_id=reference_id,
+            debit_account=escrow,
+            credit_account=sys_bank,
+            amount_ghs=net_refund_amount,
+            entry_type="BUYER_CANCEL_MOMO_REFUND"
+        )
+        _apply_entry_to_balances(escrow, sys_bank, net_refund_amount)
+
+        # Trigger Payout transfer
+        from apps.escrow.payouts import PayoutAdapter
+        dest = buyer_phone or buyer_email or "UNKNOWN_BUYER"
+        try:
+            PayoutAdapter.transfer_funds(
+                destination_account=dest,
+                amount=float(net_refund_amount),
+                reference=f"CAN-{reference_id}"
+            )
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Buyer cancellation refund transfer error for {dest}: {e}")
+    elif refund_target == 'WALLET':
+        from apps.users.models import User
+        from apps.wallet.api import get_user_wallet
+        from apps.wallet.services import sync_wallet_balance
+
+        target_user = None
+        if buyer_phone:
+            target_user = User.objects.filter(phone_number=buyer_phone.strip()).first()
+        if not target_user and buyer_email:
+            target_user = User.objects.filter(email__iexact=buyer_email.strip()).first()
+
+        if target_user:
+            buyer_wallet = get_user_wallet(target_user)
+            LedgerEntry.objects.create(
+                reference_id=reference_id,
+                debit_account=escrow,
+                credit_account=buyer_wallet.ledger_account,
+                amount_ghs=net_refund_amount,
+                entry_type="BUYER_CANCEL_WALLET_REFUND"
+            )
+            _apply_entry_to_balances(escrow, buyer_wallet.ledger_account, net_refund_amount)
+            sync_wallet_balance(buyer_wallet)
+
+
+
 

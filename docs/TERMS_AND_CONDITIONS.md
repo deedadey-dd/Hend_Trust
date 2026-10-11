@@ -1,13 +1,13 @@
 # 📜 HendAxis Trust: Terms of Service & Master User Agreement
 
-**Last Updated**: September 7, 2026  
+**Last Updated**: October 10, 2026  
 **Effective Date**: Immediate upon account creation, payment link creation, or transaction initialization.
 
 ---
 
 ## 1. Introduction & Acceptance of Terms
 
-Welcome to **HendAxis Trust** (referred to herein as *"HendAxis Trust"*, *"Platform"*, *"We"*, *"Us"*, or *"Our"*). HendAxis Trust operates an escrow-gated payment, merchant directory, logistics tracing, and dispute arbitration platform designed to facilitate secure commerce between Buyers and Sellers (collectively referred to as *"Users"*, *"You"*, or *"Your"*).
+Welcome to **HendAxis Trust** (referred to herein as *"HendAxis Trust"*, *"Platform"*, *"We"*, *"Us"*, or *"Our"*). HendAxis Trust operates an escrow-gated payment, merchant directory, logistics tracing, dispute arbitration, and buyer-seller protection platform designed to facilitate secure commerce between Buyers and Sellers (collectively referred to as *"Users"*, *"You"*, or *"Your"*).
 
 By accessing or using HendAxis Trust (including visiting public storefronts, creating payment links, completing checkout, or registering an account), You explicitly agree to be bound by this Master User Agreement (*"Terms"*). **If You do not agree to all provisions contained herein, You must immediately cease all access and use of the Platform.**
 
@@ -29,6 +29,7 @@ You agree to defend, indemnify, and hold harmless HendAxis Trust, its parent com
 2. Product defects, counterfeit items, personal injury, property damage, or misrepresentations associated with goods sold or bought via the Platform.
 3. Your violation of any third-party rights, including intellectual property, privacy, or consumer protection laws in Ghana or international jurisdictions.
 4. Any failure by a Seller to package or ship items safely.
+5. Any informal, offline, or unrecorded dispatch arrangements conducted outside of HendAxis Trust tracking systems.
 
 ---
 
@@ -78,31 +79,65 @@ Once a Buyer completes payment into escrow, the Seller must dispatch the item wi
 
 ---
 
-## 6. Photo & Media Evidence Policy
+## 6. Buyer Order Cancellations, Seller Dispatch Verification Grace Period & Delayed Payout Safety Buffer
 
-### 6.1 Binding Legal Evidence
+### 6.1 Cancellation Eligibility & Pre-Dispatch Requirement
+Buyers may request cancellation only for orders that have not yet been marked dispatched (`PAYMENT_RECEIVED`). Once a transaction has transitioned to `DELIVERY_IN_PROGRESS`, direct buyer cancellation is barred, and the standard delivery/dispute workflow applies.
+
+### 6.2 90-Minute Seller Dispatch Verification Grace Window
+To prevent bad-faith cancellations where a seller has physically handed over a package to a transporter but has not yet updated the platform:
+1. **Initiation & Status**: Submitting a cancellation request places the transaction into an active **90-Minute Seller Verification Grace Window** (`cancellation_payout_status = 'PENDING_CONFIRMATION'`).
+2. **Instant Seller Alert**: The platform immediately dispatches an urgent SMS and Email notification to the Seller prompting verification.
+3. **Seller Acceptance**: If the Seller has not shipped, they can accept the cancellation immediately (`accept-cancellation`). The transaction is marked `CANCELLED` and moves into the 90-minute safety payout buffer.
+4. **Seller Confirmation of Prior Dispatch**: If the Seller has already handed the parcel to a courier, they can click **"I Already Shipped"** (`reject-cancellation-shipped`) to submit the carrier name, waybill / tracking code, and dispatch notes. This immediately halts the cancellation, records the dispatch proof, and transitions the order to `DELIVERY_IN_PROGRESS`.
+5. **Automated Expiry**: If 90 minutes elapse with no seller response, the system auto-confirms the cancellation.
+
+### 6.3 90-Minute Delayed Payout Safety Hold Buffer & Arbitration Freeze
+1. **Safety Hold Duration**: Confirmed cancellations enter a **90-minute Delayed Payout Safety Buffer** (`cancellation_payout_status = 'HELD_DELAYED'`) prior to final outbound refund payout.
+2. **Seller Emergency Report & Freeze**: If a Seller was offline during the 90-minute grace window but physically shipped the parcel prior to cancellation, they may submit their waybill proof during the 90-minute hold (`report-shipped-freeze`). This **immediately freezes outbound payout disbursement** and escalates the transaction to `DISPUTED` under HendAxis Arbitration.
+3. **Automatic Matured Disbursement**: If no seller dispute report is lodged during the 90-minute hold, the delayed refund is automatically processed.
+
+### 6.4 Buyer Account Requirement & Transparent Fee Deductions
+1. **Account Creation for Guest Buyers**: Guest buyers must specify an account password during cancellation. Net refunds are credited directly to their In-App Wallet or Mobile Money account, ensuring immediate balance accessibility.
+2. **Transparent Deductions**:
+   - The non-refundable Platform Escrow Protection Fee is retained by the platform.
+   - Payout transfer fees charged by payment providers (1.95% Paystack processing fee) are deducted from direct Mobile Money disbursements ($0 fee for In-App Wallet credits).
+
+### 6.5 Anti-Abuse Rate Limiting
+Buyers are strictly restricted to a maximum of **2 cancellations per rolling 30-day period** (`buyer_monthly_cancel_limit = 2`). Excessive cancellation attempts beyond this quota are blocked by the system.
+
+### 6.6 Mandatory Dispatch Recording & Total Platform Indemnity
+> [!IMPORTANT]
+> **Sellers are legally required to log parcel dispatch on the platform prior to physical handover.**
+> HendAxis Trust bears **zero financial liability or obligation** for parcels dispatched offline where the seller failed to record tracking details on the platform before the cancellation grace and safety hold buffers elapsed.
+
+---
+
+## 7. Photo & Media Evidence Policy
+
+### 7.1 Binding Legal Evidence
 All photos, images, waybill documents, and media uploaded to HendAxis Trust (including dispatch parcel photos, buyer unboxing photos, and dispute evidence attachments) constitute **binding legal evidence** in platform arbitrations and legal proceedings.
 
-### 6.2 Best Practices for Media Verification
+### 7.2 Best Practices for Media Verification
 - **Sellers**: Are strongly advised to film the item condition and packaging process prior to sealing the parcel.
 - **Buyers**: Are strongly advised to record a continuous unboxing video when opening the received parcel.
 - **Dispute Uploads**: In the event of a dispute, Buyers and Sellers may upload up to 5 high-resolution evidence photos. Uploaded images are compressed server-side to $\le 1\text{MB}$ post-resolution for permanent audit trail retention.
 
 ---
 
-## 7. Delivery Paths & Inspection Period Expiry
+## 8. Delivery Paths & Inspection Period Expiry
 
-### 7.1 Delivery Verification Paths
+### 8.1 Delivery Verification Paths
 - **Path A (Formal Courier)**: Integrated with carrier webhooks (DHL, Speedaf, FedEx, UPS, EMS). Delivery is verified automatically when the carrier updates package status to `DELIVERED`.
 - **Path B (Informal Bus / Station)**: Verified when the Buyer presents a Secret 6-Digit OTP to the station driver, or manually confirms receipt.
 
-### 7.2 Tiered Inspection Window
+### 8.2 Tiered Inspection Window
 Once delivery is verified, the Buyer Inspection Period commences:
 - **Orders < GHS 2,000**: 24 Hours
 - **Orders GHS 2,000 – GHS 9,999.99**: 48 Hours
 - **Orders $\ge$ GHS 10,000**: 72 Hours
 
-### 7.3 CRITICAL: Irreversibility of Inspection Expiry
+### 8.3 CRITICAL: Irreversibility of Inspection Expiry
 > [!IMPORTANT]
 > **Upon the expiration of the tiered Inspection Period (or upon the Buyer manually confirming receipt via OTP), the escrow hold is permanently terminated, and funds are automatically transferred into the Seller’s Wallet.**
 
@@ -114,38 +149,38 @@ Once delivery is verified, the Buyer Inspection Period commences:
 
 ---
 
-## 8. Disputes, Dialogue Trail, Retraction & Item Returns
+## 9. Disputes, Dialogue Trail, Retraction & Item Returns
 
-### 8.1 Dispute Initiation & Subsequent Evidence Appending
+### 9.1 Dispute Initiation & Subsequent Evidence Appending
 If a Buyer receives a damaged, defective, or incorrect item, they must click **Raise Dispute** on their tracking page **before the Inspection Period expires**. Raising a dispute immediately freezes escrow funds and halts automated payouts.
 - **Continuous Dialogue & Evidence Trail**: Both Buyers and Sellers can append subsequent statements, clarifications, and photo evidence to active disputes without overwriting existing history.
 - **Evidence Limit**: Parties can accumulate up to **5 WebP photographic evidence files** throughout the dispute lifecycle.
 - **Transparent Audit**: All statements are recorded with chronological timestamps in the unified WhatsApp-style dispute timeline.
 
-### 8.2 Arbitration & 24-Hour Settlement
+### 9.2 Arbitration & 24-Hour Settlement
 HendAxis Trust support management will review all uploaded evidence (photos, description, dispatch proof, and dialogue history) and issue a **final binding ruling within 24 hours**.
 
-### 8.3 Buyer Item Return Obligations (`REQUIRE_RETURN_FROM_BUYER`)
+### 9.3 Buyer Item Return Obligations (`REQUIRE_RETURN_FROM_BUYER`)
 Where a dispute ruling requires the Buyer to return the item to the Seller:
 1. **Return Dispatch**: The Buyer must ship the item back within the specified return window via Courier (with waybill & tracking number) or Bus transport (with driver phone, car registration, and station details).
 2. **Reverse Pickup OTP**: For bus returns, a **Secret 6-Digit Reverse OTP** is generated. The Seller must inspect the returned parcel and verify the Reverse OTP (or confirm receipt in app) to unlock the full refund payout to the Buyer.
 3. **Auto-Refund Window**: If the Seller receives the returned item but fails to object within 48 hours of return delivery, the system will automatically process the Buyer’s refund.
 
-### 8.4 Dispute Retraction & Private Settlement Policy
+### 9.4 Dispute Retraction & Private Settlement Policy
 If a Buyer and Seller resolve their grievances privately (e.g., replacement sent, direct discount, or technical assistance), the Buyer may elect to **Retract Dispute** directly via their tracking portal.
 1. **24-Hour Delayed Settlement Window**: Upon dispute retraction, the transaction transitions into `RETRACTED_SETTLING` status. Escrow funds are held for **24 hours** (or the administrative configured settlement period) before releasing to the Seller's wallet. This grace period prevents accidental or coerced retractions.
 2. **Rating Permanently Voided**: Once a dispute is raised—even if subsequently retracted—the Buyer forfeits the ability to submit a merchant satisfaction rating (`rating_voided = True`). This prevents coercive settlement deals made under the threat of negative reviews.
 
 ---
 
-## 9. Merchant Identity Verification, Health Governance & Suspension Appeals
+## 10. Merchant Identity Verification, Health Governance & Suspension Appeals
 
-### 9.1 Verification Rules
+### 10.1 Verification Rules
 - The **Verified Seller 🛡️** badge is granted **exclusively** via manual inspection of Ghana Card / National ID and Business Registration documents by HendAxis Trust administration.
 - Completed transactions do not automatically grant Verified status. Unverified stores will display as `🆕 New Shop`.
 - Submitting fraudulent identity documents will result in immediate account termination, wallet freezing, and referral to law enforcement agencies (Ghana Police Service / Cyber Security Authority).
 
-### 9.2 Account Suspension, In-Flight Orders & Reinstatement Appeals
+### 10.2 Account Suspension, In-Flight Orders & Reinstatement Appeals
 - **Suspension Enforcement**: Accounts suspended due to high dispute rates ($\ge 40\%$), low customer ratings ($< 2.0$ stars), or high dispatch expiry rates ($\ge 35\%$) will have active payment links disabled and cannot generate new links.
 - **In-Flight Order Continuity**: In-flight orders paid prior to suspension remain active and proceed to normal delivery, inspection, and settlement.
 - **Suspension Appeals**: Suspended merchants may submit a formal appeal with remediation steps via their dashboard.
@@ -153,15 +188,15 @@ If a Buyer and Seller resolve their grievances privately (e.g., replacement sent
 
 ---
 
-## 10. System Enforcement & User Consent Integration
+## 11. System Enforcement & User Consent Integration
 
 To ensure full compliance across all platform touchpoints:
 1. **Merchant Registration**: Users must accept these Terms during account sign-up.
-2. **Payment Link Creation**: Sellers must acknowledge fee schedules, dispatch rules, and packaging liabilities prior to link generation.
+2. **Payment Link Creation**: Sellers must acknowledge fee schedules, dispatch rules, packaging liabilities, and platform indemnity prior to link generation.
 3. **Buyer Checkout**: Buyers must explicitly check **"I agree to the HendAxis Trust Terms of Service and Inspection Expiry Rules"** prior to initiating payment.
 
 ---
 
-## 11. Governing Law & Dispute Jurisdiction
+## 12. Governing Law & Dispute Jurisdiction
 
 These Terms are governed by and construed in accordance with the laws of the **Republic of Ghana**. Any legal suit, action, or proceeding arising out of or related to these Terms or the services provided by HendAxis Trust shall be instituted exclusively in the competent courts of Accra, Ghana.

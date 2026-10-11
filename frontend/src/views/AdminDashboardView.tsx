@@ -230,6 +230,14 @@ interface PlatformSettings {
   unpaid_auto_archive_days?: number;
   arbiter_fee_per_dispute?: number;
   arbiter_escalation_hours?: number;
+  buyer_instant_cancel_window_hours?: number;
+  seller_cancel_response_window_hours?: number;
+  cancellation_dispatch_grace_minutes?: number;
+  cancellation_payout_hold_minutes?: number;
+  cancellation_payout_hold_hours?: number;
+  buyer_monthly_cancel_limit?: number;
+  payout_transfer_fee_percent?: number;
+  payout_transfer_fee_ghs?: number;
   django_admin_url?: string;
   promotions_active?: boolean;
   promotions_expires_at?: string | null;
@@ -274,7 +282,7 @@ export const AdminDashboardView: React.FC = () => {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
 
   useEffect(() => {
-    if (!isSuperUser && activeTab === 'SETTINGS') {
+    if (!isAdminManager && !isSuperUser && activeTab === 'SETTINGS') {
       setActiveTab('TRANSACTIONS');
     }
     if (!isAdminManager && activeTab === 'STAFF') {
@@ -1123,7 +1131,7 @@ export const AdminDashboardView: React.FC = () => {
       items: [
         { id: 'PROMOTIONS', label: 'Promotions & Rewards', icon: Gift, badge: platformSettings.promotions_active ? 'Active' : undefined, visible: isAdminManager || isFinance },
         { id: 'STAFF', label: 'Staff & Roles', icon: UserCog, badge: staffList?.length || undefined, visible: isAdminManager },
-        { id: 'SETTINGS', label: 'Platform Settings', icon: Layers, visible: isSuperUser },
+        { id: 'SETTINGS', label: 'Platform Settings', icon: Layers, visible: isAdminManager || isSuperUser },
       ]
     }
   ];
@@ -3597,6 +3605,7 @@ export const AdminDashboardView: React.FC = () => {
                     <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Hours (Default 48)</span>
                   </div>
                 </div>
+
               </div>
 
               {/* Inspection Period Tiers */}
@@ -3961,6 +3970,150 @@ export const AdminDashboardView: React.FC = () => {
                       <svg xmlns="http://www.w3.org/2000/svg" className="h-3 w-3 text-rose-500 shrink-0" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="M12 9v4m0 4h.01M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/></svg>
                       <span className="text-[10px] text-rose-700 dark:text-rose-400 font-semibold">Live impact — sellers with expiry rate ≥ 35% will be auto-suspended on the next monitoring cycle.</span>
                     </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Section 5: Buyer Order Cancellation & Safety Buffers */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+              <div className="border-b border-slate-200 dark:border-slate-800 pb-3 flex items-center justify-between">
+                <div>
+                  <h4 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+                    <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    Buyer Order Cancellation & Safety Buffers
+                  </h4>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">
+                    Configure buyer self-cancellation rules, seller response grace windows, post-cancellation payout hold buffers, monthly anti-abuse caps, and gateway refund transfer fee rates.
+                  </p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+                {/* 1. Buyer Instant Cancel Window (Hours) */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    ⚡ Buyer Instant Cancel Window (Hours)
+                  </label>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Buyers can self-cancel immediately and receive refund if undispatched within this window without needing seller approval.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="48"
+                      value={platformSettings.buyer_instant_cancel_window_hours ?? 2}
+                      onChange={(e) => handleUpdateSettings({ buyer_instant_cancel_window_hours: parseInt(e.target.value) || 2 })}
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Hours (Default 2)</span>
+                  </div>
+                </div>
+
+                {/* 2. Seller Cancellation Response Window (Hours) */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    ⏳ Seller Cancellation Response Window (Hours)
+                  </label>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    After the instant window, buyer cancellation requests give seller this time to respond before Celery auto-cancels and refunds.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="48"
+                      value={platformSettings.seller_cancel_response_window_hours ?? 6}
+                      onChange={(e) => handleUpdateSettings({ seller_cancel_response_window_hours: parseInt(e.target.value) || 6 })}
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Hours (Default 6)</span>
+                  </div>
+                </div>
+
+                {/* 3. Seller Dispatch Confirmation Grace Period (Minutes) */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    ⏱️ Seller Dispatch Grace Window (Minutes)
+                  </label>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    When a buyer requests cancellation, the seller has this grace period to report prior dispatch before cancellation auto-confirms.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="5"
+                      max="360"
+                      value={platformSettings.cancellation_dispatch_grace_minutes ?? 90}
+                      onChange={(e) => handleUpdateSettings({ cancellation_dispatch_grace_minutes: parseInt(e.target.value) || 90 })}
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Minutes (Default 90)</span>
+                  </div>
+                </div>
+
+                {/* 4. Post-Cancellation Safety Payout Hold Window (Minutes) */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    🛡️ Safety Payout Hold Buffer (Minutes)
+                  </label>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    After cancellation is confirmed, outbound payout is held for this duration during which the seller can report prior dispatch to freeze payout for arbitration.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="5"
+                      max="14400"
+                      value={platformSettings.cancellation_payout_hold_minutes ?? platformSettings.cancellation_payout_hold_hours ?? 90}
+                      onChange={(e) => handleUpdateSettings({ cancellation_payout_hold_minutes: parseInt(e.target.value) || 90 })}
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Minutes (Default 90)</span>
+                  </div>
+                </div>
+
+                {/* 5. Buyer Monthly Cancellation Abuse Limit */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    🚫 Buyer Monthly Cancellation Limit
+                  </label>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Maximum number of order cancellations a buyer can initiate per calendar month before being rate-limited.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      min="1"
+                      max="20"
+                      value={platformSettings.buyer_monthly_cancel_limit ?? 2}
+                      onChange={(e) => handleUpdateSettings({ buyer_monthly_cancel_limit: parseInt(e.target.value) || 2 })}
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Cancellations / Month (Default 2)</span>
+                  </div>
+                </div>
+
+                {/* 6. Payment Provider Payout / Transfer Fee Rate (%) */}
+                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                    💳 Payment Provider Payout Fee Rate (%)
+                  </label>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
+                    Transfer fee percentage charged by the active payment provider ({platformSettings.active_payment_gateway || 'PAYSTACK'}: {platformSettings.payout_transfer_fee_percent ?? 1.95}%) when refunding directly to Mobile Money / Bank. In-App Wallet refunds remain 0% FREE.
+                  </p>
+                  <div className="flex items-center gap-2 pt-1">
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      max="15"
+                      value={platformSettings.payout_transfer_fee_percent ?? 1.95}
+                      onChange={(e) => handleUpdateSettings({ payout_transfer_fee_percent: parseFloat(e.target.value) >= 0 ? parseFloat(e.target.value) : 1.95 })}
+                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
+                    />
+                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">% (Paystack Default 1.95%)</span>
                   </div>
                 </div>
               </div>

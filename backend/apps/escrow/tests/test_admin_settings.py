@@ -36,16 +36,25 @@ def test_admin_settings_endpoint_superuser(db):
 
         post_res = client.post("/admin/settings", json={
             "active_payment_gateway": "APPSNMOBILE",
-            "enabled_carriers": ["DHL", "FEDEX", "EMS", "SPEEDAF", "OTHERS"]
+            "enabled_carriers": ["DHL", "FEDEX", "EMS", "SPEEDAF", "OTHERS"],
+            "buyer_instant_cancel_window_hours": 4,
+            "seller_cancel_response_window_hours": 12,
+            "payout_transfer_fee_percent": 1.95
         }, headers=auth_headers)
         assert post_res.status_code == 200
         data = post_res.json()
         assert data['active_payment_gateway'] == 'APPSNMOBILE'
         assert 'UPS' not in data['enabled_carriers']
+        assert data['buyer_instant_cancel_window_hours'] == 4
+        assert data['seller_cancel_response_window_hours'] == 12
+        assert data['payout_transfer_fee_percent'] == 1.95
 
     updated = get_platform_settings()
     assert updated['active_payment_gateway'] == 'APPSNMOBILE'
     assert 'UPS' not in updated['enabled_carriers']
+    assert updated['buyer_instant_cancel_window_hours'] == 4
+    assert updated['seller_cancel_response_window_hours'] == 12
+    assert updated['payout_transfer_fee_percent'] == 1.95
 
 @pytest.mark.django_db
 def test_admin_settings_endpoint_forbidden_non_superuser(db):

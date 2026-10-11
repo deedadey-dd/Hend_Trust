@@ -5,7 +5,7 @@ import {
   X, Truck, AlertTriangle, Loader2, XCircle, KeyRound, RefreshCw,
   ShieldAlert, MapPin, Copy, Lock, ZoomIn, Archive, ArchiveRestore, MessageSquare,
   Gift, Award, Printer, Plus, ShoppingCart, ExternalLink, Sparkles,
-  Star, ShieldCheck, Store, Clock, Inbox, ArrowRight
+  Star, ShieldCheck, Store, Clock, Inbox, ArrowRight, Wallet, ArrowUpRight
 } from 'lucide-react';
 import RateSellerModal from '../components/RateSellerModal';
 import { apiClient } from '../api/client';
@@ -21,6 +21,7 @@ import BuyerReviewsTab from '../components/BuyerReviewsTab';
 import SellerReviewsTab from '../components/SellerReviewsTab';
 import ConfirmDeliveryReceiptModal from '../components/ConfirmDeliveryReceiptModal';
 import ApproveAndReleaseModal from '../components/ApproveAndReleaseModal';
+import BuyerCancelModal from '../components/BuyerCancelModal';
 import { useAuthStore } from '../store/authStore';
 import { useModal } from '../context/ModalContext';
 
@@ -84,6 +85,20 @@ interface SellerTxn {
   arbiter_escalated_at?: string;
   arbiter_escalated_role?: string;
   arbiter_escalation_hours?: number;
+  buyer_cancelled?: boolean;
+  cancellation_requested?: boolean;
+  cancellation_requested_at?: string;
+  cancellation_reason?: string;
+  cancellation_refund_target?: string;
+  cancellation_refund_amount_ghs?: number;
+  cancellation_fee_deducted_ghs?: number;
+  cancellation_auto_resolved?: boolean;
+  seller_cancel_response_remaining_minutes?: number;
+  cancellation_grace_remaining_minutes?: number;
+  cancellation_grace_until?: string;
+  cancellation_payout_hold_until?: string;
+  cancellation_payout_status?: string;
+  cancellation_seller_reported_shipped?: boolean;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -100,6 +115,12 @@ interface DispatchModalProps {
 
 function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
   useEscapeKey(onClose);
+  const isCancelPending = Boolean(
+    txn.cancellation_requested_at || 
+    (txn as any).cancellation_payout_status === 'PENDING_CONFIRMATION' || 
+    (txn as any).cancellation_requested
+  );
+
   const [path, setPath] = useState<DeliveryPath>('COURIER_API');
   const [carrierCode, setCarrierCode] = useState<string>('DHL');
   const [courierName, setCourierName] = useState('DHL Express');
@@ -157,7 +178,7 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
     } catch (err) {
       console.error("Failed to compress package photo:", err);
       setError("Failed to process selected package photo.");
-    } fontally: {
+    } finally {
       setIsCompressing(false);
     }
   };
@@ -184,7 +205,7 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
       onSuccess();
       onClose();
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'Failed to dispatch. Please try again.');
+      setError(err.response?.data?.detail || err.response?.data?.message || 'Failed to dispatch. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -204,18 +225,39 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
       <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] sm:max-h-[85vh] overflow-hidden flex flex-col my-auto">
-        <div className="px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between bg-gray-50/50 dark:bg-slate-900/50 shrink-0">
+        <div className={`px-6 py-4 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between ${isCancelPending ? 'bg-amber-50/70 dark:bg-amber-950/40' : 'bg-gray-50/50 dark:bg-slate-900/50'} shrink-0`}>
           <div>
-            <h3 className="text-lg font-bold text-gray-900 dark:text-white">Dispatch Order</h3>
+            <div className="flex items-center gap-2">
+              <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                {isCancelPending ? 'Confirm Shipped & Halt Cancel' : 'Dispatch Order'}
+              </h3>
+              {isCancelPending && (
+                <span className="text-[10px] bg-amber-500 text-white font-bold px-2 py-0.5 rounded-full uppercase">
+                  90m Grace Active
+                </span>
+              )}
+            </div>
             <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5 font-mono">{txn.paystack_reference}</p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition">
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 transition cursor-pointer">
             <X className="h-5 w-5" />
           </button>
         </div>
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="p-6 space-y-5 overflow-y-auto flex-1">
+            {/* Urgent Cancellation Alert Banner */}
+            {isCancelPending && (
+              <div className="bg-amber-50 dark:bg-amber-950/50 border-2 border-amber-400 dark:border-amber-700/80 rounded-xl p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1 shadow-sm">
+                <p className="font-bold flex items-center gap-1.5 text-amber-900 dark:text-amber-100">
+                  <Clock className="w-4 h-4 text-amber-600 shrink-0" />
+                  Buyer Cancellation Request Active
+                </p>
+                <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                  The buyer submitted a cancellation request. Providing verified courier or bus dispatch details below will <strong>immediately halt the cancellation</strong>, notify the buyer with tracking info, and transition this order into <strong>In Transit</strong> protection.
+                </p>
+              </div>
+            )}
             {/* Buyer Delivery Reference Card */}
             <div className="bg-blue-50/80 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800/60 rounded-xl p-3.5 space-y-1.5 text-xs text-blue-950 dark:text-blue-100 shadow-sm">
               <div className="flex items-center justify-between">
@@ -428,10 +470,10 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
             <button
               type="submit"
               disabled={loading || isCompressing}
-              className="flex-1 py-2.5 px-4 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700 transition flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer"
+              className={`flex-1 py-2.5 px-4 ${isCancelPending ? 'bg-emerald-600 hover:bg-emerald-700' : 'bg-blue-600 hover:bg-blue-700'} text-white rounded-lg text-sm font-semibold transition flex items-center justify-center gap-2 disabled:opacity-70 cursor-pointer`}
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Truck className="h-4 w-4" />}
-              {loading ? 'Dispatching…' : 'Confirm Dispatch'}
+              {loading ? 'Dispatching…' : (isCancelPending ? 'Confirm Dispatch & Halt Cancel' : 'Confirm Dispatch')}
             </button>
           </div>
         </form>
@@ -1047,6 +1089,7 @@ interface BuyerOrderDetailModalProps {
   onOpenRetract: (order: any) => void;
   onOpenConfirmReceipt: (order: any) => void;
   onOpenApproveRelease: (order: any) => void;
+  onOpenCancel: (order: any) => void;
 }
 
 function BuyerOrderDetailModal({
@@ -1058,7 +1101,8 @@ function BuyerOrderDetailModal({
   onOpenDispute,
   onOpenRetract,
   onOpenConfirmReceipt,
-  onOpenApproveRelease
+  onOpenApproveRelease,
+  onOpenCancel
 }: BuyerOrderDetailModalProps) {
   const modal = useModal();
   useEscapeKey(onClose);
@@ -1170,6 +1214,80 @@ function BuyerOrderDetailModal({
 
         {/* Modal Scrollable Body */}
         <div className="p-6 overflow-y-auto space-y-5 text-xs sm:text-sm">
+          {/* Buyer Cancellation Status Banner */}
+          {order.status === 'PAYMENT_RECEIVED' && (
+            (order.cancellation_requested || Boolean(order.cancellation_requested_at) || order.cancellation_payout_status === 'PENDING_CONFIRMATION') ? (
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 text-xs text-amber-900 dark:text-amber-200 space-y-2">
+                <div className="flex items-center justify-between">
+                  <span className="font-bold flex items-center gap-1.5 text-amber-950 dark:text-amber-100">
+                    <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                    Cancellation Request Pending
+                  </span>
+                  {order.cancellation_grace_remaining_minutes !== undefined ? (
+                    <span className="font-mono font-bold bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-2.5 py-0.5 rounded-lg text-xs">
+                      ⏳ {order.cancellation_grace_remaining_minutes}m left
+                    </span>
+                  ) : order.seller_cancel_response_remaining_minutes !== undefined ? (
+                    <span className="font-mono font-bold bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-2.5 py-0.5 rounded-lg text-xs">
+                      ⏳ {order.seller_cancel_response_remaining_minutes}m left
+                    </span>
+                  ) : (
+                    <span className="font-mono font-bold bg-amber-200/80 dark:bg-amber-900/60 text-amber-900 dark:text-amber-200 px-2.5 py-0.5 rounded-lg text-xs">
+                      ⏳ 90m grace period
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                  You requested to cancel this order ({order.cancellation_reason || 'Buyer requested cancellation'}). The seller has 90 minutes to verify dispatch status. If unconfirmed, your order will automatically proceed to safety payout.
+                </p>
+              </div>
+            ) : (
+              <div className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    {order.is_instant_cancel_eligible ? (
+                      <>
+                        <span className="text-amber-500">⚡</span> Instant Order Cancellation Active
+                      </>
+                    ) : (
+                      <>
+                        <Clock className="w-3.5 h-3.5 text-blue-500" /> Request Order Cancellation
+                      </>
+                    )}
+                  </span>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {order.is_instant_cancel_eligible 
+                      ? `Not dispatched yet. You have ${order.instant_cancel_remaining_minutes || 0}m left in the ${(order.instant_cancel_window_hours || 2) === 1 ? '1-hour' : `${order.instant_cancel_window_hours || 2}-hour`} window to cancel immediately and get refunded.` 
+                      : 'Order is still undispatched. You can request cancellation with 90-minute seller dispatch confirmation.'}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => onOpenCancel(order)}
+                  className="px-3.5 py-2 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800/80 rounded-xl font-bold text-xs transition cursor-pointer self-start sm:self-auto shrink-0 flex items-center gap-1.5"
+                >
+                  <XCircle className="w-3.5 h-3.5" /> Cancel Order
+                </button>
+              </div>
+            )
+          )}
+
+          {/* Historical Buyer Cancelled Audit Card */}
+          {order.buyer_cancelled && (
+            <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900/60 rounded-2xl p-4 text-xs text-rose-900 dark:text-rose-200 space-y-1.5">
+              <span className="font-bold flex items-center gap-1.5 text-rose-950 dark:text-rose-100">
+                <XCircle className="w-4 h-4 text-rose-600" />
+                Order Cancelled & Refunded {order.cancellation_auto_resolved ? '(Auto-Resolved after 6h)' : ''}
+              </span>
+              <p className="text-[11px] text-rose-800 dark:text-rose-300">
+                Reason: <strong>{order.cancellation_reason || 'Buyer requested cancellation'}</strong>
+              </p>
+              <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                Net refund of GHS {Number(order.cancellation_refund_amount_ghs || order.total_amount_ghs).toFixed(2)} disbursed to your {order.cancellation_refund_target === 'WALLET' ? 'In-App Wallet' : 'Mobile Money / Bank account'}.
+              </p>
+            </div>
+          )}
+
           {/* Product & Store Card */}
           <div className="flex flex-col sm:flex-row gap-4 items-start sm:items-center bg-slate-50 dark:bg-slate-800/60 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-800">
             {order.image_url ? (
@@ -1428,6 +1546,17 @@ function BuyerOrderDetailModal({
           </div>
 
           <div className="flex items-center gap-2 flex-wrap ml-auto">
+            {order.status === 'PAYMENT_RECEIVED' && !order.cancellation_requested && !order.cancellation_requested_at && order.cancellation_payout_status !== 'PENDING_CONFIRMATION' && (
+              <button
+                type="button"
+                onClick={() => onOpenCancel(order)}
+                className="py-2.5 px-4 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800/80 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5"
+              >
+                <XCircle className="w-3.5 h-3.5" />
+                Cancel Order
+              </button>
+            )}
+
             {canConfirm && (
               <button
                 onClick={handle1ClickConfirm}
@@ -1758,10 +1887,21 @@ function BuyerPurchasesTab() {
   const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [confirmingReceiptOrder, setConfirmingReceiptOrder] = useState<any | null>(null);
   const [approveReleaseOrder, setApproveReleaseOrder] = useState<any | null>(null);
+  const [cancelModalOrder, setCancelModalOrder] = useState<any | null>(null);
   const [disputeOrder, setDisputeOrder] = useState<any | null>(null);
   const [retractOrder, setRetractOrder] = useState<any | null>(null);
   const [ratingOrder, setRatingOrder] = useState<any | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [walletBalance, setWalletBalance] = useState<{ available_balance_ghs: number } | null>(null);
+
+  const fetchWalletBalance = async () => {
+    try {
+      const res = await apiClient.get('/wallet/balance');
+      setWalletBalance(res.data);
+    } catch (err) {
+      console.error('Failed to fetch buyer wallet balance', err);
+    }
+  };
 
   const fetchIncomingOrders = async () => {
     try {
@@ -1799,6 +1939,7 @@ function BuyerPurchasesTab() {
 
   useEffect(() => {
     fetchPurchases();
+    fetchWalletBalance();
   }, [newOrderRef]);
 
   useEffect(() => {
@@ -1985,6 +2126,44 @@ function BuyerPurchasesTab() {
               <span className="text-2xl font-black text-emerald-300 mt-1 block">{completedCount}</span>
             </button>
           </div>
+        </div>
+      </div>
+
+      {/* Buyer In-App Wallet & Refund Balance Banner */}
+      <div className="bg-gradient-to-r from-emerald-500/10 via-teal-500/5 to-blue-500/10 dark:from-emerald-950/40 dark:via-teal-950/30 dark:to-slate-900/40 border border-emerald-500/30 dark:border-emerald-500/20 rounded-3xl p-5 sm:p-6 backdrop-blur-md shadow-sm flex flex-col sm:flex-row sm:items-center justify-between gap-5">
+        <div className="flex items-start sm:items-center gap-4">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 shrink-0 shadow-inner">
+            <Wallet className="h-6 w-6" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">
+                In-App Wallet & Refund Balance
+              </h3>
+              <span className="text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/60">
+                0% Deduction Fee
+              </span>
+            </div>
+            <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5 max-w-xl">
+              Order cancellation refunds are credited directly to your wallet. You can withdraw to Mobile Money / Bank anytime or spend at checkout.
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-4 self-end sm:self-auto shrink-0">
+          <div className="text-right">
+            <span className="text-[11px] font-medium text-slate-500 dark:text-slate-400 block">Available Balance</span>
+            <span className="text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
+              GHS {Number(walletBalance?.available_balance_ghs || 0).toFixed(2)}
+            </span>
+          </div>
+          <Link
+            to="/ledger"
+            className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold transition-all shadow-md shadow-emerald-600/20 flex items-center gap-1.5 cursor-pointer"
+          >
+            <ArrowUpRight className="h-4 w-4" />
+            <span>Manage & Withdraw</span>
+          </Link>
         </div>
       </div>
 
@@ -2333,6 +2512,22 @@ function BuyerPurchasesTab() {
                     🔍 View Details & Actions
                   </button>
 
+                  {p.status === 'PAYMENT_RECEIVED' && (
+                    p.cancellation_requested ? (
+                      <span className="py-2 px-3 bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold rounded-xl flex items-center justify-center gap-1">
+                        <Clock className="w-3.5 h-3.5" /> Cancel Requested
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={(e) => { e.stopPropagation(); setCancelModalOrder(p); }}
+                        className="py-2 px-3 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/50 border border-red-200 dark:border-red-800/80 text-xs font-bold rounded-xl transition flex items-center justify-center gap-1 cursor-pointer"
+                      >
+                        <XCircle className="w-3.5 h-3.5" /> Cancel
+                      </button>
+                    )
+                  )}
+
                   {p.status === 'DELIVERY_IN_PROGRESS' && (
                     <button
                       onClick={(e) => handle1ClickConfirm(p, e)}
@@ -2384,6 +2579,29 @@ function BuyerPurchasesTab() {
           onOpenRetract={ord => setRetractOrder(ord)}
           onOpenConfirmReceipt={ord => setConfirmingReceiptOrder(ord)}
           onOpenApproveRelease={ord => { setSelectedOrder(null); setApproveReleaseOrder(ord); }}
+          onOpenCancel={ord => { setSelectedOrder(null); setCancelModalOrder(ord); }}
+        />
+      )}
+
+      {cancelModalOrder && (
+        <BuyerCancelModal
+          order={{
+            id: cancelModalOrder.id,
+            title: cancelModalOrder.title || 'Order Item',
+            paystack_reference: cancelModalOrder.paystack_reference || cancelModalOrder.id,
+            total_amount_ghs: Number(cancelModalOrder.total_amount_ghs),
+            platform_fee_ghs: Number(cancelModalOrder.platform_fee_ghs || 0),
+            buyer_phone: cancelModalOrder.buyer_phone,
+            buyer_email: cancelModalOrder.buyer_email,
+            is_instant_cancel_eligible: cancelModalOrder.is_instant_cancel_eligible,
+            instant_cancel_remaining_minutes: cancelModalOrder.instant_cancel_remaining_minutes,
+            seller_cancel_response_window_hours: cancelModalOrder.seller_cancel_response_window_hours
+          }}
+          onClose={() => setCancelModalOrder(null)}
+          onSuccess={async () => {
+            setCancelModalOrder(null);
+            await fetchPurchases();
+          }}
         />
       )}
 
@@ -2575,6 +2793,13 @@ export default function DashboardView() {
   // Rate Seller modal
   const [rateSellerTxn, setRateSellerTxn] = useState<SellerTxn | null>(null);
 
+  // Seller 90h safety hold report freeze modal
+  const [reportFreezeTxn, setReportFreezeTxn] = useState<SellerTxn | null>(null);
+  const [carrierInput, setCarrierInput] = useState('Speedaf');
+  const [waybillInput, setWaybillInput] = useState('');
+  const [proofNotesInput, setProofNotesInput] = useState('');
+  const [submittingAction, setSubmittingAction] = useState(false);
+
   // Escape key listener for all seller dashboard modals
   useEscapeKey(() => {
     if (lightboxImage) {
@@ -2587,7 +2812,8 @@ export default function DashboardView() {
     setForceCourierTxn(null);
     setSellerDisputeTxn(null);
     setRateSellerTxn(null);
-  }, Boolean(lightboxImage || selectedTxn || dispatchTxn || verifyOtpTxn || forceCourierTxn || sellerDisputeTxn || rateSellerTxn));
+    setReportFreezeTxn(null);
+  }, Boolean(lightboxImage || selectedTxn || dispatchTxn || verifyOtpTxn || forceCourierTxn || sellerDisputeTxn || rateSellerTxn || reportFreezeTxn));
 
   // Seller dispute response modal
   const [disputeTxn, setDisputeTxn] = useState<SellerTxn | null>(null);
@@ -2814,6 +3040,81 @@ export default function DashboardView() {
     }
   };
 
+  const handleAcceptCancellation = async (id: string) => {
+    const confirmed = await modal.confirm({
+      title: "Accept Buyer Cancellation & Issue Refund?",
+      message: "Accepting this cancellation request will cancel the order and immediately refund the buyer (minus their deducted platform and processing fees). You will not be charged any cancellation fee.",
+      confirmText: "Yes, Accept & Refund",
+      cancelText: "Keep Order / Dispatch",
+      type: "orange",
+      icon: "alert",
+      badgeText: "Buyer Cancellation"
+    });
+    if (!confirmed) return;
+
+    try {
+      const res = await apiClient.post(`/escrow/seller/transactions/${id}/accept-cancellation`);
+      await modal.alert({
+        title: "Cancellation Accepted",
+        message: res.data?.message || "The buyer's cancellation request was accepted and the order has been refunded.",
+        type: "success",
+        icon: "check"
+      });
+      setSelectedTxn(null);
+      fetchTransactions();
+      fetchMetrics();
+    } catch (err: any) {
+      console.error(err);
+      await modal.alert({
+        title: "Error",
+        message: err.response?.data?.message || err.response?.data?.detail || 'Failed to accept cancellation.',
+        type: "danger"
+      });
+    }
+  };
+
+  const handleConfirmReportShippedFreeze = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportFreezeTxn) return;
+    if (!carrierInput.trim() || !waybillInput.trim()) {
+      await modal.alert({
+        title: "Validation Error",
+        message: "Please provide both carrier name and tracking / waybill number.",
+        type: "danger"
+      });
+      return;
+    }
+
+    setSubmittingAction(true);
+    try {
+      const res = await apiClient.post(`/escrow/seller/transactions/${reportFreezeTxn.id}/report-shipped-freeze`, {
+        carrier: carrierInput.trim(),
+        waybill: waybillInput.trim(),
+        proof_notes: proofNotesInput.trim()
+      });
+      await modal.alert({
+        title: "Payout Frozen & Escalated",
+        message: res.data?.message || "Transaction payout has been frozen and escalated to HendAxis Arbitration.",
+        type: "warning",
+        icon: "alert"
+      });
+      setReportFreezeTxn(null);
+      setWaybillInput('');
+      setProofNotesInput('');
+      fetchTransactions();
+      fetchMetrics();
+    } catch (err: any) {
+      console.error(err);
+      await modal.alert({
+        title: "Error",
+        message: err.response?.data?.message || err.response?.data?.detail || "Failed to freeze transaction.",
+        type: "danger"
+      });
+    } finally {
+      setSubmittingAction(false);
+    }
+  };
+
   const handlePageChange = (newOffset: number) => {
     const params = new URLSearchParams(searchParams);
     params.set('offset', newOffset.toString());
@@ -2967,6 +3268,14 @@ export default function DashboardView() {
               <Star className="h-4 w-4 text-amber-400 fill-amber-400" />
               My Reviews & Ratings
             </button>
+
+            <Link
+              to="/ledger"
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-400 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-200 dark:border-emerald-800/50 transition-all cursor-pointer shrink-0"
+            >
+              <Wallet className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+              <span>Wallet & Withdrawals</span>
+            </Link>
 
             <button
               type="button"
@@ -3552,13 +3861,38 @@ export default function DashboardView() {
                             const timeoutDays = (txn as any).shipping_timeout_days || 4;
                             const dispatchDeadline = createdAt + timeoutDays * 24 * 60 * 60 * 1000;
                             const diff = dispatchDeadline - Date.now();
-                            if (diff <= 0) {
-                              return <div className="text-[11px] text-red-600 dark:text-red-400 font-bold mt-1">⚠ Dispatch Overdue</div>;
-                            }
+                            const isOverdue = diff <= 0;
                             const days = Math.floor(diff / (1000 * 60 * 60 * 24));
                             const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-                            return <div className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold mt-1">⏳ Dispatch before {days}d {hours}h</div>;
+
+                            return (
+                              <div className="space-y-1 mt-1">
+                                {txn.cancellation_requested_at && (
+                                  <div className="text-[11px] text-amber-800 dark:text-amber-300 font-bold bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-800 flex items-center gap-1">
+                                    <Clock className="w-3 h-3 text-amber-600" />
+                                    <span>Cancel Grace ({txn.cancellation_grace_remaining_minutes !== undefined ? `${txn.cancellation_grace_remaining_minutes}m` : (txn.seller_cancel_response_remaining_minutes !== undefined ? `${txn.seller_cancel_response_remaining_minutes}m` : '90m')})</span>
+                                  </div>
+                                )}
+                                {isOverdue ? (
+                                  <div className="text-[11px] text-red-600 dark:text-red-400 font-bold">⚠ Dispatch Overdue</div>
+                                ) : (
+                                  <div className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">⏳ Dispatch before {days}d {hours}h</div>
+                                )}
+                              </div>
+                            );
                           })()
+                        )}
+                        {txn.status === 'CANCELLED' && txn.cancellation_payout_status === 'HELD_DELAYED' && (
+                          <div className="text-[11px] text-amber-800 dark:text-amber-300 font-bold bg-amber-100 dark:bg-amber-950/80 px-2 py-0.5 rounded border border-amber-300 dark:border-amber-800 flex items-center gap-1 mt-1">
+                            <ShieldAlert className="w-3 h-3 text-amber-600 shrink-0" />
+                            <span>Payout Hold (90m Safety Buffer)</span>
+                          </div>
+                        )}
+                        {txn.status === 'CANCELLED' && txn.cancellation_payout_status === 'FROZEN_ARBITRATION' && (
+                          <div className="text-[11px] text-rose-800 dark:text-rose-300 font-bold bg-rose-100 dark:bg-rose-950/80 px-2 py-0.5 rounded border border-rose-300 dark:border-rose-800 flex items-center gap-1 mt-1">
+                            <ShieldAlert className="w-3 h-3 text-rose-600 shrink-0" />
+                            <span>Payout Frozen (Arbitration)</span>
+                          </div>
                         )}
                         {txn.delivery_method && txn.status === 'DELIVERY_IN_PROGRESS' && (
                           <div className="text-xs text-gray-400 dark:text-slate-500 mt-1">
@@ -3642,17 +3976,38 @@ export default function DashboardView() {
                           </div>
                         ) : txn.status === 'PAYMENT_RECEIVED' ? (
                           <div className="flex items-center justify-end gap-2">
-                            <button 
-                              onClick={() => setDispatchTxn(txn)}
-                              className="text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition-colors font-semibold flex items-center gap-1.5"
-                            >
-                              <Truck className="h-4 w-4" />
-                              Dispatch
-                            </button>
+                            {txn.cancellation_requested_at ? (
+                              <>
+                                <button
+                                  onClick={() => handleAcceptCancellation(txn.id)}
+                                  className="text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-lg transition font-semibold text-xs flex items-center gap-1 shadow-xs cursor-pointer"
+                                  title="Accept buyer's cancellation request and refund buyer"
+                                >
+                                  <CheckCircle className="h-3.5 w-3.5" />
+                                  Accept Cancel
+                                </button>
+                                <button
+                                  onClick={() => setDispatchTxn(txn)}
+                                  className="text-white bg-emerald-600 hover:bg-emerald-700 px-3 py-1.5 rounded-lg transition font-semibold text-xs flex items-center gap-1.5 shadow-xs cursor-pointer"
+                                  title="Halt cancellation by confirming you have already dispatched"
+                                >
+                                  <Truck className="h-3.5 w-3.5" />
+                                  I Already Shipped
+                                </button>
+                              </>
+                            ) : (
+                              <button 
+                                onClick={() => setDispatchTxn(txn)}
+                                className="text-white bg-blue-600 hover:bg-blue-700 px-3 py-1.5 rounded-lg transition font-semibold flex items-center gap-1.5 cursor-pointer"
+                              >
+                                <Truck className="h-4 w-4" />
+                                Dispatch
+                              </button>
+                            )}
                             <button 
                               onClick={() => handleCancel(txn.id)}
                               title="Cancel Transaction"
-                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-950/40 p-1.5 rounded-lg transition-colors"
+                              className="text-red-600 hover:text-red-900 dark:text-red-400 dark:hover:text-red-300 bg-red-50 dark:bg-red-950/40 p-1.5 rounded-lg transition-colors cursor-pointer"
                             >
                               <XCircle className="h-5 w-5" />
                             </button>
@@ -3714,10 +4069,33 @@ export default function DashboardView() {
                               Respond
                             </button>
                           </div>
+                        ) : txn.status === 'CANCELLED' && txn.cancellation_payout_status === 'HELD_DELAYED' ? (
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => setSelectedTxn(txn)}
+                              className="text-gray-700 dark:text-slate-200 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
+                              title="View Transaction Details"
+                            >
+                              Details
+                            </button>
+                            <button
+                              onClick={() => {
+                                setCarrierInput(txn.courier_name || 'Speedaf');
+                                setWaybillInput(txn.tracking_number || '');
+                                setProofNotesInput('');
+                                setReportFreezeTxn(txn);
+                              }}
+                              className="text-white bg-amber-600 hover:bg-amber-700 px-3 py-1.5 rounded-lg transition font-semibold text-xs flex items-center gap-1 shadow-xs cursor-pointer"
+                              title="Report that you shipped this before cancellation and freeze outbound payout"
+                            >
+                              <ShieldAlert className="h-3.5 w-3.5" />
+                              Report Shipped (Freeze)
+                            </button>
+                          </div>
                         ) : (
                           <button
                             onClick={() => setSelectedTxn(txn)}
-                            className="text-gray-700 dark:text-slate-200 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition"
+                            className="text-gray-700 dark:text-slate-200 bg-gray-100 dark:bg-slate-800 hover:bg-gray-200 dark:hover:bg-slate-700 px-2.5 py-1.5 rounded-lg text-xs font-semibold transition cursor-pointer"
                             title="View Transaction Details & Refund Audit"
                           >
                             Details
@@ -3863,6 +4241,75 @@ export default function DashboardView() {
             {/* Tab 1: AUDIT & FINANCIAL DETAILS */}
             {activeDetailTab === 'AUDIT' && (
               <div className="p-6 overflow-y-auto space-y-5 text-xs text-gray-700 dark:text-slate-300 print:hidden flex-1">
+                {/* Active Buyer Cancellation Request Card */}
+                {selectedTxn.cancellation_requested_at && selectedTxn.status === 'PAYMENT_RECEIVED' && (
+                  <div className="bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-800 rounded-2xl p-4 space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="font-bold text-amber-900 dark:text-amber-200 flex items-center gap-1.5 text-xs">
+                        <AlertTriangle className="w-4 h-4 text-amber-600 shrink-0" />
+                        Buyer Cancellation Request Pending
+                      </span>
+                      {selectedTxn.cancellation_grace_remaining_minutes !== undefined ? (
+                        <span className="text-[11px] font-mono font-bold bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 px-2 py-0.5 rounded">
+                          ⏳ {selectedTxn.cancellation_grace_remaining_minutes}m left to respond
+                        </span>
+                      ) : selectedTxn.seller_cancel_response_remaining_minutes !== undefined ? (
+                        <span className="text-[11px] font-mono font-bold bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 px-2 py-0.5 rounded">
+                          ⏳ {selectedTxn.seller_cancel_response_remaining_minutes}m left to respond
+                        </span>
+                      ) : (
+                        <span className="text-[11px] font-mono font-bold bg-amber-200 dark:bg-amber-900 text-amber-900 dark:text-amber-100 px-2 py-0.5 rounded">
+                          ⏳ 90m grace window
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs text-amber-800 dark:text-amber-300">
+                      Reason given: <strong>{selectedTxn.cancellation_reason || 'Buyer requested cancellation'}</strong>
+                    </p>
+                    <p className="text-[11px] text-amber-700 dark:text-amber-400">
+                      If you have not dispatched the parcel, you can accept the cancellation to immediately refund the buyer. If you already dispatched or handed the parcel to the courier, click 'I Already Shipped' to enter waybill details and halt cancellation.
+                    </p>
+                    <div className="flex gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => handleAcceptCancellation(selectedTxn.id)}
+                        className="px-3.5 py-2 bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                      >
+                        <CheckCircle className="w-3.5 h-3.5" />
+                        Accept Cancellation & Refund Buyer
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const t = selectedTxn;
+                          setSelectedTxn(null);
+                          setDispatchTxn(t);
+                        }}
+                        className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl transition shadow-xs cursor-pointer flex items-center gap-1.5"
+                      >
+                        <Truck className="w-3.5 h-3.5" />
+                        Dispatch Item
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Cancelled by Buyer Historical Card */}
+                {selectedTxn.buyer_cancelled && (
+                  <div className="bg-rose-50 dark:bg-rose-950/40 border border-rose-200 dark:border-rose-900 rounded-2xl p-4 space-y-1.5">
+                    <span className="font-bold text-rose-900 dark:text-rose-200 text-xs flex items-center gap-1.5">
+                      <XCircle className="w-4 h-4 text-rose-600" />
+                      Order Cancelled by Buyer {selectedTxn.cancellation_auto_resolved ? '(Auto-Resolved after 6h)' : ''}
+                    </span>
+                    <p className="text-[11px] text-rose-700 dark:text-rose-300">
+                      Reason: <strong>{selectedTxn.cancellation_reason || 'Cancelled by buyer'}</strong>
+                    </p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Refund of GHS {Number(selectedTxn.cancellation_refund_amount_ghs || 0).toFixed(2)} disbursed to buyer via {selectedTxn.cancellation_refund_target === 'WALLET' ? 'In-App Wallet' : 'Direct MoMo/Bank'}.
+                    </p>
+                  </div>
+                )}
+
                 {/* Financial Overview */}
                 <div className="bg-gray-50 dark:bg-slate-800/60 p-4 rounded-xl border border-gray-200 dark:border-slate-700 grid grid-cols-3 gap-3">
                   <div>
@@ -4091,6 +4538,106 @@ export default function DashboardView() {
           imageUrl={lightboxImage}
           onClose={() => setLightboxImage(null)}
         />
+      )}
+
+      {/* ─── MODAL: SELLER REPORT SHIPPED & FREEZE PAYOUT (90h HOLD) ───────────── */}
+      {reportFreezeTxn && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+          <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-200 my-auto">
+            <div className="px-5 sm:px-6 py-4 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between bg-amber-50/60 dark:bg-amber-950/40 shrink-0">
+              <div className="flex items-center gap-2">
+                <ShieldAlert className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                <div>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-white">Freeze Outbound Payout</h3>
+                  <p className="text-[11px] font-mono text-slate-500 dark:text-slate-400">{reportFreezeTxn.paystack_reference}</p>
+                </div>
+              </div>
+              <button 
+                onClick={() => setReportFreezeTxn(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-white transition cursor-pointer"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleConfirmReportShippedFreeze} className="p-5 sm:p-6 space-y-4 overflow-y-auto flex-1">
+              <div className="p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-800 dark:text-amber-300 space-y-1">
+                <p className="font-bold flex items-center gap-1">
+                  <ShieldAlert className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  90-Minute Safety Buffer Active
+                </p>
+                <p className="text-[11px] leading-relaxed">
+                  This transaction is currently in the 90-minute cancellation hold. Reporting that you already shipped will <strong>immediately freeze the payout</strong> and escalate this order to HendAxis Arbitration.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Carrier Name <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={carrierInput}
+                  onChange={(e) => setCarrierInput(e.target.value)}
+                  placeholder="e.g. Speedaf, VIP Bus"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Waybill Number / Tracking Code <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={waybillInput}
+                  onChange={(e) => setWaybillInput(e.target.value)}
+                  placeholder="e.g. GH-WAYBILL-99210"
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs font-mono text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition"
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Dispatch Circumstances & Evidence Notes <span className="text-red-500">*</span>
+                </label>
+                <textarea
+                  rows={3}
+                  required
+                  value={proofNotesInput}
+                  onChange={(e) => setProofNotesInput(e.target.value)}
+                  placeholder="Describe when and where the item was shipped, driver contact, or attach waybill receipt image link..."
+                  className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-amber-500 transition"
+                />
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setReportFreezeTxn(null)}
+                  className="flex-1 py-2.5 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl text-xs transition cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingAction || !carrierInput.trim() || !waybillInput.trim() || !proofNotesInput.trim()}
+                  className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow-lg shadow-amber-600/20 flex items-center justify-center gap-2 cursor-pointer"
+                >
+                  {submittingAction ? (
+                    <>
+                      <RefreshCw className="h-3.5 w-3.5 animate-spin" /> Freezing...
+                    </>
+                  ) : (
+                    'Freeze Payout & Escalate'
+                  )}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
 
       {/* Account Suspension Appeal Modal */}

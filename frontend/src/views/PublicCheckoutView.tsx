@@ -9,6 +9,7 @@ import {
 import RateSellerModal from '../components/RateSellerModal';
 import ConfirmDeliveryReceiptModal from '../components/ConfirmDeliveryReceiptModal';
 import ApproveAndReleaseModal from '../components/ApproveAndReleaseModal';
+import BuyerCancelModal from '../components/BuyerCancelModal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import SEOHead from '../components/SEOHead';
 import TermsModal from '../components/TermsModal';
@@ -99,6 +100,24 @@ interface TxnDetail {
   seasonal_campaign_name?: string;
   promo_code_applied?: string;
   fee_handling?: string;
+  is_instant_cancel_eligible?: boolean;
+  instant_cancel_window_hours?: number;
+  instant_cancel_remaining_minutes?: number;
+  seller_cancel_response_window_hours?: number;
+  cancellation_requested?: boolean;
+  cancellation_requested_at?: string;
+  cancellation_grace_until?: string;
+  cancellation_payout_hold_until?: string;
+  cancellation_payout_status?: string;
+  cancellation_grace_remaining_minutes?: number;
+  cancellation_payout_hold_remaining_minutes?: number;
+  cancellation_reason?: string;
+  cancellation_refund_target?: string;
+  cancellation_refund_amount_ghs?: number;
+  cancellation_fee_deducted_ghs?: number;
+  cancellation_auto_resolved?: boolean;
+  seller_cancel_response_remaining_minutes?: number;
+  buyer_cancelled?: boolean;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -177,6 +196,9 @@ function TransactionStatusScreen({ txn, txRef }: { txn: TxnDetail; txRef: string
 
   // Rating Modal state
   const [showRatingModal, setShowRatingModal] = useState(false);
+
+  // Buyer Cancel Modal state
+  const [showCancelModal, setShowCancelModal] = useState(false);
 
 const DISPUTE_CATEGORIES = [
   { value: 'DAMAGED_ITEM', label: 'Item Damaged or Broken in Transit' },
@@ -878,13 +900,51 @@ const DISPUTE_CATEGORIES = [
         )}
 
         {txn.status === 'PAYMENT_RECEIVED' && (
-          <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 flex items-center gap-3">
-            <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
-            <div className="text-xs text-amber-900 dark:text-amber-300">
-              <span className="font-bold block">{txn.shipping_timeout_days || 4}-Day Seller Dispatch Guarantee</span>
-              <span>The seller has {txn.shipping_timeout_days || 4} {(txn.shipping_timeout_days || 4) === 1 ? 'day' : 'days'} to dispatch your item. If not dispatched on time, your funds will be 100% automatically refunded.</span>
+          (txn.cancellation_requested || Boolean(txn.cancellation_requested_at) || txn.cancellation_payout_status === 'PENDING_CONFIRMATION') ? (
+            <div className="bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-800/60 rounded-2xl p-4 flex items-start gap-3">
+              <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+              <div className="text-xs text-amber-900 dark:text-amber-300 space-y-1">
+                <span className="font-bold block text-sm">Cancellation Request Pending</span>
+                <p>
+                  You submitted a cancellation request for this order ({txn.cancellation_reason || 'Buyer requested cancellation'}). The seller has {txn.cancellation_grace_remaining_minutes !== undefined ? `${txn.cancellation_grace_remaining_minutes}m` : (txn.seller_cancel_response_remaining_minutes !== undefined ? `${txn.seller_cancel_response_remaining_minutes}m` : '90m')} remaining in the dispatch verification window. If the seller does not report shipment before the deadline, your net refund of GHS {txn.cancellation_refund_amount_ghs ? Number(txn.cancellation_refund_amount_ghs).toFixed(2) : Number(txn.total_amount_ghs).toFixed(2)} will automatically proceed to safety payout.
+                </p>
+              </div>
             </div>
-          </div>
+          ) : (
+            <div className="space-y-3">
+              <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-4 flex items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+                  <div className="text-xs text-amber-900 dark:text-amber-300">
+                    <span className="font-bold block">{txn.shipping_timeout_days || 4}-Day Seller Dispatch Guarantee</span>
+                    <span>The seller has {txn.shipping_timeout_days || 4} {(txn.shipping_timeout_days || 4) === 1 ? 'day' : 'days'} to dispatch your item. If not dispatched on time, your funds will be 100% automatically refunded.</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Instant Cancellation or Request Action Card */}
+              <div className="bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700/60 rounded-2xl p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                <div className="space-y-0.5">
+                  <span className="font-bold text-slate-800 dark:text-slate-200 block">
+                    {txn.is_instant_cancel_eligible ? '⚡ Instant Self-Cancellation Available' : 'Request Order Cancellation'}
+                  </span>
+                  <span className="text-slate-500 dark:text-slate-400 text-[11px]">
+                    {txn.is_instant_cancel_eligible
+                      ? `You have ${txn.instant_cancel_remaining_minutes || 0}m left in the ${(txn.instant_cancel_window_hours || 2) === 1 ? '1-hour' : `${txn.instant_cancel_window_hours || 2}-hour`} window to cancel immediately without waiting for seller approval.`
+                      : 'Order is not dispatched yet. You can request cancellation with 90-minute seller dispatch confirmation.'}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowCancelModal(true)}
+                  className="px-4 py-2 bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800/60 rounded-xl font-bold text-xs transition cursor-pointer self-start sm:self-auto shrink-0 flex items-center gap-1.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                  {txn.is_instant_cancel_eligible ? '⚡ Cancel Order' : 'Request Cancellation'}
+                </button>
+              </div>
+            </div>
+          )
         )}
 
         {/* Refund & Dispute Settlement Audit Card */}
@@ -1475,6 +1535,29 @@ const DISPUTE_CATEGORIES = [
               icon: "check"
             });
             setShowRatingModal(true);
+          }}
+        />
+      )}
+
+      {/* Buyer Cancel Order Sub-Modal */}
+      {showCancelModal && (
+        <BuyerCancelModal
+          order={{
+            id: txn.id,
+            title: txn.title,
+            paystack_reference: txn.paystack_reference,
+            total_amount_ghs: Number(txn.total_amount_ghs),
+            platform_fee_ghs: Number(txn.platform_fee_ghs || 0),
+            buyer_phone: txn.buyer_phone,
+            buyer_email: txn.buyer_email,
+            is_instant_cancel_eligible: txn.is_instant_cancel_eligible,
+            instant_cancel_remaining_minutes: txn.instant_cancel_remaining_minutes,
+            seller_cancel_response_window_hours: txn.seller_cancel_response_window_hours
+          }}
+          onClose={() => setShowCancelModal(false)}
+          onSuccess={() => {
+            setShowCancelModal(false);
+            window.location.reload();
           }}
         />
       )}

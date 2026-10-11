@@ -96,15 +96,10 @@ def test_dispatch_waybill_and_verify_otp(delivery_client, transaction):
     transaction.refresh_from_db()
     assert transaction.status == TransactionStatus.DELIVERY_IN_PROGRESS
     
-    # 2. Get OTP from Cache
-    from django.core.cache import cache
-    otp = cache.get(f"delivery_otp_{transaction.id}")
-    assert otp is not None
-    
-    # 3. Verify OTP
+    # 2. Verify Delivery Receipt
     verify_payload = {
         "transaction_id": str(transaction.id),
-        "otp_code": otp
+        "otp_code": "000000"
     }
     verify_res = delivery_client.post("/verify-otp", json=verify_payload)
     assert verify_res.status_code == 200

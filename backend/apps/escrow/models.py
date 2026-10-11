@@ -43,6 +43,7 @@ class BuyerCreditEntryType(models.TextChoices):
     EARNED = 'EARNED', 'Loyalty Reward Earned'
     REFERRAL_BONUS = 'REFERRAL_BONUS', 'Referral Bonus'
     ADMIN_GRANT = 'ADMIN_GRANT', 'Admin Discretionary Grant'
+    ORDER_CANCEL_REFUND = 'ORDER_CANCEL_REFUND', 'Refund from Cancelled Order'
     RESERVED = 'RESERVED', 'Reserved for Checkout'
     REDEEMED = 'REDEEMED', 'Redeemed at Checkout'
     RELEASED = 'RELEASED', 'Released from Abandoned Checkout'
@@ -255,6 +256,24 @@ class Transaction(models.Model):
     reminder_42h_sent = models.BooleanField(default=False)
     reminder_6h_inspection_sent = models.BooleanField(default=False)
     auto_cancelled_non_dispatch = models.BooleanField(default=False, db_index=True)
+    
+    # Buyer-Initiated Cancellation Tracking & Seller Indemnity Safeguards
+    buyer_cancelled = models.BooleanField(default=False, db_index=True)
+    cancellation_requested_at = models.DateTimeField(null=True, blank=True, db_index=True)
+    cancellation_reason = models.TextField(blank=True)
+    cancellation_refund_target = models.CharField(max_length=20, blank=True)  # 'WALLET' or 'MOMO_PAYOUT'
+    cancellation_refund_amount_ghs = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    cancellation_fee_deducted_ghs = models.DecimalField(max_digits=12, decimal_places=2, null=True, blank=True)
+    cancellation_auto_resolved = models.BooleanField(default=False, db_index=True)
+    cancellation_grace_until = models.DateTimeField(null=True, blank=True, db_index=True)
+    cancellation_payout_hold_until = models.DateTimeField(null=True, blank=True, db_index=True)
+    cancellation_payout_status = models.CharField(max_length=35, blank=True, default='', db_index=True)
+    cancellation_seller_reported_shipped = models.BooleanField(default=False, db_index=True)
+    cancellation_seller_carrier = models.CharField(max_length=100, blank=True)
+    cancellation_seller_waybill = models.CharField(max_length=150, blank=True)
+    cancellation_seller_proof_url = models.TextField(blank=True)
+    cancellation_seller_proof_notes = models.TextField(blank=True)
+    
     # Dispute Evidence & Resolution Photos (Max 5 photos per party)
     buyer_dispute_category = models.CharField(max_length=50, blank=True)
     buyer_dispute_reason = models.TextField(blank=True)

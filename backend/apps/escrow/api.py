@@ -1,5 +1,6 @@
 from typing import List, Optional
 import uuid
+import re
 import datetime
 from datetime import timedelta
 from decimal import Decimal, ROUND_HALF_UP
@@ -20,6 +21,11 @@ from django.db.models import Q, F
 from datetime import datetime
 from django.utils import timezone
 from ninja.pagination import paginate, LimitOffsetPagination
+
+from django.http import HttpResponse
+from django.contrib.auth import authenticate
+from ninja_jwt.tokens import RefreshToken
+from apps.users.api import set_auth_cookies
 
 logger = logging.getLogger(__name__)
 
@@ -73,6 +79,22 @@ class SellerTransactionSchema(Schema):
     shipping_timeout_days: int = 4
     inspection_hours_allowed: int = 24
     otp_reveal_delay_hours: int = 24
+    # Cancellation fields
+    buyer_cancelled: bool = False
+    cancellation_requested: bool = False
+    cancellation_requested_at: Optional[str] = None
+    cancellation_grace_until: Optional[str] = None
+    cancellation_payout_hold_until: Optional[str] = None
+    cancellation_payout_status: Optional[str] = None
+    cancellation_grace_remaining_minutes: Optional[int] = None
+    cancellation_payout_hold_remaining_minutes: Optional[int] = None
+    cancellation_dispatch_grace_minutes: int = 90
+    cancellation_reason: Optional[str] = None
+    cancellation_refund_target: Optional[str] = None
+    cancellation_refund_amount_ghs: Optional[float] = None
+    cancellation_fee_deducted_ghs: Optional[float] = None
+    seller_cancel_response_window_hours: int = 6
+    seller_cancel_response_remaining_minutes: int = 0
 
 @escrow_router.get("/seller/transactions", response=list[SellerTransactionSchema])
 @paginate(LimitOffsetPagination)
@@ -121,11 +143,25 @@ def get_seller_transactions(request, search: Optional[str] = None, status: Optio
     timeout_days = cfg.get("shipping_timeout_days", 4)
     otp_delay_hrs = cfg.get("otp_reveal_delay_hours", 24)
     escalation_hrs = int(cfg.get("arbiter_escalation_hours", 48))
+    seller_resp_hrs = int(cfg.get("seller_cancel_response_window_hours", 6))
+    grace_mins = int(cfg.get("cancellation_dispatch_grace_minutes", 90))
 
     items = []
     for t in txns:
         logs = list(t.delivery_logs.all())
         latest_log = logs[0] if logs else None
+        
+        cancel_rem_min = 0
+        if getattr(t, 'cancellation_grace_until', None) and t.cancellation_grace_until:
+            cancel_rem_min = max(0, int((t.cancellation_grace_until - timezone.now()).total_seconds() // 60))
+        elif getattr(t, 'cancellation_requested_at', None):
+            elapsed_sec = (timezone.now() - t.cancellation_requested_at).total_seconds()
+            cancel_rem_min = max(0, int((grace_mins * 60.0 - elapsed_sec) // 60))
+
+        hold_rem_min = None
+        if getattr(t, 'cancellation_payout_hold_until', None) and t.cancellation_payout_hold_until:
+            hold_rem_min = max(0, int((t.cancellation_payout_hold_until - timezone.now()).total_seconds() // 60))
+
         items.append({
             "id": t.id,
             "status": t.status,
@@ -166,6 +202,21 @@ def get_seller_transactions(request, search: Optional[str] = None, status: Optio
             "otp_reveal_delay_hours": otp_delay_hrs,
             "shipping_timeout_days": timeout_days,
             "inspection_hours_allowed": get_inspection_hours_for_amount(t.total_amount_ghs),
+            "buyer_cancelled": getattr(t, 'buyer_cancelled', False),
+            "cancellation_requested": bool(getattr(t, 'cancellation_requested_at', None) or getattr(t, 'cancellation_payout_status', '') == 'PENDING_CONFIRMATION'),
+            "cancellation_requested_at": t.cancellation_requested_at.isoformat() if getattr(t, 'cancellation_requested_at', None) else None,
+            "cancellation_grace_until": t.cancellation_grace_until.isoformat() if getattr(t, 'cancellation_grace_until', None) else None,
+            "cancellation_payout_hold_until": t.cancellation_payout_hold_until.isoformat() if getattr(t, 'cancellation_payout_hold_until', None) else None,
+            "cancellation_payout_status": getattr(t, 'cancellation_payout_status', '') or None,
+            "cancellation_grace_remaining_minutes": cancel_rem_min,
+            "cancellation_payout_hold_remaining_minutes": hold_rem_min,
+            "cancellation_dispatch_grace_minutes": grace_mins,
+            "cancellation_reason": getattr(t, 'cancellation_reason', '') or None,
+            "cancellation_refund_target": getattr(t, 'cancellation_refund_target', '') or None,
+            "cancellation_refund_amount_ghs": float(t.cancellation_refund_amount_ghs) if getattr(t, 'cancellation_refund_amount_ghs', None) is not None else None,
+            "cancellation_fee_deducted_ghs": float(t.cancellation_fee_deducted_ghs) if getattr(t, 'cancellation_fee_deducted_ghs', None) is not None else None,
+            "seller_cancel_response_window_hours": seller_resp_hrs,
+            "seller_cancel_response_remaining_minutes": cancel_rem_min,
         })
             
     return items
@@ -637,6 +688,8 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
         if opt:
             waybill_photo = opt[0]
 
+    had_cancellation = bool(getattr(transaction, 'cancellation_requested_at', None) or getattr(transaction, 'cancellation_payout_status', '') == 'PENDING_CONFIRMATION')
+
     if data.delivery_method == 'COURIER_API':
         if not data.courier_name or not data.tracking_number:
             raise HttpError(400, "courier_name and tracking_number are required for courier dispatch.")
@@ -662,16 +715,44 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
             waybill_photo_url=waybill_photo,
         )
         from apps.core.tasks import dispatch_sms_task, dispatch_email_task
-        courier_msg = (
-            f"Your HendAxis Trust order ({transaction.paystack_reference}) has been shipped via {data.courier_name}! "
-            f"Tracking Number: {data.tracking_number}. "
-            f"Track Package: {tracking_url}"
-        )
-        dispatch_sms_task.delay(transaction.buyer_phone, courier_msg)
-        if transaction.buyer_email:
-            dispatch_email_task.delay(transaction.buyer_email, "Order Shipped via Courier", courier_msg)
+        from apps.notifications.services import create_notification
+        from apps.notifications.models import NotificationType
 
-        return {"message": "Courier dispatched. Tracking URL generated and transaction state updated to DELIVERY_IN_PROGRESS."}
+        if had_cancellation:
+            courier_msg = (
+                f"Cancellation Halted: Your HendAxis order ({transaction.paystack_reference}) was dispatched via {data.courier_name}! "
+                f"Tracking Number: {data.tracking_number}. "
+                f"Track Package: {tracking_url}"
+            )
+        else:
+            courier_msg = (
+                f"Your HendAxis Trust order ({transaction.paystack_reference}) has been shipped via {data.courier_name}! "
+                f"Tracking Number: {data.tracking_number}. "
+                f"Track Package: {tracking_url}"
+            )
+
+        if getattr(settings, 'DEBUG', False):
+            print("\n" + "="*60, flush=True)
+            print("📦 [DEV NOTIFICATION] ORDER DISPATCHED" + (" (CANCELLATION HALTED)" if had_cancellation else " (COURIER)"), flush=True)
+            print(f"To Buyer Email ({transaction.buyer_email}): {courier_msg}", flush=True)
+            print(f"To Buyer SMS ({transaction.buyer_phone}): {courier_msg}", flush=True)
+            print("="*60 + "\n", flush=True)
+
+        if transaction.buyer_identity:
+            create_notification(
+                user=transaction.buyer_identity,
+                title="Cancellation Halted - Order Shipped" if had_cancellation else "Order Shipped via Courier",
+                message=courier_msg,
+                notif_type=NotificationType.IN_APP,
+                action_url=f"/dashboard"
+            )
+
+        dispatch_sms_task.delay(transaction.buyer_phone, courier_msg, action_url="/dashboard", title="Order Shipped")
+        if transaction.buyer_email:
+            dispatch_email_task.delay(transaction.buyer_email, "Cancellation Halted - Order Shipped" if had_cancellation else "Order Shipped via Courier", courier_msg)
+
+        msg_resp = "Dispatch recorded. Cancellation has been cancelled and order moved to Delivery In Progress." if had_cancellation else "Courier dispatched. Tracking URL generated and transaction state updated to DELIVERY_IN_PROGRESS."
+        return {"message": msg_resp}
 
     elif data.delivery_method == 'INFORMAL_BUS':
         if not data.driver_phone or not data.destination_station:
@@ -686,7 +767,16 @@ def seller_dispatch(request, transaction_id: uuid.UUID, data: SellerDispatchSche
             waybill_photo_url=waybill_photo,
         )
         generate_delivery_otp(str(transaction.id))
-        return {"message": "Dispatched via informal bus. Buyer has been sent driver info and Secret OTP via SMS."}
+
+        if getattr(settings, 'DEBUG', False) and had_cancellation:
+            print("\n" + "="*60, flush=True)
+            print("🚌 [DEV NOTIFICATION] CANCELLATION HALTED & BUS DISPATCH RECORDED", flush=True)
+            print(f"To Buyer Email ({transaction.buyer_email}) / Phone ({transaction.buyer_phone})", flush=True)
+            print(f"Station: {data.destination_station} | Driver: {data.driver_phone}", flush=True)
+            print("="*60 + "\n", flush=True)
+
+        msg_resp = "Dispatch recorded. Cancellation has been cancelled and order moved to Delivery In Progress." if had_cancellation else "Dispatched via informal bus. Buyer has been sent driver info and pickup instructions via SMS."
+        return {"message": msg_resp}
 
     else:
         raise HttpError(400, "Invalid delivery_method. Use 'COURIER_API' or 'INFORMAL_BUS'.")
@@ -1191,10 +1281,7 @@ def buyer_approve_and_release_funds(request, transaction_id: uuid.UUID, data: Ap
         raise HttpError(400, "Confirmation OTP is required to release escrow funds.")
 
     is_valid_code = bool(transaction.delivery_confirmation_code and transaction.delivery_confirmation_code == code_entered)
-    from apps.delivery.services import verify_delivery_otp
-    is_valid_otp = verify_delivery_otp(str(transaction.id), code_entered)
-
-    if not (is_valid_code or is_valid_otp):
+    if not is_valid_code:
         raise HttpError(400, "Invalid or expired confirmation code. Please enter the 6-digit code sent to your phone or email.")
 
     # Clear code so it cannot be re-used
@@ -1217,6 +1304,598 @@ def buyer_approve_and_release_funds(request, transaction_id: uuid.UUID, data: Ap
         dispatch_email_task.delay(s_email, f"Payment Released - Order {transaction.paystack_reference}", s_msg)
 
     return {"message": "Order approved with verified OTP. Escrow funds released immediately to the seller."}
+
+
+# ─── Buyer Cancellation Schemas & Endpoints ─────────────────────────────────
+
+# ─── Buyer Cancellation Schemas & Endpoints ─────────────────────────────────
+
+class BuyerCancelPreviewSchema(Schema):
+    transaction_id: uuid.UUID
+    status: str
+    is_undispatched: bool
+    is_instant_eligible: bool
+    instant_window_hours: int
+    instant_window_remaining_minutes: int
+    seller_response_window_hours: int
+    cancellation_requested: bool
+    cancellation_requested_at: Optional[str] = None
+    cancellation_grace_until: Optional[str] = None
+    cancellation_payout_hold_until: Optional[str] = None
+    cancellation_payout_status: Optional[str] = None
+    cancellation_dispatch_grace_minutes: int = 90
+    cancellation_payout_hold_minutes: int = 90
+    cancellation_payout_hold_hours: int = 90
+    cancellation_grace_remaining_minutes: Optional[int] = None
+    cancellation_payout_hold_remaining_minutes: Optional[int] = None
+    cancellation_payout_hold_remaining_hours: Optional[int] = None
+    buyer_monthly_cancellations_count: int = 0
+    buyer_monthly_cancel_limit: int = 2
+    seller_response_remaining_minutes: Optional[int] = None
+    gross_amount_ghs: float
+    platform_fee_ghs: float
+    gateway_fee_ghs: float
+    payout_transfer_fee_percent: float = 1.95
+    wallet_payout_fee_ghs: float = 0.0
+    momo_payout_fee_ghs: float
+    wallet_net_refund_ghs: float
+    momo_net_refund_ghs: float
+    buyer_phone: str
+    buyer_email: Optional[str] = ""
+    buyer_name: Optional[str] = ""
+    has_existing_account: bool = False
+
+
+class BuyerCancelRequestSchema(Schema):
+    refund_target: str = "WALLET"  # 'WALLET' or 'MOMO_PAYOUT'
+    reason: Optional[str] = ""
+    phone_number: Optional[str] = None
+    otp_code: Optional[str] = None
+    password: Optional[str] = None  # Required for guest buyers to create or verify account
+
+
+class BuyerCancelResponseSchema(Schema):
+    message: str
+    token: Optional[str] = None
+    user_id: Optional[str] = None
+    role: Optional[str] = None
+    email: Optional[str] = None
+    name: Optional[str] = None
+    username: Optional[str] = None
+    phone_number: Optional[str] = None
+
+
+class SellerRejectCancellationShippedSchema(Schema):
+    carrier: str
+    waybill: str
+    proof_url: Optional[str] = ""
+    proof_notes: Optional[str] = ""
+
+
+class SellerReportShippedFreezeSchema(Schema):
+    carrier: str
+    waybill: str
+    proof_url: Optional[str] = ""
+    proof_notes: Optional[str] = ""
+
+
+@escrow_router.get("/{transaction_id}/cancel-preview", response=BuyerCancelPreviewSchema, auth=None)
+def get_buyer_cancel_preview(request, transaction_id: uuid.UUID):
+    """
+    Returns the real-time fee breakdown, cancellation eligibility, grace timers, and account status.
+    """
+    transaction = get_object_or_404(Transaction.objects.select_related('link', 'buyer_identity'), id=transaction_id)
+    
+    cfg = get_platform_settings()
+    instant_hrs = int(cfg.get("buyer_instant_cancel_window_hours", 2))
+    seller_resp_hrs = int(cfg.get("seller_cancel_response_window_hours", 6))
+    grace_mins = int(cfg.get("cancellation_dispatch_grace_minutes", 90))
+    hold_mins = int(cfg.get("cancellation_payout_hold_minutes", cfg.get("cancellation_payout_hold_hours", 90)))
+    monthly_limit = int(cfg.get("buyer_monthly_cancel_limit", 2))
+    payout_pct = float(cfg.get("payout_transfer_fee_percent", 1.95))
+    rate_factor = payout_pct / 100.0
+
+    is_undispatched = (transaction.status == TransactionStatus.PAYMENT_RECEIVED)
+    
+    elapsed_sec = (timezone.now() - transaction.created_at).total_seconds() if transaction.created_at else 999999
+    is_instant = is_undispatched and (elapsed_sec < instant_hrs * 3600.0)
+    instant_rem_min = max(0, int((instant_hrs * 3600.0 - elapsed_sec) // 60)) if (is_undispatched and transaction.created_at) else 0
+
+    req_rem_min = None
+    if getattr(transaction, 'cancellation_requested_at', None):
+        req_elapsed = (timezone.now() - transaction.cancellation_requested_at).total_seconds()
+        req_rem_min = max(0, int((seller_resp_hrs * 3600.0 - req_elapsed) // 60))
+
+    grace_rem_min = None
+    if getattr(transaction, 'cancellation_grace_until', None) and transaction.cancellation_grace_until:
+        grace_rem_min = max(0, int((transaction.cancellation_grace_until - timezone.now()).total_seconds() // 60))
+
+    hold_rem_mins = None
+    if getattr(transaction, 'cancellation_payout_hold_until', None) and transaction.cancellation_payout_hold_until:
+        hold_rem_mins = max(0, int((transaction.cancellation_payout_hold_until - timezone.now()).total_seconds() // 60))
+
+    gross = float(transaction.total_amount_ghs)
+    platform_fee = float(transaction.platform_fee_ghs or 0.0)
+    gateway_fee = round(gross * rate_factor, 2)
+    wallet_net = max(0.0, round(gross - platform_fee - gateway_fee, 2))
+    momo_payout_fee = round(wallet_net * rate_factor, 2)
+    momo_net = max(0.0, round(wallet_net - momo_payout_fee, 2))
+
+    # Anti-abuse: Check monthly cancellations count
+    monthly_cancels = 0
+    now = timezone.now()
+    if transaction.buyer_phone:
+        b_digits = re.sub(r'\D', '', transaction.buyer_phone.strip())
+        if len(b_digits) >= 9:
+            monthly_cancels = Transaction.objects.filter(
+                buyer_phone__endswith=b_digits[-9:],
+                buyer_cancelled=True,
+                created_at__year=now.year,
+                created_at__month=now.month
+            ).count()
+
+    # Check if an account already exists with buyer's email or phone
+    has_account = False
+    if transaction.buyer_email or transaction.buyer_phone:
+        query = Q()
+        if transaction.buyer_email:
+            query |= Q(email__iexact=transaction.buyer_email.strip())
+        if transaction.buyer_phone:
+            b_digits = re.sub(r'\D', '', transaction.buyer_phone.strip())
+            if len(b_digits) >= 9:
+                query |= Q(phone_number__endswith=b_digits[-9:])
+        if query:
+            has_account = User.objects.filter(query).exists()
+
+    return {
+        "transaction_id": transaction.id,
+        "status": transaction.status,
+        "is_undispatched": is_undispatched,
+        "is_instant_eligible": is_instant,
+        "instant_window_hours": instant_hrs,
+        "instant_window_remaining_minutes": instant_rem_min,
+        "seller_response_window_hours": seller_resp_hrs,
+        "cancellation_requested": bool(getattr(transaction, 'cancellation_requested_at', None)),
+        "cancellation_requested_at": transaction.cancellation_requested_at.isoformat() if getattr(transaction, 'cancellation_requested_at', None) else None,
+        "cancellation_grace_until": transaction.cancellation_grace_until.isoformat() if getattr(transaction, 'cancellation_grace_until', None) else None,
+        "cancellation_payout_hold_until": transaction.cancellation_payout_hold_until.isoformat() if getattr(transaction, 'cancellation_payout_hold_until', None) else None,
+        "cancellation_payout_status": transaction.cancellation_payout_status or "",
+        "cancellation_dispatch_grace_minutes": grace_mins,
+        "cancellation_payout_hold_minutes": hold_mins,
+        "cancellation_payout_hold_hours": hold_mins,
+        "cancellation_grace_remaining_minutes": grace_rem_min,
+        "cancellation_payout_hold_remaining_minutes": hold_rem_mins,
+        "cancellation_payout_hold_remaining_hours": hold_rem_mins,
+        "buyer_monthly_cancellations_count": monthly_cancels,
+        "buyer_monthly_cancel_limit": monthly_limit,
+        "seller_response_remaining_minutes": req_rem_min,
+        "gross_amount_ghs": gross,
+        "platform_fee_ghs": platform_fee,
+        "gateway_fee_ghs": gateway_fee,
+        "wallet_payout_fee_ghs": 0.0,
+        "momo_payout_fee_ghs": momo_payout_fee,
+        "payout_transfer_fee_percent": payout_pct,
+        "wallet_net_refund_ghs": wallet_net,
+        "momo_net_refund_ghs": momo_net,
+        "buyer_phone": transaction.buyer_phone,
+        "buyer_email": transaction.buyer_email or "",
+        "buyer_name": transaction.buyer_name or "",
+        "has_existing_account": has_account,
+    }
+
+
+@escrow_router.post("/{transaction_id}/buyer-cancel", response=BuyerCancelResponseSchema, auth=None)
+def buyer_cancel_order(request, transaction_id: uuid.UUID, data: BuyerCancelRequestSchema, response: HttpResponse):
+    """
+    Allows the buyer to initiate order cancellation before physical dispatch:
+    1. Enforces monthly rate limit (default: 2 cancellations/month) to prevent bad-actor abuse.
+    2. Enforces authentication / guest account password creation.
+    3. Enters a 90-minute seller dispatch confirmation grace period with urgent SMS alerts.
+    4. If unconfirmed by seller within 90 minutes, Celery auto-confirms cancellation.
+    5. Confirmed cancellations enter a 90-hour safety payout hold buffer.
+    """
+    transaction = get_object_or_404(
+        Transaction.objects.select_related('link', 'link__seller', 'buyer_identity'),
+        id=transaction_id
+    )
+
+    if transaction.status != TransactionStatus.PAYMENT_RECEIVED:
+        if transaction.status in [TransactionStatus.DELIVERY_IN_PROGRESS, TransactionStatus.INSPECTION_PERIOD]:
+            raise HttpError(400, "Cannot cancel this order because the seller has already dispatched your package.")
+        elif transaction.status in [TransactionStatus.COMPLETED, TransactionStatus.CANCELLED, TransactionStatus.REFUNDED]:
+            raise HttpError(400, f"Cannot cancel transaction in {transaction.status} state.")
+        else:
+            raise HttpError(400, "Order cannot be cancelled in its current state.")
+
+    if transaction.cancellation_payout_status == 'PENDING_CONFIRMATION':
+        raise HttpError(400, "A cancellation request is already pending seller dispatch confirmation.")
+
+    # 1. Validate requester authenticity or force guest account creation/login
+    authenticated_user = None
+    auth_helper = JWTCookieAuth()
+    try:
+        req_user = auth_helper(request)
+        if req_user and req_user.is_authenticated:
+            u_phone = (getattr(req_user, 'phone_number', '') or '').strip()
+            u_email = (getattr(req_user, 'email', '') or '').strip()
+            if (u_phone and u_phone.endswith(transaction.buyer_phone[-9:])) or (u_email and u_email.lower() == transaction.buyer_email.lower()) or req_user.is_superuser or req_user.is_staff:
+                authenticated_user = req_user
+    except Exception:
+        pass
+
+    auth_token_str = None
+
+    # If not authenticated, guest buyer MUST provide password to create or authenticate account
+    if not authenticated_user:
+        pwd = (data.password or "").strip()
+        if not pwd:
+            raise HttpError(400, "Account required: You must create an account (or enter your password) to cancel this order and secure your refund.")
+
+        if len(pwd) < 8:
+            raise HttpError(400, "Password must be at least 8 characters long.")
+
+        # Check if an existing account matches buyer email or phone
+        existing_user = User.objects.filter(
+            Q(email__iexact=transaction.buyer_email.strip()) | Q(phone_number__endswith=transaction.buyer_phone[-9:])
+        ).first()
+
+        if existing_user:
+            auth_user = authenticate(username=existing_user.username, password=pwd)
+            if not auth_user:
+                raise HttpError(400, "An account with this email/phone already exists. Please enter your correct account password to verify identity and cancel.")
+            authenticated_user = auth_user
+        else:
+            # Create a brand new buyer user account
+            base_name = "".join(c for c in (transaction.buyer_name or transaction.buyer_email.split('@')[0]) if c.isalnum()).lower()
+            if len(base_name) < 3:
+                base_name = f"buyer{secrets.randbelow(9000) + 1000}"
+            base_name = base_name[:20]
+
+            uname = base_name
+            counter = 1
+            while User.objects.filter(username__iexact=uname).exists():
+                uname = f"{base_name[:15]}{counter}"
+                counter += 1
+
+            new_user = User.objects.create_user(
+                username=uname,
+                email=transaction.buyer_email.strip().lower(),
+                phone_number=transaction.buyer_phone.strip(),
+                password=pwd,
+                role='BUYER',
+                first_name=transaction.buyer_name or ''
+            )
+            new_user.is_phone_verified = True
+            new_user.is_email_verified = True
+            new_user.save(update_fields=['is_phone_verified', 'is_email_verified'])
+            authenticated_user = new_user
+
+        # Set auth session cookies and token for newly authenticated buyer
+        refresh = RefreshToken.for_user(authenticated_user)
+        auth_token_str = str(refresh.access_token)
+        set_auth_cookies(response, refresh, remember=True)
+
+    cfg = get_platform_settings()
+    grace_mins = int(cfg.get("cancellation_dispatch_grace_minutes", 90))
+    monthly_limit = int(cfg.get("buyer_monthly_cancel_limit", 2))
+    payout_pct = Decimal(str(cfg.get("payout_transfer_fee_percent", 1.95)))
+    rate_factor = payout_pct / Decimal('100.0')
+
+    # Anti-abuse: Check monthly cancellations count
+    now = timezone.now()
+    b_digits = re.sub(r'\D', '', transaction.buyer_phone.strip())
+    if len(b_digits) >= 9:
+        monthly_cancels = Transaction.objects.filter(
+            buyer_phone__endswith=b_digits[-9:],
+            buyer_cancelled=True,
+            created_at__year=now.year,
+            created_at__month=now.month
+        ).count()
+        if monthly_cancels >= monthly_limit:
+            raise HttpError(400, f"Monthly cancellation limit reached ({monthly_limit} cancellations per month). Please contact the seller or HendAxis Support.")
+
+    refund_target = (data.refund_target or 'WALLET').upper()
+    if refund_target not in ['WALLET', 'MOMO_PAYOUT']:
+        refund_target = 'WALLET'
+
+    gross = transaction.total_amount_ghs
+    platform_fee = transaction.platform_fee_ghs or Decimal('0.00')
+    gateway_fee = (gross * rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    net_before_payout = max(Decimal('0.00'), gross - platform_fee - gateway_fee)
+    payout_fee = (net_before_payout * rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if refund_target == 'MOMO_PAYOUT' else Decimal('0.00')
+    net_refund = max(Decimal('0.00'), net_before_payout - payout_fee)
+    fee_deducted = gross - net_refund
+
+    # Put into 90-minute seller dispatch confirmation buffer
+    transaction.cancellation_requested_at = now
+    transaction.cancellation_grace_until = now + timedelta(minutes=grace_mins)
+    transaction.cancellation_reason = data.reason or "Buyer initiated order cancellation."
+    transaction.cancellation_refund_target = refund_target
+    transaction.cancellation_refund_amount_ghs = net_refund
+    transaction.cancellation_fee_deducted_ghs = fee_deducted
+    transaction.cancellation_payout_status = 'PENDING_CONFIRMATION'
+    transaction.save(update_fields=[
+        'cancellation_requested_at', 'cancellation_grace_until', 'cancellation_reason',
+        'cancellation_refund_target', 'cancellation_refund_amount_ghs',
+        'cancellation_fee_deducted_ghs', 'cancellation_payout_status', 'updated_at'
+    ])
+
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    from apps.notifications.services import create_notification
+    from apps.notifications.models import NotificationType
+
+    # Urgent notification to seller with 90-minute deadline
+    seller = transaction.link.seller
+    s_phone = getattr(seller, 'phone_number', None)
+    s_email = getattr(seller, 'email', None)
+    s_msg = (
+        f"URGENT HendAxis: Buyer requested cancellation on Order #{transaction.paystack_reference} ({transaction.link.title}). "
+        f"If you have ALREADY dispatched, log in within {grace_mins} mins to provide dispatch proof. "
+        f"Otherwise, order cancellation will be auto-confirmed."
+    )
+
+    # Notification to buyer
+    b_msg = (
+        f"Cancellation Initiated: Order #{transaction.paystack_reference} ({transaction.link.title}) has entered the "
+        f"{grace_mins}-minute dispatch verification period. Net refund of GHS {net_refund:.2f} will be finalized "
+        f"once confirmed or if the seller does not report dispatch."
+    )
+
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*60, flush=True)
+        print("📱 [DEV SMS / NOTIFICATION] ORDER CANCELLATION INITIATED", flush=True)
+        print(f"To Seller ({s_phone or s_email}): {s_msg}", flush=True)
+        print(f"To Buyer ({transaction.buyer_phone}): {b_msg}", flush=True)
+        print("="*60 + "\n", flush=True)
+
+    # In-app notification for seller dashboard
+    create_notification(
+        user=seller,
+        title="URGENT: Order Cancellation Requested",
+        message=s_msg,
+        notif_type=NotificationType.IN_APP,
+        action_url="/dashboard"
+    )
+
+    # In-app notification for buyer dashboard if registered
+    if authenticated_user:
+        create_notification(
+            user=authenticated_user,
+            title="Order Cancellation Initiated",
+            message=b_msg,
+            notif_type=NotificationType.IN_APP,
+            action_url="/dashboard"
+        )
+
+    if s_phone:
+        dispatch_sms_task.delay(s_phone, s_msg, action_url="/dashboard", user_id=str(seller.id), title="URGENT: Dispatch Verification Needed")
+    if s_email:
+        dispatch_email_task.delay(s_email, f"URGENT: Dispatch Verification Needed - Order #{transaction.paystack_reference}", s_msg)
+
+    dispatch_sms_task.delay(transaction.buyer_phone, b_msg, action_url="/dashboard", user_id=str(authenticated_user.id) if authenticated_user else None, title="Cancellation Initiated")
+    if transaction.buyer_email:
+        dispatch_email_task.delay(transaction.buyer_email, f"Cancellation Initiated - Order #{transaction.paystack_reference}", b_msg)
+
+    resp_user_data = {
+        "token": auth_token_str,
+        "user_id": str(authenticated_user.id) if authenticated_user else None,
+        "role": getattr(authenticated_user, 'role', 'BUYER') if authenticated_user else None,
+        "email": getattr(authenticated_user, 'email', '') if authenticated_user else "",
+        "name": getattr(authenticated_user, 'first_name', '') or getattr(authenticated_user, 'username', '') if authenticated_user else "",
+        "username": getattr(authenticated_user, 'username', '') if authenticated_user else "",
+        "phone_number": getattr(authenticated_user, 'phone_number', '') if authenticated_user else "",
+    }
+
+    return {
+        "message": f"Cancellation initiated! The seller has {grace_mins} minutes to confirm dispatch status. If unconfirmed, your net refund of GHS {net_refund:.2f} will automatically proceed to safety payout.",
+        **resp_user_data
+    }
+
+
+@escrow_router.post("/seller/transactions/{transaction_id}/accept-cancellation", response=MessageResponse)
+def seller_accept_cancellation(request, transaction_id: uuid.UUID):
+    """
+    Seller voluntarily accepts a buyer's cancellation request for an undispatched order.
+    Finalizes cancellation and puts payout into the 90-hour safety hold buffer.
+    """
+    transaction = get_object_or_404(
+        Transaction.objects.select_related('link', 'link__seller', 'buyer_identity'),
+        id=transaction_id,
+        link__seller=request.user
+    )
+
+    if transaction.status != TransactionStatus.PAYMENT_RECEIVED:
+        raise HttpError(400, "Cancellation request can only be accepted for undispatched orders.")
+
+    if not transaction.cancellation_requested_at and transaction.cancellation_payout_status != 'PENDING_CONFIRMATION':
+        raise HttpError(400, "There is no pending cancellation request for this transaction.")
+
+    cfg = get_platform_settings()
+    hold_mins = int(cfg.get("cancellation_payout_hold_minutes", cfg.get("cancellation_payout_hold_hours", 90)))
+    payout_pct = Decimal(str(cfg.get("payout_transfer_fee_percent", 1.95)))
+    rate_factor = payout_pct / Decimal('100.0')
+    refund_target = transaction.cancellation_refund_target or 'WALLET'
+
+    gross = transaction.total_amount_ghs
+    platform_fee = transaction.platform_fee_ghs or Decimal('0.00')
+    gateway_fee = (gross * rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    net_before_payout = max(Decimal('0.00'), gross - platform_fee - gateway_fee)
+    payout_fee = (net_before_payout * rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if refund_target == 'MOMO_PAYOUT' else Decimal('0.00')
+    net_refund = max(Decimal('0.00'), net_before_payout - payout_fee)
+    fee_deducted = gross - net_refund
+
+    now = timezone.now()
+    transaction.status = TransactionStatus.REFUNDED
+    transaction.buyer_cancelled = True
+    transaction.cancellation_refund_amount_ghs = net_refund
+    transaction.cancellation_fee_deducted_ghs = fee_deducted
+    transaction.cancellation_payout_status = 'HELD_DELAYED'
+    transaction.cancellation_payout_hold_until = now + timedelta(minutes=hold_mins)
+    transaction.save(update_fields=[
+        'status', 'buyer_cancelled', 'cancellation_refund_amount_ghs', 
+        'cancellation_fee_deducted_ghs', 'cancellation_payout_status',
+        'cancellation_payout_hold_until', 'updated_at'
+    ])
+
+    from apps.ledger.services import execute_buyer_cancellation_settlement
+    from apps.escrow.services_promo import credit_buyer_refund_wallet, reverse_promotional_rewards, get_or_create_buyer_identity
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+
+    execute_buyer_cancellation_settlement(
+        reference_id=str(transaction.id),
+        gross_amount=gross,
+        platform_fee=platform_fee,
+        gateway_fee=gateway_fee,
+        payout_fee=payout_fee,
+        net_refund_amount=net_refund,
+        refund_target=refund_target,
+        buyer_phone=transaction.buyer_phone,
+        buyer_email=transaction.buyer_email
+    )
+
+    if refund_target == 'WALLET':
+        buyer = transaction.buyer_identity or get_or_create_buyer_identity(transaction.buyer_phone, transaction.buyer_email, transaction.buyer_name)
+        credit_buyer_refund_wallet(buyer, net_refund, transaction)
+
+    reverse_promotional_rewards(transaction)
+
+    dest_label = "In-App Wallet" if refund_target == 'WALLET' else f"phone ({transaction.buyer_phone})"
+    b_msg = (
+        f"Cancellation Accepted: Your order {transaction.paystack_reference} ({transaction.link.title}) "
+        f"has been confirmed cancelled by the seller. Net refund of GHS {net_refund:.2f} has been processed to your {dest_label}."
+    )
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*60, flush=True)
+        print("📧 [DEV NOTIFICATION] SELLER ACCEPTED CANCELLATION", flush=True)
+        print(f"To Buyer Email ({transaction.buyer_email}): {b_msg}", flush=True)
+        print(f"To Buyer SMS ({transaction.buyer_phone}): {b_msg}", flush=True)
+        print("="*60 + "\n", flush=True)
+
+    dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
+    if transaction.buyer_email:
+        dispatch_email_task.delay(transaction.buyer_email, f"Cancellation Accepted - Order #{transaction.paystack_reference}", b_msg)
+
+    return {"message": f"Cancellation accepted. Order cancelled and net refund of GHS {net_refund:.2f} scheduled."}
+
+
+@escrow_router.post("/seller/transactions/{transaction_id}/reject-cancellation-shipped", response=MessageResponse)
+def seller_reject_cancellation_shipped(request, transaction_id: uuid.UUID, data: SellerRejectCancellationShippedSchema):
+    """
+    Seller confirms during the 90-minute grace window that they have already dispatched the package.
+    Halts cancellation and moves the transaction to DELIVERY_IN_PROGRESS.
+    """
+    transaction = get_object_or_404(
+        Transaction.objects.select_related('link', 'link__seller', 'buyer_identity'),
+        id=transaction_id,
+        link__seller=request.user
+    )
+
+    if transaction.status != TransactionStatus.PAYMENT_RECEIVED:
+        raise HttpError(400, "Can only submit dispatch confirmation for undispatched orders.")
+
+    if transaction.cancellation_payout_status != 'PENDING_CONFIRMATION' and not transaction.cancellation_requested_at:
+        raise HttpError(400, "There is no pending cancellation grace period for this order.")
+
+    if not data.carrier or not data.waybill:
+        raise HttpError(400, "Carrier name and tracking/waybill number are mandatory to prove dispatch.")
+
+    now = timezone.now()
+    transaction.status = TransactionStatus.DELIVERY_IN_PROGRESS
+    transaction.dispatched_at = now
+    transaction.cancellation_payout_status = 'CANCELLED_REJECTED'
+    transaction.cancellation_seller_reported_shipped = True
+    transaction.cancellation_seller_carrier = data.carrier.strip()
+    transaction.cancellation_seller_waybill = data.waybill.strip()
+    transaction.cancellation_seller_proof_url = (data.proof_url or "").strip()
+    transaction.cancellation_seller_proof_notes = (data.proof_notes or "").strip()
+    transaction.save(update_fields=[
+        'status', 'dispatched_at', 'cancellation_payout_status',
+        'cancellation_seller_reported_shipped', 'cancellation_seller_carrier',
+        'cancellation_seller_waybill', 'cancellation_seller_proof_url',
+        'cancellation_seller_proof_notes', 'updated_at'
+    ])
+
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    b_msg = (
+        f"Cancellation Halted: Seller confirmed Order #{transaction.paystack_reference} ({transaction.link.title}) was dispatched "
+        f"via {data.carrier.strip()} (Tracking: {data.waybill.strip()}). Your order is in transit."
+    )
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*60, flush=True)
+        print("📧 [DEV NOTIFICATION] SELLER HALTED CANCELLATION & DISPATCHED", flush=True)
+        print(f"To Buyer Email ({transaction.buyer_email}): {b_msg}", flush=True)
+        print(f"To Buyer SMS ({transaction.buyer_phone}): {b_msg}", flush=True)
+        print("="*60 + "\n", flush=True)
+
+    dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
+    if transaction.buyer_email:
+        dispatch_email_task.delay(transaction.buyer_email, f"Order In Transit - #{transaction.paystack_reference}", b_msg)
+
+    return {"message": "Dispatch proof recorded. Cancellation has been cancelled and order moved to Delivery In Progress."}
+
+
+@escrow_router.post("/seller/transactions/{transaction_id}/report-shipped-freeze", response=MessageResponse)
+def seller_report_shipped_freeze(request, transaction_id: uuid.UUID, data: SellerReportShippedFreezeSchema):
+    """
+    Seller reports that an item was shipped prior to cancellation during the 90-hour safety hold window.
+    Freezes the transaction payout and moves it to DISPUTED for arbitration.
+    """
+    transaction = get_object_or_404(
+        Transaction.objects.select_related('link', 'link__seller', 'buyer_identity'),
+        id=transaction_id,
+        link__seller=request.user
+    )
+
+    if transaction.cancellation_payout_status != 'HELD_DELAYED':
+        raise HttpError(400, "Can only freeze transactions currently in the delayed payout hold period.")
+
+    if not data.carrier or not data.waybill:
+        raise HttpError(400, "Carrier name and tracking/waybill number are mandatory to report prior dispatch.")
+
+    now = timezone.now()
+    transaction.status = TransactionStatus.DISPUTED
+    transaction.disputed_at = now
+    transaction.cancellation_payout_status = 'FROZEN_ARBITRATION'
+    transaction.buyer_dispute_category = 'ORDER_DISPATCH_RACE'
+    transaction.cancellation_seller_reported_shipped = True
+    transaction.cancellation_seller_carrier = data.carrier.strip()
+    transaction.cancellation_seller_waybill = data.waybill.strip()
+    transaction.cancellation_seller_proof_url = (data.proof_url or "").strip()
+    transaction.cancellation_seller_proof_notes = (data.proof_notes or "").strip()
+    transaction.seller_dispute_response = (
+        f"Seller reported item was dispatched prior to cancellation: Carrier {data.carrier.strip()}, "
+        f"Waybill {data.waybill.strip()}. Proof notes: {data.proof_notes.strip() if data.proof_notes else 'None'}"
+    )
+    transaction.save(update_fields=[
+        'status', 'disputed_at', 'cancellation_payout_status',
+        'buyer_dispute_category', 'cancellation_seller_reported_shipped',
+        'cancellation_seller_carrier', 'cancellation_seller_waybill',
+        'cancellation_seller_proof_url', 'cancellation_seller_proof_notes',
+        'seller_dispute_response', 'updated_at'
+    ])
+
+    from apps.core.tasks import dispatch_sms_task, dispatch_email_task
+    s_msg = f"Payout Frozen for Dispute Review: Order #{transaction.paystack_reference} payout has been frozen. HendAxis Arbitration will review your dispatch evidence."
+    if request.user.phone_number:
+        dispatch_sms_task.delay(request.user.phone_number, s_msg)
+
+    b_msg = (
+        f"Order Dispute Opened: The seller of Order #{transaction.paystack_reference} reported prior dispatch "
+        f"({data.carrier.strip()} - {data.waybill.strip()}). The refund payout has been paused pending arbitration review."
+    )
+    if getattr(settings, 'DEBUG', False):
+        print("\n" + "="*60, flush=True)
+        print("📧 [DEV NOTIFICATION] SELLER REPORTED DISPATCH (PAYOUT FROZEN FOR ARBITRATION)", flush=True)
+        print(f"To Buyer Email ({transaction.buyer_email}): {b_msg}", flush=True)
+        print(f"To Buyer SMS ({transaction.buyer_phone}): {b_msg}", flush=True)
+        print("="*60 + "\n", flush=True)
+
+    dispatch_sms_task.delay(transaction.buyer_phone, b_msg)
+    if transaction.buyer_email:
+        dispatch_email_task.delay(transaction.buyer_email, f"Refund Paused: Seller Reported Dispatch - #{transaction.paystack_reference}", b_msg)
+
+    return {"message": "Transaction payout frozen and escalated to arbitration. Our team will review your dispatch evidence."}
+
 
     
 def process_and_optimize_dispute_photos(photos: list[str], max_dim: int = 1200, quality: int = 75) -> list[str]:
@@ -3338,6 +4017,15 @@ DEFAULT_SYSTEM_SETTINGS = {
     "dispatch_expiry_suspension_threshold": 35.0,
     # Arbiter Compensation Rate
     "arbiter_fee_per_dispute": 25.0,
+    # Buyer Cancellation & Seller Safeguards
+    "buyer_instant_cancel_window_hours": 2,
+    "seller_cancel_response_window_hours": 6,
+    "cancellation_dispatch_grace_minutes": 90,
+    "cancellation_payout_hold_minutes": 90,
+    "cancellation_payout_hold_hours": 90,
+    "buyer_monthly_cancel_limit": 2,
+    "payout_transfer_fee_percent": 1.95,
+    "payout_transfer_fee_ghs": 2.0,
     # Global Promotions & Rewards Configuration
     "promotions_active": False,
     "promotions_expires_at": None,
@@ -3424,6 +4112,15 @@ class PublicPlatformSettingsSchema(Schema):
     dispatch_expiry_warning_threshold: float = 20.0
     dispatch_expiry_suspension_threshold: float = 35.0
     arbiter_fee_per_dispute: float = 25.0
+    # Buyer Cancellation Settings
+    buyer_instant_cancel_window_hours: int = 2
+    seller_cancel_response_window_hours: int = 6
+    cancellation_dispatch_grace_minutes: int = 90
+    cancellation_payout_hold_minutes: int = 90
+    cancellation_payout_hold_hours: int = 90
+    buyer_monthly_cancel_limit: int = 2
+    payout_transfer_fee_percent: float = 1.95
+    payout_transfer_fee_ghs: float = 2.0
     # Promotions
     promotions_active: bool = False
     promotions_expires_at: Optional[str] = None
@@ -3460,6 +4157,15 @@ class PlatformSettingsSchema(Schema):
     dispatch_expiry_warning_threshold: float = 20.0
     dispatch_expiry_suspension_threshold: float = 35.0
     arbiter_fee_per_dispute: float = 25.0
+    # Buyer Cancellation Settings
+    buyer_instant_cancel_window_hours: int = 2
+    seller_cancel_response_window_hours: int = 6
+    cancellation_dispatch_grace_minutes: int = 90
+    cancellation_payout_hold_minutes: int = 90
+    cancellation_payout_hold_hours: int = 90
+    buyer_monthly_cancel_limit: int = 2
+    payout_transfer_fee_percent: float = 1.95
+    payout_transfer_fee_ghs: float = 2.0
     django_admin_url: Optional[str] = 'admin/'
     # Promotions
     promotions_active: bool = False
@@ -3497,6 +4203,15 @@ class UpdatePlatformSettingsSchema(Schema):
     dispatch_expiry_warning_threshold: Optional[float] = None
     dispatch_expiry_suspension_threshold: Optional[float] = None
     arbiter_fee_per_dispute: Optional[float] = None
+    # Buyer Cancellation Settings
+    buyer_instant_cancel_window_hours: Optional[int] = None
+    seller_cancel_response_window_hours: Optional[int] = None
+    cancellation_dispatch_grace_minutes: Optional[int] = None
+    cancellation_payout_hold_minutes: Optional[int] = None
+    cancellation_payout_hold_hours: Optional[int] = None
+    buyer_monthly_cancel_limit: Optional[int] = None
+    payout_transfer_fee_percent: Optional[float] = None
+    payout_transfer_fee_ghs: Optional[float] = None
     # Promotions
     promotions_active: Optional[bool] = None
     promotions_expires_at: Optional[str] = None
@@ -3625,7 +4340,7 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     if data.dispatch_expiry_suspension_threshold is not None:
         d_susp = float(data.dispatch_expiry_suspension_threshold)
         if d_susp < 1.0 or d_susp > 100.0:
-            raise HttpError(400, "dispatch_expiry_suspension_threshold must be between 1.0% and 100.0%.")
+            raise HttpError(400, "dispatch_expiry_warning_threshold must be between 1.0% and 100.0%.")
         current["dispatch_expiry_suspension_threshold"] = d_susp
 
     cur_d_warn = float(current.get("dispatch_expiry_warning_threshold", 20.0))
@@ -3633,8 +4348,40 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     if cur_d_warn >= cur_d_susp:
         raise HttpError(400, "dispatch_expiry_warning_threshold must be strictly less than dispatch_expiry_suspension_threshold.")
 
+    if data.dispute_retraction_release_hours is not None:
+        current["dispute_retraction_release_hours"] = max(1, int(data.dispute_retraction_release_hours))
+
+    if data.arbiter_escalation_hours is not None:
+        current["arbiter_escalation_hours"] = max(1, int(data.arbiter_escalation_hours))
+
     if data.arbiter_fee_per_dispute is not None:
         current["arbiter_fee_per_dispute"] = max(0.0, float(data.arbiter_fee_per_dispute))
+
+    # Buyer Cancellation Settings Updates
+    if data.buyer_instant_cancel_window_hours is not None:
+        current["buyer_instant_cancel_window_hours"] = max(1, int(data.buyer_instant_cancel_window_hours))
+
+    if data.seller_cancel_response_window_hours is not None:
+        current["seller_cancel_response_window_hours"] = max(1, int(data.seller_cancel_response_window_hours))
+
+    if data.cancellation_dispatch_grace_minutes is not None:
+        current["cancellation_dispatch_grace_minutes"] = max(5, int(data.cancellation_dispatch_grace_minutes))
+
+    if data.cancellation_payout_hold_minutes is not None:
+        current["cancellation_payout_hold_minutes"] = max(1, int(data.cancellation_payout_hold_minutes))
+        current["cancellation_payout_hold_hours"] = current["cancellation_payout_hold_minutes"]
+    elif data.cancellation_payout_hold_hours is not None:
+        current["cancellation_payout_hold_minutes"] = max(1, int(data.cancellation_payout_hold_hours))
+        current["cancellation_payout_hold_hours"] = current["cancellation_payout_hold_minutes"]
+
+    if data.buyer_monthly_cancel_limit is not None:
+        current["buyer_monthly_cancel_limit"] = max(1, int(data.buyer_monthly_cancel_limit))
+
+    if data.payout_transfer_fee_percent is not None:
+        current["payout_transfer_fee_percent"] = max(0.0, min(100.0, float(data.payout_transfer_fee_percent)))
+
+    if data.payout_transfer_fee_ghs is not None:
+        current["payout_transfer_fee_ghs"] = max(0.0, float(data.payout_transfer_fee_ghs))
 
     # Promotions Settings Updates
     if data.promotions_active is not None:

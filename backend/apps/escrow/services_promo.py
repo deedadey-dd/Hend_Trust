@@ -655,3 +655,28 @@ def reverse_promotional_rewards(transaction: Transaction):
                 notes=f"Restored GHS {transaction.seller_fee_offset_applied_ghs:.2f} fee credit due to transaction refund"
             )
             logger.info(f"Restored GHS {transaction.seller_fee_offset_applied_ghs:.2f} fee credit to seller @{seller.username} on refund of Tx {transaction.id}")
+
+
+@db_transaction.atomic
+def credit_buyer_refund_wallet(buyer: BuyerIdentity, amount_ghs: Decimal, transaction: Transaction, notes: str = "") -> bool:
+    """
+    Credits refunded funds from a cancelled order directly to the buyer's in-app available credit.
+    """
+    amount = Decimal(str(amount_ghs)).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    if amount <= Decimal('0.00'):
+        return True
+
+    b_locked = BuyerIdentity.objects.select_for_update().get(id=buyer.id)
+    b_locked.available_credit_ghs += amount
+    b_locked.lifetime_credit_earned_ghs += amount
+    b_locked.save(update_fields=['available_credit_ghs', 'lifetime_credit_earned_ghs', 'updated_at'])
+
+    BuyerCreditLedgerEntry.objects.create(
+        buyer=b_locked,
+        amount_ghs=amount,
+        entry_type=BuyerCreditEntryType.ORDER_CANCEL_REFUND,
+        reference_id=str(transaction.id),
+        notes=notes or f"In-App Wallet Refund for cancelled order #{transaction.paystack_reference}"
+    )
+    return True
+

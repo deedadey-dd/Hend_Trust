@@ -6,6 +6,7 @@ import { STATUS_CONFIG } from '../constants/statusConfig';
 import RateSellerModal from './RateSellerModal';
 import ImageLightboxModal from './ImageLightboxModal';
 import DisputeChatTimeline from './DisputeChatTimeline';
+import BuyerCancelModal from './BuyerCancelModal';
 import { compressImageToWebP } from '../utils/imageUtils';
 import { useEscapeKey } from '../utils/useEscapeKey';
 import { useAuthStore } from '../store/authStore';
@@ -35,6 +36,9 @@ export default function TrackingModal({ onClose }: TrackingModalProps) {
 
   // Rate Seller State
   const [rateTxn, setRateTxn] = useState<any>(null);
+
+  // Cancel Order State
+  const [cancelTxn, setCancelTxn] = useState<any>(null);
 
   // History State
   const [identifier, setIdentifier] = useState(user?.phone_number || user?.email || '');
@@ -849,7 +853,7 @@ const DISPUTE_CATEGORIES = [
                             </button>
                           </div>
                           <div className="flex gap-2 flex-wrap items-center">
-                            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') && !txn.buyer_dispute_reason && !txn.dispute_retracted_at ? (
+                            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'COMPLETED') && !txn.buyer_dispute_reason && !txn.dispute_retracted_at && (
                               txn.has_reviewed ? (
                                 <button
                                   onClick={() => setRateTxn(txn)}
@@ -865,15 +869,22 @@ const DISPUTE_CATEGORIES = [
                                   ⭐ Rate Seller
                                 </button>
                               )
-                            ) : (txn.status === 'PAYMENT_RECEIVED' || txn.status === 'DELIVERY_IN_PROGRESS') ? (
-                              <button
-                                disabled
-                                title="Unlocks after delivery"
-                                className="py-1.5 px-3 rounded-lg bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80"
-                              >
-                                🔒 Rate Seller
-                              </button>
-                            ) : null}
+                            )}
+                            {txn.status === 'PAYMENT_RECEIVED' && (
+                              (txn.cancellation_requested || Boolean(txn.cancellation_requested_at) || txn.cancellation_payout_status === 'PENDING_CONFIRMATION') ? (
+                                <span className="py-1.5 px-2.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 text-xs font-bold flex items-center gap-1">
+                                  ⏳ Cancel Requested
+                                </span>
+                              ) : (
+                                <button
+                                  type="button"
+                                  onClick={() => setCancelTxn(txn)}
+                                  className="py-1.5 px-3 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/50 transition cursor-pointer flex items-center gap-1"
+                                >
+                                  {txn.is_instant_cancel_eligible ? '⚡ Cancel Order' : 'Request Cancel'}
+                                </button>
+                              )
+                            )}
                             {txn.status === 'DELIVERY_IN_PROGRESS' && (
                               <button
                                 onClick={() => handleOpenConfirmModal(txn.id)}
@@ -1093,6 +1104,34 @@ const DISPUTE_CATEGORIES = [
           initialCreatedAt={rateTxn.review_created_at}
           initialUpdatedAt={rateTxn.review_updated_at}
           onClose={() => setRateTxn(null)}
+        />
+      )}
+
+      {/* Buyer Cancel Order Sub-Modal */}
+      {cancelTxn && (
+        <BuyerCancelModal
+          order={{
+            id: cancelTxn.id,
+            title: cancelTxn.title || 'Order Item',
+            paystack_reference: cancelTxn.paystack_reference || cancelTxn.id,
+            total_amount_ghs: Number(cancelTxn.total_amount_ghs),
+            platform_fee_ghs: Number(cancelTxn.platform_fee_ghs || 0),
+            buyer_phone: cancelTxn.buyer_phone,
+            buyer_email: cancelTxn.buyer_email,
+            is_instant_cancel_eligible: cancelTxn.is_instant_cancel_eligible,
+            instant_cancel_remaining_minutes: cancelTxn.instant_cancel_remaining_minutes,
+            seller_cancel_response_window_hours: cancelTxn.seller_cancel_response_window_hours
+          }}
+          onClose={() => setCancelTxn(null)}
+          onSuccess={async () => {
+            setCancelTxn(null);
+            if (isAuthenticated) {
+              try {
+                const res = await apiClient.get('/checkout/buyer/my-orders');
+                setTxns(Array.isArray(res.data) ? res.data : []);
+              } catch (e) {}
+            }
+          }}
         />
       )}
 

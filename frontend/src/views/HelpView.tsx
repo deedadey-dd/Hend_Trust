@@ -153,10 +153,10 @@ export const HelpView: React.FC = () => {
       answer: 'The HendAxis Marketplace Directory (/shops) lets buyers discover verified escrow stores and search across hundreds of products using real-time keyword matching. You can filter by standard Ghanaian commerce categories (Phones, Electronics, Fashion, Auto Parts, etc.) and explore featured merchants alongside verified customer reviews.'
     },
     {
-      id: 'faq-5c',
+      id: 'faq-5d',
       category: 'BUYERS',
-      question: 'What is the "Buy via HendAxis Escrow (WhatsApp)" button on storefronts?',
-      answer: 'When browsing a seller’s storefront, clicking "Buy via HendAxis Escrow (WhatsApp)" sends a pre-formatted message to the seller containing the product details and an instant link generator. The seller confirms your delivery location, adds the exact shipping fee, and immediately generates a secure HendAxis checkout link for you.'
+      question: 'How do Order Cancellations, the 90-Minute Seller Grace Window, and Payout Holds work for buyers?',
+      answer: 'If an order has not been dispatched, you can click "Cancel Order" on your order page. To protect against items already in transit, the seller receives an immediate SMS alert with a 90-minute window to verify dispatch. If unconfirmed after 90 minutes, the cancellation is confirmed and enters a 90-minute safety buffer before final refund disbursement to your In-App Wallet or Mobile Money account (minus non-refundable escrow and 1.95% payment provider fees). Buyers are limited to 2 cancellations per month.'
     },
 
     // ─── SELLERS ────────────────────────────────────────────────────────────
@@ -177,6 +177,12 @@ export const HelpView: React.FC = () => {
       category: 'SELLERS',
       question: 'How does the 1-Click WhatsApp Escrow Link Generator work for sellers?',
       answer: 'When buyers message you on WhatsApp from your public storefront, they send a link that opens your HendAxis link creation view (/create-link) with the item title, price, category, and image URL already pre-filled. All you need to do is agree on the shipping destination with the customer, enter the shipping amount, and click Generate to create the secure escrow payment link.'
+    },
+    {
+      id: 'faq-6d',
+      category: 'SELLERS',
+      question: 'What should I do if a buyer requests a cancellation?',
+      answer: 'You will receive an urgent SMS notification giving you a 90-minute window to respond on your dashboard. If you have not shipped, click "Accept Cancel" to allow the refund. If you already shipped or handed the parcel to a courier, click "I Already Shipped" and provide your waybill/tracking number to immediately halt the cancellation and keep the order active. If an order is auto-confirmed, you have a 90-minute safety hold to click "Report Shipped (Freeze)" with waybill evidence to freeze the payout for arbitration.'
     },
     {
       id: 'faq-7',
