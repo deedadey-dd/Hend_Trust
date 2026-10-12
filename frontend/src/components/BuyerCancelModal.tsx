@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { 
   X, AlertTriangle, Zap, Clock, Wallet, PhoneCall, 
   Loader2, ArrowRight, Lock, Eye, EyeOff, ShieldCheck
@@ -60,12 +60,15 @@ interface CancelPreviewData {
   buyer_email?: string;
   buyer_name?: string;
   has_existing_account?: boolean;
+  is_account_mismatch?: boolean;
+  logged_in_user_matches?: boolean;
+  logged_in_account_identifier?: string;
 }
 
 export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCancelModalProps) {
   const modal = useModal();
   useEscapeKey(onClose, true);
-  const { isAuthenticated, login: authLogin } = useAuthStore();
+  const { isAuthenticated, user, logout: authLogout, login: authLogin } = useAuthStore();
 
   const [loadingPreview, setLoadingPreview] = useState(true);
   const [preview, setPreview] = useState<CancelPreviewData | null>(null);
@@ -73,17 +76,63 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
   const [reasonCategory, setReasonCategory] = useState('Changed my mind');
   const [customReason, setCustomReason] = useState('');
   
-  // Guest Account Creation / Login State
+  // Guest Account Creation / Login / OTP State
+  const [authMethod, setAuthMethod] = useState<'PASSWORD' | 'OTP'>('PASSWORD');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [passwordError, setPasswordError] = useState('');
+  const [cancelOtp, setCancelOtp] = useState('');
+  const [sendingOtp, setSendingOtp] = useState(false);
+  const [otpSentMsg, setOtpSentMsg] = useState('');
+  const [otpCooldown, setOtpCooldown] = useState(0);
   
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+
+  const passwordSectionRef = useRef<HTMLDivElement>(null);
+  const passwordInputRef = useRef<HTMLInputElement>(null);
+  const contentBodyRef = useRef<HTMLDivElement>(null);
+
+  const rawBuyerEmail = preview?.buyer_email || order.buyer_email || '';
+  const buyerEmail = rawBuyerEmail.trim().toLowerCase();
+  const buyerPhone = preview?.buyer_phone || order.buyer_phone || '';
+  const buyerName = preview?.buyer_name || order.buyer_name || '';
+
+  const normalizePhone = (phone?: string) => (phone || '').replace(/\D/g, '').slice(-9);
+  const buyerPhoneNorm = normalizePhone(buyerPhone);
+
+  const userEmail = (user?.email || '').trim().toLowerCase();
+  const userPhone = user?.phone_number || '';
+  const userPhoneNorm = normalizePhone(userPhone);
+
+  const isStaffOrAdmin = Boolean(user?.is_superuser || user?.is_staff);
+
+  const emailMatches = Boolean(userEmail && buyerEmail && userEmail === buyerEmail);
+  const phoneMatches = Boolean(userPhoneNorm && buyerPhoneNorm && userPhoneNorm.length >= 9 && userPhoneNorm === buyerPhoneNorm);
+
+  // Authenticated user is authorized if staff or email matches or phone matches
+  const isAuthorizedBuyer = isAuthenticated && (isStaffOrAdmin || emailMatches || phoneMatches || Boolean(preview?.logged_in_user_matches));
+
+  // Account mismatch occurs when authenticated but neither phone nor email matches (and not staff)
+  const isAccountMismatch = isAuthenticated && !isStaffOrAdmin && !isAuthorizedBuyer && (Boolean(preview?.is_account_mismatch) || (!emailMatches && !phoneMatches));
+
+  const isPasswordError = Boolean(
+    passwordError || (error && /password|account|credential|code|otp/i.test(error))
+  );
+
+  useEffect(() => {
+    if (otpCooldown <= 0) return;
+    const timer = setInterval(() => {
+      setOtpCooldown(c => Math.max(0, c - 1));
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [otpCooldown]);
 
   useEffect(() => {
     const fetchPreview = async () => {
       setLoadingPreview(true);
       setError('');
+      setPasswordError('');
       try {
         const res = await apiClient.get(`/escrow/${order.id}/cancel-preview`);
         setPreview(res.data);
@@ -104,14 +153,55 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
     ? (preview.gross_amount_ghs - selectedNetRefund)
     : 0;
 
+  const handleSendOtp = async () => {
+    setError('');
+    setPasswordError('');
+    setSendingOtp(true);
+    setOtpSentMsg('');
+    try {
+      const res = await apiClient.post(`/escrow/${order.id}/send-cancel-otp`);
+      setOtpSentMsg(res.data?.message || 'Verification code sent to your phone and email.');
+      setOtpCooldown(60);
+    } catch (err: any) {
+      setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to send verification code.');
+    } finally {
+      setSendingOtp(false);
+    }
+  };
+
   const handleConfirmCancel = async () => {
     setError('');
+    setPasswordError('');
 
-    // If guest buyer, require password for account creation/verification
+    if (isAccountMismatch) {
+      const msg = `Account mismatch: You are currently signed in as ${user?.email || user?.phone_number || user?.name || 'another account'}, but this order was placed under ${rawBuyerEmail || buyerPhone}. Please switch to the matching account or log out to cancel.`;
+      setError(msg);
+      return;
+    }
+
+    // If guest buyer, require password or OTP
     if (!isAuthenticated) {
-      if (!password || password.trim().length < 8) {
-        setError('Please enter a password with at least 8 characters to create your account and proceed.');
-        return;
+      if (authMethod === 'OTP') {
+        if (!cancelOtp || cancelOtp.trim().length < 4) {
+          const msg = 'Please enter the 6-digit verification code sent to your phone/email.';
+          setError(msg);
+          setPasswordError(msg);
+          passwordSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+          return;
+        }
+      } else {
+        if (!password || password.trim().length < 8) {
+          const msg = !password.trim()
+            ? (preview?.has_existing_account
+                ? 'Please enter your account password to verify identity and cancel.'
+                : 'Please enter a password with at least 8 characters to create your account.')
+            : 'Password must be at least 8 characters long.';
+          setError(msg);
+          setPasswordError(msg);
+          passwordSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+          setTimeout(() => passwordInputRef.current?.focus(), 150);
+          return;
+        }
       }
     }
 
@@ -133,11 +223,13 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
 
     setSubmitting(true);
     setError('');
+    setPasswordError('');
     try {
       const res = await apiClient.post(`/escrow/${order.id}/buyer-cancel`, {
         refund_target: refundTarget,
         reason: finalReason,
-        password: !isAuthenticated ? password.trim() : undefined
+        password: (!isAuthenticated && authMethod === 'PASSWORD') ? password.trim() : undefined,
+        otp_code: (!isAuthenticated && authMethod === 'OTP') ? cancelOtp.trim() : undefined
       });
 
       // If user account was created or logged in from guest mode, log into auth store
@@ -145,10 +237,11 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
         authLogin(res.data.token, {
           id: res.data.user_id,
           role: res.data.role || 'BUYER',
-          email: res.data.email || order.buyer_email || preview?.buyer_email || '',
-          name: res.data.name || order.buyer_name || preview?.buyer_name || 'Buyer',
+          email: res.data.email || rawBuyerEmail || '',
+          name: res.data.name || buyerName || 'Buyer',
           username: res.data.username || '',
-          phone_number: res.data.phone_number || order.buyer_phone || preview?.buyer_phone || ''
+          phone_number: res.data.phone_number || buyerPhone || '',
+          is_email_verified: Boolean(res.data?.is_email_verified)
         });
       }
 
@@ -160,15 +253,21 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
       });
       onSuccess();
     } catch (err: any) {
-      setError(err.response?.data?.message || err.response?.data?.detail || 'Failed to cancel order.');
+      const errMsg = err.response?.data?.message || err.response?.data?.detail || 'Failed to cancel order.';
+      setError(errMsg);
+      if (/password|account|credential|code|otp/i.test(errMsg)) {
+        setPasswordError(errMsg);
+        passwordSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+        if (authMethod === 'PASSWORD') {
+          setTimeout(() => passwordInputRef.current?.focus(), 150);
+        }
+      } else {
+        contentBodyRef.current?.scrollTo({ top: 0, behavior: 'smooth' });
+      }
     } finally {
       setSubmitting(false);
     }
   };
-
-  const buyerEmail = preview?.buyer_email || order.buyer_email || '';
-  const buyerPhone = preview?.buyer_phone || order.buyer_phone || '';
-  const buyerName = preview?.buyer_name || order.buyer_name || '';
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
@@ -214,11 +313,11 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
         </div>
 
         {/* Content Body */}
-        <div className="p-6 overflow-y-auto space-y-5 text-xs text-slate-600 dark:text-slate-300">
-          {error && (
-            <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-xl text-red-700 dark:text-red-300 flex items-start gap-2">
-              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5" />
-              <span>{error}</span>
+        <div ref={contentBodyRef} className="p-6 overflow-y-auto space-y-5 text-xs text-slate-600 dark:text-slate-300">
+          {error && !isPasswordError && (
+            <div className="p-3 bg-red-50 dark:bg-red-950/50 border border-red-200 dark:border-red-900 rounded-xl text-red-700 dark:text-red-300 flex items-start gap-2 animate-in fade-in">
+              <AlertTriangle className="w-4 h-4 shrink-0 mt-0.5 text-red-600" />
+              <span className="font-medium">{error}</span>
             </div>
           )}
 
@@ -350,23 +449,107 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
                 </div>
               </div>
 
+              {/* Account Mismatch Banner */}
+              {isAccountMismatch && (
+                <div className="p-4 rounded-2xl border-2 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950/40 text-amber-900 dark:text-amber-200 space-y-3 animate-in fade-in">
+                  <div className="flex items-start gap-2.5">
+                    <div className="w-8 h-8 rounded-xl bg-amber-500 text-white flex items-center justify-center shrink-0 mt-0.5 shadow-xs">
+                      <AlertTriangle className="w-4 h-4 text-white" />
+                    </div>
+                    <div className="space-y-1 flex-1">
+                      <h4 className="font-extrabold text-xs text-amber-950 dark:text-amber-100">
+                        Account Mismatch Detected
+                      </h4>
+                      <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                        You are currently signed in as <strong>{user?.email || user?.phone_number || user?.name || 'another account'}</strong>, but this order was placed under <strong>{buyerName || 'Buyer'} ({rawBuyerEmail || buyerPhone})</strong>.
+                      </p>
+                      <p className="text-[11px] leading-relaxed text-amber-800 dark:text-amber-300">
+                        For customer protection, order cancellation can only be initiated by the account matching the buyer's contact details.
+                      </p>
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between pt-2 border-t border-amber-200 dark:border-amber-800/60 gap-2 flex-wrap">
+                    <span className="text-[11px] font-medium text-amber-800 dark:text-amber-300">
+                      Need to cancel as this order's buyer?
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        authLogout();
+                        setError('');
+                        setPasswordError('');
+                      }}
+                      className="px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold shadow-xs cursor-pointer transition flex items-center gap-1.5"
+                    >
+                      Log Out to Switch Account
+                    </button>
+                  </div>
+                </div>
+              )}
+
+              {/* Verified Owner Banner */}
+              {isAuthorizedBuyer && (
+                <div className="p-3.5 rounded-2xl border border-emerald-200 dark:border-emerald-800/60 bg-emerald-50/80 dark:bg-emerald-950/30 text-emerald-900 dark:text-emerald-200 flex items-center gap-3 animate-in fade-in">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                    <ShieldCheck className="w-4 h-4" />
+                  </div>
+                  <div className="flex-1">
+                    <div className="flex items-center gap-1.5">
+                      <span className="font-bold text-xs text-emerald-950 dark:text-emerald-100">Verified Order Owner</span>
+                      <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded-full bg-emerald-200 dark:bg-emerald-900 text-emerald-800 dark:text-emerald-200">
+                        {isStaffOrAdmin ? 'Staff / Admin' : 'Identity Verified'}
+                      </span>
+                    </div>
+                    <p className="text-[11px] text-emerald-800/90 dark:text-emerald-300/90 mt-0.5">
+                      Signed in as <strong>{user?.email || user?.phone_number || user?.name}</strong> matching this order. No password or OTP required.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               {/* Guest Buyer Account Creation / Login Section */}
               {!isAuthenticated && (
-                <div className="p-4 rounded-2xl border-2 border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/30 space-y-3">
+                <div 
+                  ref={passwordSectionRef}
+                  className={`p-4 rounded-2xl border-2 transition-all duration-300 space-y-3.5 ${
+                    isPasswordError
+                      ? 'border-red-500 dark:border-red-500 bg-red-50/70 dark:bg-red-950/40 shadow-lg shadow-red-500/10 ring-4 ring-red-400/20'
+                      : 'border-indigo-200 dark:border-indigo-900/60 bg-indigo-50/70 dark:bg-indigo-950/30'
+                  }`}
+                >
                   <div className="flex items-start gap-2.5">
-                    <div className="w-8 h-8 rounded-xl bg-indigo-600 text-white flex items-center justify-center shrink-0 shadow-sm mt-0.5">
-                      <ShieldCheck className="w-4 h-4" />
+                    <div className={`w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm mt-0.5 transition-colors ${
+                      isPasswordError
+                        ? 'bg-red-600 text-white'
+                        : 'bg-indigo-600 text-white'
+                    }`}>
+                      {isPasswordError ? <AlertTriangle className="w-4 h-4 animate-bounce" /> : <ShieldCheck className="w-4 h-4" />}
                     </div>
-                    <div className="space-y-0.5">
-                      <h4 className="font-extrabold text-xs text-indigo-950 dark:text-indigo-200">
-                        {preview.has_existing_account 
-                          ? 'Account Found – Enter Password to Cancel' 
-                          : 'Account Creation Required for Refund'}
-                      </h4>
-                      <p className="text-[11px] text-indigo-800/80 dark:text-indigo-300/80 leading-relaxed">
-                        {preview.has_existing_account 
-                          ? 'To verify you are the order owner and secure your refund, please enter your existing account password.'
-                          : 'Because you checked out as a guest, please create a password to set up your account. Your In-App Wallet and refund balance will be securely linked to this account.'}
+                    <div className="space-y-0.5 flex-1">
+                      <div className="flex items-center justify-between">
+                        <h4 className={`font-extrabold text-xs ${
+                          isPasswordError ? 'text-red-950 dark:text-red-200' : 'text-indigo-950 dark:text-indigo-200'
+                        }`}>
+                          {authMethod === 'OTP'
+                            ? 'Verify Order Ownership via SMS/Email Code'
+                            : preview.has_existing_account 
+                              ? 'Account Found – Enter Password to Cancel' 
+                              : 'Account Creation Required for Refund'}
+                        </h4>
+                        {isPasswordError && (
+                          <span className="text-[10px] font-bold text-red-600 dark:text-red-400 uppercase tracking-wider bg-red-100 dark:bg-red-900/60 px-2 py-0.5 rounded-full">
+                            {authMethod === 'OTP' ? 'Code Required' : 'Password Required'}
+                          </span>
+                        )}
+                      </div>
+                      <p className={`text-[11px] leading-relaxed ${
+                        isPasswordError ? 'text-red-900/90 dark:text-red-300/90 font-medium' : 'text-indigo-800/80 dark:text-indigo-300/80'
+                      }`}>
+                        {authMethod === 'OTP'
+                          ? `We will send a one-time 6-digit verification code to your phone (${buyerPhone || 'on file'}) and email to confirm you own this order.`
+                          : preview.has_existing_account 
+                            ? 'To verify you are the order owner and secure your refund, please enter your existing account password.'
+                            : 'Because you checked out as a guest, please create a password to set up your account. Your In-App Wallet and refund balance will be securely linked to this account.'}
                       </p>
                     </div>
                   </div>
@@ -387,31 +570,176 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
                     </div>
                   </div>
 
-                  {/* Password Input */}
-                  <div className="space-y-1.5">
-                    <label className="block text-xs font-bold text-indigo-950 dark:text-indigo-200">
-                      {preview.has_existing_account ? 'Account Password *' : 'Create Account Password (min. 8 characters) *'}
-                    </label>
-                    <div className="relative">
-                      <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
-                        <Lock className="w-3.5 h-3.5" />
+                  {authMethod === 'PASSWORD' ? (
+                    /* Password Input */
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <label className={`block text-xs font-bold ${
+                          isPasswordError ? 'text-red-700 dark:text-red-300' : 'text-indigo-950 dark:text-indigo-200'
+                        }`}>
+                          {preview.has_existing_account ? 'Account Password *' : 'Create Account Password (min. 8 characters) *'}
+                        </label>
+                        {!preview.has_existing_account && (
+                          <span className={`text-[10px] font-semibold ${
+                            password.length >= 8 
+                              ? 'text-emerald-600 dark:text-emerald-400' 
+                              : password.length > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-400'
+                          }`}>
+                            {password.length}/8 characters
+                          </span>
+                        )}
                       </div>
-                      <input
-                        type={showPassword ? 'text' : 'password'}
-                        value={password}
-                        onChange={e => setPassword(e.target.value)}
-                        placeholder={preview.has_existing_account ? 'Enter your account password' : 'Create a secure password (min 8 chars)'}
-                        className="w-full pl-9 pr-10 py-2 bg-white dark:bg-slate-900 border border-indigo-200 dark:border-indigo-800 rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                      />
-                      <button
-                        type="button"
-                        onClick={() => setShowPassword(!showPassword)}
-                        className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
-                      >
-                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                      </button>
+                      <div className="relative">
+                        <div className={`absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none ${
+                          isPasswordError ? 'text-red-500' : 'text-slate-400'
+                        }`}>
+                          <Lock className="w-3.5 h-3.5" />
+                        </div>
+                        <input
+                          ref={passwordInputRef}
+                          type={showPassword ? 'text' : 'password'}
+                          value={password}
+                          onChange={e => {
+                            setPassword(e.target.value);
+                            if (passwordError) setPasswordError('');
+                            if (error && /password|account|credential/i.test(error)) setError('');
+                          }}
+                          placeholder={preview.has_existing_account ? 'Enter your account password' : 'Create a secure password (min 8 chars)'}
+                          className={`w-full pl-9 pr-10 py-2.5 bg-white dark:bg-slate-900 border rounded-xl text-xs text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition ${
+                            isPasswordError
+                              ? 'border-red-500 dark:border-red-500 ring-2 ring-red-400/30 focus:ring-red-500 focus:border-red-500 bg-red-50/20'
+                              : 'border-indigo-200 dark:border-indigo-800 focus:ring-indigo-500'
+                          }`}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowPassword(!showPassword)}
+                          className="absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
+                        >
+                          {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                        </button>
+                      </div>
+
+                      {/* Alternatives: SMS/Email OTP & Forgot Password */}
+                      <div className="flex items-center justify-between pt-1 text-[11px] gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAuthMethod('OTP');
+                            setPasswordError('');
+                            handleSendOtp();
+                          }}
+                          className="font-semibold text-indigo-700 dark:text-indigo-400 hover:underline flex items-center gap-1 cursor-pointer"
+                        >
+                          <span>Can't remember password? Verify via SMS/Email code</span>
+                        </button>
+
+                        {preview.has_existing_account && (
+                          <a
+                            href={`/forgot-password?identifier=${encodeURIComponent(buyerEmail || buyerPhone)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 font-medium hover:underline shrink-0"
+                          >
+                            Forgot password? ↗
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Inline password error alert directly in this section */}
+                      {isPasswordError && (
+                        <div className="p-2.5 bg-red-100/90 dark:bg-red-950/70 border border-red-300 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 flex items-start gap-2 animate-in fade-in slide-in-from-top-1">
+                          <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
+                          <span className="font-semibold leading-snug">
+                            {passwordError || error}
+                          </span>
+                        </div>
+                      )}
                     </div>
-                  </div>
+                  ) : (
+                    /* OTP Input Mode */
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <label className={`block text-xs font-bold ${
+                          isPasswordError ? 'text-red-700 dark:text-red-300' : 'text-indigo-950 dark:text-indigo-200'
+                        }`}>
+                          6-Digit Verification Code *
+                        </label>
+                        <button
+                          type="button"
+                          onClick={handleSendOtp}
+                          disabled={sendingOtp || otpCooldown > 0}
+                          className="text-[11px] font-bold text-indigo-600 dark:text-indigo-400 hover:underline disabled:opacity-50 cursor-pointer"
+                        >
+                          {sendingOtp 
+                            ? 'Sending code...' 
+                            : otpCooldown > 0 
+                              ? `Resend in ${otpCooldown}s` 
+                              : 'Send / Resend Code'}
+                        </button>
+                      </div>
+
+                      <div className="relative">
+                        <input
+                          type="text"
+                          inputMode="numeric"
+                          maxLength={6}
+                          value={cancelOtp}
+                          onChange={e => {
+                            setCancelOtp(e.target.value.replace(/\D/g, '').slice(0, 6));
+                            if (passwordError) setPasswordError('');
+                            if (error && /password|account|credential|code|otp/i.test(error)) setError('');
+                          }}
+                          placeholder="Enter 6-digit code (e.g. 123456)"
+                          className={`w-full px-3 py-2.5 bg-white dark:bg-slate-900 border rounded-xl text-sm font-mono tracking-widest text-slate-900 dark:text-white placeholder-slate-400 focus:outline-none focus:ring-2 transition text-center ${
+                            isPasswordError
+                              ? 'border-red-500 dark:border-red-500 ring-2 ring-red-400/30 focus:ring-red-500 focus:border-red-500 bg-red-50/20'
+                              : 'border-indigo-200 dark:border-indigo-800 focus:ring-indigo-500'
+                          }`}
+                        />
+                      </div>
+
+                      {otpSentMsg && (
+                        <p className="text-[11px] text-emerald-700 dark:text-emerald-400 font-medium">
+                          ✓ {otpSentMsg}
+                        </p>
+                      )}
+
+                      <div className="flex items-center justify-between pt-1 text-[11px] gap-2 flex-wrap">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setAuthMethod('PASSWORD');
+                            setPasswordError('');
+                          }}
+                          className="font-semibold text-slate-600 dark:text-slate-400 hover:text-indigo-600 hover:underline cursor-pointer"
+                        >
+                          ← Use Password instead
+                        </button>
+
+                        {preview.has_existing_account && (
+                          <a
+                            href={`/forgot-password?identifier=${encodeURIComponent(buyerEmail || buyerPhone)}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-slate-500 hover:text-slate-700 dark:hover:text-slate-300 font-medium hover:underline shrink-0"
+                          >
+                            Forgot password? ↗
+                          </a>
+                        )}
+                      </div>
+
+                      {/* Inline OTP error alert */}
+                      {isPasswordError && (
+                        <div className="p-2.5 bg-red-100/90 dark:bg-red-950/70 border border-red-300 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 flex items-start gap-2 animate-in fade-in slide-in-from-top-1">
+                          <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
+                          <span className="font-semibold leading-snug">
+                            {passwordError || error}
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -446,42 +774,86 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
         </div>
 
         {/* Modal Footer */}
-        <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/80 flex items-center justify-between gap-3">
-          <button
-            type="button"
-            onClick={onClose}
-            disabled={submitting}
-            className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
-          >
-            Keep Order
-          </button>
+        <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-950/80 flex flex-col gap-3">
+          {error && (
+            <div className="p-3 bg-red-50 dark:bg-red-950/60 border border-red-200 dark:border-red-800 rounded-xl text-red-700 dark:text-red-300 flex items-start justify-between gap-2.5 text-xs animate-in fade-in">
+              <div className="flex items-start gap-2">
+                <AlertTriangle className="w-4 h-4 shrink-0 text-red-600 dark:text-red-400 mt-0.5" />
+                <div>
+                  <span className="font-bold block">{error}</span>
+                  {isPasswordError && (
+                    <span className="text-[11px] text-red-600/90 dark:text-red-400/90 block mt-0.5">
+                      {authMethod === 'OTP'
+                        ? 'Please enter the 6-digit verification code in the highlighted section above.'
+                        : 'Please enter your password in the highlighted section above.'}
+                    </span>
+                  )}
+                </div>
+              </div>
+              {isPasswordError && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    passwordSectionRef.current?.scrollIntoView?.({ behavior: 'smooth', block: 'center' });
+                    if (authMethod === 'PASSWORD') {
+                      passwordInputRef.current?.focus();
+                    }
+                  }}
+                  className="shrink-0 text-[11px] font-bold text-red-700 dark:text-red-300 hover:underline px-2.5 py-1 bg-red-100 dark:bg-red-900/50 rounded-lg cursor-pointer transition"
+                >
+                  {authMethod === 'OTP' ? 'Enter Code ↑' : 'Enter Password ↑'}
+                </button>
+              )}
+            </div>
+          )}
 
-          <button
-            type="button"
-            onClick={handleConfirmCancel}
-            disabled={submitting || loadingPreview || !preview || (!isAuthenticated && password.trim().length < 8)}
-            className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
-              isInstant
-                ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
-                : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'
-            }`}
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Processing...</span>
-              </>
-            ) : (
-              <>
-                <span>
-                  {!isAuthenticated 
-                    ? (isInstant ? '⚡ Create Account & Cancel' : 'Create Account & Request')
-                    : (isInstant ? '⚡ Cancel & Refund' : 'Submit Cancellation Request')}
-                </span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
-            )}
-          </button>
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={submitting}
+              className="px-4 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold hover:bg-slate-100 dark:hover:bg-slate-800 transition cursor-pointer"
+            >
+              Keep Order
+            </button>
+
+            <button
+              type="button"
+              onClick={handleConfirmCancel}
+              disabled={submitting || loadingPreview || !preview || isAccountMismatch}
+              className={`px-5 py-2.5 rounded-xl text-white text-xs font-bold transition shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50 ${
+                isAccountMismatch
+                  ? 'bg-slate-400 dark:bg-slate-700 cursor-not-allowed'
+                  : isInstant
+                    ? 'bg-amber-600 hover:bg-amber-700 shadow-amber-600/20'
+                    : 'bg-blue-600 hover:bg-blue-700 shadow-blue-600/20'
+              }`}
+            >
+              {submitting ? (
+                <>
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Processing...</span>
+                </>
+              ) : isAccountMismatch ? (
+                <span>Account Mismatch</span>
+              ) : (
+                <>
+                  <span>
+                    {!isAuthenticated 
+                      ? (authMethod === 'OTP'
+                          ? (isInstant ? '⚡ Verify Code & Cancel' : 'Verify Code & Request')
+                          : (isInstant 
+                              ? (preview?.has_existing_account ? '⚡ Verify & Cancel Order' : '⚡ Create Account & Cancel')
+                              : (preview?.has_existing_account ? 'Verify & Request' : 'Create Account & Request')
+                            )
+                        )
+                      : (isInstant ? '⚡ Cancel & Refund' : 'Submit Cancellation Request')}
+                  </span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+          </div>
         </div>
       </div>
     </div>

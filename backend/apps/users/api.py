@@ -128,6 +128,14 @@ class ActivateAccountSchema(Schema):
 class ResendActivationSchema(Schema):
     email: str
 
+class ChangeEmailSchema(Schema):
+    new_email: str
+
+class ChangeEmailResponseSchema(Schema):
+    message: str
+    email: str
+    is_email_verified: bool
+
 def set_auth_cookies(response, refresh_token, remember=False):
     if remember:
         access_lifetime = timedelta(days=7)
@@ -710,6 +718,58 @@ def resend_activation(request, data: ResendActivationSchema):
         logging.getLogger(__name__).error(f"Activation email error for user {user.id}: {e}")
     return {"message": "Activation email resent. Please check your inbox."}
 
+@auth_router.post("/change-email", response=ChangeEmailResponseSchema, auth=JWTCookieAuth())
+@rate_limit('auth_change_email', max_calls=5, window_seconds=600)
+def change_email(request, data: ChangeEmailSchema):
+    user = request.user
+    if not user or not user.is_authenticated:
+        raise HttpError(401, "Authentication required.")
+
+    clean_email = data.new_email.strip().lower()
+    try:
+        django_validate_email(clean_email)
+    except DjangoValidationError:
+        raise HttpError(400, "Please provide a valid email address.")
+
+    current_email = (user.email or "").strip().lower()
+    if current_email == clean_email:
+        if not user.is_email_verified:
+            try:
+                send_account_activation_email(user, request)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Error resending activation email: {e}")
+            return {
+                "message": f"Verification link resent to your email address ({user.email}). Please check your inbox.",
+                "email": user.email,
+                "is_email_verified": False
+            }
+        else:
+            return {
+                "message": "This email address is already verified on your account.",
+                "email": user.email,
+                "is_email_verified": True
+            }
+
+    if User.objects.filter(email__iexact=clean_email).exclude(pk=user.pk).exists():
+        raise HttpError(400, "This email address is already associated with another account.")
+
+    user.email = clean_email
+    user.is_email_verified = False
+    user.save(update_fields=['email', 'is_email_verified'])
+
+    try:
+        send_account_activation_email(user, request)
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).error(f"Error sending activation email to {user.email}: {e}")
+
+    return {
+        "message": f"Email updated to {user.email}! We have sent a verification link to your new inbox. Please verify it.",
+        "email": user.email,
+        "is_email_verified": False
+    }
+
 @auth_router.post("/forgot-password", response=MessageSchema)
 @rate_limit('auth_forgot_password', max_calls=5, window_seconds=600)
 def forgot_password(request, data: ForgotPasswordSchema):
@@ -885,11 +945,14 @@ class ProfileResponse(Schema):
     verification_rejection_reason: Optional[str] = ""
     verified_at: Optional[str] = None
     is_2fa_enabled: bool = False
+    is_email_verified: Optional[bool] = False
+    is_phone_verified: Optional[bool] = False
     default_shipping_address: Optional[str] = ""
 
 class ProfileUpdateRequest(Schema):
     first_name: Optional[str] = None
     last_name: Optional[str] = None
+    email: Optional[str] = None
     default_shipping_address: Optional[str] = None
     payout_mode: Optional[str] = None
     preferred_payout_type: Optional[str] = None
@@ -956,6 +1019,8 @@ def _build_profile_response(user) -> dict:
         "verification_rejection_reason": user.verification_rejection_reason or "",
         "verified_at": user.verified_at.isoformat() if user.verified_at else None,
         "is_2fa_enabled": bool(user.is_2fa_enabled),
+        "is_email_verified": bool(getattr(user, 'is_email_verified', False)),
+        "is_phone_verified": bool(getattr(user, 'is_phone_verified', False)),
         "default_shipping_address": getattr(user, 'default_shipping_address', '') or "",
     }
     try:
@@ -1052,6 +1117,22 @@ def update_profile(request, data: ProfileUpdateRequest):
         user.first_name = data.first_name
     if data.last_name is not None:
         user.last_name = data.last_name
+    if data.email is not None and data.email.strip():
+        clean_email = data.email.strip().lower()
+        try:
+            django_validate_email(clean_email)
+        except DjangoValidationError:
+            raise HttpError(400, "Please provide a valid email address.")
+        if (user.email or "").strip().lower() != clean_email:
+            if User.objects.filter(email__iexact=clean_email).exclude(pk=user.pk).exists():
+                raise HttpError(400, "This email address is already associated with another account.")
+            user.email = clean_email
+            user.is_email_verified = False
+            try:
+                send_account_activation_email(user, request)
+            except Exception as e:
+                import logging
+                logging.getLogger(__name__).error(f"Error sending activation email: {e}")
     if data.default_shipping_address is not None:
         user.default_shipping_address = data.default_shipping_address.strip()
     if data.payout_mode is not None:

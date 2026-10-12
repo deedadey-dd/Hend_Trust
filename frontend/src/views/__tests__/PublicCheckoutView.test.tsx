@@ -308,4 +308,238 @@ describe('PublicCheckoutView Integration Tests', () => {
       expect(screen.getByText(/already redeemed promo code FIRST20/i)).toBeDefined();
     });
   });
+
+  it('renders horizontal escrow progress stepper and partial refund status on post-payment status screen', async () => {
+    const mockTxnPartialRefund = {
+      id: 'txn-part-100',
+      title: 'Vintage Leather Jacket',
+      status: 'REFUNDED',
+      is_partial_refund: true,
+      total_amount_ghs: 250.0,
+      buyer_refund_amount_ghs: 150.0,
+      seller_amount_ghs: 100.0,
+      buyer_email: 'buyer@example.com',
+      paystack_reference: 'REF_PARTIAL_100',
+      created_at: new Date().toISOString(),
+      fee_handling: 'PASS_TO_BUYER',
+    };
+
+    clientGetSpy.mockImplementation((url: string) => {
+      if (url.includes('/checkout/transaction/REF_PARTIAL_100')) {
+        return Promise.resolve({ data: mockTxnPartialRefund });
+      }
+      return Promise.reject(new Error('not found'));
+    });
+
+    render(
+      <MemoryRouter initialEntries={[`/l/${mockLinkId}?reference=REF_PARTIAL_100`]}>
+        <Routes>
+          <Route path="/l/:linkId" element={<PublicCheckoutView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    // Verifies status title
+    const partialTitle = await screen.findByText('Partially Refunded');
+    expect(partialTitle).toBeInTheDocument();
+
+    // Verifies horizontal progress stepper labels
+    expect(screen.getByText('Payment')).toBeInTheDocument();
+    expect(screen.getByText('Dispatch')).toBeInTheDocument();
+    expect(screen.getByText('Inspection')).toBeInTheDocument();
+    expect(screen.getByText('Partial Refund')).toBeInTheDocument();
+    expect(screen.getByText('Settled')).toBeInTheDocument();
+  });
+
+  it('renders side-by-side action buttons on Item received? card during delivery in progress when unlocked', async () => {
+    const mockTxnInTransit = {
+      id: 'txn-transit-200',
+      title: 'Vintage Leather Jacket',
+      status: 'DELIVERY_IN_PROGRESS',
+      total_amount_ghs: 250.0,
+      buyer_email: 'buyer@example.com',
+      paystack_reference: 'REF_TRANSIT_200',
+      created_at: new Date(Date.now() - 50 * 3600 * 1000).toISOString(),
+      dispatched_at: new Date(Date.now() - 50 * 3600 * 1000).toISOString(),
+      fee_handling: 'PASS_TO_BUYER',
+    };
+
+    clientGetSpy.mockImplementation((url: string) => {
+      if (url.includes('/checkout/transaction/REF_TRANSIT_200')) {
+        return Promise.resolve({ data: mockTxnInTransit });
+      }
+      return Promise.reject(new Error('not found'));
+    });
+
+    render(
+      <MemoryRouter initialEntries={[`/l/${mockLinkId}?reference=REF_TRANSIT_200`]}>
+        <Routes>
+          <Route path="/l/:linkId" element={<PublicCheckoutView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Item received?');
+
+    const confirmBtn = screen.getByRole('button', { name: /Confirm Receipt/i });
+    const disputeBtn = screen.getByRole('button', { name: /Raise Dispute/i });
+
+    expect(confirmBtn).toBeInTheDocument();
+    expect(disputeBtn).toBeInTheDocument();
+
+    // Both buttons should be siblings in the flex-row container
+    expect(confirmBtn.parentElement).toBe(disputeBtn.parentElement);
+  });
+
+  it('locks Raise Dispute button with countdown when in-transit order is dispatched less than 48 hours ago', async () => {
+    const mockTxnRecentTransit = {
+      id: 'txn-transit-recent',
+      title: 'Vintage Leather Jacket',
+      status: 'DELIVERY_IN_PROGRESS',
+      total_amount_ghs: 250.0,
+      buyer_email: 'buyer@example.com',
+      paystack_reference: 'REF_RECENT_TRANSIT',
+      created_at: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
+      dispatched_at: new Date(Date.now() - 5 * 3600 * 1000).toISOString(),
+      fee_handling: 'PASS_TO_BUYER',
+    };
+
+    clientGetSpy.mockImplementation((url: string) => {
+      if (url.includes('/checkout/transaction/REF_RECENT_TRANSIT')) {
+        return Promise.resolve({ data: mockTxnRecentTransit });
+      }
+      return Promise.reject(new Error('not found'));
+    });
+
+    render(
+      <MemoryRouter initialEntries={[`/l/${mockLinkId}?reference=REF_RECENT_TRANSIT`]}>
+        <Routes>
+          <Route path="/l/:linkId" element={<PublicCheckoutView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Item received?');
+
+    const lockedDisputeBtn = screen.getByRole('button', { name: /Dispute Unlocks in/i });
+    expect(lockedDisputeBtn).toBeInTheDocument();
+    expect(lockedDisputeBtn).toBeDisabled();
+    expect(lockedDisputeBtn.textContent).toContain('42h');
+  });
+
+  it('filters dispute categories to non-delivery options and displays in-transit banner when unlocked in transit', async () => {
+    const mockTxnUnlockedTransit = {
+      id: 'txn-transit-unlocked',
+      title: 'Vintage Leather Jacket',
+      status: 'DELIVERY_IN_PROGRESS',
+      total_amount_ghs: 250.0,
+      buyer_email: 'buyer@example.com',
+      paystack_reference: 'REF_UNLOCKED_TRANSIT',
+      created_at: new Date(Date.now() - 52 * 3600 * 1000).toISOString(),
+      dispatched_at: new Date(Date.now() - 52 * 3600 * 1000).toISOString(),
+      fee_handling: 'PASS_TO_BUYER',
+    };
+
+    clientGetSpy.mockImplementation((url: string) => {
+      if (url.includes('/checkout/transaction/REF_UNLOCKED_TRANSIT')) {
+        return Promise.resolve({ data: mockTxnUnlockedTransit });
+      }
+      return Promise.reject(new Error('not found'));
+    });
+
+    render(
+      <MemoryRouter initialEntries={[`/l/${mockLinkId}?reference=REF_UNLOCKED_TRANSIT`]}>
+        <Routes>
+          <Route path="/l/:linkId" element={<PublicCheckoutView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    await screen.findByText('Item received?');
+
+    const disputeBtn = screen.getByRole('button', { name: /Raise Dispute/i });
+    expect(disputeBtn).not.toBeDisabled();
+    fireEvent.click(disputeBtn);
+
+    // Modal opens
+    expect(screen.getByText('Raise Transaction Dispute')).toBeInTheDocument();
+    expect(screen.getByText('Package Currently In Transit')).toBeInTheDocument();
+
+    // Only non-delivery options should be present in the select dropdown
+    expect(screen.getByRole('option', { name: /Item Not Received/i })).toBeInTheDocument();
+    expect(screen.getByRole('option', { name: /Other Issue/i })).toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Item Damaged or Broken/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole('option', { name: /Defective, Malfunctioning/i })).not.toBeInTheDocument();
+  });
+
+  it('places referral card above How Delivery & Receipt Works card and opens cancellation modal', async () => {
+    const mockTxnPaymentReceived = {
+      id: 'txn-paid-300',
+      title: 'Vintage Leather Jacket',
+      status: 'PAYMENT_RECEIVED',
+      total_amount_ghs: 250.0,
+      buyer_email: 'buyer@example.com',
+      paystack_reference: 'REF_PAID_300',
+      created_at: new Date().toISOString(),
+      fee_handling: 'PASS_TO_BUYER',
+      is_instant_cancel_eligible: true,
+      instant_cancel_remaining_minutes: 55,
+      instant_cancel_window_hours: 1,
+    };
+
+    clientGetSpy.mockImplementation((url: string) => {
+      if (url.includes('/checkout/transaction/REF_PAID_300')) {
+        return Promise.resolve({ data: mockTxnPaymentReceived });
+      }
+      if (url.includes('/escrow/txn-paid-300/cancel-preview')) {
+        return Promise.resolve({
+          data: {
+            transaction_id: 'txn-paid-300',
+            status: 'PAYMENT_RECEIVED',
+            is_undispatched: true,
+            is_instant_eligible: true,
+            instant_window_hours: 1,
+            instant_window_remaining_minutes: 55,
+            seller_response_window_hours: 1.5,
+            gross_amount_ghs: 250.0,
+            platform_fee_ghs: 13.75,
+            gateway_fee_ghs: 4.88,
+            wallet_payout_fee_ghs: 0.0,
+            momo_payout_fee_ghs: 4.88,
+            wallet_net_refund_ghs: 250.0,
+            momo_net_refund_ghs: 245.12,
+            buyer_phone: '0244112233',
+            buyer_email: 'buyer@example.com',
+            has_existing_account: false,
+          },
+        });
+      }
+      return Promise.reject(new Error('not found'));
+    });
+
+    render(
+      <MemoryRouter initialEntries={[`/l/${mockLinkId}?reference=REF_PAID_300`]}>
+        <Routes>
+          <Route path="/l/:linkId" element={<PublicCheckoutView />} />
+        </Routes>
+      </MemoryRouter>
+    );
+
+    // Referral card is present
+    const refCardTitle = await screen.findByText(/Refer Friends & Get GH₵ 10.00 Credits!/i);
+    expect(refCardTitle).toBeInTheDocument();
+
+    // Cancellation button exists
+    const cancelBtn = screen.getByText(/Instant Self-Cancellation Available/i);
+    expect(cancelBtn).toBeInTheDocument();
+
+    // Clicking trigger opens BuyerCancelModal
+    const cancelTriggerBtn = screen.getByRole('button', { name: /Cancel\s*Order/i });
+    fireEvent.click(cancelTriggerBtn);
+
+    await waitFor(() => {
+      expect(screen.getByText(/Instant Order Cancellation/i)).toBeInTheDocument();
+    });
+  });
 });
+

@@ -187,3 +187,62 @@ def test_admin_reject_verification_keeps_buyer_role(mock_sms, buyer_user, admin_
     assert buyer_user.role == "BUYER"
     assert buyer_user.verification_status == VerificationStatus.REJECTED
     assert buyer_user.verification_rejection_reason == "The uploaded photo is too blurry to read."
+
+
+@pytest.mark.django_db
+@patch("apps.users.api.send_account_activation_email")
+def test_change_email_success(mock_send_email, buyer_user):
+    from apps.users.api import auth_router
+    client = TestClient(auth_router, headers=get_auth_headers(buyer_user))
+
+    res = client.post("/change-email", json={"new_email": "new.buyer.email@example.com"})
+    assert res.status_code == 200
+    data = res.json()
+    assert data["email"] == "new.buyer.email@example.com"
+    assert data["is_email_verified"] is False
+    assert "updated" in data["message"].lower()
+
+    buyer_user.refresh_from_db()
+    assert buyer_user.email == "new.buyer.email@example.com"
+    assert buyer_user.is_email_verified is False
+    mock_send_email.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_change_email_already_registered(buyer_user, seller_user):
+    from apps.users.api import auth_router
+    client = TestClient(auth_router, headers=get_auth_headers(buyer_user))
+
+    res = client.post("/change-email", json={"new_email": seller_user.email})
+    assert res.status_code == 400
+    assert "already associated" in res.json().get("detail", res.json().get("message", "")).lower()
+
+
+@pytest.mark.django_db
+@patch("apps.users.api.send_account_activation_email")
+def test_change_email_same_email_resends_activation(mock_send_email, buyer_user):
+    from apps.users.api import auth_router
+    buyer_user.is_email_verified = False
+    buyer_user.save(update_fields=['is_email_verified'])
+
+    client = TestClient(auth_router, headers=get_auth_headers(buyer_user))
+
+    res = client.post("/change-email", json={"new_email": buyer_user.email})
+    assert res.status_code == 200
+    assert "resent" in res.json()["message"].lower()
+    assert res.json()["is_email_verified"] is False
+    mock_send_email.assert_called_once()
+
+
+@pytest.mark.django_db
+@patch("apps.users.api.send_account_activation_email")
+def test_profile_update_email_resets_verification(mock_send_email, buyer_user):
+    client = TestClient(profile_router, headers=get_auth_headers(buyer_user))
+
+    res = client.patch("/", json={"email": "updated.kofi@example.com"})
+    assert res.status_code == 200
+
+    buyer_user.refresh_from_db()
+    assert buyer_user.email == "updated.kofi@example.com"
+    assert buyer_user.is_email_verified is False
+    mock_send_email.assert_called_once()

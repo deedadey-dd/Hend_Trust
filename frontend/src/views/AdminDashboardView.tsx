@@ -239,6 +239,7 @@ interface PlatformSettings {
   payout_transfer_fee_percent?: number;
   payout_transfer_fee_ghs?: number;
   django_admin_url?: string;
+  django_admin_full_url?: string;
   promotions_active?: boolean;
   promotions_expires_at?: string | null;
   buyer_reward_rate_percent?: number;
@@ -316,12 +317,42 @@ export const AdminDashboardView: React.FC = () => {
     dispute_retraction_release_hours: 24,
     dispatch_expiry_warning_threshold: 20.0,
     dispatch_expiry_suspension_threshold: 35.0,
+    django_admin_url: import.meta.env.DEV ? 'hendaxis-secure-portal-9472/' : 'secure-portal-2011/',
   });
 
 
-  const backendBaseUrl = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000';
-  const adminPath = platformSettings?.django_admin_url ? platformSettings.django_admin_url.replace(/^\/+/, '') : 'admin/';
-  const djangoAdminFullUrl = `${backendBaseUrl.replace(/\/+$/, '')}/${adminPath}`;
+  const getBackendBaseUrl = (): string => {
+    // 1. Explicitly configured backend URL from environment
+    if (import.meta.env.VITE_BACKEND_URL) {
+      return import.meta.env.VITE_BACKEND_URL;
+    }
+    // 2. If VITE_API_URL is an absolute URL (e.g. https://api.hendaxis.com/api/v1), extract its origin
+    const apiUrl = import.meta.env.VITE_API_URL;
+    if (apiUrl && /^https?:\/\//i.test(apiUrl)) {
+      try {
+        return new URL(apiUrl).origin;
+      } catch {
+        // fallback
+      }
+    }
+    // 3. Localhost development check:
+    // Standardize to http://127.0.0.1:8000 when running locally on dev server port (e.g. 5173)
+    const isLocalhost = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1');
+    if ((import.meta.env.DEV || isLocalhost) && typeof window !== 'undefined' && window.location.port !== '8000') {
+      return 'http://127.0.0.1:8000';
+    }
+    // 4. In production (e.g. trust.hendaxis.com), use the current browser site origin
+    return typeof window !== 'undefined' ? window.location.origin : '';
+  };
+
+  const adminPath = platformSettings?.django_admin_url ? platformSettings.django_admin_url.replace(/^\/+/, '') : (import.meta.env.DEV ? 'hendaxis-secure-portal-9472/' : 'secure-portal-2011/');
+  const backendBaseUrl = getBackendBaseUrl();
+  const rawAdminFullUrl = platformSettings?.django_admin_full_url || `${backendBaseUrl.replace(/\/+$/, '')}/${adminPath}`;
+  // Ensure in local development that 127.0.0.1:8000 is consistently used over localhost:8000
+  const isLocalDev = typeof window !== 'undefined' && (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1' || import.meta.env.DEV);
+  const djangoAdminFullUrl = isLocalDev && rawAdminFullUrl.startsWith('http://localhost:8000')
+    ? rawAdminFullUrl.replace('http://localhost:8000', 'http://127.0.0.1:8000')
+    : rawAdminFullUrl;
 
   const [loadingSettings, setLoadingSettings] = useState(false);
   const [settingsSaveMsg, setSettingsSaveMsg] = useState('');

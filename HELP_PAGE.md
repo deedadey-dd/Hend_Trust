@@ -47,7 +47,7 @@ Sellers can create secure Payment Links to send to their buyers.
    - **Guest Shoppers**: Enter your phone number and verify via a quick 6-digit SMS OTP to initialize payment securely.
 3. **Pay via Active Payment Gateway**: Use Mobile Money (MTN MoMo, Telecel Cash, AT Money) or Bank Card (Visa, Mastercard).
    - **Supported Payment Engines**: **Paystack Multi-Channel**, **AppsNMobile (The Orchard API)**, and **Hubtel Ghana PSP**. The active checkout gateway is managed dynamically by platform administration.
-4. **Post-Checkout Buyer Account & Dual Verification**: Immediately after checkout on your order page (`/l/:id`), you can create a permanent buyer account simply by choosing a password. The system sends an activation link to your email and an SMS OTP to your phone. Entering the phone OTP confirms phone possession and logs you in instantly, while an unobtrusive reminder banner helps you confirm your email anytime with 1-click resend. Once logged in, you skip all future checkout SMS OTPs.
+4. **Post-Checkout Buyer Account, Dual Verification & Email Management**: Immediately after checkout on your order page (`/l/:id`) or during order cancellation, you can create a permanent buyer account simply by choosing a password. The system sends an activation link to your email and an SMS OTP to your phone. Entering the phone OTP confirms phone possession and logs you in instantly. If your email is unverified, an unobtrusive banner across your dashboard and profile allows you to resend the verification link in 1 click or update typos/addresses directly via **Change Email Address** (`POST /api/v1/auth/change-email`). Once logged in, you skip all future checkout SMS OTPs.
 5. **Escrow Hold**: Your money is held securely in the **HendAxis System Escrow Account**. The seller is notified to dispatch your package within 4 days.
 
 ---
@@ -82,18 +82,30 @@ Once delivery is initiated, buyers can track shipments and confirm orders with c
 
 ---
 
-## 6. How Disputes, Dialogue Trail, Retraction, 48-Hour Arbiter Escalation & Settlement Work
-If a buyer receives a damaged, defective, or incorrect item during the inspection period:
+## 6. How Disputes, In-Transit Buffers, Dialogue Trail, Retraction, 48-Hour Arbiter Escalation & Settlement Work
+If an issue occurs with your order, HendAxis Trust provides a fair, multi-layered dispute resolution framework:
 
+- **Pre-Dispatch Status (`PAYMENT_RECEIVED`) Restriction**:
+  - Disputes cannot be opened for orders that have not yet been dispatched.
+  - If a buyer wishes to cancel or modify their order prior to dispatch, they must use the **Order Cancellation** workflow (**Instant Order Cancellation** within 1–2 hours of payment, or **Cancellation Request** with a 90-minute seller confirmation grace period).
+- **In-Transit 48-Hour Dispatch Buffer & Button Locking (`DELIVERY_IN_PROGRESS`)**:
+  - To prevent premature claims while couriers are in active transit, the **Raise Dispute** button is locked for **48 hours** following seller dispatch (`dispatched_at`).
+  - During this 48-hour buffer, the button displays as disabled with a real-time countdown badge (e.g. `🔒 Dispute Unlocks in 36h 20m`) and explanatory guidance.
+  - Once 48 hours have elapsed, the button unlocks automatically as `⚠ Raise Dispute`.
+- **In-Transit Category Filtering vs. Inspection Mode**:
+  - **During Transit (`DELIVERY_IN_PROGRESS`)**: Buyers are restricted strictly to logistics and non-delivery dispute categories:
+    1. `ITEM_NOT_RECEIVED` (Item Not Received / Empty Parcel / Delivery Overdue)
+    2. `OTHER` (Logistics, Waybill, or Contractual Non-Compliance)
+  - **Physical Condition Issues Gated to Inspection Period**: Claims regarding physical item state (`DAMAGED_ITEM`, `WRONG_ITEM`, `DEFECTIVE_OR_FAULTY`, `MISSING_PARTS`, `COUNTERFEIT_OR_FAKE`) are strictly prohibited while the package is in transit and unlock only after physical delivery confirmation during the **Inspection Period**.
 - **Standardized Dispute Categories & 10-Character Minimum**:
-  - Clicking **Raise Dispute** opens an interactive modal where the buyer selects from **7 Standardized Dispute Categories**:
-    1. `ITEM_NOT_RECEIVED` (Item Not Received / Missing Delivery)
-    2. `ITEM_DAMAGED` (Item Damaged / Broken during transit or upon receipt)
-    3. `ITEM_DIFFERENT_FROM_DESCRIPTION` (Item Significantly Different from Description)
-    4. `DEFECTIVE_OR_NON_FUNCTIONAL` (Defective / Counterfeit / Non-Functional)
-    5. `WRONG_SIZE_OR_SPEC` (Wrong Size, Color, or Technical Specification)
-    6. `INCOMPLETE_MISSING_ITEMS` (Incomplete Package / Missing Accessories)
-    7. `OTHER_VIOLATION` (Other Policy or Agreement Violation)
+  - Clicking **Raise Dispute** opens an interactive modal with available categories based on order status:
+    1. `DAMAGED_ITEM` (Item Damaged or Broken in Transit — Inspection Period only)
+    2. `WRONG_ITEM` (Wrong Item Delivered / Not as Described — Inspection Period only)
+    3. `DEFECTIVE_OR_FAULTY` (Defective, Malfunctioning or Inoperable — Inspection Period only)
+    4. `MISSING_PARTS` (Missing Accessories, Parts, or Incomplete Package — Inspection Period only)
+    5. `COUNTERFEIT_OR_FAKE` (Counterfeit, Fake, or Replica Item — Inspection Period only)
+    6. `ITEM_NOT_RECEIVED` (Item Not Received / Empty Parcel)
+    7. `OTHER` (Other Issue / Contractual Non-Compliance)
   - **10-Character Minimum Requirement**: The claim explanation requires a strict minimum of 10 characters with a live character counter (`{count}/10 min chars`) to prevent blank or trivial submissions.
   - **Evidence Upload**: The buyer can upload up to **5 WebP evidence photos**.
 - **Continuous Dialogue & Evidence Appending**: Both buyers and sellers can append ongoing follow-up messages and additional photos to active disputes. Every message is timestamped (`--- [Buyer Update (Timestamp)] ---` and `--- [Seller Response (Timestamp)] ---`), preserving the complete historical record without overwriting previous evidence (up to 5 cumulative photos).
@@ -186,21 +198,27 @@ Superusers (`is_superuser == True`) can manage system operations and timeline pa
 
 ---
 
-## 11. Developer Portal, API Keys & Drop-in SDK (`/developers`)
-HendAxis Trust provides a full developer platform for third-party developers, custom web apps, and e-commerce stores (Shopify, WooCommerce, custom React/Node/PHP apps) to integrate escrow services directly into their platforms:
+## 11. Developer Portal, API Keys, Drop-in SDK & Webhooks (`/developers`)
+HendAxis Trust provides a full-featured developer platform for third-party developers, custom web apps, and e-commerce stores (Shopify, WooCommerce, custom React/Node/Python/PHP apps) to integrate escrow checkout and logistics management directly into their platforms:
 
 - **Merchant Developer Settings (`/dashboard/developer`)**:
   - Generate **Live** (`pk_live_...` / `sk_live_...`) and **Test** (`pk_test_...` / `sk_test_...`) API Key pairs.
-  - **Secret Key Security**: Secret keys are stored using SHA-256 hashes in the database and displayed **only once** upon generation. Use `X-HendAxis-Secret-Key` for server-to-server requests.
-- **REST APIs (`/api/v1/v1/`)**:
-  - `POST /api/v1/v1/escrow/create`: Programmatically create an escrow order and receive a secure checkout URL.
-  - `GET /api/v1/v1/escrow/{transaction_id}`: Query order escrow status, inspection timeline, and courier tracking details.
-  - `POST /api/v1/v1/escrow/{transaction_id}/dispatch`: Programmatically mark orders as dispatched.
-- **Drop-in JavaScript SDK (`sdk.js`)**:
-  - Embed an HendAxis Escrow Modal checkout directly on your storefront using `HendAxis.pay({ publicKey: "pk_live_...", amount: 150.00 })`.
+  - **Secret Key Security**: Secret keys are stored using SHA-256 hashes in the database and displayed **only once** upon generation. Use `X-HendAxis-Secret-Key` for authenticated server-to-server requests.
+- **REST APIs (`https://trust.hendaxis.com/api/v1/v1/`)**:
+  - `GET /ping`: Verify API key validity, active environment (`LIVE` vs `TEST`), merchant identity, and latency.
+  - `GET /merchant/account`: Query merchant verified tier badge, available wallet balance, pending escrow funds, total orders, and average rating.
+  - `POST /escrow/create`: Programmatically create an escrow order with custom reference, item title, price, shipping fee, and fee handling (`PASS_TO_BUYER` or `ABSORB_FEE`), returning hosted checkout & modal embed URLs.
+  - `GET /escrow/{id_or_ref}`: Query real-time escrow order status, courier tracking info, delivery logs, waybill photos, and 48-hour buyer inspection countdown.
+  - `GET /escrow`: List merchant escrow orders with status filtering, search queries, and pagination (`limit`, `offset`).
+  - `POST /escrow/{id}/dispatch`: Mark order as dispatched via Courier API (DHL, FedEx, Speedaf, EMS, Fez) or Informal Bus transport with driver details.
+  - `POST /escrow/{id}/confirm-delivery`: Mark package as delivered and initiate the 48-hour buyer inspection period.
+  - `POST /escrow/{id}/cancel`: Cancel unpaid escrow orders and release allocated references.
+  - `POST /links/create`, `GET /links`, `GET /links/{id}`: Programmatically create and query reusable or direct payment links.
+- **Drop-in JavaScript SDK (`sdk.js`) v1.2.0**:
+  - Embed a responsive, themeable HendAxis Escrow Modal checkout directly on your storefront using `HendAxis.pay({ publicKey: "pk_live_...", amount: 1500.00, feeHandling: "PASS_TO_BUYER", onSuccess: (tx) => { ... } })`.
 - **HMAC SHA-256 Webhooks**:
-  - Register Webhook Endpoint URLs to receive instant, signed POST payloads for events (`escrow.paid`, `escrow.dispatched`, `escrow.completed`, `escrow.disputed`, `escrow.refunded`). All payloads include `X-HendAxis-Signature` headers for payload verification.
-- **Interactive Documentation**: Full code snippets in **cURL**, **Node.js**, **Python**, and **PHP** available at `/developers` and `/docs/api`.
+  - Register Webhook Endpoint URLs to receive instant, signed POST payloads for 9 real-time event types (`escrow.created`, `escrow.paid`, `escrow.dispatched`, `escrow.delivered`, `escrow.inspection_started`, `escrow.completed`, `escrow.disputed`, `escrow.refunded`, `escrow.cancelled`, `test.event`). All payloads include `X-HendAxis-Signature` headers with timestamp freshness checks to prevent replay attacks.
+- **Interactive Documentation**: Full code snippets in **cURL**, **Node.js**, **Python**, **PHP**, and **Go** available at `/developers` and `/docs/api`.
 
 ---
 

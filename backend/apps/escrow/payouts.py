@@ -98,6 +98,26 @@ def execute_payout_for_transaction(transaction: Transaction):
     except Exception as reward_err:
         print(f"[PROMO REWARD ERROR] tx {transaction.id}: {reward_err}")
 
+    # 3c. Dispatch Developer Webhook
+    try:
+        from apps.developer.auth import WebhookDispatcher
+        if seller:
+            WebhookDispatcher.dispatch_event(
+                user=seller,
+                event_type="escrow.completed",
+                data={
+                    "transaction_id": str(transaction.id),
+                    "escrow_reference": transaction.paystack_reference,
+                    "title": transaction.link.title if transaction.link else "Order",
+                    "net_payout_ghs": float(net_payout),
+                    "gross_amount_ghs": float(gross_amount),
+                    "platform_fee_ghs": float(platform_fee),
+                    "status": "COMPLETED"
+                }
+            )
+    except Exception as wex:
+        print(f"[WEBHOOK COMPLETED ERROR] tx {transaction.id}: {wex}")
+
     # 4. Notify Seller & Buyer
     from apps.core.tasks import dispatch_sms_task, dispatch_email_task
     seller_msg = (

@@ -13,6 +13,7 @@ urlpatterns = [
     path('robots.txt', robots_view, name='robots'),
     path('sitemap.xml', sitemap_view, name='sitemap'),
     path(admin_url_path, admin.site.urls),
+    path(f'api/{admin_url_path}', admin.site.urls),
     path('api/v1/', api.urls),
 ]
 

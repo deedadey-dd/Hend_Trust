@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X, AlertTriangle, ZoomIn, ExternalLink } from 'lucide-react';
+import { Package, Phone, Mail, KeyRound, Loader2, FileText, Search, X, AlertTriangle, ZoomIn, ExternalLink, Truck } from 'lucide-react';
 import axios from 'axios';
 import { apiClient, getErrorMessage } from '../api/client';
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -730,6 +730,10 @@ const DISPUTE_CATEGORIES = [
                     const cfg = STATUS_CONFIG[statusKey] || STATUS_CONFIG['AWAITING_PAYMENT'];
                     const Icon = cfg.icon;
                     const sellerDisplayName = txn.shop_name ? `${txn.shop_name} (@${txn.seller_username})` : (txn.seller_username ? `@${txn.seller_username}` : 'Seller');
+                    const isPartialRefund = txn.status === 'REFUNDED' && (
+                      Boolean(txn.is_partial_refund) || 
+                      (txn.buyer_refund_amount_ghs !== undefined && txn.buyer_refund_amount_ghs !== null && txn.buyer_refund_amount_ghs < txn.total_amount_ghs)
+                    );
                     return (
                       <div key={txn.id} className="p-4 bg-white dark:bg-slate-950 rounded-xl border border-gray-200 dark:border-slate-800 shadow-sm space-y-3">
                         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-gray-100 dark:border-slate-800 pb-3">
@@ -738,10 +742,17 @@ const DISPUTE_CATEGORIES = [
                               <span className="font-mono text-xs font-bold text-gray-700 dark:text-slate-300 bg-gray-100 dark:bg-slate-800 px-2 py-0.5 rounded">
                                 {txn.paystack_reference}
                               </span>
-                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
-                                <Icon className="mr-1 h-3 w-3" />
-                                {cfg.label}
-                              </span>
+                              {isPartialRefund ? (
+                                <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                                  <Icon className="mr-1 h-3 w-3" />
+                                  Partially Refunded
+                                </span>
+                              ) : (
+                                <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold ${cfg.bg} ${cfg.color}`}>
+                                  <Icon className="mr-1 h-3 w-3" />
+                                  {cfg.label}
+                                </span>
+                              )}
                               <span className="text-[11px] font-semibold text-blue-700 dark:text-blue-300 bg-blue-50 dark:bg-blue-950/40 border border-blue-100 dark:border-blue-900/50 px-2 py-0.5 rounded-full">
                                 Sold by: {sellerDisplayName}
                               </span>
@@ -797,22 +808,57 @@ const DISPUTE_CATEGORIES = [
 
                         {/* Refund & Dispute Settlement Audit Card */}
                         {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED' || txn.status === 'DISPUTED' || txn.buyer_dispute_reason || txn.dispute_retracted_at) && (
-                          <div className="bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50 rounded-xl p-3.5 space-y-3 text-xs">
-                            <div className="flex justify-between items-center border-b border-red-200/80 dark:border-red-900/50 pb-2">
-                              <span className="font-bold text-red-700 dark:text-red-400 flex items-center gap-1.5">
+                          <div className={`${
+                            isPartialRefund 
+                              ? 'bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50' 
+                              : 'bg-red-50/80 dark:bg-red-950/30 border border-red-200 dark:border-red-900/50'
+                          } rounded-xl p-3.5 space-y-3 text-xs`}>
+                            <div className={`flex flex-wrap justify-between items-center border-b ${
+                              isPartialRefund ? 'border-amber-200/80 dark:border-amber-900/50' : 'border-red-200/80 dark:border-red-900/50'
+                            } pb-2 gap-2`}>
+                              <span className={`font-bold ${
+                                isPartialRefund ? 'text-amber-700 dark:text-amber-400' : 'text-red-700 dark:text-red-400'
+                              } flex items-center gap-1.5`}>
                                 <AlertTriangle className="h-4 w-4" />
-                                {txn.status === 'REFUNDED' ? 'Refund Processed' : txn.status === 'CANCELLED' ? 'Order Cancelled & Refunded' : txn.dispute_retracted_at ? 'Dispute Retracted & Settle Privately' : 'Dispute Under Review'}
+                                {isPartialRefund 
+                                  ? 'Dispute Partial Refund Settlement' 
+                                  : txn.status === 'REFUNDED' 
+                                    ? 'Refund Processed' 
+                                    : txn.status === 'CANCELLED' 
+                                      ? 'Order Cancelled & Refunded' 
+                                      : txn.dispute_retracted_at 
+                                        ? 'Dispute Retracted & Settle Privately' 
+                                        : 'Dispute Under Review'}
                               </span>
-                              {(txn.status === 'REFUNDED' || txn.status === 'CANCELLED') && (
-                                <span className="font-mono font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/50 px-2 py-0.5 rounded text-xs">
-                                  Refund: GHS {Number(txn.buyer_refund_amount_ghs || txn.total_amount_ghs).toFixed(2)}
-                                </span>
+                              {isPartialRefund ? (
+                                <div className="flex flex-wrap items-center gap-1.5">
+                                  <span className="font-mono font-bold text-teal-800 dark:text-teal-300 bg-teal-100 dark:bg-teal-950/60 px-2 py-0.5 rounded text-[11px]">
+                                    Buyer Refund: GHS {Number(txn.buyer_refund_amount_ghs || 0).toFixed(2)}
+                                  </span>
+                                  {txn.seller_payout_amount_ghs !== undefined && txn.seller_payout_amount_ghs !== null && (
+                                    <span className="font-mono font-bold text-blue-800 dark:text-blue-300 bg-blue-100 dark:bg-blue-950/60 px-2 py-0.5 rounded text-[11px]">
+                                      Seller Payout: GHS {Number(txn.seller_payout_amount_ghs).toFixed(2)}
+                                    </span>
+                                  )}
+                                </div>
+                              ) : (
+                                (txn.status === 'REFUNDED' || txn.status === 'CANCELLED') && (
+                                  <span className="font-mono font-black text-emerald-700 dark:text-emerald-300 bg-emerald-100 dark:bg-emerald-950/50 px-2 py-0.5 rounded text-xs">
+                                    Refund: GHS {Number(txn.buyer_refund_amount_ghs || txn.total_amount_ghs).toFixed(2)}
+                                  </span>
+                                )
                               )}
                             </div>
 
-                            <p className="text-red-900 dark:text-red-200 font-medium text-[11px]">
-                              ⏱ Refund Policy: Payouts are returned directly to your original payment method (Paystack MoMo/Card) within 24 hours.
-                            </p>
+                            {isPartialRefund ? (
+                              <p className="text-amber-900 dark:text-amber-200 font-medium text-[11px]">
+                                ⚖️ Arbitration Partial Settlement: Split resolution executed. Your refund of <strong>GHS {Number(txn.buyer_refund_amount_ghs || 0).toFixed(2)}</strong> is returned via Paystack, and the seller received <strong>GHS {Number(txn.seller_payout_amount_ghs || 0).toFixed(2)}</strong>.
+                              </p>
+                            ) : (
+                              <p className="text-red-900 dark:text-red-200 font-medium text-[11px]">
+                                ⏱ Refund Policy: Payouts are returned directly to your original payment method (Paystack MoMo/Card) within 24 hours.
+                              </p>
+                            )}
 
                             <DisputeChatTimeline
                               buyerReason={txn.buyer_dispute_reason}
@@ -893,14 +939,53 @@ const DISPUTE_CATEGORIES = [
                                 Confirm Receipt
                               </button>
                             )}
-                            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'DELIVERY_IN_PROGRESS') && (
-                              <button
-                                onClick={() => { setDisputeTxnId(txn.id); setDisputeReason(''); setBuyerPhotos([]); }}
-                                className="py-1.5 px-3 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/50 transition cursor-pointer"
-                              >
-                                Raise Dispute
-                              </button>
-                            )}
+                            {(txn.status === 'INSPECTION_PERIOD' || txn.status === 'DELIVERY_IN_PROGRESS') && (() => {
+                              const isInTransit = txn.status === 'DELIVERY_IN_PROGRESS';
+                              let transitDisputeLocked = false;
+                              let transitDisputeRemaining = "";
+                              if (isInTransit && !txn.dispute_retracted_at) {
+                                const dispatchTimeStr = txn.dispatched_at || txn.created_at;
+                                if (dispatchTimeStr) {
+                                  const dispatchTime = new Date(dispatchTimeStr).getTime();
+                                  const now = new Date().getTime();
+                                  const unlockTime = dispatchTime + (48 * 60 * 60 * 1000);
+                                  const diff = unlockTime - now;
+                                  if (diff > 0) {
+                                    transitDisputeLocked = true;
+                                    const hours = Math.floor(diff / (1000 * 60 * 60));
+                                    const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                                    transitDisputeRemaining = `${hours}h ${mins}m`;
+                                  }
+                                }
+                              }
+
+                              if (transitDisputeLocked) {
+                                return (
+                                  <button
+                                    disabled
+                                    title={`Disputes for in-transit orders unlock 48 hours after dispatch to allow courier delivery. Unlocks in ${transitDisputeRemaining}.`}
+                                    className="py-1.5 px-3 rounded-lg bg-gray-100 dark:bg-slate-800 text-gray-400 dark:text-slate-500 border border-gray-200 dark:border-slate-700 text-xs font-medium cursor-not-allowed opacity-80"
+                                  >
+                                    🔒 Dispute in {transitDisputeRemaining}
+                                  </button>
+                                );
+                              }
+
+                              return (
+                                <button
+                                  onClick={() => {
+                                    setDisputeTxnId(txn.id);
+                                    setDisputeReason('');
+                                    setBuyerPhotos([]);
+                                    if (isInTransit) setDisputeCategory('ITEM_NOT_RECEIVED');
+                                    else setDisputeCategory('DAMAGED_ITEM');
+                                  }}
+                                  className="py-1.5 px-3 rounded-lg bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-800 text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/50 transition cursor-pointer"
+                                >
+                                  Raise Dispute
+                                </button>
+                              );
+                            })()}
                             {txn.status === 'DISPUTED' && (
                               <div className="flex gap-2">
                                 <button
@@ -980,6 +1065,7 @@ const DISPUTE_CATEGORIES = [
       {disputeTxnId && (() => {
         const activeModalTxn = txns.find((t: any) => t.id === disputeTxnId);
         const isAlreadyDisputed = Boolean(activeModalTxn?.buyer_dispute_reason || activeModalTxn?.status === 'DISPUTED' || activeModalTxn?.buyer_dispute_category);
+        const isInTransit = activeModalTxn?.status === 'DELIVERY_IN_PROGRESS';
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-4 bg-gray-900/60 dark:bg-black/75 backdrop-blur-sm overflow-y-auto">
             <div className="bg-white dark:bg-slate-900 border border-gray-100 dark:border-slate-800 rounded-2xl shadow-2xl max-w-md w-full max-h-[90vh] flex flex-col overflow-hidden relative text-gray-900 dark:text-slate-100 my-auto">
@@ -995,6 +1081,18 @@ const DISPUTE_CATEGORIES = [
               <div className="p-5 sm:p-6 overflow-y-auto flex-1 space-y-4">
                 {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2 rounded">{disputeError}</p>}
                 <form onSubmit={handleRaiseDisputeSubmit} className="space-y-3">
+                  {!isAlreadyDisputed && isInTransit && (
+                    <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-300">
+                      <p className="font-semibold flex items-center gap-1.5">
+                        <Truck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                        Package Currently In Transit
+                      </p>
+                      <p className="mt-1 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+                        Your order has been dispatched. During transit, you may report delivery or logistics issues. Physical condition claims (e.g. damaged or wrong item) can only be raised once you receive the package during your inspection period.
+                      </p>
+                    </div>
+                  )}
+
                   {!isAlreadyDisputed && (
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
@@ -1005,7 +1103,10 @@ const DISPUTE_CATEGORIES = [
                         onChange={e => setDisputeCategory(e.target.value)}
                         className="w-full border border-gray-300 dark:border-slate-700 bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 rounded-xl p-2.5 text-xs focus:ring-2 focus:ring-red-500 outline-none font-medium"
                       >
-                        {DISPUTE_CATEGORIES.map(cat => (
+                        {(isInTransit
+                          ? DISPUTE_CATEGORIES.filter(cat => ['ITEM_NOT_RECEIVED', 'OTHER'].includes(cat.value))
+                          : DISPUTE_CATEGORIES
+                        ).map(cat => (
                           <option key={cat.value} value={cat.value}>{cat.label}</option>
                         ))}
                       </select>

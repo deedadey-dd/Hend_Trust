@@ -18,8 +18,14 @@ class AdminSecurityMiddleware:
         admin_prefix = getattr(settings, 'DJANGO_ADMIN_URL', 'admin/').strip('/')
         req_path = request.path.strip('/')
 
-        # Check if the request is targeting the Django Admin route
-        if admin_prefix and (req_path == admin_prefix or req_path.startswith(f"{admin_prefix}/")):
+        # Check if the request is targeting the Django Admin route (either directly or via /api/ proxy)
+        is_admin_target = admin_prefix and (
+            req_path == admin_prefix or 
+            req_path.startswith(f"{admin_prefix}/") or 
+            req_path == f"api/{admin_prefix}" or 
+            req_path.startswith(f"api/{admin_prefix}/")
+        )
+        if is_admin_target:
             
             # 1. Cloudflare / Proxy Header Enforcement
             if getattr(settings, 'ENFORCE_CLOUDFLARE_HEADER', False):

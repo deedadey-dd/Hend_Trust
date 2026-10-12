@@ -90,6 +90,9 @@ class TransactionStatusSchema(Schema):
     status: str
     total_amount_ghs: float
     buyer_refund_amount_ghs: Optional[float] = None
+    seller_payout_amount_ghs: Optional[float] = None
+    is_partial_refund: Optional[bool] = False
+    dispute_resolution_action: Optional[str] = None
     buyer_name: str
     buyer_phone: Optional[str] = ""
     buyer_email: str
@@ -97,6 +100,7 @@ class TransactionStatusSchema(Schema):
     title: str
     image_url: Optional[str] = ""
     created_at: str
+    dispatched_at: Optional[str] = None
     paystack_reference: str
     inspection_starts_at: Optional[str] = None
     seller_username: Optional[str] = ""
@@ -209,20 +213,50 @@ def _build_txn_status_dict(t):
         print(f"Error resolving review: {ex}")
 
     refund_val = None
+    seller_val = None
+    is_partial = False
+    dispute_action_type = None
+
     if t.status in ['REFUNDED', 'CANCELLED']:
         if t.status == 'CANCELLED':
-            refund_val = float(t.total_amount_ghs or 0.0)
+            refund_val = float(getattr(t, 'cancellation_refund_amount_ghs', None) or t.total_amount_ghs or 0.0)
         else:
             try:
-                from apps.ledger.models import LedgerEntry
-                e = LedgerEntry.objects.filter(reference_id=t.id, debit_account__name='BUYER_ESCROW_DEPOSIT').first()
-                if e:
-                    refund_val = float(e.amount_ghs)
-                else:
-                    refund_val = float(t.total_amount_ghs or 0.0)
+                from apps.escrow.models import DisputeResolutionAction
+                res_action = DisputeResolutionAction.objects.filter(transaction=t).order_by('-created_at').first()
+                if res_action:
+                    dispute_action_type = res_action.action_type
+                    if res_action.action_type == 'PARTIAL_REFUND_TO_BUYER':
+                        is_partial = True
+                        refund_val = float(res_action.refund_amount_ghs)
+                        seller_val = float(res_action.seller_amount_ghs)
+                    else:
+                        refund_val = float(res_action.refund_amount_ghs or t.total_amount_ghs or 0.0)
+
+                if refund_val is None:
+                    from apps.ledger.models import LedgerEntry
+                    partial_buyer_entry = LedgerEntry.objects.filter(reference_id=t.id, entry_type='PARTIAL_REFUND_BUYER').first()
+                    if partial_buyer_entry:
+                        is_partial = True
+                        refund_val = float(partial_buyer_entry.amount_ghs)
+                        partial_seller_entry = LedgerEntry.objects.filter(reference_id=t.id, entry_type='PARTIAL_REFUND_SELLER').first()
+                        if partial_seller_entry:
+                            seller_val = float(partial_seller_entry.amount_ghs)
+                    else:
+                        e = LedgerEntry.objects.filter(reference_id=t.id, debit_account__name='BUYER_ESCROW_DEPOSIT').first()
+                        if e:
+                            refund_val = float(e.amount_ghs)
+                        else:
+                            refund_val = float(t.total_amount_ghs or 0.0)
             except Exception as ex:
                 print(f"Error resolving refund_val: {ex}")
                 refund_val = float(t.total_amount_ghs or 0.0)
+
+        if not is_partial and refund_val is not None and t.total_amount_ghs:
+            if 0 < refund_val < float(t.total_amount_ghs):
+                is_partial = True
+                if seller_val is None:
+                    seller_val = max(0.0, round(float(t.total_amount_ghs) - refund_val, 2))
 
     seller = t.link.seller if (t.link and hasattr(t.link, 'seller')) else None
     seller_uname = seller.username if seller else (seller.email.split('@')[0] if (seller and seller.email) else 'seller')
@@ -239,6 +273,9 @@ def _build_txn_status_dict(t):
         "status": str(t.status),
         "total_amount_ghs": float(t.total_amount_ghs or 0.0),
         "buyer_refund_amount_ghs": refund_val,
+        "seller_payout_amount_ghs": seller_val,
+        "is_partial_refund": is_partial,
+        "dispute_resolution_action": dispute_action_type,
         "buyer_name": str(t.buyer_name or ''),
         "buyer_phone": str(t.buyer_phone or ''),
         "buyer_email": str(t.buyer_email or ''),
@@ -246,6 +283,7 @@ def _build_txn_status_dict(t):
         "title": str(t.link.title if t.link else 'Escrow Purchase'),
         "image_url": t.link.image_url if (t.link and getattr(t.link, 'image_url', None)) else "",
         "created_at": t.created_at.isoformat() if t.created_at else '',
+        "dispatched_at": t.dispatched_at.isoformat() if t.dispatched_at else None,
         "paystack_reference": str(t.paystack_reference or ''),
         "inspection_starts_at": t.inspection_starts_at.isoformat() if t.inspection_starts_at else None,
         "seller_username": seller_uname,

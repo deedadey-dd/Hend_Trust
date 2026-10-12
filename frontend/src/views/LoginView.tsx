@@ -59,8 +59,20 @@ export default function LoginView() {
         return;
       }
 
-      const { user_id, username: uname, role, email, is_superuser, is_staff } = res.data;
-      login('', { id: user_id, role, email, name: uname, username: uname, is_superuser: Boolean(is_superuser), is_staff: Boolean(is_staff) });
+      const { user_id, username: uname, role, email, is_superuser, is_staff, is_email_verified, is_phone_verified, phone_number, default_shipping_address } = res.data;
+      login('', {
+        id: user_id,
+        role,
+        email,
+        name: uname,
+        username: uname,
+        phone_number: phone_number || '',
+        is_email_verified: Boolean(is_email_verified),
+        is_phone_verified: Boolean(is_phone_verified),
+        default_shipping_address: default_shipping_address || '',
+        is_superuser: Boolean(is_superuser),
+        is_staff: Boolean(is_staff)
+      });
       if (role === 'ADMIN' || role === 'SUPPORT_AGENT' || is_staff || is_superuser) {
         navigate('/admin-portal/dashboard');
       } else {

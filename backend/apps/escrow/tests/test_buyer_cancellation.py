@@ -455,3 +455,204 @@ class TestBuyerCancellation:
         assert res.status_code == 400
         msg = res.json().get('detail', '') or res.json().get('message', '')
         assert "monthly cancellation limit" in msg.lower() or "limit" in msg.lower()
+
+    @freeze_time("2026-10-10 10:00:00")
+    def test_guest_buyer_cancel_via_otp(self, setup_cancellation_env):
+        """Guest buyer who forgot password can verify via OTP to cancel."""
+        from django.core.cache import cache
+        from apps.checkout.services import _otp_value_key
+        
+        env = setup_cancellation_env
+        client = Client()
+
+        txn = Transaction.objects.create(
+            link=env['link'],
+            buyer_name='OTP Guest Buyer',
+            buyer_phone='0555123456',
+            buyer_email='otpguest@example.com',
+            shipping_address='Accra High Street',
+            status=TransactionStatus.PAYMENT_RECEIVED,
+            total_amount_ghs=Decimal('223.90'),
+            platform_fee_ghs=Decimal('3.90'),
+            paystack_reference='TEST_OTP_CANCEL_001',
+            created_at=timezone.now()
+        )
+
+        # 1. Send OTP
+        send_res = client.post(
+            f"/api/v1/escrow/{txn.id}/send-cancel-otp",
+            content_type='application/json'
+        )
+        assert send_res.status_code == 200
+
+        # Retrieve the OTP that was saved to cache
+        otp = cache.get(_otp_value_key(txn.buyer_phone)) or cache.get(_otp_value_key(txn.buyer_email))
+        assert otp is not None
+        assert len(otp) == 6
+
+        # 2. Cancel order using valid OTP without providing password
+        cancel_res = client.post(
+            f"/api/v1/escrow/{txn.id}/buyer-cancel",
+            data={
+                'refund_target': 'WALLET',
+                'reason': 'Forgot password, verified via OTP',
+                'otp_code': otp
+            },
+            content_type='application/json'
+        )
+        assert cancel_res.status_code == 200
+        data = cancel_res.json()
+        assert "cancellation" in data['message'].lower()
+        assert 'token' in data
+        assert data.get('is_email_verified') is False
+
+        txn.refresh_from_db()
+        assert txn.cancellation_requested_at is not None
+        assert txn.cancellation_payout_status == 'PENDING_CONFIRMATION'
+
+        guest_user = User.objects.get(email='otpguest@example.com')
+        assert guest_user.is_email_verified is False
+
+    @freeze_time("2026-10-10 10:00:00")
+    def test_logged_in_user_with_mismatched_account_rejected(self, setup_cancellation_env):
+        """A logged-in user whose email AND phone do not match the order is rejected with 403."""
+        env = setup_cancellation_env
+        client = Client()
+
+        txn = Transaction.objects.create(
+            link=env['link'],
+            buyer_name='Actual Buyer',
+            buyer_phone='0244112233',
+            buyer_email='actualbuyer@example.com',
+            shipping_address='Accra Central',
+            status=TransactionStatus.PAYMENT_RECEIVED,
+            total_amount_ghs=Decimal('223.90'),
+            platform_fee_ghs=Decimal('3.90'),
+            paystack_reference='TEST_MISMATCH_001',
+            created_at=timezone.now()
+        )
+
+        stranger = User.objects.create_user(
+            username="strangeruser",
+            email="stranger@example.com",
+            phone_number="0555999000",
+            role="BUYER"
+        )
+        stranger_token = str(RefreshToken.for_user(stranger).access_token)
+
+        # 1. Preview shows account mismatch
+        prev_res = client.get(
+            f"/api/v1/escrow/{txn.id}/cancel-preview",
+            HTTP_AUTHORIZATION=f"Bearer {stranger_token}"
+        )
+        assert prev_res.status_code == 200
+        prev_data = prev_res.json()
+        assert prev_data['is_account_mismatch'] is True
+        assert prev_data['logged_in_user_matches'] is False
+        assert prev_data['logged_in_account_identifier'] == "stranger@example.com"
+
+        # 2. Requesting OTP fails with 403 Forbidden
+        otp_res = client.post(
+            f"/api/v1/escrow/{txn.id}/send-cancel-otp",
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f"Bearer {stranger_token}"
+        )
+        assert otp_res.status_code == 403
+        otp_msg = otp_res.json().get('detail', '') or otp_res.json().get('message', '')
+        assert "account mismatch" in otp_msg.lower()
+
+        # 3. Submitting cancellation fails with 403 Forbidden
+        cancel_res = client.post(
+            f"/api/v1/escrow/{txn.id}/buyer-cancel",
+            data={'refund_target': 'WALLET', 'reason': 'Malicious attempt'},
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f"Bearer {stranger_token}"
+        )
+        assert cancel_res.status_code == 403
+        cancel_msg = cancel_res.json().get('detail', '') or cancel_res.json().get('message', '')
+        assert "account mismatch" in cancel_msg.lower()
+
+    @freeze_time("2026-10-10 10:00:00")
+    def test_logged_in_user_with_normalized_phone_match_succeeds(self, setup_cancellation_env):
+        """Logged-in user with normalized Ghana phone match (+233 vs 024) is authorized."""
+        env = setup_cancellation_env
+        client = Client()
+
+        txn = Transaction.objects.create(
+            link=env['link'],
+            buyer_name='Phone Match Buyer',
+            buyer_phone='0244112233',  # 10 digits
+            buyer_email='differentemail@example.com',
+            shipping_address='Accra Central',
+            status=TransactionStatus.PAYMENT_RECEIVED,
+            total_amount_ghs=Decimal('223.90'),
+            platform_fee_ghs=Decimal('3.90'),
+            paystack_reference='TEST_PHONE_MATCH_001',
+            created_at=timezone.now()
+        )
+
+        user_with_int_phone = User.objects.create_user(
+            username="phonebuyer",
+            email="userpersonal@example.com",
+            phone_number="+233244112233",  # Ghana intl format matching 244112233
+            role="BUYER"
+        )
+        token = str(RefreshToken.for_user(user_with_int_phone).access_token)
+
+        # Preview shows matches
+        prev_res = client.get(
+            f"/api/v1/escrow/{txn.id}/cancel-preview",
+            HTTP_AUTHORIZATION=f"Bearer {token}"
+        )
+        assert prev_res.status_code == 200
+        prev_data = prev_res.json()
+        assert prev_data['is_account_mismatch'] is False
+        assert prev_data['logged_in_user_matches'] is True
+
+        # Cancellation succeeds
+        cancel_res = client.post(
+            f"/api/v1/escrow/{txn.id}/buyer-cancel",
+            data={'refund_target': 'WALLET', 'reason': 'Accidental duplicate order'},
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f"Bearer {token}"
+        )
+        assert cancel_res.status_code == 200
+        assert "cancellation initiated" in cancel_res.json().get('message', '').lower() or "grace" in cancel_res.json().get('message', '').lower()
+
+    @freeze_time("2026-10-10 10:00:00")
+    def test_staff_user_can_cancel_without_account_mismatch(self, setup_cancellation_env):
+        """Staff user / superuser can bypass match check to intervene."""
+        env = setup_cancellation_env
+        client = Client()
+
+        txn = Transaction.objects.create(
+            link=env['link'],
+            buyer_name='Admin Managed Buyer',
+            buyer_phone='0244112233',
+            buyer_email='customer@example.com',
+            shipping_address='Accra Central',
+            status=TransactionStatus.PAYMENT_RECEIVED,
+            total_amount_ghs=Decimal('223.90'),
+            platform_fee_ghs=Decimal('3.90'),
+            paystack_reference='TEST_STAFF_OVERRIDE_001',
+            created_at=timezone.now()
+        )
+
+        staff_user = User.objects.create_user(
+            username="staffagent",
+            email="support@hendaxis.com",
+            phone_number="0200000000",
+            role="ADMIN",
+            is_staff=True
+        )
+        staff_token = str(RefreshToken.for_user(staff_user).access_token)
+
+        cancel_res = client.post(
+            f"/api/v1/escrow/{txn.id}/buyer-cancel",
+            data={'refund_target': 'WALLET', 'reason': 'Customer requested admin cancel'},
+            content_type='application/json',
+            HTTP_AUTHORIZATION=f"Bearer {staff_token}"
+        )
+        assert cancel_res.status_code == 200
+
+

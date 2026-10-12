@@ -1,5 +1,5 @@
-/// <reference types="@testing-library/jest-dom" />
-import '@testing-library/jest-dom';
+/// <reference types="@testing-library/jest-dom/vitest" />
+import '@testing-library/jest-dom/vitest';
 
 // JSDom polyfills
 Object.defineProperty(window, 'matchMedia', {
@@ -17,3 +17,7 @@ Object.defineProperty(window, 'matchMedia', {
 });
 
 window.scrollTo = () => {};
+if (typeof window !== 'undefined') {
+  window.HTMLElement.prototype.scrollIntoView = () => {};
+  window.Element.prototype.scrollIntoView = () => {};
+}
