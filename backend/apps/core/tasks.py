@@ -62,6 +62,11 @@ def _build_default_html_email(subject: str, message: str, html_message: str = No
     if html_message:
         return html_message
         
+    if not isinstance(message, str):
+        message = str(message or '')
+    if not isinstance(subject, str):
+        subject = str(subject or '')
+
     import re
     default_url = 'http://localhost:5173' if getattr(settings, 'DEBUG', False) else 'https://trust.hendaxis.com'
     frontend_url = getattr(settings, 'FRONTEND_URL', default_url).rstrip('/')
@@ -112,10 +117,24 @@ def _build_default_html_email(subject: str, message: str, html_message: str = No
 </html>"""
 
 @shared_task
-def dispatch_email_task(email: str, subject: str, message: str, html_message: str = None, action_url: str = None, user_id = None):
+def dispatch_email_task(email, subject, message, html_message: str = None, action_url: str = None, user_id = None):
     """
     Asynchronously sends an Email and logs as in-app notification if user is matched (excluding OTPs).
     """
+    # Robust normalization: detect if caller passed (subject, message, [email]) or list for email
+    if isinstance(message, (list, tuple)) or (isinstance(email, str) and '@' not in email and isinstance(message, (str, list, tuple)) and ('@' in str(message))):
+        actual_subject = email
+        actual_message = subject
+        actual_email = message[0] if isinstance(message, (list, tuple)) else str(message)
+        email, subject, message = actual_email, actual_subject, actual_message
+
+    if isinstance(email, (list, tuple)):
+        email = email[0] if email else ""
+
+    email = str(email or '').strip()
+    subject = str(subject or '').strip()
+    message = str(message or '').strip()
+
     html_message = _build_default_html_email(subject, message, html_message)
 
     if getattr(settings, 'DEBUG', False):
@@ -134,7 +153,7 @@ def dispatch_email_task(email: str, subject: str, message: str, html_message: st
                 subject=subject,
                 message=message,
                 from_email=getattr(settings, 'DEFAULT_FROM_EMAIL', 'noreply@hendaxistrust.com'),
-                recipient_list=[email],
+                recipient_list=[email] if email else [],
                 fail_silently=False,
                 html_message=html_message
             )

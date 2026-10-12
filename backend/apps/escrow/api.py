@@ -95,6 +95,10 @@ class SellerTransactionSchema(Schema):
     cancellation_fee_deducted_ghs: Optional[float] = None
     seller_cancel_response_window_hours: int = 6
     seller_cancel_response_remaining_minutes: int = 0
+    buyer_refund_amount_ghs: Optional[float] = None
+    seller_payout_amount_ghs: Optional[float] = None
+    is_partial_refund: Optional[bool] = False
+    dispute_resolution_action: Optional[str] = None
 
 @escrow_router.get("/seller/transactions", response=list[SellerTransactionSchema])
 @paginate(LimitOffsetPagination)
@@ -162,6 +166,51 @@ def get_seller_transactions(request, search: Optional[str] = None, status: Optio
         if getattr(t, 'cancellation_payout_hold_until', None) and t.cancellation_payout_hold_until:
             hold_rem_min = max(0, int((t.cancellation_payout_hold_until - timezone.now()).total_seconds() // 60))
 
+        refund_val = None
+        seller_val = None
+        is_partial = False
+        dispute_action_type = None
+
+        if t.status in ['REFUNDED', 'CANCELLED']:
+            if t.status == 'CANCELLED':
+                refund_val = float(getattr(t, 'cancellation_refund_amount_ghs', None) or t.total_amount_ghs or 0.0)
+            else:
+                try:
+                    from apps.escrow.models import DisputeResolutionAction
+                    res_action = DisputeResolutionAction.objects.filter(transaction=t).order_by('-created_at').first()
+                    if res_action:
+                        dispute_action_type = res_action.action_type
+                        if res_action.action_type == 'PARTIAL_REFUND_TO_BUYER':
+                            is_partial = True
+                            refund_val = float(res_action.refund_amount_ghs)
+                            seller_val = float(res_action.seller_amount_ghs)
+                        else:
+                            refund_val = float(res_action.refund_amount_ghs or t.total_amount_ghs or 0.0)
+
+                    if refund_val is None:
+                        from apps.ledger.models import LedgerEntry
+                        partial_buyer_entry = LedgerEntry.objects.filter(reference_id=t.id, entry_type='PARTIAL_REFUND_BUYER').first()
+                        if partial_buyer_entry:
+                            is_partial = True
+                            refund_val = float(partial_buyer_entry.amount_ghs)
+                            partial_seller_entry = LedgerEntry.objects.filter(reference_id=t.id, entry_type='PARTIAL_REFUND_SELLER').first()
+                            if partial_seller_entry:
+                                seller_val = float(partial_seller_entry.amount_ghs)
+                        else:
+                            e = LedgerEntry.objects.filter(reference_id=t.id, debit_account__name='BUYER_ESCROW_DEPOSIT').first()
+                            if e:
+                                refund_val = float(e.amount_ghs)
+                            else:
+                                refund_val = float(t.total_amount_ghs or 0.0)
+                except Exception:
+                    refund_val = float(t.total_amount_ghs or 0.0)
+
+            if not is_partial and refund_val is not None and t.total_amount_ghs:
+                if 0 < refund_val < float(t.total_amount_ghs):
+                    is_partial = True
+                    if seller_val is None:
+                        seller_val = max(0.0, round(float(t.total_amount_ghs) - refund_val, 2))
+
         items.append({
             "id": t.id,
             "status": t.status,
@@ -217,6 +266,10 @@ def get_seller_transactions(request, search: Optional[str] = None, status: Optio
             "cancellation_fee_deducted_ghs": float(t.cancellation_fee_deducted_ghs) if getattr(t, 'cancellation_fee_deducted_ghs', None) is not None else None,
             "seller_cancel_response_window_hours": seller_resp_hrs,
             "seller_cancel_response_remaining_minutes": cancel_rem_min,
+            "buyer_refund_amount_ghs": refund_val,
+            "seller_payout_amount_ghs": seller_val,
+            "is_partial_refund": is_partial,
+            "dispute_resolution_action": dispute_action_type,
         })
             
     return items
@@ -1344,6 +1397,9 @@ class BuyerCancelPreviewSchema(Schema):
     buyer_email: Optional[str] = ""
     buyer_name: Optional[str] = ""
     has_existing_account: bool = False
+    is_account_mismatch: bool = False
+    logged_in_user_matches: bool = False
+    logged_in_account_identifier: Optional[str] = None
 
 
 class BuyerCancelRequestSchema(Schema):
@@ -1363,6 +1419,7 @@ class BuyerCancelResponseSchema(Schema):
     name: Optional[str] = None
     username: Optional[str] = None
     phone_number: Optional[str] = None
+    is_email_verified: Optional[bool] = False
 
 
 class SellerRejectCancellationShippedSchema(Schema):
@@ -1377,6 +1434,36 @@ class SellerReportShippedFreezeSchema(Schema):
     waybill: str
     proof_url: Optional[str] = ""
     proof_notes: Optional[str] = ""
+
+
+def check_user_matches_order(user, transaction) -> tuple[bool, str]:
+    """
+    Checks if an authenticated user is authorized to manage or cancel the order.
+    A user is authorized if:
+    1. They are superuser or staff (administrative override).
+    2. Their email matches transaction.buyer_email (case-insensitive, trimmed).
+    3. Their phone number matches transaction.buyer_phone (comparing last 9 digits).
+    Returns (matches: bool, reason: str).
+    """
+    if not user or not getattr(user, 'is_authenticated', False):
+        return False, "Not authenticated"
+
+    if getattr(user, 'is_superuser', False) or getattr(user, 'is_staff', False):
+        return True, "Staff/admin access"
+
+    # 1. Compare email
+    u_email = (getattr(user, 'email', '') or '').strip().lower()
+    b_email = (getattr(transaction, 'buyer_email', '') or '').strip().lower()
+    if u_email and b_email and u_email == b_email:
+        return True, "Email matches order buyer"
+
+    # 2. Compare phone number (last 9 digits to normalize +233, 024, 233, etc.)
+    u_phone = re.sub(r'\D', '', getattr(user, 'phone_number', '') or '')
+    b_phone = re.sub(r'\D', '', getattr(transaction, 'buyer_phone', '') or '')
+    if len(u_phone) >= 9 and len(b_phone) >= 9 and u_phone[-9:] == b_phone[-9:]:
+        return True, "Phone number matches order buyer"
+
+    return False, "Authenticated account email and phone number do not match the order's buyer details."
 
 
 @escrow_router.get("/{transaction_id}/cancel-preview", response=BuyerCancelPreviewSchema, auth=None)
@@ -1447,6 +1534,32 @@ def get_buyer_cancel_preview(request, transaction_id: uuid.UUID):
         if query:
             has_account = User.objects.filter(query).exists()
 
+    # Check if a requester is logged in and whether their account matches this order
+    is_account_mismatch = False
+    logged_in_user_matches = False
+    logged_in_account_identifier = None
+
+    auth_helper = JWTCookieAuth()
+    req_user = None
+    try:
+        req_user = auth_helper(request)
+    except Exception:
+        req_user = None
+
+    if req_user and getattr(req_user, 'is_authenticated', False):
+        logged_in_account_identifier = (
+            getattr(req_user, 'email', '') or 
+            getattr(req_user, 'phone_number', '') or 
+            getattr(req_user, 'username', '')
+        )
+        matches, _ = check_user_matches_order(req_user, transaction)
+        if matches:
+            logged_in_user_matches = True
+            is_account_mismatch = False
+        else:
+            logged_in_user_matches = False
+            is_account_mismatch = True
+
     return {
         "transaction_id": transaction.id,
         "status": transaction.status,
@@ -1481,7 +1594,57 @@ def get_buyer_cancel_preview(request, transaction_id: uuid.UUID):
         "buyer_email": transaction.buyer_email or "",
         "buyer_name": transaction.buyer_name or "",
         "has_existing_account": has_account,
+        "is_account_mismatch": is_account_mismatch,
+        "logged_in_user_matches": logged_in_user_matches,
+        "logged_in_account_identifier": logged_in_account_identifier,
     }
+
+
+@escrow_router.post("/{transaction_id}/send-cancel-otp", response=MessageResponse, auth=None)
+def send_buyer_cancel_otp(request, transaction_id: uuid.UUID):
+    """
+    Sends a 6-digit OTP verification code to the buyer's phone and/or email on record for order cancellation.
+    Allows guest buyers who forgot their account password to verify order ownership instantly.
+    """
+    transaction = get_object_or_404(Transaction, id=transaction_id)
+    if transaction.status != TransactionStatus.PAYMENT_RECEIVED:
+        raise HttpError(400, "Cancellation is only available before physical package dispatch.")
+
+    # Prevent a logged-in user with a mismatched account from requesting OTP for another user's order
+    auth_helper = JWTCookieAuth()
+    req_user = None
+    try:
+        req_user = auth_helper(request)
+    except Exception:
+        req_user = None
+
+    if req_user and getattr(req_user, 'is_authenticated', False):
+        matches, _ = check_user_matches_order(req_user, transaction)
+        if not matches:
+            u_ident = getattr(req_user, 'email', '') or getattr(req_user, 'phone_number', '') or getattr(req_user, 'username', 'Unknown')
+            b_ident = transaction.buyer_email or transaction.buyer_phone or "the buyer"
+            raise HttpError(
+                403,
+                f"Account mismatch: You are logged in as {u_ident}, but this order was placed under {b_ident}. "
+                "Verification codes can only be requested by the account matching this order."
+            )
+
+    from apps.checkout.services import generate_and_send_otp, generate_and_send_email_otp
+
+    sent_targets = []
+    if transaction.buyer_phone:
+        res = generate_and_send_otp(transaction.buyer_phone)
+        if res:
+            sent_targets.append(f"SMS to {transaction.buyer_phone}")
+    if transaction.buyer_email:
+        res = generate_and_send_email_otp(transaction.buyer_email)
+        if res:
+            sent_targets.append(f"Email to {transaction.buyer_email}")
+
+    if not sent_targets:
+        return {"message": "A verification code was recently sent. Please check your SMS or email inbox or wait 60 seconds to resend."}
+
+    return {"message": f"Verification code sent via {' and '.join(sent_targets)}. Valid for 2 hours."}
 
 
 @escrow_router.post("/{transaction_id}/buyer-cancel", response=BuyerCancelResponseSchema, auth=None)
@@ -1489,7 +1652,7 @@ def buyer_cancel_order(request, transaction_id: uuid.UUID, data: BuyerCancelRequ
     """
     Allows the buyer to initiate order cancellation before physical dispatch:
     1. Enforces monthly rate limit (default: 2 cancellations/month) to prevent bad-actor abuse.
-    2. Enforces authentication / guest account password creation.
+    2. Enforces authentication / guest account password or OTP verification.
     3. Enters a 90-minute seller dispatch confirmation grace period with urgent SMS alerts.
     4. If unconfirmed by seller within 90 minutes, Celery auto-confirms cancellation.
     5. Confirmed cancellations enter a 90-hour safety payout hold buffer.
@@ -1510,65 +1673,130 @@ def buyer_cancel_order(request, transaction_id: uuid.UUID, data: BuyerCancelRequ
     if transaction.cancellation_payout_status == 'PENDING_CONFIRMATION':
         raise HttpError(400, "A cancellation request is already pending seller dispatch confirmation.")
 
-    # 1. Validate requester authenticity or force guest account creation/login
+    # 1. Validate requester authenticity or enforce account match
     authenticated_user = None
     auth_helper = JWTCookieAuth()
+    req_user = None
     try:
         req_user = auth_helper(request)
-        if req_user and req_user.is_authenticated:
-            u_phone = (getattr(req_user, 'phone_number', '') or '').strip()
-            u_email = (getattr(req_user, 'email', '') or '').strip()
-            if (u_phone and u_phone.endswith(transaction.buyer_phone[-9:])) or (u_email and u_email.lower() == transaction.buyer_email.lower()) or req_user.is_superuser or req_user.is_staff:
-                authenticated_user = req_user
     except Exception:
-        pass
+        req_user = None
+
+    if req_user and getattr(req_user, 'is_authenticated', False):
+        matches, _ = check_user_matches_order(req_user, transaction)
+        if not matches:
+            u_ident = getattr(req_user, 'email', '') or getattr(req_user, 'phone_number', '') or getattr(req_user, 'username', 'Unknown')
+            b_ident = transaction.buyer_email or transaction.buyer_phone or "the buyer"
+            raise HttpError(
+                403,
+                f"Account mismatch: You are currently logged in as {u_ident}, but this order was placed by {b_ident}. "
+                "Order cancellation can only be initiated by the account matching this order. "
+                "Please switch accounts or log out to cancel as the buyer."
+            )
+        authenticated_user = req_user
 
     auth_token_str = None
 
-    # If not authenticated, guest buyer MUST provide password to create or authenticate account
+    # If not authenticated, guest buyer MUST provide password or verified OTP to authenticate
     if not authenticated_user:
         pwd = (data.password or "").strip()
-        if not pwd:
-            raise HttpError(400, "Account required: You must create an account (or enter your password) to cancel this order and secure your refund.")
-
-        if len(pwd) < 8:
-            raise HttpError(400, "Password must be at least 8 characters long.")
+        otp = (data.otp_code or "").strip()
 
         # Check if an existing account matches buyer email or phone
         existing_user = User.objects.filter(
             Q(email__iexact=transaction.buyer_email.strip()) | Q(phone_number__endswith=transaction.buyer_phone[-9:])
         ).first()
 
-        if existing_user:
-            auth_user = authenticate(username=existing_user.username, password=pwd)
-            if not auth_user:
-                raise HttpError(400, "An account with this email/phone already exists. Please enter your correct account password to verify identity and cancel.")
-            authenticated_user = auth_user
+        if otp:
+            from apps.checkout.services import verify_otp
+            is_valid_otp = False
+            if transaction.buyer_phone and verify_otp(transaction.buyer_phone, otp):
+                is_valid_otp = True
+            elif transaction.buyer_email and verify_otp(transaction.buyer_email, otp):
+                is_valid_otp = True
+
+            if not is_valid_otp:
+                raise HttpError(400, "Invalid or expired verification code. Please check your SMS or email inbox and try again.")
+
+            if existing_user:
+                authenticated_user = existing_user
+            else:
+                # Create a buyer account with a random temporary password if no password supplied
+                account_pwd = pwd if (pwd and len(pwd) >= 8) else secrets.token_urlsafe(16)
+                base_name = "".join(c for c in (transaction.buyer_name or transaction.buyer_email.split('@')[0]) if c.isalnum()).lower()
+                if len(base_name) < 3:
+                    base_name = f"buyer{secrets.randbelow(9000) + 1000}"
+                base_name = base_name[:20]
+
+                uname = base_name
+                counter = 1
+                while User.objects.filter(username__iexact=uname).exists():
+                    uname = f"{base_name[:15]}{counter}"
+                    counter += 1
+
+                new_user = User.objects.create_user(
+                    username=uname,
+                    email=transaction.buyer_email.strip().lower(),
+                    phone_number=transaction.buyer_phone.strip(),
+                    password=account_pwd,
+                    role='BUYER',
+                    first_name=transaction.buyer_name or ''
+                )
+                new_user.is_phone_verified = True
+                new_user.is_email_verified = False
+                new_user.save(update_fields=['is_phone_verified', 'is_email_verified'])
+                try:
+                    from apps.users.api import send_account_activation_email
+                    send_account_activation_email(new_user, request)
+                except Exception as email_err:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Failed to send cancellation buyer activation email: {email_err}")
+                authenticated_user = new_user
+
         else:
-            # Create a brand new buyer user account
-            base_name = "".join(c for c in (transaction.buyer_name or transaction.buyer_email.split('@')[0]) if c.isalnum()).lower()
-            if len(base_name) < 3:
-                base_name = f"buyer{secrets.randbelow(9000) + 1000}"
-            base_name = base_name[:20]
+            # Fall back to password verification
+            if not pwd:
+                raise HttpError(400, "Account required: Please enter your password or verify via OTP to cancel this order and secure your refund.")
 
-            uname = base_name
-            counter = 1
-            while User.objects.filter(username__iexact=uname).exists():
-                uname = f"{base_name[:15]}{counter}"
-                counter += 1
+            if len(pwd) < 8:
+                raise HttpError(400, "Password must be at least 8 characters long.")
 
-            new_user = User.objects.create_user(
-                username=uname,
-                email=transaction.buyer_email.strip().lower(),
-                phone_number=transaction.buyer_phone.strip(),
-                password=pwd,
-                role='BUYER',
-                first_name=transaction.buyer_name or ''
-            )
-            new_user.is_phone_verified = True
-            new_user.is_email_verified = True
-            new_user.save(update_fields=['is_phone_verified', 'is_email_verified'])
-            authenticated_user = new_user
+            if existing_user:
+                auth_user = authenticate(username=existing_user.username, password=pwd)
+                if not auth_user:
+                    raise HttpError(400, "Incorrect password. If you forgot your password, please use 'Verify via OTP' to cancel.")
+                authenticated_user = auth_user
+            else:
+                # Create a brand new buyer user account with the password
+                base_name = "".join(c for c in (transaction.buyer_name or transaction.buyer_email.split('@')[0]) if c.isalnum()).lower()
+                if len(base_name) < 3:
+                    base_name = f"buyer{secrets.randbelow(9000) + 1000}"
+                base_name = base_name[:20]
+
+                uname = base_name
+                counter = 1
+                while User.objects.filter(username__iexact=uname).exists():
+                    uname = f"{base_name[:15]}{counter}"
+                    counter += 1
+
+                new_user = User.objects.create_user(
+                    username=uname,
+                    email=transaction.buyer_email.strip().lower(),
+                    phone_number=transaction.buyer_phone.strip(),
+                    password=pwd,
+                    role='BUYER',
+                    first_name=transaction.buyer_name or ''
+                )
+                new_user.is_phone_verified = True
+                new_user.is_email_verified = False
+                new_user.save(update_fields=['is_phone_verified', 'is_email_verified'])
+                try:
+                    from apps.users.api import send_account_activation_email
+                    send_account_activation_email(new_user, request)
+                except Exception as email_err:
+                    import logging
+                    logging.getLogger(__name__).warning(f"Failed to send cancellation buyer activation email: {email_err}")
+                authenticated_user = new_user
 
         # Set auth session cookies and token for newly authenticated buyer
         refresh = RefreshToken.for_user(authenticated_user)
@@ -1684,6 +1912,7 @@ def buyer_cancel_order(request, transaction_id: uuid.UUID, data: BuyerCancelRequ
         "name": getattr(authenticated_user, 'first_name', '') or getattr(authenticated_user, 'username', '') if authenticated_user else "",
         "username": getattr(authenticated_user, 'username', '') if authenticated_user else "",
         "phone_number": getattr(authenticated_user, 'phone_number', '') if authenticated_user else "",
+        "is_email_verified": bool(getattr(authenticated_user, 'is_email_verified', False)) if authenticated_user else False,
     }
 
     return {
@@ -2155,9 +2384,29 @@ class RequestArbiterDecisionSchema(Schema):
 @escrow_router.post("/{transaction_id}/dispute-append", response=MessageResponse, auth=None)
 def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSchema):
     transaction = get_object_or_404(Transaction, id=transaction_id)
-    if transaction.status in [TransactionStatus.COMPLETED, TransactionStatus.REFUNDED, TransactionStatus.CANCELLED]:
+    if transaction.status in [TransactionStatus.AWAITING_PAYMENT, TransactionStatus.COMPLETED, TransactionStatus.REFUNDED, TransactionStatus.CANCELLED]:
         raise HttpError(400, f"Cannot raise dispute when transaction is in {transaction.status} status.")
     
+    if transaction.status == TransactionStatus.PAYMENT_RECEIVED:
+        raise HttpError(400, "The order has not been dispatched yet. If you wish to cancel or modify your order, please use Request Cancellation.")
+    
+    is_subsequent_update = (transaction.status == TransactionStatus.DISPUTED)
+
+    if not is_subsequent_update and transaction.status == TransactionStatus.DELIVERY_IN_PROGRESS:
+        dispatch_time = transaction.dispatched_at or transaction.created_at
+        if dispatch_time:
+            elapsed = timezone.now() - dispatch_time
+            if elapsed < timedelta(hours=48):
+                remaining_seconds = max(0, int((timedelta(hours=48) - elapsed).total_seconds()))
+                rem_hours = remaining_seconds // 3600
+                rem_minutes = (remaining_seconds % 3600) // 60
+                raise HttpError(400, f"Disputes for in-transit orders can only be raised 48 hours after dispatch to allow courier transit. Time remaining: {rem_hours}h {rem_minutes}m.")
+        
+        category = (data.category or "OTHER").strip().upper()
+        allowed_transit_categories = {'ITEM_NOT_RECEIVED', 'OTHER'}
+        if category not in allowed_transit_categories:
+            raise HttpError(400, "Package is currently in transit. Physical item condition disputes (such as damaged, defective, or wrong item) can only be reported after delivery confirmation during your inspection period.")
+
     clean_reason = (data.reason or "").strip()
     if len(clean_reason) < 10:
         raise HttpError(400, "Dispute explanation must be at least 10 characters long with sufficient details.")
@@ -2167,7 +2416,6 @@ def raise_dispute_buyer(request, transaction_id: uuid.UUID, data: RaiseDisputeSc
         raise HttpError(400, "Maximum of 5 evidence photos allowed per submission.")
         
     optimized_new_photos = process_and_optimize_dispute_photos(new_photos[:5])
-    is_subsequent_update = (transaction.status == TransactionStatus.DISPUTED)
     now_ts = timezone.now().strftime("%b %d, %Y %I:%M %p")
 
     if is_subsequent_update:
@@ -2818,9 +3066,9 @@ def post_dispute_instruction(request, id: uuid.UUID, data: ArbiterInstructionSch
         )
     if transaction.buyer_email:
         dispatch_email_task.delay(
+            transaction.buyer_email,
             "HendAxis Trust — Arbiter Instruction on Your Order",
-            f"The assigned Arbiter has posted an instruction/notice for your disputed order {transaction.paystack_reference} ({transaction.link.title}):\n\n\"{clean_notes}\"\n\nPlease review the details at: {buyer_link}",
-            [transaction.buyer_email]
+            f"The assigned Arbiter has posted an instruction/notice for your disputed order {transaction.paystack_reference} ({transaction.link.title}):\n\n\"{clean_notes}\"\n\nPlease review the details at: {buyer_link}"
         )
 
     # Notify Seller
@@ -2832,9 +3080,9 @@ def post_dispute_instruction(request, id: uuid.UUID, data: ArbiterInstructionSch
         )
     if getattr(seller, 'email', None):
         dispatch_email_task.delay(
+            seller.email,
             "HendAxis Trust — Arbiter Instruction on Order Dispute",
-            f"The assigned Arbiter has posted an instruction/notice for disputed order {transaction.paystack_reference} ({transaction.link.title}):\n\n\"{clean_notes}\"\n\nPlease review and respond at: {seller_link}",
-            [seller.email]
+            f"The assigned Arbiter has posted an instruction/notice for disputed order {transaction.paystack_reference} ({transaction.link.title}):\n\n\"{clean_notes}\"\n\nPlease review and respond at: {seller_link}"
         )
 
     return {"message": "Instruction posted successfully to both parties."}
@@ -4167,6 +4415,7 @@ class PlatformSettingsSchema(Schema):
     payout_transfer_fee_percent: float = 1.95
     payout_transfer_fee_ghs: float = 2.0
     django_admin_url: Optional[str] = 'admin/'
+    django_admin_full_url: Optional[str] = None
     # Promotions
     promotions_active: bool = False
     promotions_expires_at: Optional[str] = None
@@ -4233,7 +4482,14 @@ def get_public_settings(request):
 def get_admin_settings(request):
     """Retrieve current platform settings (Admin Managers & Superusers)."""
     is_admin_manager(request)
-    return get_platform_settings()
+    res = get_platform_settings().copy()
+    admin_url = getattr(settings, 'DJANGO_ADMIN_URL', 'admin/').strip('/') + '/'
+    res['django_admin_url'] = admin_url
+    try:
+        res['django_admin_full_url'] = request.build_absolute_uri('/' + admin_url)
+    except Exception:
+        res['django_admin_full_url'] = None
+    return res
 
 
 @escrow_router.post("/admin/settings", response=PlatformSettingsSchema)
@@ -4417,9 +4673,14 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     setting.save()
 
     from django.core.cache import cache
-    cache.delete("system_platform_settings")
-
-    return current
+    res = get_platform_settings().copy()
+    admin_url = getattr(settings, 'DJANGO_ADMIN_URL', 'admin/').strip('/') + '/'
+    res['django_admin_url'] = admin_url
+    try:
+        res['django_admin_full_url'] = request.build_absolute_uri('/' + admin_url)
+    except Exception:
+        res['django_admin_full_url'] = None
+    return res
 
 
 # ─── Admin Promo Code & Rewards Management Endpoints ──────────────────────────

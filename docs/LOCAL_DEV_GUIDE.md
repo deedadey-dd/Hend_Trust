@@ -110,6 +110,31 @@ curl -X POST "http://localhost:8000/api/delivery/webhooks/courier-status" \
   -d '{"tracking_number": "DEV123456789", "status": "DELIVERED"}'
 ```
 
+### D. Developer API & SDK Testing
+1. Navigate to `/dashboard/developer` in the frontend to generate a Test API Key (`sk_test_...` and `pk_test_...`).
+2. Test the API ping endpoint:
+   ```bash
+   curl -X GET "http://localhost:8000/api/v1/v1/ping" \
+     -H "X-HendAxis-Secret-Key: sk_test_your_secret_key"
+   ```
+3. Create a test escrow order:
+   ```bash
+   curl -X POST "http://localhost:8000/api/v1/v1/escrow/create" \
+     -H "X-HendAxis-Secret-Key: sk_test_your_secret_key" \
+     -H "Content-Type: application/json" \
+     -d '{"title": "Test Laptop", "price_ghs": 2500.0, "shipping_fee_ghs": 40.0, "fee_handling": "PASS_TO_BUYER"}'
+   ```
+4. Run Developer API automated test suite:
+   ```bash
+   backend/venv/Scripts/pytest backend/apps/developer/tests/test_developer_api.py
+   ```
+
+### E. Django Database Admin Portal
+The native Django backend administration interface is protected behind a secret URL defined in `.env` (`DJANGO_ADMIN_URL=hendaxis-secure-portal-9472/`).
+
+- **Direct Dev Link**: [http://127.0.0.1:8000/hendaxis-secure-portal-9472/](http://127.0.0.1:8000/hendaxis-secure-portal-9472/)
+- **Via Admin UI**: Click the **Django Database Admin ↗** button in the header bar of the Admin Dashboard (`/admin`).
+
 ---
 
 ## Summary of Running Terminals

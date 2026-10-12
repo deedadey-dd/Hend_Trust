@@ -75,6 +75,9 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
             email: data.email || '',
             name: data.username || data.first_name,
             username: data.username,
+            phone_number: data.phone_number || '',
+            is_email_verified: Boolean(data.is_email_verified),
+            is_phone_verified: Boolean(data.is_phone_verified),
             is_superuser: Boolean(data.is_superuser),
             is_staff: Boolean(data.is_staff)
           });

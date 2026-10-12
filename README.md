@@ -51,7 +51,10 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
   - `GHS 2,000 – 9,999.99`: **48 Hours**
   - `>= GHS 10,000`: **72 Hours**
 
-### 6. Dispute Resolution, Subsequent Dialogue Appends & Retraction Policy
+### 6. Dispute Resolution, In-Transit Buffers & Retraction Policy
+- **Pre-Dispatch Status Restriction**: Undispatched orders in `PAYMENT_RECEIVED` use the Order Cancellation workflow; disputes cannot be opened prior to dispatch.
+- **In-Transit 48-Hour Dispatch Buffer & Lock**: In `DELIVERY_IN_PROGRESS`, the "Raise Dispute" button is locked with a real-time countdown badge (`🔒 Dispute Unlocks in Xh Ym`) for 48 hours following dispatch to allow couriers sufficient transit time.
+- **In-Transit Category Filtering**: In `DELIVERY_IN_PROGRESS`, disputes are restricted to logistics categories (`ITEM_NOT_RECEIVED`, `OTHER`). Physical item condition categories unlock only during the `INSPECTION_PERIOD` post-delivery.
 - **Subsequent Dialogue & 5-Photo Trail**: Buyers and sellers can append further updates/evidence photos (`--- [Update (Timestamp)] ---`) over time without overwriting past history (up to **5 WebP photos** total per party).
 - **WhatsApp-Style Chat Timeline**: Unifies buyer claims, seller responses, dispatch waybills, and arbitrator rulings in a color-coded chronological chat stream with expandable "Read more..." text and collapsible trail controls.
 - **Dispute Retraction & Private Settlement**: Buyers can retract their raised dispute on `/l/:id` to settle privately with the seller. Upon retraction, escrow funds are scheduled for release to the seller after 24 hours. Any transaction that entered dispute permanently forfeits customer rating permissions.
@@ -119,6 +122,24 @@ For an exhaustive technical and functional breakdown of all platform modules, AP
 - **Static HTML Multi-Route Pre-Rendering**: Build pipeline executes `scripts/generate-routes-seo.mjs` during `npm run build`, generating 12 distinct, fully-rendered static HTML route files (`/`, `/for-buyers`, `/for-sellers`, `/how-it-works`, `/trust-center`, `/guides`, `/referrals`, `/developers`, `/help`, `/contact`, `/shops`, `/reviews`) with individual `<title>`, meta descriptions, canonical URLs, OpenGraph/Twitter cards, and Schema.org JSON-LD structured data.
 - **Dynamic Role-Adaptive Navbar**: Navigation bar dynamically adapts its desktop links, profile dropdown menu, and mobile drawer between `BUYER` (My Purchases, Verified Shops, Track Order), `SELLER` (Dashboard, Create Link, My Links, Shops, Wallet Balance), and `ADMIN` roles.
 - **Dynamic Admin Courier Sync**: Logistics section on public landing pages and directories dynamically syncs with active administrative settings.
+
+### 15. Developer Platform, REST API v1.2.0, Drop-in SDK & Real-time Webhooks (`/developers`)
+- **Merchant API Keys & Self-Service Management (`/dashboard/developer`)**:
+  - Instant provisioning of **Live** (`pk_live_...` / `sk_live_...`) and **Test** (`pk_test_...` / `sk_test_...`) key pairs with SHA-256 secure hashing and 1-click revocation.
+- **REST API Endpoints (`https://trust.hendaxis.com/api/v1/v1/`)**:
+  - `GET /ping`: Latency, environment, and authentication health check.
+  - `GET /merchant/account`: Verified tier badge, wallet balance, active orders, and seller ratings.
+  - `POST /escrow/create`: Create escrow transaction with custom references, returning checkout & embed URLs.
+  - `GET /escrow/{id_or_ref}`: Query real-time escrow order status, courier tracking, and inspection countdown.
+  - `GET /escrow`: List merchant escrow transactions with status filters, search queries, and pagination.
+  - `POST /escrow/{id}/dispatch`: Dispatch orders with courier tracking (DHL, Speedaf, FedEx, Ghana Post) or Informal Bus.
+  - `POST /escrow/{id}/confirm-delivery`: Mark delivered and initiate the 48-hour buyer inspection period.
+  - `POST /escrow/{id}/cancel`: Cancel unpaid orders programmatically.
+  - `POST /links/create`, `GET /links`, `GET /links/{id}`: Programmatic payment links generation.
+- **Drop-in JavaScript SDK (`sdk.js`) v1.2.0**:
+  - 2-line embed script to launch responsive escrow checkout modals with postMessage event synchronization (`HENDAXIS_PAYMENT_SUCCESS`, `HENDAXIS_PAYMENT_ERROR`, `HENDAXIS_MODAL_CLOSE`).
+- **HMAC SHA-256 Webhook Security & Event Stream**:
+  - Real-time webhook stream with replay attack defense across 9 platform events (`escrow.created`, `escrow.paid`, `escrow.dispatched`, `escrow.delivered`, `escrow.inspection_started`, `escrow.completed`, `escrow.disputed`, `escrow.refunded`, `escrow.cancelled`).
 
 ### 16. Buyer Order Cancellation, 90-Minute Seller Dispatch Grace Window & 90-Minute Delayed Payout Safety Buffer
 - **90-Minute Seller Dispatch Verification Grace Period (`cancellation_dispatch_grace_minutes: 90`)**:

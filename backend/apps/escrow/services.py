@@ -44,6 +44,28 @@ def confirm_transaction_payment(transaction: Transaction) -> bool:
         from apps.core.tasks import notify_buyer_payment_received_task, notify_seller_payment_received_task
         notify_buyer_payment_received_task.delay(transaction.id)
         notify_seller_payment_received_task.delay(transaction.id)
+
+        # Dispatch webhook event to third-party developers
+        try:
+            from apps.developer.auth import WebhookDispatcher
+            if transaction.link and transaction.link.seller:
+                WebhookDispatcher.dispatch_event(
+                    user=transaction.link.seller,
+                    event_type="escrow.paid",
+                    data={
+                        "transaction_id": str(transaction.id),
+                        "escrow_reference": transaction.paystack_reference,
+                        "title": transaction.link.title,
+                        "amount_ghs": float(transaction.total_amount_ghs),
+                        "status": "PAYMENT_RECEIVED",
+                        "buyer_name": transaction.buyer_name,
+                        "buyer_email": transaction.buyer_email,
+                        "buyer_phone": transaction.buyer_phone,
+                    }
+                )
+        except Exception as wex:
+            logger.warning(f"Webhook dispatch on payment error for tx {transaction.id}: {wex}")
+
         return True
 
     return False

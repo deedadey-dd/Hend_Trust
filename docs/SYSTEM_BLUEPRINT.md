@@ -71,7 +71,8 @@ graph TD
 
 2. **Authentication & Session Security**:
    - JWT authentication stored securely in HTTP-only, SameSite cookies.
-   - **1-Click Post-Checkout Buyer Registration, Uniqueness Verification & Guest Fallback (`/api/v1/auth/buyer-quick-register` & `/api/v1/auth/verify-phone-otp`)**: Allows guest shoppers on `/l/:id` to set a password in seconds post-checkout. Verifies email & phone uniqueness before creation. If an existing account is found with matching credentials, prompts the user to either log in to access their dashboard or continue tracking as a guest. If a new account is created, dispatches an email activation link and an SMS OTP code to their phone. For unauthenticated visitors, the 1-Click creation card remains prominently highlighted above the order details on `/l/:id` so they can create an account or log in at any time.
+   - **1-Click Post-Checkout & Cancellation Buyer Registration (`/api/v1/auth/buyer-quick-register` & `/api/v1/auth/verify-phone-otp`)**: Allows guest shoppers on `/l/:id` or during order cancellation to set a password in seconds. Verifies email & phone uniqueness before creation. If an existing account is found with matching credentials, prompts the user to either log in or continue as guest.
+   - **Email Verification & In-App Email Modification (`/api/v1/auth/change-email`)**: When accounts are created via quick signup, `is_email_verified` defaults to `False`. An interactive banner on the buyer dashboard and profile prompts verification with 1-click resend, and provides an inline **Change Email Address** modal allowing buyers to correct typos or update their email address before verification, automatically sending a fresh verification link.
    - Email verification via OTP (6-digit PIN code with timed expiration).
    - Phone number verification via SMS OTP.
    - Password reset workflow with secure tokenized URLs.
@@ -247,15 +248,24 @@ stateDiagram-v2
 
 #### Key Features & Workflows
 1. **Dispute Initiation, Categorization & Reason Validation (`/dashboard`, `/l/:id`, `/tracking`)**:
-   - Either party (Buyer or Seller) can open a dispute if an issue arises (e.g., non-delivery, damaged goods, wrong item).
+   - **Status Restrictions & Pre-Dispatch Cancellation Policy**:
+     - Disputes cannot be initiated on undispatched orders (`PAYMENT_RECEIVED`). Buyers wishing to cancel or modify before dispatch use the **Order Cancellation** workflow (**Instant Cancellation** within 1–2 hours, or **Cancellation Request** with a 90-minute seller grace period).
+     - Terminal statuses (`AWAITING_PAYMENT`, `COMPLETED`, `REFUNDED`, `CANCELLED`) reject dispute creation.
+   - **In-Transit 48-Hour Dispatch Buffer (`DELIVERY_IN_PROGRESS`)**:
+     - When an order is in transit, the backend strictly rejects disputes until at least **48 hours** have elapsed since `dispatched_at` (or `created_at` fallback).
+     - The frontend renders the "Raise Dispute" button as disabled with a real-time countdown badge (`🔒 Dispute Unlocks in Xh Ym`) and explanatory guidance.
+     - Once $\ge 48\text{ hours}$ elapse, the button unlocks automatically as `⚠ Raise Dispute`.
+   - **In-Transit Category Filtering vs. Inspection Period**:
+     - **During Transit (`DELIVERY_IN_PROGRESS`)**: Allowed categories are strictly restricted to logistics issues: `ITEM_NOT_RECEIVED` (Item Not Received / Empty Parcel) and `OTHER` (Courier / Waybill Issue).
+     - **During Inspection (`INSPECTION_PERIOD`)**: All physical condition categories unlock post-delivery (`DAMAGED_ITEM`, `WRONG_ITEM`, `DEFECTIVE_OR_FAULTY`, `MISSING_PARTS`, `COUNTERFEIT_OR_FAKE`).
    - **7 Standardized Dispute Reason Categories**:
-     - `ITEM_NOT_RECEIVED`: Item not delivered or missing in transit.
-     - `ITEM_DAMAGED`: Package or goods damaged/broken during transit or delivery.
-     - `ITEM_DIFFERENT_FROM_DESCRIPTION`: Significant deviation from product specifications or listed condition.
-     - `DEFECTIVE_OR_NON_FUNCTIONAL`: Item fails to operate, is counterfeit, or suffers internal malfunction.
-     - `WRONG_SIZE_OR_SPEC`: Incorrect dimensions, sizing, color, or model variant delivered.
-     - `INCOMPLETE_MISSING_ITEMS`: Missing bundled accessories, parts, or multi-item components.
-     - `OTHER_VIOLATION`: Other merchant breach or policy violation.
+     - `ITEM_NOT_RECEIVED`: Item not delivered, overdue delivery, or empty parcel received.
+     - `DAMAGED_ITEM`: Package or goods damaged/broken during transit or delivery (Inspection Mode).
+     - `WRONG_ITEM`: Item delivered does not match product listing or specifications (Inspection Mode).
+     - `DEFECTIVE_OR_FAULTY`: Item fails to operate, is counterfeit, or suffers malfunction (Inspection Mode).
+     - `MISSING_PARTS`: Missing bundled accessories, parts, or components (Inspection Mode).
+     - `COUNTERFEIT_OR_FAKE`: Replica or non-authentic merchandise (Inspection Mode).
+     - `OTHER`: Other merchant breach or policy violation.
    - **10-Character Minimum Explanation Rule**: Both dispute opening (`/raise-dispute`) and subsequent reason appends (`/dispute-append`) enforce a strict minimum explanation length of 10 characters with real-time UI character counters (`{len}/10 min chars`) to prevent uninformative or empty disputes.
    - **Subsequent Dialogue & Reason Appends**:
      - Buyers can add further clarification notes and photos to an ongoing dispute without overwriting past submissions. Updates are appended with audit timestamps: `--- [Buyer Update (Timestamp)] ---`.

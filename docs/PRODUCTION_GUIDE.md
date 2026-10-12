@@ -225,9 +225,10 @@ server {
         proxy_set_header X-Forwarded-Proto $scheme;
     }
 
-    # Django Native Admin Proxy to Gunicorn
-    location /django-admin/ {
-        proxy_pass http://hendaxis_backend/admin/;
+    # Django Native Admin Proxy to Gunicorn (Matches custom DJANGO_ADMIN_URL in .env e.g. /secure-portal-2011/)
+    # Note: Django also mounts admin under /api/<DJANGO_ADMIN_URL> which is automatically proxied via /api/ above.
+    location ~ ^/(secure-portal-[0-9a-zA-Z_-]+|hendaxis-secure-portal-[0-9a-zA-Z_-]+|admin)/ {
+        proxy_pass http://hendaxis_backend;
         proxy_http_version 1.1;
         proxy_set_header Connection "";
         proxy_set_header Host $host;

@@ -161,3 +161,69 @@ def test_resolve_dispute_external_arbitration_order_mandatory(admin_client, tran
     transaction.refresh_from_db()
     assert transaction.external_arbitration_order_url == "https://storage.platform.com/court_orders/case_2026_998.pdf"
     assert transaction.status == TransactionStatus.REFUNDED
+
+@pytest.mark.django_db
+def test_cannot_raise_dispute_in_payment_received_status(escrow_client, transaction):
+    transaction.status = TransactionStatus.PAYMENT_RECEIVED
+    transaction.save()
+
+    res = escrow_client.post(
+        f"/{transaction.id}/raise-dispute",
+        json={
+            "reason": "I changed my mind and want to cancel immediately.",
+            "category": "OTHER",
+            "photos": []
+        }
+    )
+    assert res.status_code == 400
+    assert "not been dispatched yet" in str(res.json())
+    assert "Request Cancellation" in str(res.json())
+
+@pytest.mark.django_db
+def test_in_transit_dispute_48_hour_buffer_and_category_restrictions(escrow_client, transaction):
+    # 1. Order dispatched 10 hours ago (< 48h) -> dispute rejected
+    transaction.status = TransactionStatus.DELIVERY_IN_PROGRESS
+    transaction.dispatched_at = timezone.now() - timedelta(hours=10)
+    transaction.save()
+
+    res_too_early = escrow_client.post(
+        f"/{transaction.id}/raise-dispute",
+        json={
+            "reason": "Where is my parcel? It has not arrived yet.",
+            "category": "ITEM_NOT_RECEIVED",
+            "photos": []
+        }
+    )
+    assert res_too_early.status_code == 400
+    assert "Disputes for in-transit orders can only be raised 48 hours after dispatch" in str(res_too_early.json())
+    assert "Time remaining:" in str(res_too_early.json())
+
+    # 2. Order dispatched 50 hours ago (>= 48h), but buyer selected a physical item condition category -> rejected
+    transaction.dispatched_at = timezone.now() - timedelta(hours=50)
+    transaction.save()
+
+    res_physical_cat = escrow_client.post(
+        f"/{transaction.id}/raise-dispute",
+        json={
+            "reason": "Item has arrived with a cracked screen.",
+            "category": "DAMAGED_ITEM",
+            "photos": []
+        }
+    )
+    assert res_physical_cat.status_code == 400
+    assert "Physical item condition disputes" in str(res_physical_cat.json())
+
+    # 3. Order dispatched 50 hours ago with allowed in-transit category (ITEM_NOT_RECEIVED) -> success
+    res_success_not_received = escrow_client.post(
+        f"/{transaction.id}/raise-dispute",
+        json={
+            "reason": "Waybill tracking shows delivery failed and parcel was never delivered.",
+            "category": "ITEM_NOT_RECEIVED",
+            "photos": []
+        }
+    )
+    assert res_success_not_received.status_code == 200
+    transaction.refresh_from_db()
+    assert transaction.status == TransactionStatus.DISPUTED
+    assert transaction.buyer_dispute_category == "ITEM_NOT_RECEIVED"
+

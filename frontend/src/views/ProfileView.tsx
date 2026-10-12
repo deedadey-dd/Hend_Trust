@@ -46,6 +46,8 @@ interface ProfileData {
   default_shipping_address?: string;
   verified_at?: string;
   is_2fa_enabled?: boolean;
+  is_email_verified?: boolean;
+  is_phone_verified?: boolean;
 }
 
 export default function ProfileView() {
@@ -78,6 +80,12 @@ export default function ProfileView() {
   const [firstName, setFirstName] = useState('');
   const [lastName, setLastName] = useState('');
   const [defaultShippingAddress, setDefaultShippingAddress] = useState('');
+  const [isEditingEmail, setIsEditingEmail] = useState(false);
+  const [newEmailInput, setNewEmailInput] = useState('');
+  const [changingEmail, setChangingEmail] = useState(false);
+  const [resendingEmail, setResendingEmail] = useState(false);
+  const [emailFeedback, setEmailFeedback] = useState('');
+  const [emailError, setEmailError] = useState('');
   const [payoutMode, setPayoutMode] = useState<'INSTANT' | 'MANUAL'>('INSTANT');
   const [payoutType, setPayoutType] = useState<'MOMO' | 'BANK'>('MOMO');
   const [momoNumber, setMomoNumber] = useState('');
@@ -121,6 +129,7 @@ export default function ProfileView() {
       setFirstName(data.first_name || '');
       setLastName(data.last_name || '');
       setDefaultShippingAddress(data.default_shipping_address || '');
+      setNewEmailInput(data.email || '');
       setPayoutMode(data.payout_mode || 'INSTANT');
       setPayoutType(data.preferred_payout_type || 'MOMO');
       setMomoNumber(data.momo_number || '');
@@ -249,6 +258,47 @@ export default function ProfileView() {
       setOtpError(err.response?.data?.message || 'Verification failed.');
     } finally {
       setVerifyingOtp(false);
+    }
+  };
+
+  const handleChangeEmail = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const clean = newEmailInput.trim().toLowerCase();
+    if (!clean) return;
+    setChangingEmail(true);
+    setEmailError('');
+    setEmailFeedback('');
+    try {
+      const res = await apiClient.post('/auth/change-email', { new_email: clean });
+      const updated = res.data?.email || clean;
+      updateUser({ email: updated, is_email_verified: false });
+      if (profile) {
+        setProfile({ ...profile, email: updated, is_email_verified: false });
+      }
+      setIsEditingEmail(false);
+      setEmailFeedback(res.data?.message || `Email updated to ${updated}! Verification link sent.`);
+      setTimeout(() => setEmailFeedback(''), 5000);
+    } catch (err: any) {
+      setEmailError(err.response?.data?.message || err.response?.data?.detail || 'Failed to update email address.');
+    } finally {
+      setChangingEmail(false);
+    }
+  };
+
+  const handleResendEmailVerification = async () => {
+    if (!profile?.email && !user?.email) return;
+    const targetEmail = profile?.email || user?.email || '';
+    setResendingEmail(true);
+    setEmailError('');
+    setEmailFeedback('');
+    try {
+      const res = await apiClient.post('/auth/resend-activation', { email: targetEmail });
+      setEmailFeedback(res.data?.message || `Verification link sent to ${targetEmail}!`);
+      setTimeout(() => setEmailFeedback(''), 5000);
+    } catch (err: any) {
+      setEmailError(err.response?.data?.message || err.response?.data?.detail || 'Failed to resend verification.');
+    } finally {
+      setResendingEmail(false);
     }
   };
 
@@ -644,11 +694,101 @@ export default function ProfileView() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Email Address</label>
-                  <div className="w-full rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/60 px-4 py-2.5 text-xs text-gray-600 dark:text-slate-400 flex items-center gap-2">
-                    <Mail className="h-4 w-4 text-slate-400" />
-                    <span>{profile?.email || 'No email associated'}</span>
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300">Email Address</label>
+                    <div className="flex items-center gap-2">
+                      {profile?.is_email_verified || user?.is_email_verified ? (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-100/60 dark:bg-emerald-950/60 px-2 py-0.5 rounded-md">
+                          <CheckCircle className="h-3 w-3" /> Verified
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-400 bg-amber-100/60 dark:bg-amber-950/60 px-2 py-0.5 rounded-md">
+                          <AlertTriangle className="h-3 w-3" /> Unverified
+                        </span>
+                      )}
+                    </div>
                   </div>
+
+                  {isEditingEmail ? (
+                    <form onSubmit={handleChangeEmail} className="space-y-2 mt-1">
+                      <div className="flex gap-2">
+                        <div className="relative flex-1">
+                          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-slate-400" />
+                          <input
+                            type="email"
+                            required
+                            autoFocus
+                            value={newEmailInput}
+                            onChange={e => setNewEmailInput(e.target.value)}
+                            placeholder="Enter new email address"
+                            className="w-full rounded-xl border border-blue-400 dark:border-blue-600 bg-white dark:bg-slate-900 text-gray-900 dark:text-slate-100 pl-9 pr-4 py-2 text-xs focus:ring-2 focus:ring-blue-500 outline-none"
+                          />
+                        </div>
+                        <button
+                          type="submit"
+                          disabled={changingEmail}
+                          className="px-3 py-2 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold rounded-xl text-xs transition shadow flex items-center gap-1 cursor-pointer"
+                        >
+                          {changingEmail ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
+                          Save & Verify
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEditingEmail(false);
+                            setNewEmailInput(profile?.email || user?.email || '');
+                            setEmailError('');
+                          }}
+                          disabled={changingEmail}
+                          className="px-3 py-2 bg-gray-100 hover:bg-gray-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-gray-700 dark:text-slate-300 font-semibold rounded-xl text-xs transition cursor-pointer"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </form>
+                  ) : (
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 rounded-xl border border-gray-200 dark:border-slate-800 bg-gray-50 dark:bg-slate-800/60 px-4 py-2.5 text-xs text-gray-600 dark:text-slate-400">
+                      <div className="flex items-center gap-2 overflow-hidden">
+                        <Mail className="h-4 w-4 text-slate-400 shrink-0" />
+                        <span className="truncate font-medium text-slate-800 dark:text-slate-200">{profile?.email || 'No email associated'}</span>
+                      </div>
+                      <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                        {!(profile?.is_email_verified || user?.is_email_verified) && (
+                          <button
+                            type="button"
+                            onClick={handleResendEmailVerification}
+                            disabled={resendingEmail}
+                            className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:underline flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                          >
+                            {resendingEmail ? <Loader2 className="h-3 w-3 animate-spin" /> : <Mail className="h-3 w-3" />}
+                            Resend Link
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setNewEmailInput(profile?.email || user?.email || '');
+                            setIsEditingEmail(true);
+                            setEmailError('');
+                          }}
+                          className="text-[11px] font-bold text-blue-600 dark:text-blue-400 hover:underline cursor-pointer"
+                        >
+                          Change Email
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {emailFeedback && (
+                    <p className="mt-1.5 text-[11px] text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
+                      <CheckCircle className="h-3 w-3" /> {emailFeedback}
+                    </p>
+                  )}
+                  {emailError && (
+                    <p className="mt-1.5 text-[11px] text-rose-600 dark:text-rose-400 font-medium flex items-center gap-1">
+                      <AlertTriangle className="h-3 w-3" /> {emailError}
+                    </p>
+                  )}
                 </div>
 
                 <div>

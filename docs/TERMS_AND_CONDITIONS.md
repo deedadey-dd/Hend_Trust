@@ -152,7 +152,10 @@ Once delivery is verified, the Buyer Inspection Period commences:
 ## 9. Disputes, Dialogue Trail, Retraction & Item Returns
 
 ### 9.1 Dispute Initiation & Subsequent Evidence Appending
-If a Buyer receives a damaged, defective, or incorrect item, they must click **Raise Dispute** on their tracking page **before the Inspection Period expires**. Raising a dispute immediately freezes escrow funds and halts automated payouts.
+If an issue occurs with an order, Buyers may initiate a dispute subject to the following status-based rules:
+- **Pre-Dispatch Status (`PAYMENT_RECEIVED`) Restriction**: Disputes cannot be opened for undispatched orders. Buyers seeking cancellation prior to dispatch must utilize the Order Cancellation procedure outlined in Section 5.
+- **In-Transit 48-Hour Dispatch Buffer (`DELIVERY_IN_PROGRESS`)**: To allow couriers and logistics providers fair transit time, the Raise Dispute capability remains locked for **48 hours** following seller dispatch. During active transit, disputes are restricted strictly to non-delivery / logistics categories (`ITEM_NOT_RECEIVED`, `OTHER`).
+- **Physical Condition Claims During Inspection Period**: Claims concerning physical item defects, damages, or discrepancies (`DAMAGED_ITEM`, `WRONG_ITEM`, `DEFECTIVE_OR_FAULTY`, `MISSING_PARTS`, `COUNTERFEIT_OR_FAKE`) must be raised following delivery confirmation **before the Inspection Period expires**. Raising a dispute immediately freezes escrow funds and halts automated payouts.
 - **Continuous Dialogue & Evidence Trail**: Both Buyers and Sellers can append subsequent statements, clarifications, and photo evidence to active disputes without overwriting existing history.
 - **Evidence Limit**: Parties can accumulate up to **5 WebP photographic evidence files** throughout the dispute lifecycle.
 - **Transparent Audit**: All statements are recorded with chronological timestamps in the unified WhatsApp-style dispute timeline.

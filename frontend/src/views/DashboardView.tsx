@@ -99,6 +99,10 @@ interface SellerTxn {
   cancellation_payout_hold_until?: string;
   cancellation_payout_status?: string;
   cancellation_seller_reported_shipped?: boolean;
+  buyer_refund_amount_ghs?: number;
+  seller_payout_amount_ghs?: number;
+  is_partial_refund?: boolean;
+  dispute_resolution_action?: string;
 }
 
 import { STATUS_CONFIG } from '../constants/statusConfig';
@@ -1119,6 +1123,25 @@ function BuyerOrderDetailModal({
   const canDispute = (canConfirm || isInspection) && !order.dispute_retracted_at && !isDisputed;
   const hasDisputeRecord = Boolean(order.buyer_dispute_reason || order.dispute_retracted_at || isDisputed);
 
+  const isInTransit = order.status === 'DELIVERY_IN_PROGRESS';
+  let transitDisputeLocked = false;
+  let transitDisputeRemaining = "";
+  if (isInTransit && !order.dispute_retracted_at) {
+    const dispatchTimeStr = order.dispatched_at || order.created_at;
+    if (dispatchTimeStr) {
+      const dispatchTime = new Date(dispatchTimeStr).getTime();
+      const now = new Date().getTime();
+      const unlockTime = dispatchTime + (48 * 60 * 60 * 1000);
+      const diff = unlockTime - now;
+      if (diff > 0) {
+        transitDisputeLocked = true;
+        const hours = Math.floor(diff / (1000 * 60 * 60));
+        const mins = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+        transitDisputeRemaining = `${hours}h ${mins}m`;
+      }
+    }
+  }
+
   const handleCopyRef = () => {
     navigator.clipboard.writeText(order.paystack_reference);
     setCopiedRef(true);
@@ -1576,12 +1599,22 @@ function BuyerOrderDetailModal({
             )}
 
             {canDispute && (
-              <button
-                onClick={() => onOpenDispute(order)}
-                className="py-2.5 px-4 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 font-bold text-xs rounded-xl hover:bg-rose-100 transition cursor-pointer"
-              >
-                ⚠ Raise Dispute
-              </button>
+              transitDisputeLocked ? (
+                <button
+                  disabled
+                  title={`Disputes for in-transit orders unlock 48 hours after dispatch to allow courier delivery. Unlocks in ${transitDisputeRemaining}.`}
+                  className="py-2.5 px-4 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 border border-slate-200 dark:border-slate-700 font-bold text-xs rounded-xl cursor-not-allowed opacity-80"
+                >
+                  🔒 Dispute Unlocks in {transitDisputeRemaining}
+                </button>
+              ) : (
+                <button
+                  onClick={() => onOpenDispute(order)}
+                  className="py-2.5 px-4 bg-rose-50 dark:bg-rose-950/40 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 font-bold text-xs rounded-xl hover:bg-rose-100 transition cursor-pointer"
+                >
+                  ⚠ Raise Dispute
+                </button>
+              )
             )}
 
             <button
@@ -1618,8 +1651,11 @@ interface BuyerDisputeModalProps {
 function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerDisputeModalProps) {
   const modal = useModal();
   useEscapeKey(onClose);
+  const isInTransit = order.status === 'DELIVERY_IN_PROGRESS';
   const isInitialDispute = !order.buyer_dispute_reason && order.status !== 'DISPUTED';
-  const [category, setCategory] = useState(order.buyer_dispute_category || 'DAMAGED_ITEM');
+  const [category, setCategory] = useState(
+    order.buyer_dispute_category || (isInTransit ? 'ITEM_NOT_RECEIVED' : 'DAMAGED_ITEM')
+  );
   const [reason, setReason] = useState('');
   const [photos, setPhotos] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -1706,6 +1742,17 @@ function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerD
 
           {isInitialDispute && (
             <div>
+              {isInTransit && (
+                <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs text-amber-800 dark:text-amber-300">
+                  <p className="font-semibold flex items-center gap-1.5">
+                    <Truck className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    Package Currently In Transit
+                  </p>
+                  <p className="mt-1 text-[11px] leading-relaxed text-amber-700 dark:text-amber-400">
+                    Your order has been dispatched. During transit, you may report delivery or logistics issues. Physical condition claims (e.g. damaged or wrong item) can only be raised once you receive the package during your inspection period.
+                  </p>
+                </div>
+              )}
               <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
                 Dispute Category *
               </label>
@@ -1714,7 +1761,10 @@ function BuyerDisputeModal({ order, onClose, onSuccess, onOpenLightbox }: BuyerD
                 onChange={e => setCategory(e.target.value)}
                 className="w-full bg-white dark:bg-slate-950 border border-slate-300 dark:border-slate-700 rounded-xl p-2.5 text-xs text-slate-900 dark:text-white font-medium focus:outline-none focus:ring-2 focus:ring-rose-500"
               >
-                {DISPUTE_CATEGORIES.map(cat => (
+                {(isInTransit
+                  ? DISPUTE_CATEGORIES.filter(cat => ['ITEM_NOT_RECEIVED', 'OTHER'].includes(cat.value))
+                  : DISPUTE_CATEGORIES
+                ).map(cat => (
                   <option key={cat.value} value={cat.value}>{cat.label}</option>
                 ))}
               </select>
@@ -3851,10 +3901,17 @@ export default function DashboardView() {
                         <div className="text-xs font-bold text-gray-900 dark:text-slate-100 mt-0.5">GHS {Number(txn.total_amount_ghs).toFixed(2)}</div>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
-                        <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.color}`}>
-                          <Icon className="mr-1 h-3 w-3" />
-                          {cfg.label}
-                        </span>
+                        {txn.status === 'REFUNDED' && (txn.is_partial_refund || (txn.buyer_refund_amount_ghs && txn.buyer_refund_amount_ghs < txn.total_amount_ghs)) ? (
+                          <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-semibold bg-amber-50 dark:bg-amber-950/50 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800">
+                            <Icon className="mr-1 h-3 w-3" />
+                            Partially Refunded
+                          </span>
+                        ) : (
+                          <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.color}`}>
+                            <Icon className="mr-1 h-3 w-3" />
+                            {cfg.label}
+                          </span>
+                        )}
                         {txn.status === 'PAYMENT_RECEIVED' && (
                           (() => {
                             const createdAt = new Date(txn.created_at).getTime();
@@ -4331,9 +4388,13 @@ export default function DashboardView() {
                   <div className="flex justify-between items-center border-b border-gray-200 dark:border-slate-700/80 pb-2">
                     <span className="font-bold text-gray-700 dark:text-slate-200">Order Status:</span>
                     <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold ${
-                      STATUS_CONFIG[selectedTxn.status]?.bg || 'bg-gray-100 dark:bg-slate-800'
-                    } ${STATUS_CONFIG[selectedTxn.status]?.color || 'text-gray-800 dark:text-slate-200'}`}>
-                      {STATUS_CONFIG[selectedTxn.status]?.label || selectedTxn.status}
+                      selectedTxn.status === 'REFUNDED' && (selectedTxn.is_partial_refund || (selectedTxn.buyer_refund_amount_ghs && selectedTxn.buyer_refund_amount_ghs < selectedTxn.total_amount_ghs))
+                        ? 'bg-amber-100 dark:bg-amber-950/70 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                        : `${STATUS_CONFIG[selectedTxn.status]?.bg || 'bg-gray-100 dark:bg-slate-800'} ${STATUS_CONFIG[selectedTxn.status]?.color || 'text-gray-800 dark:text-slate-200'}`
+                    }`}>
+                      {selectedTxn.status === 'REFUNDED' && (selectedTxn.is_partial_refund || (selectedTxn.buyer_refund_amount_ghs && selectedTxn.buyer_refund_amount_ghs < selectedTxn.total_amount_ghs))
+                        ? 'Partially Refunded'
+                        : (STATUS_CONFIG[selectedTxn.status]?.label || selectedTxn.status)}
                     </span>
                   </div>
                   <div className="grid grid-cols-2 gap-2 text-[11px] text-gray-500 dark:text-slate-400 pt-1 font-mono">
@@ -4368,12 +4429,32 @@ export default function DashboardView() {
 
                     {selectedTxn.status === 'REFUNDED' && (
                       <div className="space-y-1.5 text-xs text-red-900 dark:text-red-200">
-                        <p className="font-semibold">
-                          • Dispute Settlement: Payouts executed per arbitration ruling within 24 hours.
-                        </p>
-                        <p className="text-[11px] text-red-700 dark:text-red-300">
-                          • Buyer refund amounts are processed directly to their original payment method (Paystack MoMo/Card).
-                        </p>
+                        {selectedTxn.is_partial_refund || (selectedTxn.buyer_refund_amount_ghs && selectedTxn.buyer_refund_amount_ghs < selectedTxn.total_amount_ghs) ? (
+                          <>
+                            <div className="flex flex-wrap items-center gap-2 mb-1">
+                              <span className="font-mono font-bold text-teal-800 dark:text-teal-300 bg-teal-100 dark:bg-teal-950/70 border border-teal-200 dark:border-teal-800 px-2.5 py-1 rounded-lg text-xs">
+                                Buyer Refund: GHS {Number(selectedTxn.buyer_refund_amount_ghs || 0).toFixed(2)}
+                              </span>
+                              {selectedTxn.seller_payout_amount_ghs !== undefined && selectedTxn.seller_payout_amount_ghs !== null && (
+                                <span className="font-mono font-bold text-blue-800 dark:text-blue-300 bg-blue-100 dark:bg-blue-950/70 border border-blue-200 dark:border-blue-800 px-2.5 py-1 rounded-lg text-xs">
+                                  Your Payout: GHS {Number(selectedTxn.seller_payout_amount_ghs).toFixed(2)}
+                                </span>
+                              )}
+                            </div>
+                            <p className="font-semibold text-amber-800 dark:text-amber-300">
+                              • Dispute Partial Settlement: Split resolution executed. The buyer was refunded and your payout portion was credited to your internal wallet.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <p className="font-semibold">
+                              • Dispute Settlement: Payouts executed per arbitration ruling within 24 hours.
+                            </p>
+                            <p className="text-[11px] text-red-700 dark:text-red-300">
+                              • Buyer refund amounts are processed directly to their original payment method (Paystack MoMo/Card).
+                            </p>
+                          </>
+                        )}
                       </div>
                     )}
 
