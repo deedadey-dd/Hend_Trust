@@ -6,7 +6,7 @@ import { apiClient } from '../api/client';
 import { 
   Shield, LayoutDashboard, Link2, LogIn, UserPlus, LogOut, Menu, X, Wallet, MapPin, Truck,
   Store, Sun, Moon, Laptop, HelpCircle, Phone, Code, ChevronDown, Settings, Scale,
-  ShieldCheck, BookOpen, Sparkles, Gift, ArrowRight, ShoppingBag, Terminal, CheckCircle2,
+  ShieldCheck, BookOpen, Sparkles, Gift, ArrowRight, ShoppingBag, Terminal,
   Star, Bell
 } from 'lucide-react';
 import TrackingModal from './TrackingModal';
