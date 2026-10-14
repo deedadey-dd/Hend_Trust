@@ -4,7 +4,7 @@ import { useAuthStore } from '../store/authStore';
 import { useThemeStore } from '../store/themeStore';
 import { apiClient } from '../api/client';
 import { 
-  Shield, LayoutDashboard, Link2, LogIn, UserPlus, LogOut, Menu, X, Wallet, MapPin, 
+  Shield, LayoutDashboard, Link2, LogIn, UserPlus, LogOut, Menu, X, Wallet, MapPin, Truck,
   Store, Sun, Moon, Laptop, HelpCircle, Phone, Code, ChevronDown, Settings, Scale,
   ShieldCheck, BookOpen, Sparkles, Gift, ArrowRight, ShoppingBag, Terminal, CheckCircle2,
   Star, Bell
@@ -14,9 +14,12 @@ import TermsModal from './TermsModal';
 import NotificationDropdown from './NotificationDropdown';
 import logoWhite from '../assets/hendaxis_trust_logo_white.svg';
 import logoBlack from '../assets/hendaxis_trust_logo_black.svg';
+import { getRoleDetails, isStaffUser } from '../utils/roleUtils';
 
 export default function Navbar() {
   const { isAuthenticated, user, logout } = useAuthStore();
+  const roleDetails = getRoleDetails(user);
+  const isStaff = isStaffUser(user);
   const { theme, setTheme } = useThemeStore();
   const navigate = useNavigate();
   const location = useLocation();
@@ -121,6 +124,37 @@ export default function Navbar() {
     };
   }, [location.pathname]);
 
+  // Prevent background body scroll when mobile navigation drawer is open
+  useEffect(() => {
+    if (menuOpen) {
+      const originalOverflow = document.body.style.overflow;
+      document.body.style.overflow = 'hidden';
+      return () => {
+        document.body.style.overflow = originalOverflow;
+      };
+    }
+  }, [menuOpen]);
+
+  // Close mobile drawer on desktop resize or Escape key press
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth >= 768 && menuOpen) {
+        setMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && menuOpen) {
+        setMenuOpen(false);
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [menuOpen]);
+
   // Hide navbar on public checkout pages
   if (location.pathname.startsWith('/l/')) return null;
 
@@ -166,7 +200,7 @@ export default function Navbar() {
 
   return (
     <>
-      <header className="sticky top-0 z-40 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800/80 shadow-sm text-slate-900 dark:text-white transition-colors">
+      <header className="sticky top-0 z-50 bg-white/95 dark:bg-slate-950/95 backdrop-blur-md border-b border-slate-200 dark:border-slate-800/80 shadow-sm text-slate-900 dark:text-white transition-colors">
         <div className="max-w-6xl mx-auto px-4 sm:px-6">
           <div className="flex items-center justify-between h-16">
 
@@ -258,16 +292,45 @@ export default function Navbar() {
                         <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-800 sticky top-0 bg-white/95 dark:bg-slate-900/95 backdrop-blur-md z-10">
                           <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{user?.name || user?.username}</p>
                           <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
-                          <div className="mt-1.5 inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-blue-50 dark:bg-[#0363ff]/10 border border-blue-200 dark:border-[#0363ff]/20 text-[10px] font-extrabold text-[#0363ff] dark:text-blue-400 uppercase tracking-wider">
-                            <CheckCircle2 className="h-3 w-3 text-[#0363ff]" />
-                            {user?.role || 'SELLER'}
+                          <div className={`mt-1.5 inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md border text-[10px] font-extrabold uppercase tracking-wider ${roleDetails.badgeClass}`}>
+                            <Shield className="h-3 w-3" />
+                            {roleDetails.label}
                           </div>
+                        </div>
+
+                        {/* Prominent Track Order Status Action Card */}
+                        <div className="p-2 border-b border-slate-100 dark:border-slate-800 bg-gradient-to-r from-blue-50/70 via-indigo-50/40 to-blue-50/70 dark:from-blue-950/30 dark:via-indigo-950/20 dark:to-blue-950/30">
+                          <button
+                            type="button"
+                            onClick={() => { setShowTrackModal(true); setUserMenuOpen(false); }}
+                            className="w-full flex items-center justify-between p-2.5 rounded-xl bg-white dark:bg-slate-800/90 border border-blue-200 dark:border-blue-700/50 hover:border-blue-400 dark:hover:border-blue-400 hover:bg-blue-50/60 dark:hover:bg-slate-800 text-slate-900 dark:text-white transition-all shadow-xs group cursor-pointer text-left"
+                          >
+                            <div className="flex items-center gap-2.5 min-w-0">
+                              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-sm shadow-blue-500/25 group-hover:scale-105 transition-transform shrink-0">
+                                <Truck className="h-4 w-4" />
+                              </div>
+                              <div className="min-w-0">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-xs font-extrabold text-blue-900 dark:text-blue-100 truncate">Track Order Status</span>
+                                  <span className="flex h-2 w-2 relative shrink-0">
+                                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                                    <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                                  </span>
+                                </div>
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">Instant courier & escrow lookup</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-1 text-[11px] font-bold text-blue-600 dark:text-blue-400 group-hover:translate-x-0.5 transition-transform shrink-0 ml-1">
+                              <span>Track</span>
+                              <ArrowRight className="h-3 w-3" />
+                            </div>
+                          </button>
                         </div>
 
                         {/* Section 1: Workspace & Settings */}
                         <div className="py-1 px-1 space-y-0.5">
                           <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 py-1">
-                            {user?.role === 'BUYER' ? 'Buyer Hub' : 'Workspace'}
+                            {user?.role === 'BUYER' ? 'Buyer Hub' : isStaff ? 'Staff Portal' : 'Workspace'}
                           </p>
                           
                           {user?.role === 'BUYER' && (
@@ -299,14 +362,14 @@ export default function Navbar() {
                             </>
                           )}
 
-                          {(user?.role === 'ADMIN' || user?.role === 'SUPPORT_AGENT' || user?.role === 'MANAGER') && (
+                          {isStaff && (
                             <Link
                               to="/admin-portal/dashboard"
                               onClick={() => setUserMenuOpen(false)}
                               className="flex items-center gap-2.5 px-3 py-2 rounded-xl text-xs font-semibold text-[#ff6d1d] hover:bg-orange-50 dark:hover:bg-orange-950/30 transition-colors"
                             >
                               <Shield className="h-4 w-4 text-[#ff6d1d]" />
-                              Manager Portal
+                              {roleDetails.portalTitle || 'Staff Portal'}
                             </Link>
                           )}
 
@@ -372,10 +435,15 @@ export default function Navbar() {
                           <button
                             type="button"
                             onClick={() => { setShowTrackModal(true); setUserMenuOpen(false); }}
-                            className="w-full flex items-center gap-2.5 px-3 py-1.5 rounded-xl text-xs font-medium hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-700 dark:text-slate-200 hover:text-slate-900 dark:hover:text-white transition-colors text-left cursor-pointer"
+                            className="w-full flex items-center justify-between px-3 py-1.5 rounded-xl text-xs font-semibold text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-950/30 transition-colors text-left cursor-pointer"
                           >
-                            <MapPin className="h-4 w-4 text-slate-500" />
-                            Track Order Status
+                            <span className="flex items-center gap-2.5">
+                              <MapPin className="h-4 w-4 text-blue-500" />
+                              Track Order Status
+                            </span>
+                            <span className="text-[9px] uppercase font-extrabold bg-blue-100 dark:bg-blue-900/50 text-blue-700 dark:text-blue-300 px-1.5 py-0.5 rounded">
+                              Live
+                            </span>
                           </button>
 
                           <button
@@ -670,10 +738,15 @@ export default function Navbar() {
             </button>
           </div>
         </div>
+      </header>
 
-        {/* Mobile Drawer Menu */}
-        {menuOpen && (
-          <div className="md:hidden border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950 px-4 py-5 space-y-4 shadow-2xl text-slate-900 dark:text-white animate-in slide-in-from-top-2 duration-150 max-h-[calc(100vh-4.5rem)] overflow-y-auto overscroll-contain custom-scrollbar">
+      {/* Mobile Drawer Menu (Outside header to prevent containing block trapping and layout shift) */}
+      {menuOpen && (
+        <div 
+          id="mobile-nav-drawer"
+          className="md:hidden fixed inset-x-0 top-16 bottom-0 z-40 bg-white dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 shadow-2xl text-slate-900 dark:text-white mobile-menu-drawer overflow-y-auto overscroll-contain custom-scrollbar animate-in slide-in-from-top-2 duration-150"
+        >
+          <div className="px-4 py-5 space-y-4 pb-[max(7.5rem,calc(env(safe-area-inset-bottom,0px)+6.5rem))]">
             {/* Mobile Theme Switcher Bar */}
             <div className="flex items-center justify-between p-2.5 rounded-xl bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 mb-2">
               <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Theme Preference:</span>
@@ -699,6 +772,34 @@ export default function Navbar() {
                   );
                 })}
               </div>
+            </div>
+
+            {/* Mobile Prominent Track Order Card */}
+            <div className="p-3 rounded-2xl bg-gradient-to-r from-blue-600/10 via-indigo-600/10 to-blue-600/10 dark:from-blue-500/15 dark:via-indigo-500/15 dark:to-blue-500/15 border border-blue-500/25 dark:border-blue-500/35 shadow-xs">
+              <button
+                type="button"
+                onClick={() => { setShowTrackModal(true); setMenuOpen(false); }}
+                className="w-full flex items-center justify-between text-left cursor-pointer group"
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-10 h-10 rounded-xl bg-blue-600 text-white flex items-center justify-center shadow-md shadow-blue-500/30 group-hover:scale-105 transition-transform shrink-0">
+                    <Truck className="h-5 w-5" />
+                  </div>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-1.5">
+                      <p className="text-xs font-extrabold text-slate-900 dark:text-white truncate">Track Order Status</p>
+                      <span className="flex h-2 w-2 relative shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                      </span>
+                    </div>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">Real-time courier & escrow delivery lookup</p>
+                  </div>
+                </div>
+                <span className="px-2.5 py-1.5 rounded-xl bg-blue-600 text-white text-[11px] font-extrabold flex items-center gap-1 shadow-sm shrink-0 ml-1">
+                  Track <ArrowRight className="h-3 w-3" />
+                </span>
+              </button>
             </div>
 
             {isAuthenticated ? (
@@ -732,15 +833,21 @@ export default function Navbar() {
                   {navLink('/guides', 'Safety & Scam Prevention', <BookOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />)}
                   {navLink('/developers', 'Developer APIs & SDK', <Code className="h-4 w-4 text-slate-600 dark:text-slate-400" />)}
                   <button
+                    type="button"
                     onClick={() => { setShowTrackModal(true); setMenuOpen(false); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/70 dark:border-blue-900/40 hover:bg-blue-100/80 dark:hover:bg-blue-900/40 transition-colors cursor-pointer text-left"
                   >
-                    <MapPin className="h-4 w-4 text-slate-500" />
-                    Track Order Status
+                    <span className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-blue-500" />
+                      Track Order Status
+                    </span>
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-600 text-white">
+                      Lookup
+                    </span>
                   </button>
                   {navLink('/help', 'Platform Help & FAQ', <HelpCircle className="h-4 w-4 text-slate-500" />)}
-                  {(user?.role === 'ADMIN' || user?.role === 'SUPPORT_AGENT' || user?.role === 'MANAGER') &&
-                    navLink('/admin-portal/dashboard', 'Manager Portal', <Shield className="h-4 w-4 text-[#ff6d1d]" />)
+                  {isStaff &&
+                    navLink('/admin-portal/dashboard', roleDetails.portalTitle || 'Staff Portal', <Shield className="h-4 w-4 text-[#ff6d1d]" />)
                   }
                 </div>
 
@@ -763,17 +870,28 @@ export default function Navbar() {
                   )}
                 </div>
 
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-800">
-                  <div className="px-3 mb-2">
-                    <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{user?.name || user?.username}</p>
-                    <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
+                {/* Account Profile Card & Logout Button */}
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center gap-3 p-3 rounded-2xl bg-slate-100/80 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 mb-2.5 shadow-sm">
+                    <div className="w-10 h-10 rounded-xl bg-[#0363ff] !text-white flex items-center justify-center font-black text-sm shadow-md shrink-0">
+                      {(user?.name || user?.username || 'U')[0].toUpperCase()}
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2">
+                        <p className="text-xs font-bold text-slate-900 dark:text-white truncate">{user?.name || user?.username}</p>
+                        <span className={`text-[10px] font-extrabold uppercase px-2 py-0.5 rounded-md border ${roleDetails.badgeClass}`}>
+                          {roleDetails.label}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">{user?.email}</p>
+                    </div>
                   </div>
                   <button
                     onClick={handleLogout}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 transition-colors cursor-pointer"
+                    className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 border border-rose-200 dark:border-rose-900/40 bg-rose-50/50 dark:bg-rose-950/20 transition-colors cursor-pointer shadow-sm"
                   >
                     <LogOut className="h-4 w-4 text-rose-500" />
-                    Logout
+                    <span>Log Out</span>
                   </button>
                 </div>
               </>
@@ -794,17 +912,23 @@ export default function Navbar() {
                   {navLink('/guides', 'Safety & Scam Prevention', <BookOpen className="h-4 w-4 text-blue-500" />)}
                   {navLink('/referrals', 'Refer & Earn Rewards', <Gift className="h-4 w-4 text-[#ff6d1d]" />)}
                   <button
+                    type="button"
                     onClick={() => { setShowTrackModal(true); setMenuOpen(false); }}
-                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors cursor-pointer"
+                    className="w-full flex items-center justify-between px-3 py-2 rounded-xl text-xs font-bold text-blue-600 dark:text-blue-400 bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/70 dark:border-blue-900/40 hover:bg-blue-100/80 dark:hover:bg-blue-900/40 transition-colors cursor-pointer text-left"
                   >
-                    <MapPin className="h-4 w-4 text-slate-500" />
-                    Track Order Status
+                    <span className="flex items-center gap-2">
+                      <MapPin className="h-4 w-4 text-blue-500" />
+                      Track Order Status
+                    </span>
+                    <span className="text-[10px] font-extrabold px-1.5 py-0.5 rounded bg-blue-600 text-white">
+                      Lookup
+                    </span>
                   </button>
                   {navLink('/help', 'Platform Help & FAQ', <HelpCircle className="h-4 w-4 text-slate-500" />)}
                   {navLink('/contact', 'Contact Support', <Phone className="h-4 w-4 text-slate-500" />)}
                 </div>
 
-                <div className="pt-2 border-t border-slate-200 dark:border-slate-800 space-y-2">
+                <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-2">
                   {navLink('/login', 'Log In to Account', <LogIn className="h-4 w-4" />)}
                   <Link
                     to="/register"
@@ -818,8 +942,8 @@ export default function Navbar() {
               </div>
             )}
           </div>
-        )}
-      </header>
+        </div>
+      )}
 
       {/* Global Tracking Modal */}
       {showTrackModal && (

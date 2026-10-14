@@ -127,6 +127,18 @@
     scrollbar-color: rgba(148, 163, 184, 0.4) transparent;
   }
 
+  /* Mobile Navigation Menu Drawer */
+  .mobile-menu-drawer {
+    height: calc(100vh - 4rem);
+    height: calc(100svh - 4rem);
+    height: calc(100dvh - 4rem);
+    max-height: calc(100vh - 4rem);
+    max-height: calc(100svh - 4rem);
+    max-height: calc(100dvh - 4rem);
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
   /* Comprehensive Dark Mode Rules for All Pages, Cards, Tables & Modals */
   html.dark body {
     background-color: #020617 !important;

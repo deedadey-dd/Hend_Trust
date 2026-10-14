@@ -7,6 +7,7 @@ import UnverifiedEmailBanner from './components/UnverifiedEmailBanner';
 import ErrorBoundary from './components/ErrorBoundary';
 import { initSentry } from './utils/sentry';
 import { useAuthStore } from './store/authStore';
+import { isStaffUser } from './utils/roleUtils';
 
 // Initialize frontend Sentry observability stub
 initSentry();
@@ -71,7 +72,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
           const data = res.data;
           login('', {
             id: data.id,
-            role: data.role || 'SELLER',
+            role: data.role || (data.is_staff || data.is_superuser ? 'ADMIN' : 'SELLER'),
             email: data.email || '',
             name: data.username || data.first_name,
             username: data.username,
@@ -107,7 +108,7 @@ function ProtectedRoute({ children }: { children: React.ReactNode }) {
 
 function App() {
   const { isAuthenticated, user } = useAuthStore();
-  const isAdminOrAgent = user?.role === 'ADMIN' || user?.role === 'SUPPORT_AGENT' || user?.role === 'MANAGER';
+  const isStaff = isStaffUser(user);
   
   return (
     <ErrorBoundary>
@@ -120,7 +121,7 @@ function App() {
             {/* Public */}
             <Route path="/" element={
               isAuthenticated 
-                ? (isAdminOrAgent ? <Navigate to="/admin-portal/dashboard" replace /> : <Navigate to="/dashboard" replace />) 
+                ? (isStaff ? <Navigate to="/admin-portal/dashboard" replace /> : <Navigate to="/dashboard" replace />) 
                 : <HomeView />
             } />
             <Route path="/login" element={<LoginView />} />
