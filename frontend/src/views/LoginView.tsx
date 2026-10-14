@@ -3,6 +3,7 @@ import { useNavigate, Link, useSearchParams } from 'react-router-dom';
 import { ShieldCheck, User, Lock, Loader2, LogOut } from 'lucide-react';
 import { apiClient, getErrorMessage } from '../api/client';
 import { useAuthStore } from '../store/authStore';
+import { isStaffUser } from '../utils/roleUtils';
 
 // Ensure cookies are sent with requests
 apiClient.defaults.withCredentials = true;
@@ -73,7 +74,7 @@ export default function LoginView() {
         is_superuser: Boolean(is_superuser),
         is_staff: Boolean(is_staff)
       });
-      if (role === 'ADMIN' || role === 'SUPPORT_AGENT' || is_staff || is_superuser) {
+      if (isStaffUser({ role, is_staff, is_superuser })) {
         navigate('/admin-portal/dashboard');
       } else {
         navigate('/dashboard');

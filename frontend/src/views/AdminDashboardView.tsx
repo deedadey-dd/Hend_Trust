@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  BarChart3, Package, ShieldAlert, Users, PhoneCall, Send, Search, Filter, 
+  BarChart3, Package, Shield, ShieldAlert, Users, PhoneCall, Send, Search, Filter, 
   TrendingUp, DollarSign, Lock, Eye, X, Zap, Clock,
   RefreshCw, Layers, CheckCircle2, UserCheck, FileCheck, ShieldCheck, Store,
   Coins, UserPlus, Scale, History, UserCog, Gift, Menu, ChevronLeft, ChevronRight,
@@ -40,6 +40,7 @@ import { AdminArbiterPayouts } from '../components/AdminArbiterPayouts';
 import { AdminPromotionsManager } from '../components/AdminPromotionsManager';
 import { useEscapeKey } from '../utils/useEscapeKey';
 import { useModal } from '../context/ModalContext';
+import { getRoleDetails } from '../utils/roleUtils';
 
 const adminTxnExportHeaders: ExportColumn[] = [
   { label: 'Transaction ID', key: 'id' },
@@ -253,13 +254,14 @@ interface PlatformSettings {
 export const AdminDashboardView: React.FC = () => {
   const modal = useModal();
   const { user } = useAuthStore();
+  const roleDetails = getRoleDetails(user);
   const isSuperUser = Boolean(user?.is_superuser);
-  const userRole = user?.role || 'ADMIN';
-  const isAdminManager = isSuperUser || userRole === 'ADMIN';
-  const isArbiter = isSuperUser || userRole === 'ARBITER' || userRole === 'ADMIN';
-  const isCompliance = isSuperUser || userRole === 'COMPLIANCE_OFFICER' || userRole === 'ADMIN';
-  const isFinance = isSuperUser || userRole === 'FINANCE_ADMIN' || userRole === 'ADMIN';
-  const isSupport = isSuperUser || userRole === 'SUPPORT_AGENT' || userRole === 'ADMIN';
+  const userRole = (user?.role || (isSuperUser ? 'ADMIN' : roleDetails.key)).toUpperCase();
+  const isAdminManager = isSuperUser || userRole === 'ADMIN' || userRole === 'MANAGER';
+  const isArbiter = isSuperUser || userRole === 'ARBITER' || isAdminManager;
+  const isCompliance = isSuperUser || userRole === 'COMPLIANCE_OFFICER' || isAdminManager;
+  const isFinance = isSuperUser || userRole === 'FINANCE_ADMIN' || isAdminManager;
+  const isSupport = isSuperUser || userRole === 'SUPPORT_AGENT' || isAdminManager;
 
   useEffect(() => {
     if (user && user.is_superuser === undefined) {
@@ -267,7 +269,7 @@ export const AdminDashboardView: React.FC = () => {
         const data = res.data;
         useAuthStore.getState().login(useAuthStore.getState().token || '', {
           id: data.id,
-          role: data.role || 'SELLER',
+          role: data.role || user?.role || (data.is_staff || data.is_superuser ? 'ADMIN' : 'SELLER'),
           email: data.email || '',
           name: data.username || data.first_name,
           username: data.username,
@@ -1193,18 +1195,34 @@ export const AdminDashboardView: React.FC = () => {
 
             <div>
               <div className="flex items-center gap-2">
-                <span className="bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-500/20 text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
-                  Platform Operations
+                <span className={`inline-flex items-center gap-1 text-[10px] sm:text-xs font-extrabold px-2.5 py-0.5 rounded-full border uppercase tracking-wider ${roleDetails.badgeClass}`}>
+                  <Shield className="h-3 w-3" />
+                  {roleDetails.label}
                 </span>
-                <span className="text-slate-400 text-xs hidden sm:inline">Manager Portal</span>
+                <span className="text-slate-400 text-xs hidden sm:inline">{roleDetails.portalTitle}</span>
               </div>
               <h1 className="text-base sm:text-xl font-extrabold text-slate-900 dark:text-white tracking-tight">
-                HendAxis Trust <span className="text-blue-600 dark:text-blue-400">Admin</span>
+                HendAxis Trust <span className="text-blue-600 dark:text-blue-400">{roleDetails.shortLabel}</span>
               </h1>
             </div>
           </div>
 
           <div className="flex items-center gap-2 sm:gap-3">
+            {/* Logged in Staff Identity Card */}
+            <div className="hidden sm:flex items-center gap-2.5 pl-2 pr-2 border-r border-slate-200 dark:border-slate-800">
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
+                {(user?.name || user?.username || 'S')[0].toUpperCase()}
+              </div>
+              <div className="text-left leading-tight hidden md:block">
+                <p className="text-xs font-bold text-slate-900 dark:text-white truncate max-w-[130px]">
+                  {user?.name || user?.username || 'Staff'}
+                </p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate font-semibold">
+                  {roleDetails.label}
+                </p>
+              </div>
+            </div>
+
             <NotificationDropdown />
 
             <button 
@@ -1312,17 +1330,18 @@ export const AdminDashboardView: React.FC = () => {
           {/* User profile / session footer in sidebar */}
           <div className="p-3 border-t border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-950/50">
             <div className={`flex items-center gap-2.5 ${isSidebarCollapsed ? 'justify-center' : ''}`}>
-              <div className="w-8 h-8 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0">
-                {user?.name?.[0]?.toUpperCase() || user?.username?.[0]?.toUpperCase() || 'A'}
+              <div className="w-8 h-8 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-xs shrink-0 shadow-sm">
+                {(user?.name || user?.username || 'S')[0].toUpperCase()}
               </div>
               {!isSidebarCollapsed && (
                 <div className="min-w-0 flex-1">
                   <p className="text-xs font-bold text-slate-900 dark:text-white truncate">
-                    {user?.name || user?.username || 'Administrator'}
+                    {user?.name || user?.username || 'Staff Member'}
                   </p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400 truncate uppercase font-mono">
-                    {userRole}
-                  </p>
+                  <span className={`inline-flex items-center gap-1 text-[9px] font-extrabold px-1.5 py-0.5 rounded-md border mt-0.5 ${roleDetails.badgeClass}`}>
+                    <Shield className="h-2.5 w-2.5" />
+                    {roleDetails.label}
+                  </span>
                 </div>
               )}
             </div>
