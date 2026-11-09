@@ -49,14 +49,14 @@ export const TrustCenterView: React.FC = () => {
             </div>
             <div className="space-y-1.5">
               <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                1. Double-Entry Escrow Ledger & 100% Solvency
+                1. Dedicated Escrow Custody & 100% Solvency
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Every Ghana Cedi deposited into HendAxis Trust is logged in an immutable, dual-entry accounting ledger (Assets = Liabilities + Revenue). We never pool, lend, or invest escrow balances. Buyer funds remain 100% backed in regulated bank custody accounts at all times.
+                Every Ghana Cedi deposited into HendAxis Trust is tracked in a dedicated escrow trust account. We never pool, lend, or invest customer escrow balances. Buyer funds remain 100% backed in regulated bank custody accounts at all times.
               </p>
             </div>
             <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-              ✓ Automated Daily Reconciliation • Zero Fractional Reserves • Instant Payout Liquidity
+              ✓ Daily Balance Verification • 100% Reserved Funds • Instant Payout Liquidity
             </div>
           </div>
 
@@ -103,14 +103,14 @@ export const TrustCenterView: React.FC = () => {
             </div>
             <div className="space-y-1.5">
               <h3 className="text-lg font-extrabold text-slate-900 dark:text-white">
-                4. 24-Hour Dispute Resolution SLA
+                4. 24-Hour Dispute Resolution Guarantee
               </h3>
               <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                Disputes are never left unresolved. When a buyer freezes a transaction, our certified arbitration desk reviews unboxing videos, waybill receipts, and chat logs to issue a fair, binding ruling within 24 hours. Refunds are disbursed automatically.
+                Disputes are never left unresolved. When a buyer freezes a transaction, both parties can submit unboxing videos, waybill receipts, and messages. HendAxis relies on those evidences and the transaction details to make a determination on the outcome of a dispute within 24 hours.
               </p>
             </div>
             <div className="bg-slate-50 dark:bg-slate-950 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-              ✓ 24-Hour Turnaround • Multi-Arbiter Audit Trail • Full Photo Evidence Review
+              ✓ 24-Hour Turnaround • Evidence & Transaction Review • Automated Disbursal
             </div>
           </div>
         </div>

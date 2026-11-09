@@ -102,7 +102,7 @@ export const ForSellersView: React.FC = () => {
             },
             {
               title: "Fair Multi-Arbiter Dispute Defense",
-              desc: "Protected from fraudulent buyer claims. Our certified dispute arbiters review dispatch receipts, delivery logs, and photo evidence before any ruling is made.",
+              desc: "Protected from fraudulent buyer claims. Both parties submit dispatch receipts, delivery logs, and photo evidence—HendAxis relies on those evidences and the transaction details to make a determination on the outcome of a dispute.",
               icon: Layers,
               color: "text-[#0363ff] bg-blue-500/10 border-blue-500/20",
             },
@@ -174,10 +174,10 @@ export const ForSellersView: React.FC = () => {
                 3
               </span>
               <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">
-                Ship & Get Instant Payout
+                Click Dispatch & Ship
               </h4>
               <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
-                Receive SMS alert confirming locked funds. Dispatch the parcel. Buyer confirms delivery OTP and funds hit your wallet.
+                Receive SMS alert confirming locked funds. Click 'Dispatch' on HendAxis first before handing the parcel to your courier or bus driver. Buyer confirms delivery OTP and funds hit your wallet.
               </p>
             </div>
           </div>

@@ -96,14 +96,14 @@ export const HowItWorksView: React.FC = () => {
                 {
                   step: "2",
                   title: "2. Buyer Deposits Funds into Escrow",
-                  desc: "The buyer pays via MTN Mobile Money, Telecel Cash, or Visa/Mastercard. Funds are immediately locked in our double-entry escrow vault. The seller cannot withdraw these funds yet.",
+                  desc: "The buyer pays via MTN Mobile Money, Telecel Cash, or Visa/Mastercard. Funds are immediately locked in our protected escrow trust account. The seller cannot withdraw these funds yet.",
                   icon: Lock,
                   color: "bg-[#ff6d1d] text-white",
                 },
                 {
                   step: "3",
-                  title: "3. Dispatched with Live Tracking",
-                  desc: "The seller receives an automated SMS confirming full payment custody and ships the package via courier (DHL, Speedaf, FeDEx) or intercity bus (VIP, STC, OA). Waybill photos and driver details are logged.",
+                  title: "3. Click Dispatch & Ship with Live Tracking",
+                  desc: "The seller receives an automated SMS confirming full payment custody, clicks 'Dispatch' on HendAxis first with the waybill photo or driver details, and then hands the package over to the courier (DHL, Speedaf, FedEx) or intercity bus (VIP, STC, OA).",
                   icon: Truck,
                   color: "bg-slate-800 dark:bg-slate-700 text-white",
                 },
@@ -164,7 +164,7 @@ export const HowItWorksView: React.FC = () => {
                 {
                   step: "2",
                   title: "2. Evidence Upload on Unified Dialogue Timeline",
-                  desc: "Both parties upload photos, unboxing videos, courier receipts, and chat on an immutable timestamped timeline visible to platform arbiters.",
+                  desc: "Both parties upload photos, unboxing videos, courier receipts, and statements on a shared chronological timeline. HendAxis relies on those evidences and the transaction details to make a determination on the outcome of a dispute.",
                   icon: Layers,
                   color: "bg-amber-500 text-white",
                 },
@@ -177,8 +177,8 @@ export const HowItWorksView: React.FC = () => {
                 },
                 {
                   step: "4",
-                  title: "4. Binding Multi-Arbiter Ruling within 24 Hours",
-                  desc: "An accredited dispute arbiter reviews all evidence and issues a binding settlement (100% Buyer Refund, Full Seller Payout, or Custom Split). Funds are disbursed within 24 hours.",
+                  title: "4. Binding Arbitration Ruling within 24 Hours",
+                  desc: "HendAxis relies on the submitted evidences and the transaction details to make a fair, binding determination on the outcome of a dispute (100% Buyer Refund, Full Seller Payout, or Custom Split). Funds are disbursed within 24 hours.",
                   icon: Scale,
                   color: "bg-emerald-500 text-white",
                 },

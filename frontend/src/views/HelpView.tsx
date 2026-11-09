@@ -90,7 +90,7 @@ export const HelpView: React.FC = () => {
       id: 'faq-2',
       category: 'BUYERS',
       question: 'Which payment methods can I use at checkout?',
-      answer: 'HendAxis Trust supports all major Ghanaian payment channels: Mobile Money (MTN MoMo, Telecel Cash, AT Money) and Debit/Credit Cards (Visa, Mastercard). Transactions are securely processed through leading payment engines including Paystack Multi-Channel, AppsNMobile (The Orchard API), and Hubtel Ghana PSP.'
+      answer: 'HendAxis Trust supports all major Ghanaian payment channels: Mobile Money (MTN MoMo, Telecel Cash, AT Money) and Debit/Credit Cards (Visa, Mastercard), securely processed through regulated Bank of Ghana licensed payment partners.'
     },
     {
       id: 'faq-3',
@@ -105,7 +105,7 @@ export const HelpView: React.FC = () => {
             </span>
             <span className="text-[10px] font-mono text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200/80 dark:border-emerald-800/80 px-2.5 py-0.5 rounded-full font-bold flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-              Admin Synchronized
+              Active Protection
             </span>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
@@ -149,14 +149,14 @@ export const HelpView: React.FC = () => {
     {
       id: 'faq-5b',
       category: 'BUYERS',
-      question: 'How does the Marketplace Search and Store Directory work?',
-      answer: 'The HendAxis Marketplace Directory (/shops) lets buyers discover verified escrow stores and search across hundreds of products using real-time keyword matching. You can filter by standard Ghanaian commerce categories (Phones, Electronics, Fashion, Auto Parts, etc.) and explore featured merchants alongside verified customer reviews.'
+      question: 'How does the Marketplace Search and Shop Directory work?',
+      answer: 'The HendAxis Marketplace Directory lets buyers discover verified shops and search across hundreds of products using real-time keyword matching. You can filter by standard Ghanaian commerce categories (Phones, Electronics, Fashion, Auto Parts, etc.) and explore featured merchants alongside verified customer reviews.'
     },
     {
       id: 'faq-5d',
       category: 'BUYERS',
       question: 'How do Order Cancellations, the 90-Minute Seller Grace Window, and Payout Holds work for buyers?',
-      answer: 'If an order has not been dispatched, you can click "Cancel Order" on your order page. To protect against items already in transit, the seller receives an immediate SMS alert with a 90-minute window to verify dispatch. If unconfirmed after 90 minutes, the cancellation is confirmed and enters a 90-minute safety buffer before final refund disbursement to your In-App Wallet or Mobile Money account (minus non-refundable escrow and 1.95% payment provider fees). Buyers are limited to 2 cancellations per month.'
+      answer: 'If an order has not been dispatched, you can click "Cancel Order" on your order page. To protect against items already in transit, the seller receives an immediate SMS alert with a 90-minute window to verify dispatch. If unconfirmed after 90 minutes, the cancellation is confirmed and enters a 90-minute safety buffer before final refund disbursement to your In-App Wallet or Mobile Money account (minus non-refundable platform escrow and applicable payment provider processing fees).'
     },
 
     // ─── SELLERS ────────────────────────────────────────────────────────────
@@ -170,37 +170,37 @@ export const HelpView: React.FC = () => {
       id: 'faq-6b',
       category: 'SELLERS',
       question: 'Why should I select a category when creating a payment link?',
-      answer: 'Selecting one of our standard marketplace categories (e.g. Phones & Tablets, Electronics & Appliances, Fashion & Apparel, Automotive & Spare Parts) categorizes your product in the public Marketplace Directory (/shops). This enables active buyers searching for specific items to discover your store and product listings instantly.'
+      answer: 'Selecting one of our standard marketplace categories (e.g. Phones & Tablets, Electronics & Appliances, Fashion & Apparel, Automotive & Spare Parts) categorizes your product in the public Marketplace Directory. This enables active buyers searching for specific items to discover your shop and product listings instantly.'
     },
     {
       id: 'faq-6c',
       category: 'SELLERS',
       question: 'How does the 1-Click WhatsApp Escrow Link Generator work for sellers?',
-      answer: 'When buyers message you on WhatsApp from your public storefront, they send a link that opens your HendAxis link creation view (/create-link) with the item title, price, category, and image URL already pre-filled. All you need to do is agree on the shipping destination with the customer, enter the shipping amount, and click Generate to create the secure escrow payment link.'
+      answer: 'When buyers message you on WhatsApp from your public storefront, they send a link that opens your HendAxis link creation page with the item title, price, category, and product photo already pre-filled. All you need to do is agree on the shipping destination with the customer, enter the shipping amount, and click Generate to create the secure escrow payment link.'
     },
     {
       id: 'faq-6d',
       category: 'SELLERS',
       question: 'What should I do if a buyer requests a cancellation?',
-      answer: 'You will receive an urgent SMS notification giving you a 90-minute window to respond on your dashboard. If you have not shipped, click "Accept Cancel" to allow the refund. If you already shipped or handed the parcel to a courier, click "I Already Shipped" and provide your waybill/tracking number to immediately halt the cancellation and keep the order active. If an order is auto-confirmed, you have a 90-minute safety hold to click "Report Shipped (Freeze)" with waybill evidence to freeze the payout for arbitration.'
+      answer: 'Always click "Dispatch" on HendAxis BEFORE handing an item over to a courier or bus driver so your order is immediately protected in transit. If a buyer requests a cancellation before you mark the order as dispatched, you will receive an urgent SMS notification giving you a 90-minute window to respond on your dashboard. If you have not shipped, click "Accept Cancel" to allow the refund. If you already handed the parcel to a courier, click "I Already Shipped" and provide your waybill/tracking number to immediately halt the cancellation and keep the order active. If an order is auto-confirmed, you have a 90-minute safety hold to click "Report Shipped (Freeze)" with waybill evidence to freeze the payout for review.'
     },
     {
       id: 'faq-7',
       category: 'SELLERS',
-      question: 'What is the Seller Dispatch Guarantee and what happens if I miss the deadline?',
-      answer: `Sellers must dispatch packages within the platform-configured dispatch window (currently: ${dispatchDays} days / ${dispatchDays * 24} hours). HendAxis Trust sends progressive reminders at 24 hours and 6 hours remaining. If a seller defaults and fails to dispatch on time, the order is automatically cancelled, the buyer receives a 100% full refund, and the defaulting seller is charged a non-dispatch penalty.`
+      question: 'What is the Seller Dispatch Guarantee and what happens if I miss the deadline or cancel an order?',
+      answer: `Sellers must dispatch packages within the platform dispatch window (currently: ${dispatchDays} days / ${dispatchDays * 24} hours) and must click "Dispatch" on HendAxis before handing the item over to a courier service. HendAxis Trust sends progressive reminders at 24 hours and 6 hours remaining. If a seller cancels an order or fails to dispatch on time, the buyer receives a 100% full refund and the seller incurs a cancellation penalty covering the platform and payment provider fees.`
     },
     {
       id: 'faq-8',
       category: 'SELLERS',
-      question: 'How do I get the official "Verified Seller 🛡️" badge for my storefront?',
-      answer: 'The Verified Seller badge is never awarded based on order volume alone. Sellers submit their Ghana Card / National ID number, a clear Ghana Card photo, and optional business registration license under Profile Settings. Our compliance team verifies the documents before approving the official Verified Seller badge.'
+      question: 'How do I get the official "Verified Seller 🛡️" badge for my shop?',
+      answer: 'The Verified Seller badge is never awarded based on order volume alone. Sellers submit their Ghana Card / National ID number, a clear Ghana Card photo, and optional business registration license under Profile Settings. Our verification team reviews the documents before approving the official Verified Seller badge.'
     },
     {
       id: 'faq-9',
       category: 'SELLERS',
       question: 'How does Seller Dispute Health Monitoring & Account Suspension work?',
-      answer: `HendAxis Trust monitors dispute rates across recent paid transactions. If a store reaches a ${disputeAlert}% dispute rate, a warning banner appears. At ${disputeWarning}%, a high-priority alert is issued. If disputes reach ${disputeSuspension}% or higher, the seller account is automatically suspended and active payment links are paused. Suspended sellers can submit a formal reinstatement appeal directly through their dashboard.`
+      answer: `HendAxis Trust monitors dispute rates across recent paid transactions. If a shop reaches a ${disputeAlert}% dispute rate, a warning banner appears. At ${disputeWarning}%, a high-priority alert is issued. If disputes reach ${disputeSuspension}% or higher, the seller account is automatically suspended and active payment links are paused. Suspended sellers can submit a formal reinstatement appeal directly through their dashboard.`
     },
     {
       id: 'faq-10',
@@ -212,7 +212,7 @@ export const HelpView: React.FC = () => {
       id: 'faq-11',
       category: 'SELLERS',
       question: 'What are Merchant Trust Badges and how do I embed them on Instagram or WhatsApp?',
-      answer: 'Sellers can access embeddable Trust Badges in their dashboard (`/dashboard?tab=badges`). You can copy your custom verified store badge code for your website/Shopify store, download branded trust seals, or generate a Shareable Proof Card to post directly on Instagram stories, WhatsApp statuses, and TikTok.'
+      answer: 'Sellers can access shareable Trust Badges directly in the Badges tab of their Seller Dashboard. You can copy your verified shop badge code for your website, download branded trust seals, or generate a Shareable Proof Card to post directly on Instagram stories, WhatsApp statuses, and TikTok.'
     },
 
     // ─── LOGISTICS ──────────────────────────────────────────────────────────
@@ -220,7 +220,7 @@ export const HelpView: React.FC = () => {
       id: 'faq-12',
       category: 'LOGISTICS',
       question: 'What is the difference between Formal Courier Delivery and Station / Bus Delivery?',
-      answer: 'Path A (Formal Courier) supports DHL Express, FedEx, UPS, EMS / Ghana Post, Speedaf Express, and local couriers with live tracking links and automated 17TRACK delivery webhooks. Path B (Informal Bus / Station) allows recording driver phone, vehicle number, and station location, generating a Secret 6-Digit OTP for the buyer to present upon collection.'
+      answer: 'Formal Courier Delivery supports DHL Express, FedEx, UPS, EMS / Ghana Post, Speedaf Express, and local couriers with live waybill tracking links and automated delivery updates. Station / Bus Delivery allows recording the driver phone number, vehicle registration, and station location, generating a Secret 6-Digit OTP for the buyer to present upon collection. Sellers are advised to click "Dispatch" on HendAxis before handing the item over to any courier or driver.'
     },
     {
       id: 'faq-12b',
@@ -240,7 +240,7 @@ export const HelpView: React.FC = () => {
       id: 'faq-14',
       category: 'DISPUTES',
       question: 'How do I raise a dispute if there is an issue with my order?',
-      answer: 'If your item arrives damaged, defective, or incorrect, click "Raise Dispute" on your tracking page before your inspection window expires. You can describe the issue and upload up to 5 WebP evidence photos. Our 24-hour arbitration team reviews all evidence to issue a fair, binding ruling.'
+      answer: 'If your item arrives damaged, defective, or incorrect, click "Raise Dispute" on your tracking page before your inspection window expires. You can describe the issue and upload up to 5 clear evidence photos. HendAxis relies on those evidences and the transaction details to make a determination on the outcome of a dispute within 24 hours.'
     },
     {
       id: 'faq-15',

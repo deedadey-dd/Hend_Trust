@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calculator, 
   ShieldCheck, 
@@ -6,6 +6,7 @@ import {
   Sparkles 
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { apiClient } from '../api/client';
 
 export const EscrowFeeCalculator: React.FC<{ 
   compact?: boolean; 
@@ -21,6 +22,18 @@ export const EscrowFeeCalculator: React.FC<{
   const [itemPrice, setItemPrice] = useState<number>(defaultAmount);
   const [shippingFee, setShippingFee] = useState<number>(defaultShipping);
   const [feePayer, setFeePayer] = useState<'BUYER' | 'SELLER'>('BUYER');
+  const [gatewayFeePercent, setGatewayFeePercent] = useState<number>(1.95);
+
+  useEffect(() => {
+    apiClient.get('/escrow/public-settings')
+      .then((res) => {
+        const rate = res.data?.gateway_processing_fee_percent ?? res.data?.payout_transfer_fee_percent;
+        if (typeof rate === 'number' && rate >= 0) {
+          setGatewayFeePercent(rate);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const totalAmount = Math.max(0, itemPrice) + Math.max(0, shippingFee);
 
@@ -28,8 +41,8 @@ export const EscrowFeeCalculator: React.FC<{
   const rawEscrowFee = totalAmount > 0 ? (totalAmount * 0.015) + 10.00 : 0;
   const escrowFee = Math.round((rawEscrowFee + Number.EPSILON) * 100) / 100;
   
-  // Paystack gateway processing fee: 1.95%
-  const momoFee = Math.round(((totalAmount * 0.0195) + Number.EPSILON) * 100) / 100;
+  // Variable payment provider processing fee (configured on active gateway)
+  const momoFee = Math.round(((totalAmount * (gatewayFeePercent / 100)) + Number.EPSILON) * 100) / 100;
 
   const totalBuyerPays = feePayer === 'BUYER' ? totalAmount + escrowFee : totalAmount;
   const netSellerReceives = feePayer === 'SELLER' ? Math.max(0, totalAmount - escrowFee) : totalAmount;
@@ -222,7 +235,7 @@ export const EscrowFeeCalculator: React.FC<{
               <span className="font-bold text-[#0363ff] dark:text-blue-400 font-mono">GHS {escrowFee.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center text-slate-500 text-[11px]">
-              <span>Est. Paystack Gateway Processing Fee (1.95%):</span>
+              <span>Est. Payment Provider Processing Fee ({gatewayFeePercent}% — varies by provider):</span>
               <span className="font-mono">~GHS {momoFee.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center text-slate-500 text-[11px] pt-1 border-t border-slate-200 dark:border-slate-800">

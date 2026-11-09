@@ -250,6 +250,17 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
 
         <form onSubmit={handleSubmit} className="flex flex-col flex-1 overflow-hidden">
           <div className="p-6 space-y-5 overflow-y-auto flex-1">
+            {/* Mandatory Pre-Handover Seller Advisory Banner */}
+            <div className="bg-indigo-50/90 dark:bg-indigo-950/50 border border-indigo-300 dark:border-indigo-800 rounded-xl p-3.5 text-xs text-indigo-950 dark:text-indigo-200 space-y-1 shadow-2xs">
+              <p className="font-bold flex items-center gap-1.5 text-indigo-900 dark:text-indigo-100">
+                <Truck className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                Click Dispatch BEFORE Handing Over to Courier
+              </p>
+              <p className="text-[11px] leading-relaxed text-indigo-800 dark:text-indigo-300">
+                Always submit your dispatch details here <strong>before physically handing the item over to a courier service or bus driver</strong>. This immediately locks the order into In-Transit protection and prevents buyer cancellation while your package is on the way.
+              </p>
+            </div>
+
             {/* Urgent Cancellation Alert Banner */}
             {isCancelPending && (
               <div className="bg-amber-50 dark:bg-amber-950/50 border-2 border-amber-400 dark:border-amber-700/80 rounded-xl p-3.5 text-xs text-amber-900 dark:text-amber-200 space-y-1 shadow-sm">
@@ -321,7 +332,7 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
                     <p className={`text-sm font-semibold ${path === 'COURIER_API' ? 'text-blue-700 dark:text-blue-300' : 'text-gray-700 dark:text-slate-300'}`}>
                       Formal Courier
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-slate-400">FedEx, DHL, API courier</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">DHL, FedEx, Speedaf, etc.</p>
                   </button>
                 )}
                 {enabledMethods.includes('INFORMAL_BUS') && (
@@ -336,9 +347,9 @@ function DispatchModal({ txn, onClose, onSuccess }: DispatchModalProps) {
                   >
                     <Package className={`h-5 w-5 mb-1 ${path === 'INFORMAL_BUS' ? 'text-amber-600 dark:text-amber-400' : 'text-gray-400 dark:text-slate-500'}`} />
                     <p className={`text-sm font-semibold ${path === 'INFORMAL_BUS' ? 'text-amber-700 dark:text-amber-300' : 'text-gray-700 dark:text-slate-300'}`}>
-                      Informal Bus
+                      Station / Bus Delivery
                     </p>
-                    <p className="text-xs text-gray-500 dark:text-slate-400">Tro-tro, VIP, station</p>
+                    <p className="text-xs text-gray-500 dark:text-slate-400">VIP, STC, station parcel</p>
                   </button>
                 )}
               </div>
@@ -915,6 +926,9 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
             {txn.paystack_reference}
           </span>
           <h3 className="text-lg font-bold text-gray-900 dark:text-white mt-2">Dispute Evidence & Response</h3>
+          <p className="text-[11px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/70 mt-2 leading-relaxed">
+            ⚖️ <strong>Important:</strong> HendAxis relies on those evidences and the transaction details to make a determination on the outcome of a dispute.
+          </p>
         </div>
 
         {/* WhatsApp-Style Dispute Dialogue Timeline */}
@@ -966,7 +980,7 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
               <div className="flex justify-between items-center mb-1">
                 <label className="block text-gray-700 dark:text-slate-300 font-semibold">Upload Seller Evidence Photos (Max 5)</label>
                 <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
-                  {isCompressing ? 'Compressing WebP...' : `${photos.length}/5 photos`}
+                  {isCompressing ? 'Optimizing photos...' : `${photos.length}/5 photos`}
                 </span>
               </div>
               <input
@@ -979,7 +993,7 @@ function SellerDisputeModal({ txn, onClose, onSuccess, onOpenLightbox }: SellerD
               />
               {isCompressing && (
                 <div className="flex items-center gap-2 mt-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
-                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to lightweight WebP...
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos...
                 </div>
               )}
               {photos.length > 0 && (
@@ -3059,14 +3073,20 @@ export default function DashboardView() {
   };
 
   const handleCancel = async (id: string) => {
+    const targetTxn = txns.find(t => t.id === id) || (selectedTxn?.id === id ? selectedTxn : null);
+    const platformPenalty = targetTxn ? Number(targetTxn.platform_fee_ghs || 0) : 0;
+    const penaltyText = platformPenalty > 0
+      ? `a cancellation penalty of GHS ${platformPenalty.toFixed(2)} (the Platform Escrow Fee, plus any applicable payment provider charges)`
+      : `a cancellation penalty (the Platform Escrow Fee and applicable payment provider charges)`;
+
     const confirmed = await modal.confirm({
-      title: "Cancel Transaction & Refund Buyer",
-      message: "Are you sure you want to cancel this transaction? The platform fee will be charged to you and the escrow funds will be fully refunded to the buyer.",
-      confirmText: "Cancel Order & Refund",
+      title: "⚠️ Seller Order Cancellation Penalty Warning",
+      message: `If you cancel this order, you will incur ${penaltyText}, which will be deducted from your seller wallet balance while the buyer receives a full refund of their escrow payment. Only cancel if you cannot fulfill this order. Do you want to proceed and accept the cancellation penalty?`,
+      confirmText: "Accept Penalty & Cancel Order",
       cancelText: "Keep Order Active",
       type: "danger",
       icon: "alert",
-      badgeText: "Cancellation Warning"
+      badgeText: "Cancellation Penalty Applies"
     });
     if (!confirmed) return;
 
@@ -3935,6 +3955,9 @@ export default function DashboardView() {
                                 ) : (
                                   <div className="text-[11px] text-amber-700 dark:text-amber-400 font-semibold">⏳ Dispatch before {days}d {hours}h</div>
                                 )}
+                                <div className="text-[10px] text-indigo-600 dark:text-indigo-400 font-medium">
+                                  💡 Click Dispatch before courier handover
+                                </div>
                               </div>
                             );
                           })()
@@ -4451,7 +4474,7 @@ export default function DashboardView() {
                               • Dispute Settlement: Payouts executed per arbitration ruling within 24 hours.
                             </p>
                             <p className="text-[11px] text-red-700 dark:text-red-300">
-                              • Buyer refund amounts are processed directly to their original payment method (Paystack MoMo/Card).
+                              • Buyer refund amounts are processed directly to their original payment method (Mobile Money / Card).
                             </p>
                           </>
                         )}
@@ -4461,10 +4484,10 @@ export default function DashboardView() {
                     {selectedTxn.status === 'CANCELLED' && (
                       <div className="space-y-1.5 text-xs text-red-900 dark:text-red-200">
                         <p className="font-semibold">
-                          • Order Cancelled: 100% full refund returned to the buyer via original payment medium.
+                          • Order Cancelled: 100% full refund returned to the buyer via original payment method.
                         </p>
                         <p className="text-[11px] text-red-700 dark:text-red-300">
-                          • Note: Non-dispatch after 4 days automatically incurs platform fee + 1.95% Paystack charges penalty.
+                          • Note: Seller cancellation or non-dispatch after the shipping window incurs a penalty (Platform Fee + applicable payment provider charges).
                         </p>
                       </div>
                     )}
@@ -4498,7 +4521,7 @@ export default function DashboardView() {
                   <span className="font-bold text-gray-800 dark:text-slate-100 block">Logistics & Dispatch Proof</span>
                   {selectedTxn.delivery_method ? (
                     <div className="space-y-1 text-xs text-gray-600 dark:text-slate-300">
-                      <p>Method: <strong className="text-gray-900 dark:text-slate-100">{selectedTxn.delivery_method === 'INFORMAL_BUS' ? '🚌 Station / Bus OTP' : '📦 Courier API'}</strong></p>
+                      <p>Method: <strong className="text-gray-900 dark:text-slate-100">{selectedTxn.delivery_method === 'INFORMAL_BUS' ? '🚌 Station / Bus OTP' : '📦 Formal Courier'}</strong></p>
                       {selectedTxn.courier_name && (
                         <div className="flex items-center justify-between pt-1">
                           <p>Courier: <span className="font-semibold text-gray-900 dark:text-slate-100">{selectedTxn.courier_name}</span> ({selectedTxn.tracking_number})</p>

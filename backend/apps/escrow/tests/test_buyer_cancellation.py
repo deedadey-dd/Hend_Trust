@@ -409,8 +409,8 @@ class TestBuyerCancellation:
             assert txn.cancellation_payout_status == 'PROCESSED'
 
     @freeze_time("2026-10-10 10:00:00")
-    def test_buyer_monthly_cancellation_rate_limit(self, setup_cancellation_env):
-        """Buyers are limited to 2 cancellations per 30-day window."""
+    def test_buyer_unlimited_monthly_cancellations_with_fee_deduction(self, setup_cancellation_env):
+        """Buyers can cancel multiple orders per month without rate limit since fee deductions cover platform costs."""
         env = setup_cancellation_env
         client = Client()
         buyer_token = str(RefreshToken.for_user(env['buyer_user']).access_token)
@@ -432,7 +432,7 @@ class TestBuyerCancellation:
                 cancellation_requested_at=timezone.now() - timedelta(days=2)
             )
 
-        # 3rd transaction attempt to cancel within the same month
+        # 3rd transaction attempt to cancel within the same month succeeds
         txn3 = Transaction.objects.create(
             link=env['link'],
             buyer_name='Cancel Buyer',
@@ -452,9 +452,10 @@ class TestBuyerCancellation:
             content_type='application/json',
             HTTP_AUTHORIZATION=f"Bearer {buyer_token}"
         )
-        assert res.status_code == 400
-        msg = res.json().get('detail', '') or res.json().get('message', '')
-        assert "monthly cancellation limit" in msg.lower() or "limit" in msg.lower()
+        assert res.status_code == 200
+        txn3.refresh_from_db()
+        assert txn3.cancellation_requested_at is not None
+        assert txn3.cancellation_payout_status == 'PENDING_CONFIRMATION'
 
     @freeze_time("2026-10-10 10:00:00")
     def test_guest_buyer_cancel_via_otp(self, setup_cancellation_env):

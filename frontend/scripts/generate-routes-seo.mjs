@@ -11,10 +11,10 @@ const routes = [
   {
     path: '/',
     outputPath: 'index.html',
-    title: "HendAxis Trust — Ghana's Buyer-Seller Escrow Payment Platform",
-    description: "Pay securely, sell with confidence. HendAxis Trust protects online transactions across Ghana with double-entry escrow, MoMo & card integration, formal courier webhooks, and verified seller badges.",
+    title: "HendAxis Trust — Ghana's Trust & Escrow Platform for Transactions & Contracts",
+    description: "Injecting trust into every payment, delivery and service contracts across Ghana!",
     canonical: `${BASE_URL}/`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Ghana's Premier Buyer-Seller Escrow Payment Platform",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -57,7 +57,7 @@ const routes = [
     title: "Secure Online Shopping with Escrow | HendAxis Trust",
     description: "Buy online with greater confidence using HendAxis Trust escrow. Your payment is held securely until the transaction conditions are fulfilled.",
     canonical: `${BASE_URL}/for-buyers`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Secure Online Shopping & Buyer Protection with Escrow",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -119,7 +119,7 @@ const routes = [
     title: "Sell Online with Buyer-Seller Escrow Protection | HendAxis Trust",
     description: "Accept online payments with escrow protection. HendAxis Trust helps sellers build buyer confidence while protecting transaction payments.",
     canonical: `${BASE_URL}/for-sellers`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Sell Online with Escrow Protection & Build Buyer Trust",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -162,7 +162,7 @@ const routes = [
     title: "How Escrow Works | HendAxis Trust",
     description: "Learn how HendAxis Trust protects buyers and sellers by holding payment securely until the agreed transaction conditions are fulfilled.",
     canonical: `${BASE_URL}/how-it-works`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "How HendAxis Trust Escrow Protects Your Transactions",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -214,7 +214,7 @@ const routes = [
     title: "Trust & Security Center | HendAxis Trust",
     description: "Discover how HendAxis Trust guarantees payment security with double-entry ledgers, verified sellers, encryption, and dispute arbitration in Ghana.",
     canonical: `${BASE_URL}/trust-center`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Trust, Security & Institutional Compliance",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -246,7 +246,7 @@ const routes = [
     title: "Guides & Safe Trading Hub | HendAxis Trust",
     description: "Step-by-step guides and best practices for safe online trading, buyer protection, and dispute resolution with escrow in Ghana.",
     canonical: `${BASE_URL}/guides`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Guides & Scam Prevention Resource Center",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -277,7 +277,7 @@ const routes = [
     title: "Referral Program & Rewards | HendAxis Trust",
     description: "Earn cash rewards and fee discounts by referring buyers and sellers to HendAxis Trust escrow platform.",
     canonical: `${BASE_URL}/referrals`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Refer Friends & Earn Escrow Fee Credits",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -307,7 +307,7 @@ const routes = [
     title: "Developer Hub & Escrow API | HendAxis Trust",
     description: "Integrate HendAxis Trust escrow checkout into your e-commerce store or marketplace with our REST APIs and webhooks.",
     canonical: `${BASE_URL}/developers`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Developer Hub: REST API & Drop-in SDK",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -338,7 +338,7 @@ const routes = [
     title: "Help Center & Support FAQs | HendAxis Trust",
     description: "Find answers to frequently asked questions regarding escrow payments, transaction disputes, seller verification, and MoMo payouts.",
     canonical: `${BASE_URL}/help`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Help Center & Knowledge Base",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -376,7 +376,7 @@ const routes = [
     title: "Contact HendAxis Trust Support | HendAxis Trust",
     description: "Get in touch with the HendAxis Trust team for transaction assistance, dispute support, seller verification, and partnership inquiries.",
     canonical: `${BASE_URL}/contact`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Contact Customer Support & Compliance",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -408,7 +408,7 @@ const routes = [
     title: "Verified Sellers & Storefront Directory | HendAxis Trust",
     description: "Explore verified social commerce sellers and registered businesses protected by HendAxis Trust escrow in Ghana.",
     canonical: `${BASE_URL}/shops`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Verified Sellers & Social Commerce Directory",
     htmlContent: `
       <main class="seo-crawler-content">
@@ -441,7 +441,7 @@ const routes = [
     title: "Customer Reviews & Verified Experiences | HendAxis Trust",
     description: "Read real reviews and verified escrow transaction experiences from online buyers and sellers across Ghana.",
     canonical: `${BASE_URL}/reviews`,
-    ogImage: `${BASE_URL}/assets/hero_banner.jpg`,
+    ogImage: `${BASE_URL}/og_preview_banner.jpg`,
     heading: "Customer Reviews & Verified Experiences",
     htmlContent: `
       <main class="seo-crawler-content">

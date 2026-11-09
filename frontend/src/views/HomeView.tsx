@@ -67,8 +67,8 @@ const SELLER_STEPS = [
   {
     icon: Truck,
     color: 'text-indigo-600 dark:text-indigo-400',
-    title: '3. Hand Over to Courier',
-    desc: 'Dispatch via DHL, Speedaf, FedEx, or Bus Station with automated tracking and dispatch logs attached.'
+    title: '3. Click Dispatch & Ship',
+    desc: 'Click "Dispatch" on HendAxis first with your waybill or driver details before handing the item over to a courier or bus driver.'
   },
   {
     icon: CheckCircle,
@@ -81,29 +81,29 @@ const SELLER_STEPS = [
 const FEATURES = [
   {
     icon: Lock,
-    title: 'Zero-Trust System Escrow',
-    desc: 'Funds remain locked in double-entry escrow accounts until the buyer inspects and approves the delivered merchandise.',
+    title: 'Protected Escrow Accounts',
+    desc: 'Funds remain safely locked in dedicated escrow trust accounts until the buyer receives and inspects their delivered order.',
     link: '/trust-center',
-    linkText: 'Explore security architecture'
+    linkText: 'Explore security standards'
   },
   {
     icon: ShieldCheck,
     title: '🛡️ Verified Seller Badges',
-    desc: 'Sellers undergo manual identity and Ghana Card document verification in the Manager Portal before earning the official badge.',
+    desc: 'Sellers complete National ID (Ghana Card) and business verification with our compliance team before earning the official badge.',
     link: '/shops',
-    linkText: 'Browse verified directory'
+    linkText: 'Browse verified shops'
   },
   {
     icon: Truck,
-    title: 'Dual Logistics (Path A & B)',
-    desc: 'Formal courier tracking (DHL, FedEx, UPS, Speedaf) alongside informal bus station driver OTP verification.',
+    title: 'Flexible Delivery Options',
+    desc: 'Ship via formal couriers (DHL, FedEx, UPS, Speedaf) with live tracking or intercity bus stations with secure buyer OTP collection.',
     link: '/how-it-works',
-    linkText: 'See logistics workflow'
+    linkText: 'See delivery workflow'
   },
   {
     icon: Star,
-    title: 'Escrow-Gated Reviews',
-    desc: 'Authentic 3-axis ratings (Speed, Communication, Satisfaction) submitted strictly after completed escrow transactions.',
+    title: 'Verified Customer Reviews',
+    desc: 'Authentic ratings for quality, delivery speed, and communication submitted only by real buyers after completed orders.',
     link: '/reviews',
     linkText: 'Read verified reviews'
   },
@@ -116,8 +116,8 @@ const FEATURES = [
   },
   {
     icon: Store,
-    title: 'Public Shop Directories',
-    desc: 'Sellers showcase verified storefronts (/store/:username) and featured marketplace ads on the central Directory.',
+    title: 'Verified Shop Directory',
+    desc: 'Sellers showcase verified storefronts and featured product listings on our central Marketplace Directory.',
     link: '/for-sellers',
     linkText: 'Start seller storefront'
   },
@@ -229,13 +229,13 @@ export default function HomeView() {
         <div className="max-w-6xl mx-auto flex flex-col lg:flex-row items-center justify-between gap-4">
           {/* Payment Rails */}
           <div className="flex items-center gap-2 sm:gap-3 flex-wrap justify-center">
-            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Supported Rails:</span>
+            <span className="text-[11px] font-extrabold uppercase tracking-wider text-slate-500 dark:text-slate-400">Accepted Payments:</span>
             <span className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-amber-600 dark:text-amber-400 shadow-2xs">MTN MoMo</span>
             <span className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-rose-600 dark:text-rose-400 shadow-2xs">Telecel Cash</span>
             <span className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-blue-600 dark:text-blue-400 shadow-2xs">AT Money</span>
             <span className="px-2.5 py-1 rounded-md bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs font-bold text-slate-700 dark:text-slate-300 shadow-2xs">Cards (Visa/Mastercard)</span>
             <span className="px-2.5 py-1 rounded-md bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 text-xs font-bold text-emerald-700 dark:text-emerald-400 shadow-2xs flex items-center gap-1">
-              <ShieldCheck className="h-3 w-3" /> Ghana Card KYC
+              <ShieldCheck className="h-3 w-3" /> Ghana Card Verified
             </span>
           </div>
 
@@ -372,7 +372,7 @@ export default function HomeView() {
                 className="px-5 py-3 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs sm:text-sm transition flex items-center justify-center gap-1.5"
               >
                 <ShoppingBag className="h-4 w-4" />
-                <span>Explore Verified Stores</span>
+                <span>Explore Verified Shops</span>
               </Link>
             </div>
           </div>

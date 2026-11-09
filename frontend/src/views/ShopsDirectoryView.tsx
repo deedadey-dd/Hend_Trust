@@ -616,7 +616,7 @@ export default function ShopsDirectoryView() {
               Ghana's Escrow Marketplace
             </div>
             <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md">
-              Verified Stores & Escrow Marketplace
+              Verified Shops & Escrow Marketplace
             </h1>
           </div>
 
@@ -629,7 +629,7 @@ export default function ShopsDirectoryView() {
                 type="text"
                 value={query}
                 onChange={e => setQuery(e.target.value)}
-                placeholder="Search products or stores (e.g. 'iPhone 15', 'Sneakers', 'Solar', 'Wigs')..."
+                placeholder="Search products or shops (e.g. 'iPhone 15', 'Sneakers', 'Solar', 'Wigs')..."
                 className="w-full pl-10 sm:pl-12 pr-28 sm:pr-36 py-3 sm:py-3.5 bg-black/45 hover:bg-black/55 focus:bg-black/65 backdrop-blur-md rounded-2xl text-xs sm:text-sm border border-white/20 shadow-xl focus:ring-4 focus:ring-blue-500/30 outline-none font-medium transition-all text-white placeholder-slate-300"
               />
               {query.trim() && (
@@ -719,7 +719,7 @@ export default function ShopsDirectoryView() {
               }`}
             >
               <Store className="w-4 h-4" />
-              Verified Stores ({totalShops})
+              Verified Shops ({totalShops})
             </button>
 
             <button
@@ -817,27 +817,27 @@ export default function ShopsDirectoryView() {
         {loading ? (
           <div className="py-20 text-center space-y-3">
             <Loader2 className="h-8 w-8 animate-spin mx-auto text-blue-600 dark:text-blue-400" />
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Searching marketplace for products & stores...</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Searching marketplace for products & shops...</p>
           </div>
         ) : (
           <div className="space-y-12">
 
-            {/* 1. VERIFIED ESCROW STORES SECTION */}
+            {/* 1. VERIFIED SHOPS SECTION */}
             {(activeTab === 'ALL' || activeTab === 'SHOPS') && (
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
                     <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
                       <Store className="h-5 w-5 text-blue-600" />
-                      Verified Escrow Stores ({totalShops})
+                      Verified Shops ({totalShops})
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
-                      KYC-verified merchants with buyer protection guarantees.
+                      Identity-verified merchants with buyer protection guarantees.
                     </p>
                   </div>
                 </div>
 
-                {/* ROW 1: FEATURED SPONSORED STORES (Paid Advertisements) */}
+                {/* ROW 1: FEATURED SPONSORED SHOPS (Paid Advertisements) */}
                 {featuredShops.length > 0 && (
                   <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
                     <div className="flex items-center justify-between">
@@ -846,8 +846,8 @@ export default function ShopsDirectoryView() {
                           <Zap className="h-4 w-4 fill-white" />
                         </div>
                         <div>
-                          <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">Featured Sponsored Stores</h3>
-                          <p className="text-[11px] text-slate-600 dark:text-slate-400">Promoted escrow merchants with verified active catalogs</p>
+                          <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">Featured Sponsored Shops</h3>
+                          <p className="text-[11px] text-slate-600 dark:text-slate-400">Promoted merchants with verified active catalogs</p>
                         </div>
                       </div>
                       <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-900/50 px-3 py-0.5 rounded-full border border-amber-300/80 dark:border-amber-800">
@@ -861,12 +861,12 @@ export default function ShopsDirectoryView() {
                   </div>
                 )}
 
-                {/* ROWS 2 & 3: STANDARD / RANDOM STORES */}
+                {/* ROWS 2 & 3: STANDARD / RANDOM SHOPS */}
                 {processedStandardShops.length > 0 && (
                   <div className="space-y-4">
                     {featuredShops.length > 0 && (
                       <h3 className="text-sm font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
-                        <span>All Verified Merchants</span>
+                        <span>All Verified Shops</span>
                       </h3>
                     )}
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
@@ -881,7 +881,7 @@ export default function ShopsDirectoryView() {
                           className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition shadow-2xs cursor-pointer border border-slate-200 dark:border-slate-700"
                         >
                           <Store className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-                          <span>{showAllStores ? 'Show Fewer Stores' : `View All Verified Stores (${totalShops})`}</span>
+                          <span>{showAllStores ? 'Show Fewer Shops' : `View All Verified Shops (${totalShops})`}</span>
                         </button>
                       </div>
                     )}
@@ -892,7 +892,7 @@ export default function ShopsDirectoryView() {
                   <div className="bg-white dark:bg-slate-900 rounded-3xl p-8 sm:p-12 text-center border border-slate-200 dark:border-slate-800 space-y-4">
                     <Shield className="h-12 w-12 mx-auto text-slate-300 dark:text-slate-700" />
                     <div>
-                      <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No matching stores found</h3>
+                      <h3 className="text-base font-bold text-slate-800 dark:text-slate-200">No matching shops found</h3>
                       <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
                         Try exploring popular categories or clearing your search filter.
                       </p>

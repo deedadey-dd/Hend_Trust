@@ -1128,11 +1128,11 @@ const DISPUTE_CATEGORIES = [
 
             {isPartialRefund ? (
               <p className="text-amber-900 dark:text-amber-200 font-medium leading-relaxed">
-                ⚖️ <strong>Arbitration Partial Settlement:</strong> This dispute concluded with a split settlement. Your buyer refund of <strong>GHS {Number(txn.buyer_refund_amount_ghs || 0).toFixed(2)}</strong> has been automatically disbursed to your original payment medium (Paystack MoMo/Card), and the seller received <strong>GHS {Number(txn.seller_payout_amount_ghs || 0).toFixed(2)}</strong>.
+                ⚖️ <strong>Arbitration Partial Settlement:</strong> This dispute concluded with a split settlement. Your buyer refund of <strong>GHS {Number(txn.buyer_refund_amount_ghs || 0).toFixed(2)}</strong> has been automatically disbursed to your original payment method (Mobile Money / Card), and the seller received <strong>GHS {Number(txn.seller_payout_amount_ghs || 0).toFixed(2)}</strong>.
               </p>
             ) : (
               <p className="text-red-900 dark:text-red-300 font-medium leading-relaxed">
-                ⏱ <strong>24-Hour Settlement Guarantee:</strong> All refunds are automatically returned via your original payment channel (Paystack MoMo/Card) within 24 hours.
+                ⏱ <strong>24-Hour Settlement Guarantee:</strong> All refunds are automatically returned via your original payment method (Mobile Money / Card) within 24 hours.
               </p>
             )}
 
@@ -1427,20 +1427,20 @@ const DISPUTE_CATEGORIES = [
           <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-2xl p-5 text-sm text-amber-900 dark:text-amber-200">
             <p className="font-bold mb-2">📦 How delivery & receipt works</p>
 
-            <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Path A — Formal Courier:</p>
+            <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Formal Courier Delivery:</p>
             <p className="text-amber-700 dark:text-amber-400 mb-3">
-              If your seller used a courier service, the system is automatically notified the moment the package is marked <strong>DELIVERED</strong>. No action needed on your part until you inspect it.
+              If your seller used a courier service, your order status updates automatically once the package is marked <strong>DELIVERED</strong>. No action is needed on your part until you receive and inspect it.
             </p>
 
-            <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Path B — Informal / Bus Delivery:</p>
+            <p className="font-semibold text-amber-800 dark:text-amber-300 mb-1">Bus / Station Parcel Delivery:</p>
             <ul className="list-disc list-inside text-amber-700 dark:text-amber-400 space-y-1 mb-3">
-              <li>You should have received an SMS with the <strong>driver's info</strong> (phone / car number) and your <strong>Secret OTP</strong>.</li>
+              <li>You should have received an SMS with the <strong>driver's details</strong> (phone / vehicle number) and your <strong>Secret OTP</strong>.</li>
               <li>When collecting at the station, present your <strong>ID + Secret OTP</strong> to the driver or seller's agent.</li>
-              <li>Keep your OTP safe — you will need it again to <strong>Confirm Receipt</strong> in this app after collection.</li>
+              <li>Keep your OTP safe — you will need it again to <strong>Confirm Receipt</strong> on this page after collection.</li>
             </ul>
 
             <p className="text-xs text-amber-600 dark:text-amber-400 italic">
-              Once you confirm receipt, an inspection window opens. Raise a dispute before it expires if there is a problem.
+              Once you confirm receipt, an inspection window opens. Raise a dispute before it expires if there is an issue with your order.
             </p>
           </div>
         )}
@@ -1529,6 +1529,9 @@ const DISPUTE_CATEGORIES = [
             <h4 className="text-sm sm:text-base font-bold text-gray-900 dark:text-white">
               {isDisputed ? "Add More Details & Evidence Photos" : "Raise Transaction Dispute"}
             </h4>
+            <p className="text-[11px] text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-800/60 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700/70 leading-relaxed">
+              ⚖️ <strong>Important:</strong> HendAxis relies on those evidences and the transaction details to make a determination on the outcome of a dispute. Please provide clear descriptions and supporting photos.
+            </p>
             {disputeError && <p className="text-xs text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 p-2.5 rounded-xl border border-red-100 dark:border-red-900/50">{disputeError}</p>}
             <form onSubmit={handleRaiseDisputeSubmit} className="space-y-4">
               {!isDisputed && isInTransit && (
@@ -1588,7 +1591,7 @@ const DISPUTE_CATEGORIES = [
                     Evidence Photos (Max 5 total)
                   </label>
                   <span className="text-[11px] font-mono text-gray-500 dark:text-slate-400">
-                    {isCompressingBuyerPhotos ? 'Compressing WebP...' : `${buyerPhotos.length + (txn.buyer_dispute_photos?.length || 0)}/5 photos`}
+                    {isCompressingBuyerPhotos ? 'Optimizing photos...' : `${buyerPhotos.length + (txn.buyer_dispute_photos?.length || 0)}/5 photos`}
                   </span>
                 </div>
                 <input
@@ -1601,7 +1604,7 @@ const DISPUTE_CATEGORIES = [
                 />
                 {isCompressingBuyerPhotos && (
                   <div className="flex items-center gap-2 mt-2 text-xs text-red-600 dark:text-red-400 font-medium">
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos to WebP...
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> Optimizing photos...
                   </div>
                 )}
                 {buyerPhotos.length > 0 && (

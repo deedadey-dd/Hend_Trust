@@ -44,7 +44,7 @@ export const ForBuyersView: React.FC = () => {
               className="w-full sm:w-auto px-8 py-4 bg-blue-600 hover:bg-blue-500 text-white font-black text-sm rounded-2xl transition shadow-lg shadow-blue-500/20 flex items-center justify-center gap-2"
             >
               <ShoppingBag className="h-4 w-4" />
-              <span>Browse Verified Sellers Directory</span>
+              <span>Browse Verified Shops</span>
             </Link>
             <Link
               to="/how-it-works"
@@ -191,7 +191,7 @@ export const ForBuyersView: React.FC = () => {
             },
             {
               q: "What if the item delivered is broken, fake, or different from what was advertised?",
-              a: "Do NOT share your delivery OTP code with the courier/seller. Log into your transaction link, click 'Raise Dispute', and upload photos. Our accredited arbiters will inspect the case and refund your money within 24 hours."
+              a: "Do NOT share your delivery OTP code with the courier or seller. Log into your transaction link, click 'Raise Dispute', and upload clear photo or video evidence. HendAxis relies on those evidences and the transaction details to make a determination on the outcome of a dispute and refund your money within 24 hours."
             },
             {
               q: "How fast do I get my refund if an order is cancelled?",
@@ -222,14 +222,14 @@ export const ForBuyersView: React.FC = () => {
             Ready to Shop Without the Stress of Online Scams?
           </h2>
           <p className="text-blue-100 text-sm max-w-xl mx-auto leading-relaxed">
-            Find accredited, ID-verified Ghanaian stores or request an escrow payment link on your next social media purchase.
+            Find accredited, ID-verified Ghanaian shops or request an escrow payment link on your next social media purchase.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <Link
               to="/shops"
               className="py-3.5 px-8 bg-white text-slate-950 hover:bg-slate-100 font-extrabold text-xs rounded-xl transition shadow"
             >
-              Browse Verified Stores
+              Browse Verified Shops
             </Link>
             <Link
               to="/guides"
