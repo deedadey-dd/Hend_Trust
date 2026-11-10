@@ -1,14 +1,4 @@
 import React from 'react';
-import { 
-  Store, 
-  ShieldCheck, 
-  DollarSign, 
-  Zap, 
-  UserCheck, 
-  HelpCircle,
-  Truck,
-  Layers
-} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { EscrowFeeCalculator } from '../components/EscrowFeeCalculator';
 import SEOHead from '../components/SEOHead';
@@ -17,16 +7,15 @@ export const ForSellersView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-20 transition-colors">
       <SEOHead 
-        title="Sell Online with Buyer-Seller Escrow Protection | HendAxis Trust"
-        description="Accept online payments with escrow protection. HendAxis Trust helps sellers build buyer confidence while protecting transaction payments."
+        title="Sell Online with Buyer-Seller Payment Protection | HendAxis Trust"
+        description="Accept online payments with complete trust protection. HendAxis Trust helps sellers build buyer confidence while protecting transaction payments."
         canonicalUrl="https://trust.hendaxis.com/for-sellers"
       />
 
       {/* Hero Section */}
       <section className="relative overflow-hidden bg-gradient-to-b from-[#0363ff]/10 via-slate-50 to-transparent dark:from-[#0363ff]/20 dark:via-slate-950 dark:to-slate-950 pt-16 pb-20 px-6 border-b border-slate-200 dark:border-slate-800/80">
         <div className="max-w-6xl mx-auto text-center space-y-6">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-[#ff6d1d] dark:text-orange-400 text-xs font-extrabold uppercase tracking-wider">
-            <Store className="h-4 w-4 text-[#ff6d1d]" />
+          <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-orange-500/10 border border-orange-500/20 text-[#ff6d1d] dark:text-orange-400 text-xs font-extrabold uppercase tracking-wider">
             Empowering Ghanaian Social Commerce Merchants
           </div>
 
@@ -35,7 +24,7 @@ export const ForSellersView: React.FC = () => {
           </h1>
 
           <p className="text-base sm:text-xl text-slate-600 dark:text-slate-300 max-w-2xl mx-auto leading-relaxed">
-            Give your Instagram, TikTok, and WhatsApp customers the confidence to buy immediately. Lock their payment in escrow before you dispatch, and get paid instantly to Mobile Money upon delivery.
+            Give your Instagram, TikTok, and WhatsApp customers the confidence to buy immediately. Verify their payment in trust before you dispatch, and get paid instantly to Mobile Money upon delivery.
           </p>
 
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3.5 pt-2">
@@ -43,14 +32,12 @@ export const ForSellersView: React.FC = () => {
               to="/create-link"
               className="w-full sm:w-auto px-8 py-4 bg-[#0363ff] hover:bg-blue-600 text-white font-black text-sm rounded-2xl transition shadow-lg shadow-blue-500/25 flex items-center justify-center gap-2"
             >
-              <Zap className="h-4 w-4" />
               <span>Create Free Payment Link</span>
             </Link>
             <Link
               to="/register"
               className="w-full sm:w-auto px-8 py-4 bg-white dark:bg-slate-900 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-200 border border-slate-300 dark:border-slate-700 font-extrabold text-sm rounded-2xl transition flex items-center justify-center gap-2"
             >
-              <UserCheck className="h-4 w-4 text-[#ff6d1d]" />
               <span>Get Verified Merchant Badge</span>
             </Link>
           </div>
@@ -72,58 +59,40 @@ export const ForSellersView: React.FC = () => {
           {[
             {
               title: "Zero Payment Defaults (No CoD Losses)",
-              desc: "Never send goods on Cash-on-Delivery only to have the buyer switch off their phone. The buyer's money is 100% committed in escrow before you hand over the package to the courier or bus driver.",
-              icon: DollarSign,
-              color: "text-emerald-500 bg-emerald-500/10 border-emerald-500/20",
+              desc: "Never send goods on Cash-on-Delivery only to have the buyer switch off their phone. The buyer's money is 100% committed and held in trust before you hand over the package to the courier or bus driver.",
             },
             {
               title: "Instant Mobile Money & Bank Payouts",
               desc: "Upon delivery confirmation, your money lands in your MoMo wallet (MTN, Telecel, AT) or bank account immediately—no 14-day marketplace lockouts or high commission cuts.",
-              icon: Zap,
-              color: "text-[#ff6d1d] bg-orange-500/10 border-orange-500/20",
             },
             {
               title: "Custom Branded Storefront & QR Codes",
-              desc: "Get a clean, professional web storefront (hendaxistrust.com/store/yourname) with custom product catalogs, QR codes, and automated SMS notifications for your customers.",
-              icon: Store,
-              color: "text-[#0363ff] bg-blue-500/10 border-blue-500/20",
+              desc: "Get a clean, professional web storefront with custom product catalogs, QR codes, and automated SMS notifications for your customers.",
             },
             {
               title: "Intercity Bus & Courier Waybill Tracking",
               desc: "Integrated dispatch tracking for VIP, STC, OA, and local courier services. Upload waybill photos and driver numbers for instant automated buyer tracking.",
-              icon: Truck,
-              color: "text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700",
             },
             {
               title: "Verified Merchant Trust Badge",
-              desc: "Display our 'Verified by HendAxis' badge on your Instagram Bio (Linktree) and WhatsApp business catalog. Buyers purchase 3x faster when they know the deal is escrow-backed.",
-              icon: ShieldCheck,
-              color: "text-[#ff6d1d] bg-orange-500/10 border-orange-500/20",
+              desc: "Display our 'Verified by HendAxis' badge on your Instagram Bio (Linktree) and WhatsApp business catalog. Buyers purchase 3x faster when they know the deal is protected.",
             },
             {
               title: "Fair Multi-Arbiter Dispute Defense",
               desc: "Protected from fraudulent buyer claims. Both parties submit dispatch receipts, delivery logs, and photo evidence—HendAxis relies on those evidences and the transaction details to make a determination on the outcome of a dispute.",
-              icon: Layers,
-              color: "text-[#0363ff] bg-blue-500/10 border-blue-500/20",
             },
-          ].map((card, i) => {
-            const Icon = card.icon;
-            return (
-              <div key={i} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between space-y-4 hover:border-[#0363ff]/50 transition group">
-                <div className="space-y-3">
-                  <div className={`w-12 h-12 rounded-2xl border ${card.color} flex items-center justify-center`}>
-                    <Icon className="h-6 w-6" />
-                  </div>
-                  <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                    {card.title}
-                  </h3>
-                  <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                    {card.desc}
-                  </p>
-                </div>
+          ].map((card, i) => (
+            <div key={i} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 shadow-sm flex flex-col justify-between space-y-4 hover:border-[#0363ff]/50 transition group">
+              <div className="space-y-3">
+                <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                  {card.title}
+                </h3>
+                <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                  {card.desc}
+                </p>
               </div>
-            );
-          })}
+            </div>
+          ))}
         </div>
       </section>
 
@@ -137,7 +106,7 @@ export const ForSellersView: React.FC = () => {
         <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-8 sm:p-12 shadow-xl space-y-8">
           <div className="text-center space-y-1">
             <h2 className="text-2xl sm:text-3xl font-black text-slate-900 dark:text-white">
-              Start Closing Escrow Deals in 60 Seconds
+              Start Closing Protected Deals in 60 Seconds
             </h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               No complicated integrations. Works directly on WhatsApp and Instagram DM.
@@ -193,7 +162,7 @@ export const ForSellersView: React.FC = () => {
         <div className="space-y-3 text-xs">
           {[
             {
-              q: "Can I choose who pays the platform escrow fee?",
+              q: "Can I choose who pays the platform protection fee?",
               a: "Yes! When creating a payment link, you can choose 'Pass Fee to Buyer' (adds 1.5% + GHS 10.00 to checkout) or 'Absorb Fee' (deducts 1.5% + GHS 10.00 from your final payout)."
             },
             {
@@ -206,15 +175,14 @@ export const ForSellersView: React.FC = () => {
             },
             {
               q: "How do I get the 'Verified Merchant' badge for my Instagram bio?",
-              a: "Log into your dashboard, submit your National ID (Ghana Card) or Business Registration document. Once approved by our compliance desk (usually < 2 hours), you unlock verified badges and embed tools."
+              a: "Log into your dashboard and submit your business registration or verification details under Account Settings. Once approved by our compliance desk (usually < 2 hours), you unlock verified badges and embed tools."
             }
           ].map((item, idx) => (
             <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 rounded-2xl space-y-1.5 shadow-sm">
-              <h4 className="font-extrabold text-slate-900 dark:text-white text-sm flex items-center gap-2">
-                <HelpCircle className="h-4 w-4 text-[#ff6d1d] shrink-0" />
+              <h4 className="font-extrabold text-slate-900 dark:text-white text-sm">
                 {item.q}
               </h4>
-              <p className="text-slate-600 dark:text-slate-400 leading-relaxed pl-6">
+              <p className="text-slate-600 dark:text-slate-400 leading-relaxed">
                 {item.a}
               </p>
             </div>
@@ -229,7 +197,7 @@ export const ForSellersView: React.FC = () => {
             Ready to Turn Hesitant Inquiries into Completed Sales?
           </h2>
           <p className="text-blue-100 text-sm max-w-xl mx-auto leading-relaxed">
-            Create your free merchant profile in under 2 minutes and start sharing protected escrow payment links today.
+            Create your free merchant profile in under 2 minutes and start sharing protected payment links today.
           </p>
           <div className="flex flex-wrap items-center justify-center gap-3 pt-2">
             <Link

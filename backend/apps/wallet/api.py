@@ -66,7 +66,7 @@ class LedgerEntrySchema(Schema):
 BREAKDOWN_LABELS = {
     "SELLER_WITHDRAWAL_REQUEST": "Net Payout Sent to Account",
     "PAYSTACK_PAYOUT_FEE": "Payment Provider Transfer Fee",
-    "NON_DISPATCH_SELLER_PENALTY_PLATFORM_FEE": "Platform Escrow Service Fee",
+    "NON_DISPATCH_SELLER_PENALTY_PLATFORM_FEE": "Platform Protection Service Fee",
     "NON_DISPATCH_SELLER_PENALTY_GATEWAY_FEE": "Payment Provider Processing Fee",
     "REFUND_FEE_PENALTY": "Dispute Refund Penalty (Platform Fee)",
     "PAYSTACK_REFUND_FEE": "Payment Provider Refund Fee",
@@ -140,7 +140,7 @@ def get_ledger(request, start_date: str = None, end_date: str = None, entry_type
             latest_log = t.delivery_logs.order_by('-created_at').first() if hasattr(t, 'delivery_logs') else None
             txns_map[t.id] = {
                 "paystack_reference": t.paystack_reference,
-                "transaction_title": t.link.title if t.link else "Escrow Purchase",
+                "transaction_title": t.link.title if t.link else "Protected Purchase",
                 "gross_order_amount_ghs": float(t.total_amount_ghs) if t.total_amount_ghs is not None else None,
                 "order_platform_fee_ghs": float(t.platform_fee_ghs) if t.platform_fee_ghs is not None else None,
                 "buyer_name": t.buyer_name,

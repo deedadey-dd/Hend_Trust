@@ -115,7 +115,7 @@ const MOCK_FALLBACK_REVIEWS: RecentReview[] = [
     rating_speed: 5,
     rating_communication: 5,
     rating_overall: 5,
-    comment: 'Purchased a Sony PlayStation 5 console. The seller was verified with Ghana Card badge which gave me confidence. Smooth transaction from start to finish!',
+    comment: 'Purchased a Sony PlayStation 5 console. The seller was verified with the Verified Seller badge which gave me confidence. Smooth transaction from start to finish!',
     created_at: new Date(Date.now() - 3600000 * 90).toISOString(),
     item_title: 'Sony PlayStation 5 Disc Edition',
     upvotes_count: 27,

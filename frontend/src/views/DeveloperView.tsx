@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  Terminal, Key, Webhook, Copy, Check, 
-  ArrowRight, Layers, Server, ShieldCheck, 
-  CheckCircle2, Zap
+  Copy, Check, 
+  ArrowRight, 
+  CheckCircle2
 } from 'lucide-react';
 
 import SEOHead from '../components/SEOHead';
@@ -494,14 +494,14 @@ func VerifyHendAxisWebhook(body []byte, sigHeader string, secret string) bool {
           <div className="absolute bottom-0 left-1/3 -mb-10 w-64 h-64 bg-indigo-500/10 rounded-full blur-3xl pointer-events-none" />
           
           <div className="relative z-10 max-w-3xl space-y-4">
-            <div className="inline-flex items-center gap-2 bg-blue-500/20 border border-blue-400/30 px-3.5 py-1.5 rounded-full text-xs font-bold text-blue-300 backdrop-blur-md">
-              <Terminal className="h-4 w-4 text-emerald-400" /> Developer Hub & REST API v1.2.0
+            <div className="inline-flex items-center bg-blue-500/20 border border-blue-400/30 px-3.5 py-1.5 rounded-full text-xs font-bold text-blue-300 backdrop-blur-md">
+              Developer Hub & REST API v1.2.0
             </div>
             <h1 className="text-3xl sm:text-5xl font-black tracking-tight text-white leading-tight">
-              Embed Trust & Escrow into Any E-Commerce Experience
+              Embed Trust & Payment Protection into Any E-Commerce Experience
             </h1>
             <p className="text-base sm:text-lg text-slate-300 font-medium leading-relaxed">
-              Programmatically create escrow orders, query courier tracking, handle automated dispatch, and receive HMAC-signed webhook events across your custom store, Shopify, WooCommerce, or mobile application.
+              Programmatically create protected orders, query courier tracking, handle automated dispatch, and receive HMAC-signed webhook events across your custom store, Shopify, WooCommerce, or mobile application.
             </p>
 
             <div className="flex flex-wrap items-center gap-4 pt-4">
@@ -509,14 +509,13 @@ func VerifyHendAxisWebhook(body []byte, sigHeader string, secret string) bool {
                 to="/dashboard/developer"
                 className="px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white font-bold rounded-2xl text-sm shadow-xl shadow-blue-600/30 transition flex items-center gap-2 group"
               >
-                <Key className="h-4 w-4 text-blue-200 group-hover:rotate-12 transition-transform" /> 
                 Get API Keys in Merchant Portal <ArrowRight className="h-4 w-4" />
               </Link>
               <a
                 href="#quickstart"
                 className="px-6 py-3 bg-white/10 hover:bg-white/20 text-white font-bold rounded-2xl text-sm backdrop-blur-md border border-white/20 transition flex items-center gap-2"
               >
-                <Zap className="h-4 w-4 text-amber-400" /> Interactive Quickstart
+                Interactive Quickstart
               </a>
             </div>
           </div>
@@ -525,19 +524,13 @@ func VerifyHendAxisWebhook(body []byte, sigHeader string, secret string) bool {
         {/* Feature Highlights Grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-slate-800/80 space-y-3 relative overflow-hidden group hover:border-blue-500/40 transition">
-            <div className="w-12 h-12 bg-blue-50 dark:bg-blue-950/80 text-blue-600 dark:text-blue-400 rounded-2xl flex items-center justify-center font-bold">
-              <Layers className="h-6 w-6" />
-            </div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">Drop-in JS SDK</h3>
             <p className="text-xs text-gray-600 dark:text-slate-400 leading-relaxed">
-              Add a 2-line snippet to trigger responsive escrow modal checkouts with built-in buyer verification and payment callbacks.
+              Add a 2-line snippet to trigger responsive protected modal checkouts with built-in buyer verification and payment callbacks.
             </p>
           </div>
 
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-slate-800/80 space-y-3 relative overflow-hidden group hover:border-emerald-500/40 transition">
-            <div className="w-12 h-12 bg-emerald-50 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 rounded-2xl flex items-center justify-center font-bold">
-              <Server className="h-6 w-6" />
-            </div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">REST API (`v1`)</h3>
             <p className="text-xs text-gray-600 dark:text-slate-400 leading-relaxed">
               Create orders, manage logistics dispatch (Speedaf, Fez, Ghana Post, Bus Transport), trigger inspections, and query balances.
@@ -545,9 +538,6 @@ func VerifyHendAxisWebhook(body []byte, sigHeader string, secret string) bool {
           </div>
 
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-slate-800/80 space-y-3 relative overflow-hidden group hover:border-indigo-500/40 transition">
-            <div className="w-12 h-12 bg-indigo-50 dark:bg-indigo-950/80 text-indigo-600 dark:text-indigo-400 rounded-2xl flex items-center justify-center font-bold">
-              <Webhook className="h-6 w-6" />
-            </div>
             <h3 className="text-lg font-bold text-gray-900 dark:text-slate-100">HMAC Webhooks</h3>
             <p className="text-xs text-gray-600 dark:text-slate-400 leading-relaxed">
               Receive instant SHA-256 HMAC-signed webhooks whenever funds are deposited, orders are dispatched, or payouts are released.
@@ -750,8 +740,8 @@ func VerifyHendAxisWebhook(body []byte, sigHeader string, secret string) bool {
 
           {/* Webhook Events Catalog */}
           <div className="space-y-3 pt-2">
-            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200 flex items-center gap-2">
-              <Webhook className="h-4 w-4 text-indigo-500" /> Supported Webhook Events
+            <h3 className="text-sm font-bold uppercase tracking-wider text-slate-900 dark:text-slate-200">
+              Supported Webhook Events
             </h3>
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
               {[
@@ -856,14 +846,9 @@ func VerifyHendAxisWebhook(body []byte, sigHeader string, secret string) bool {
         {/* Section 5: Environments & Sandbox Testing */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-slate-800 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-blue-50 dark:bg-blue-950/60 rounded-xl text-blue-500">
-                <Key className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-slate-100">API Key Environments</h3>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Separate credentials for development and live production.</p>
-              </div>
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-slate-100">API Key Environments</h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Separate credentials for development and live production.</p>
             </div>
             <ul className="space-y-2 text-xs text-gray-600 dark:text-slate-300">
               <li className="flex items-start gap-2">
@@ -872,20 +857,15 @@ func VerifyHendAxisWebhook(body []byte, sigHeader string, secret string) bool {
               </li>
               <li className="flex items-start gap-2">
                 <Check className="h-4 w-4 text-emerald-500 shrink-0 mt-0.5" />
-                <span><strong>Live Mode</strong>: Prefix <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-emerald-500">pk_live_...</code> / <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-emerald-500">sk_live_...</code> processes real Mobile Money & Card escrow transactions.</span>
+                <span><strong>Live Mode</strong>: Prefix <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-emerald-500">pk_live_...</code> / <code className="font-mono bg-slate-100 dark:bg-slate-800 px-1 py-0.5 rounded text-emerald-500">sk_live_...</code> processes real Mobile Money & Card transactions.</span>
               </li>
             </ul>
           </div>
 
           <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-xl border border-gray-100 dark:border-slate-800 space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="p-2.5 bg-purple-50 dark:bg-purple-950/60 rounded-xl text-purple-500">
-                <ShieldCheck className="h-5 w-5" />
-              </div>
-              <div>
-                <h3 className="text-base font-bold text-gray-900 dark:text-slate-100">Security & Best Practices</h3>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Safeguard secret keys and customer data.</p>
-              </div>
+            <div>
+              <h3 className="text-base font-bold text-gray-900 dark:text-slate-100">Security & Best Practices</h3>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Safeguard secret keys and customer data.</p>
             </div>
             <ul className="space-y-2 text-xs text-gray-600 dark:text-slate-300">
               <li className="flex items-start gap-2">
@@ -911,7 +891,7 @@ func VerifyHendAxisWebhook(body []byte, sigHeader string, secret string) bool {
               to="/dashboard/developer"
               className="px-8 py-3.5 bg-blue-600 hover:bg-blue-500 text-white font-black rounded-2xl text-sm shadow-xl shadow-blue-600/30 transition flex items-center gap-2"
             >
-              <Key className="h-4 w-4" /> Open Merchant Developer Portal <ArrowRight className="h-4 w-4" />
+              Open Merchant Developer Portal <ArrowRight className="h-4 w-4" />
             </Link>
           </div>
         </div>

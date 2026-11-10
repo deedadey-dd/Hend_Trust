@@ -111,7 +111,7 @@ export const AdminBuyerDetailsModal: React.FC<AdminBuyerDetailsModalProps> = ({
                   {userAccount?.verification_status === 'APPROVED' && (
                     <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 border border-emerald-500/30 text-[11px] font-bold">
                       <ShieldCheck className="h-3.5 w-3.5 text-emerald-600 dark:text-emerald-400" />
-                      Ghana Card Verified
+                      Identity Verified
                     </span>
                   )}
 

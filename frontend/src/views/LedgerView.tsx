@@ -151,10 +151,10 @@ export const LedgerView: React.FC = () => {
     PARTIAL_REFUND_SELLER: 'Your agreed share of an order payout credited following a partial dispute settlement.',
     BUYER_CANCEL_WALLET_REFUND: 'Net refund credited to your wallet from a cancelled undispatched order.',
     SELLER_WITHDRAWAL_REQUEST: 'Total withdrawal deduction from your wallet (requested payout amount plus applicable payment provider transfer fee).',
-    NON_DISPATCH_SELLER_PENALTY: 'Combined platform escrow fee and payment provider processing fee deducted because a paid order was cancelled by the seller or not dispatched within 4 days.',
-    NON_DISPATCH_SELLER_PENALTY_PLATFORM_FEE: 'Platform escrow service fee deducted due to seller order cancellation or non-dispatch.',
+    NON_DISPATCH_SELLER_PENALTY: 'Combined platform protection fee and payment provider processing fee deducted because a paid order was cancelled by the seller or not dispatched within 4 days.',
+    NON_DISPATCH_SELLER_PENALTY_PLATFORM_FEE: 'Platform protection service fee deducted due to seller order cancellation or non-dispatch.',
     NON_DISPATCH_SELLER_PENALTY_GATEWAY_FEE: 'Payment provider processing fee deducted due to seller order cancellation or non-dispatch.',
-    REFUND_FEE_PENALTY: 'Platform escrow service fee deducted following a full buyer refund ruling in a dispute.',
+    REFUND_FEE_PENALTY: 'Platform protection service fee deducted following a full buyer refund ruling in a dispute.',
     SHOP_PROMOTION_AD_FEE: 'Advertising fee paid from your wallet to feature your shop in Sponsored Shops.',
     PAYSTACK_PAYOUT_FEE: 'Transfer fee charged by the payment provider when disbursing funds to Mobile Money or Bank.',
     PAYSTACK_REFUND_FEE: 'Transfer fee charged by the payment provider when processing an external refund.',
@@ -625,12 +625,12 @@ export const LedgerView: React.FC = () => {
                     Order Settlement Breakdown
                   </span>
                   <div className="flex justify-between text-gray-600 dark:text-slate-400">
-                    <span>Total Order Escrow Amount:</span>
+                    <span>Total Order Amount:</span>
                     <span className="font-mono font-semibold text-gray-900 dark:text-white">GHS {Number(selectedEntry.gross_order_amount_ghs).toFixed(2)}</span>
                   </div>
                   {selectedEntry.order_platform_fee_ghs != null && Number(selectedEntry.order_platform_fee_ghs) > 0 && (
                     <div className="flex justify-between text-gray-600 dark:text-slate-400">
-                      <span>Platform Escrow Service Fee:</span>
+                      <span>Platform Protection Service Fee:</span>
                       <span className="font-mono text-red-600 dark:text-red-400">-GHS {Number(selectedEntry.order_platform_fee_ghs).toFixed(2)}</span>
                     </div>
                   )}

@@ -2344,21 +2344,9 @@ export const AdminDashboardView: React.FC = () => {
                     {/* Document Details & Photos */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                       <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                        <span className="font-bold text-slate-800 dark:text-slate-300 block border-b border-slate-200 dark:border-slate-800 pb-1">🪪 National ID / Ghana Card</span>
-                        <p className="text-slate-600 dark:text-slate-400">ID Number: <strong className="text-slate-900 dark:text-white font-mono">{v.national_id_number || 'N/A'}</strong></p>
-                        {v.national_id_photo_url ? (
-                          <div>
-                            <span className="text-[10px] text-slate-500 block mb-1">Click to inspect:</span>
-                            <img
-                              src={v.national_id_photo_url}
-                              alt="National ID"
-                              onClick={() => setPreviewImage(v.national_id_photo_url)}
-                              className="h-28 w-44 object-cover rounded-lg border border-slate-300 dark:border-slate-700 hover:border-emerald-500 transition cursor-pointer"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-slate-500 italic block">No photo uploaded</span>
-                        )}
+                        <span className="font-bold text-slate-800 dark:text-slate-300 block border-b border-slate-200 dark:border-slate-800 pb-1">🪪 Identity / Verification Reference</span>
+                        <p className="text-slate-600 dark:text-slate-400">Reference Number: <strong className="text-slate-900 dark:text-white font-mono">{v.national_id_number || 'N/A'}</strong></p>
+                        <span className="text-slate-500 italic block">Verified via official registry reference (no ID card photocopy required)</span>
                       </div>
 
                       <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
@@ -2398,7 +2386,7 @@ export const AdminDashboardView: React.FC = () => {
                     rows={3}
                     value={rejectReason}
                     onChange={e => setRejectReason(e.target.value)}
-                    placeholder="e.g. Ghana Card photo is blurry or ID number does not match image..."
+                    placeholder="e.g. Verification reference number does not match profile name or business certificate..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:ring-2 focus:ring-rose-500 outline-none"
                   />
                 </div>

@@ -4,8 +4,13 @@ Supports per-IP and per-user limits with configurable windows and max attempts.
 """
 import logging
 from functools import wraps
-from django.core.cache import cache
 from ninja.errors import HttpError
+from apps.core.cache_utils import (
+    safe_cache_get,
+    safe_cache_set,
+    safe_cache_delete,
+    safe_cache_incr,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -44,7 +49,7 @@ def rate_limit(
                 identifier = f"ip_{get_client_ip(request)}"
 
             cache_key = f"rl:{key_prefix}:{identifier}"
-            current = cache.get(cache_key, 0)
+            current = safe_cache_get(cache_key, 0) or 0
 
             if current >= max_calls:
                 logger.warning(
@@ -54,12 +59,11 @@ def rate_limit(
                 )
                 raise HttpError(
                     429,
-                    error_message or f"Too many requests. Please wait before trying again."
+                    error_message or "Too many requests. Please wait before trying again."
                 )
 
-            # Increment atomically — set with TTL only on first call
-            pipe_result = cache.get_or_set(cache_key, 0, timeout=window_seconds)
-            cache.set(cache_key, (pipe_result or 0) + 1, timeout=window_seconds)
+            # Atomically increment fixed-window counter without resetting TTL on subsequent hits
+            safe_cache_incr(cache_key, window_seconds=window_seconds)
 
             return func(request, *args, **kwargs)
         return wrapper
@@ -86,7 +90,7 @@ def lockout_on_failure(
         cache_key = f"lockout:{key_prefix}:{identifier}"
 
         def check_lockout():
-            val = cache.get(cache_key, 0)
+            val = safe_cache_get(cache_key, 0) or 0
             if val >= max_attempts:
                 raise HttpError(
                     429,
@@ -95,16 +99,16 @@ def lockout_on_failure(
                 )
 
         def record_failure():
-            current = cache.get(cache_key, 0)
+            current = safe_cache_get(cache_key, 0) or 0
             new_val = current + 1
-            cache.set(cache_key, new_val, timeout=lockout_seconds)
+            safe_cache_set(cache_key, new_val, timeout=lockout_seconds)
             logger.warning(
                 "Failed attempt recorded: key=%s:%s count=%d",
                 key_prefix, identifier, new_val
             )
 
         def clear_failures():
-            cache.delete(cache_key)
+            safe_cache_delete(cache_key)
 
         return check_lockout, record_failure, clear_failures
 

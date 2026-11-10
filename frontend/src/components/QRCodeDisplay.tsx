@@ -47,7 +47,7 @@ export const generateBrandedQRPosterBlob = async (url: string, title?: string, p
 
   ctx.fillStyle = '#94a3b8';
   ctx.font = '600 13px system-ui, -apple-system, sans-serif';
-  ctx.fillText('VERIFIED BUYER-SELLER ESCROW PAYMENTS', 40, 80);
+  ctx.fillText('VERIFIED BUYER-SELLER PROTECTED PAYMENTS', 40, 80);
 
   ctx.fillStyle = '#22c55e';
   ctx.font = 'bold 12px system-ui, -apple-system, sans-serif';
@@ -189,8 +189,8 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({
       if (blob && navigator.canShare && navigator.canShare({ files: [new File([blob], 'payment-qr.png', { type: 'image/png' })] })) {
         const file = new File([blob], `${(title || 'payment').replace(/[^a-z0-9]/g, '-')}-qr.png`, { type: 'image/png' });
         await navigator.share({
-          title: title ? `Payment QR Code for ${title}` : 'HendAxis Trust Escrow QR Code',
-          text: `Pay for ${title || 'product'} securely via HendAxis Escrow`,
+          title: title ? `Payment QR Code for ${title}` : 'HendAxis Trust Payment QR Code',
+          text: `Pay for ${title || 'product'} securely via HendAxis Trust`,
           files: [file]
         });
         return;
@@ -198,8 +198,8 @@ export const QRCodeDisplay: React.FC<QRCodeDisplayProps> = ({
 
       if (navigator.share) {
         await navigator.share({
-          title: title ? `Payment Link for ${title}` : 'HendAxis Trust Escrow Link',
-          text: `Pay for ${title || 'product'} securely via HendAxis Escrow`,
+          title: title ? `Payment Link for ${title}` : 'HendAxis Trust Payment Link',
+          text: `Pay for ${title || 'product'} securely via HendAxis Trust`,
           url: url
         });
       } else {

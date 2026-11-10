@@ -299,7 +299,20 @@ def compute_seller_dispute_health(seller_user) -> dict:
     from django.utils import timezone
     from datetime import timedelta
     from django.db.models import Q
-    from django.core.mail import send_mail
+    from apps.core.tasks import dispatch_email_task
+    import hashlib
+
+    def send_mail(subject, message, from_email=None, recipient_list=None, fail_silently=True):
+        """Queue seller health notices on Celery (never block the request) and send each distinct notice at most once per 24h."""
+        from apps.core.cache_utils import safe_cache_get, safe_cache_set
+        if not recipient_list:
+            return
+        digest = hashlib.sha256(f"{subject}|{message}".encode('utf-8')).hexdigest()[:24]
+        dedupe_key = f"seller_health_mail:{seller_user.pk}:{digest}"
+        if safe_cache_get(dedupe_key):
+            return
+        safe_cache_set(dedupe_key, 1, timeout=86400)
+        dispatch_email_task.delay(recipient_list[0], subject, message)
 
     # All paid transactions belonging to seller (if reinstated, only evaluate post-reinstatement orders)
     all_paid_txns = Transaction.objects.filter(
@@ -4299,8 +4312,8 @@ DEFAULT_SYSTEM_SETTINGS = {
 
 
 def get_platform_settings():
-    from django.core.cache import cache
-    cached = cache.get("system_platform_settings")
+    from apps.core.cache_utils import safe_cache_get, safe_cache_set
+    cached = safe_cache_get("system_platform_settings")
     if cached is not None:
         return cached
 
@@ -4322,7 +4335,7 @@ def get_platform_settings():
             if exp and exp <= timezone.now():
                 res["promotions_active"] = False
 
-        cache.set("system_platform_settings", res, timeout=60)
+        safe_cache_set("system_platform_settings", res, timeout=300)
         return res
     except Exception:
         res = DEFAULT_SYSTEM_SETTINGS.copy()
@@ -4680,25 +4693,25 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
 
     active_gw_rates = provider_rates.get(active_gw, provider_rates["PAYSTACK"])
 
-    if data.gateway_processing_fee_percent is not None and not gateway_switched:
+    if data.gateway_processing_fee_percent is not None:
         val = max(0.0, min(100.0, float(data.gateway_processing_fee_percent)))
         current["gateway_processing_fee_percent"] = val
         active_gw_rates["collection_fee_percent"] = val
-    else:
+    elif gateway_switched:
         current["gateway_processing_fee_percent"] = float(active_gw_rates.get("collection_fee_percent", 1.95))
 
-    if data.payout_transfer_fee_percent is not None and not gateway_switched:
+    if data.payout_transfer_fee_percent is not None:
         val = max(0.0, min(100.0, float(data.payout_transfer_fee_percent)))
         current["payout_transfer_fee_percent"] = val
         active_gw_rates["payout_fee_percent"] = val
-    else:
+    elif gateway_switched:
         current["payout_transfer_fee_percent"] = float(active_gw_rates.get("payout_fee_percent", 1.95))
 
-    if data.payout_transfer_fee_ghs is not None and not gateway_switched:
+    if data.payout_transfer_fee_ghs is not None:
         val = max(0.0, float(data.payout_transfer_fee_ghs))
         current["payout_transfer_fee_ghs"] = val
         active_gw_rates["flat_payout_fee_ghs"] = val
-    else:
+    elif gateway_switched:
         current["payout_transfer_fee_ghs"] = float(active_gw_rates.get("flat_payout_fee_ghs", 2.0))
 
     current["provider_fee_rates"] = provider_rates

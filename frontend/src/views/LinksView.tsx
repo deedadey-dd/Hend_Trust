@@ -206,7 +206,7 @@ export const LinksView: React.FC = () => {
               : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
           }`}
         >
-          🌐 Public Links Only
+          Public Links Only
         </button>
         <button
           type="button"
@@ -217,7 +217,7 @@ export const LinksView: React.FC = () => {
               : 'bg-white dark:bg-slate-900 text-gray-700 dark:text-slate-300 hover:bg-gray-100 dark:hover:bg-slate-800 border border-gray-200 dark:border-slate-800'
           }`}
         >
-          👤 Direct In-App Invoices
+          Direct In-App Invoices
         </button>
       </div>
 
@@ -261,9 +261,9 @@ export const LinksView: React.FC = () => {
               className="border border-indigo-200 dark:border-indigo-800 rounded-lg px-3 py-2 text-sm bg-indigo-50/50 dark:bg-indigo-950/40 text-indigo-900 dark:text-indigo-200 focus:ring-2 focus:ring-indigo-500 outline-none cursor-pointer"
             >
               <option value="all">All Invoice Statuses</option>
-              <option value="PENDING">⏳ Pending Payment</option>
-              <option value="PAID">✅ Paid / In Escrow</option>
-              <option value="DECLINED">✕ Declined by Buyer</option>
+              <option value="PENDING">Pending Payment</option>
+              <option value="PAID">Paid / In Custody</option>
+              <option value="DECLINED">Declined by Buyer</option>
             </select>
           )}
 
@@ -362,7 +362,7 @@ export const LinksView: React.FC = () => {
                     {link.is_direct_order ? (
                       <div className="space-y-1">
                         <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800">
-                          👤 Direct Invoice
+                          Direct Invoice
                         </span>
                         {link.intended_buyer_username && (
                           <div className="text-[11px] text-gray-600 dark:text-slate-400 font-mono">
@@ -372,7 +372,7 @@ export const LinksView: React.FC = () => {
                       </div>
                     ) : (
                       <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800">
-                        🌐 Public Link
+                        Public Link
                       </span>
                     )}
                   </td>
@@ -590,7 +590,7 @@ export const LinksView: React.FC = () => {
                         ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300'
                         : 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
                     }`}>
-                      {selectedLink.direct_order_status === 'PAID' ? '✅ Paid & In Escrow' : selectedLink.direct_order_status === 'DECLINED' ? '✕ Declined by Buyer' : '⏳ Pending Payment'}
+                      {selectedLink.direct_order_status === 'PAID' ? 'Paid & Protected' : selectedLink.direct_order_status === 'DECLINED' ? 'Declined by Buyer' : 'Pending Payment'}
                     </span>
                   </div>
                   <div className="flex items-center justify-between text-indigo-950 dark:text-indigo-200">

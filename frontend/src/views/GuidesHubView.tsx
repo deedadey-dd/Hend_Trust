@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
 import { 
-  BookOpen, 
-  ShieldCheck, 
   Search, 
   ArrowRight, 
   CheckCircle2, 
@@ -32,28 +30,28 @@ const ARTICLES: GuideArticle[] = [
     keyTips: [
       'Beware of accounts with disabled comments on all product posts.',
       'Check account username history under "About This Account" for frequent name changes.',
-      'Never send full prepayment directly via MoMo to an unverified personal account without escrow protection.'
+      'Never send full prepayment directly via MoMo to an unverified personal account without HendAxis payment protection.'
     ],
     content: [
       'Over 70% of Ghanaian online shoppers report having lost money or received inferior counterfeit goods from social media boutiques.',
       'Scammers often run sponsored Instagram and TikTok ads featuring stolen high-end luxury photos at suspiciously low prices (e.g., brand new iPhone 15 Pro Max for GHS 1,500). Once payment is received, the buyer is immediately blocked.',
-      'To shop safely, always ask the seller if they support HendAxis Trust escrow checkout. A legitimate seller with real inventory will be eager to use escrow because it guarantees them a committed, paying customer.'
+      'To shop safely, always ask the seller if they support HendAxis Trust protected checkout. A legitimate seller with real inventory will be eager to use HendAxis because it guarantees them a committed, paying customer.'
     ]
   },
   {
     id: 'what-is-escrow-ghana',
     category: 'ESCROW_EDUCATION',
-    title: 'What is an Escrow Service? How to Protect Your Mobile Money in Ghana',
+    title: 'How Conditional Payment Protection Safeguards Your Mobile Money in Ghana',
     readTime: '5 min read',
-    summary: 'Everything you need to know about how third-party escrow smart-locks eliminate prepayment risk across MTN MoMo and Telecel Cash.',
+    summary: 'Everything you need to know about how smart payment protection eliminates prepayment risk across MTN MoMo and Telecel Cash.',
     keyTips: [
-      'Escrow acts as a neutral trusted intermediary that holds funds until agreed delivery conditions are met.',
+      'HendAxis acts as a neutral trusted intermediary that holds funds until agreed delivery conditions are met.',
       'Sellers cannot withdraw your funds until you confirm satisfaction using a secret 6-digit OTP code.',
       'If the goods are damaged or never arrive, your money is 100% refunded to your MoMo wallet.'
     ],
     content: [
       'In traditional commerce, either the buyer takes 100% of the risk (by paying upfront) or the seller takes 100% of the risk (by shipping on Cash-on-Delivery).',
-      'An escrow platform solves this asymmetry by holding the money in a regulated, double-entry trust vault. The seller gets guaranteed proof of funds and dispatches the parcel with complete peace of mind.',
+      'HendAxis Trust solves this asymmetry by holding the payment in a protected account until delivery is fulfilled. The seller gets guaranteed proof of funds and dispatches the parcel with complete peace of mind.',
       'Once delivered, the buyer has a dedicated inspection window (24–48 hours) to verify the item. If satisfied, entering the OTP releases the payment directly to the seller.'
     ]
   },
@@ -64,7 +62,7 @@ const ARTICLES: GuideArticle[] = [
     readTime: '4 min read',
     summary: 'How social media sellers can eliminate order cancellations, driver theft, and photoshop bank alert scams.',
     keyTips: [
-      'Eliminate Cash-on-Delivery failure rates exceeding 30% by locking escrow funds before dispatch.',
+      'Eliminate Cash-on-Delivery failure rates exceeding 30% by verifying buyer funds before dispatch.',
       'Never rely on SMS or screenshot payment proofs sent by the customer—only dispatch after automated platform confirmation.',
       'Use integrated dispatch waybill tracking to defeat false non-delivery dispute claims.'
     ],
@@ -81,7 +79,7 @@ const ARTICLES: GuideArticle[] = [
     readTime: '3 min read',
     summary: 'The safe way to transact through VIP, STC, and OA parcel offices across Ghana without risk.',
     keyTips: [
-      'Always have the seller log the bus station, driver phone number, and vehicle registration number in the escrow order.',
+      'Always have the seller log the bus station, driver phone number, and vehicle registration number in the order.',
       'Ensure the seller uploads a clear photo of the bus parcel waybill receipt.',
       'Inspect the parcel at the destination terminal before confirming your OTP release code.'
     ],
@@ -112,15 +110,14 @@ export const GuidesHubView: React.FC = () => {
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-20 transition-colors">
       <SEOHead 
         title="Guides & Safe Trading Hub | HendAxis Trust"
-        description="Step-by-step guides and best practices for safe online trading, buyer protection, and dispute resolution with escrow in Ghana."
+        description="Step-by-step guides and best practices for safe online trading, buyer protection, and dispute resolution with HendAxis Trust in Ghana."
         canonicalUrl="https://trust.hendaxis.com/guides"
       />
 
       {/* Header Banner */}
       <section className="bg-gradient-to-b from-blue-600/10 via-slate-50 to-transparent dark:from-blue-950/30 dark:via-slate-950 dark:to-slate-950 pt-16 pb-12 px-6 border-b border-slate-200 dark:border-slate-800/80">
         <div className="max-w-4xl mx-auto text-center space-y-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-400 text-xs font-extrabold uppercase tracking-wider">
-            <BookOpen className="h-4 w-4" />
+          <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-400 text-xs font-extrabold uppercase tracking-wider">
             Knowledge & Safety Center
           </div>
 
@@ -139,7 +136,7 @@ export const GuidesHubView: React.FC = () => {
               type="text"
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search guides, scam tactics, escrow tips..."
+              placeholder="Search guides, scam tactics, safety tips..."
               className="w-full pl-11 pr-4 py-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl text-xs font-medium text-slate-900 dark:text-white shadow-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
             />
           </div>
@@ -151,7 +148,7 @@ export const GuidesHubView: React.FC = () => {
         {[
           { id: 'ALL', label: 'All Guides' },
           { id: 'SCAM_PREVENTION', label: 'Scam Prevention' },
-          { id: 'ESCROW_EDUCATION', label: 'Escrow 101' },
+          { id: 'ESCROW_EDUCATION', label: 'Payment Protection 101' },
           { id: 'SELLER_GUIDES', label: 'Seller Protection' },
           { id: 'LOGISTICS', label: 'Bus & Waybills' },
         ].map(cat => (
@@ -235,8 +232,7 @@ export const GuidesHubView: React.FC = () => {
 
               {/* Key Takeaways Box */}
               <div className="bg-blue-50/60 dark:bg-blue-950/30 border border-blue-200 dark:border-blue-900/50 rounded-2xl p-4 space-y-2">
-                <span className="font-extrabold text-blue-900 dark:text-blue-300 flex items-center gap-1.5 text-xs uppercase tracking-wider">
-                  <ShieldCheck className="h-4 w-4" />
+                <span className="font-extrabold text-blue-900 dark:text-blue-300 block text-xs uppercase tracking-wider">
                   Key Takeaways
                 </span>
                 <ul className="space-y-1.5 text-xs text-blue-900 dark:text-blue-200">
@@ -263,14 +259,14 @@ export const GuidesHubView: React.FC = () => {
                     Ready to transact with 100% confidence?
                   </h4>
                   <p className="text-[11px] text-slate-500">
-                    Create or request a HendAxis Trust escrow checkout link today.
+                    Create or request a HendAxis Trust payment link today.
                   </p>
                 </div>
                 <Link
                   to="/create-link"
                   className="py-2.5 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow shrink-0"
                 >
-                  Create Escrow Link
+                  Create Payment Link
                 </Link>
               </div>
             </div>

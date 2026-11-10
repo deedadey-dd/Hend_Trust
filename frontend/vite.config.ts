@@ -24,8 +24,9 @@ export default defineConfig({
             if (id.includes('lucide-react')) {
               return 'icons-vendor';
             }
-            if (id.includes('html2canvas') || id.includes('dompurify') || id.includes('jspdf')) {
-              return 'pdf-canvas-vendor';
+            // jspdf/html2canvas/dompurify/xlsx are dynamically imported; let Rollup keep them in lazy chunks.
+            if (id.includes('html2canvas') || id.includes('dompurify') || id.includes('jspdf') || id.includes('xlsx') || id.includes('canvg')) {
+              return undefined;
             }
             if (id.includes('recharts') || id.includes('d3')) {
               return 'charts-vendor';

@@ -1,10 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { 
-  Search, Store, Star, Zap, Shield, ShieldCheck, Loader2, 
+  Search, Store, Star, Shield, ShieldCheck, Loader2, 
   X, Wallet, Truck, MessageCircle, ShoppingBag, 
-  Sparkles, Layers, Phone, AlertTriangle, ArrowUpDown, 
-  RotateCcw, ArrowRight, UserPlus
+  Phone, AlertTriangle, ArrowUpDown, 
+  RotateCcw, ArrowRight
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -76,6 +76,8 @@ const IconTooltip = ({ text, children }: { text: string; children: React.ReactNo
 type SortOption = 'RELEVANCE' | 'RATING' | 'ESCROWS' | 'PRICE_ASC' | 'PRICE_DESC';
 type PriceFilter = 'ALL' | 'UNDER_200' | '200_1000' | '1000_5000' | 'OVER_5000';
 
+const SHOPS_PAGE_SIZE = 24;
+
 const POPULAR_SUGGESTIONS = [
   'Phones & Tablets',
   'Fashion & Apparel',
@@ -95,6 +97,10 @@ export default function ShopsDirectoryView() {
   const [featuredShops, setFeaturedShops] = useState<ShopCard[]>([]);
   const [standardShops, setStandardShops] = useState<ShopCard[]>([]);
   const [loading, setLoading] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [shopsPage, setShopsPage] = useState(1);
+  const [hasMoreShops, setHasMoreShops] = useState(false);
+  const [totalStandardShops, setTotalStandardShops] = useState(0);
 
   // Search & Filters
   const [query, setQuery] = useState(initialQuery);
@@ -158,21 +164,37 @@ export default function ShopsDirectoryView() {
     return clean ? `https://api.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(msg)}` : '';
   };
 
-  const fetchDirectory = async () => {
+  const fetchDirectory = async (pageToLoad: number = 1) => {
+    const isAppend = pageToLoad > 1;
     try {
-      setLoading(true);
+      if (isAppend) setLoadingMore(true);
+      else setLoading(true);
       const params = new URLSearchParams();
       if (query.trim()) params.append('query', query.trim());
       if (selectedCategory !== 'All') params.append('category', selectedCategory);
+      params.append('page', String(pageToLoad));
+      params.append('page_size', String(SHOPS_PAGE_SIZE));
 
       const res = await apiClient.get(`/reviews/shops?${params.toString()}`);
-      setMatchedProducts(res.data.matched_products || []);
-      setFeaturedShops(res.data.featured_shops || []);
-      setStandardShops(res.data.standard_shops || []);
+      const incoming: ShopCard[] = res.data.standard_shops || [];
+      if (isAppend) {
+        setStandardShops(prev => {
+          const seen = new Set(prev.map(s => s.seller_id));
+          return [...prev, ...incoming.filter(s => !seen.has(s.seller_id))];
+        });
+      } else {
+        setMatchedProducts(res.data.matched_products || []);
+        setFeaturedShops(res.data.featured_shops || []);
+        setStandardShops(incoming);
+      }
+      setShopsPage(pageToLoad);
+      setHasMoreShops(Boolean(res.data.has_more));
+      setTotalStandardShops(res.data.total_standard_shops ?? incoming.length);
     } catch {
       console.error("Failed to load marketplace directory.");
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   };
 
@@ -324,13 +346,13 @@ export default function ShopsDirectoryView() {
           ) : (
             <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-1.5">
               <ShoppingBag className="w-10 h-10 stroke-[1.5]" />
-              <span className="text-[11px] font-medium">HendAxis Escrow Product</span>
+              <span className="text-[11px] font-medium">HendAxis Protected Product</span>
             </div>
           )}
 
           <div className="absolute top-2.5 left-2.5">
             <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-slate-950/80 text-white backdrop-blur-md border border-white/20">
-              <ShieldCheck className="w-3 h-3 text-emerald-400" /> Escrow Protected
+              <ShieldCheck className="w-3 h-3 text-emerald-400" /> Payment Protected
             </span>
           </div>
 
@@ -473,7 +495,7 @@ export default function ShopsDirectoryView() {
                     <h3 className="font-extrabold text-slate-900 dark:text-slate-100 text-sm sm:text-base group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors truncate">
                       {shop.shop_name}
                     </h3>
-                    <IconTooltip text="Verified Escrow Merchant">
+                    <IconTooltip text="Verified Merchant">
                       <ShieldCheck className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
                     </IconTooltip>
                   </div>
@@ -486,7 +508,7 @@ export default function ShopsDirectoryView() {
 
             {isFeaturedAd && (
               <span className="px-2.5 py-1 rounded-full text-[10px] font-black bg-amber-500 text-white uppercase tracking-wider flex items-center gap-1 shrink-0">
-                <Zap className="w-3 h-3 fill-white" /> Featured Ad
+                Featured Ad
               </span>
             )}
           </div>
@@ -494,14 +516,12 @@ export default function ShopsDirectoryView() {
           {/* Stats & Category Badges */}
           <div className="flex items-center gap-1.5 flex-wrap">
             <span className="inline-flex items-center gap-1 font-semibold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-lg text-[11px] border border-slate-200/80 dark:border-slate-700/60">
-              <Store className="w-3 h-3 text-blue-500" />
               <span>{categoryName}</span>
             </span>
 
             {shop.total_completed_escrows > 0 && (
               <span className="inline-flex items-center gap-1 font-bold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2 py-0.5 rounded-lg text-[11px] border border-emerald-200/80 dark:border-emerald-800/60">
-                <ShieldCheck className="w-3 h-3 text-emerald-600" />
-                <span>{shop.total_completed_escrows} Escrows</span>
+                <span>{shop.total_completed_escrows} Orders</span>
               </span>
             )}
 
@@ -529,7 +549,7 @@ export default function ShopsDirectoryView() {
           {shop.featured_products && shop.featured_products.length > 0 && (
             <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
               <p className="text-[10px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500">
-                Featured Escrow Items:
+                Featured Items:
               </p>
               <div className="space-y-1.5">
                 {shop.featured_products.slice(0, 3).map(product => (
@@ -592,13 +612,13 @@ export default function ShopsDirectoryView() {
     );
   };
 
-  const totalShops = featuredShops.length + standardShops.length;
+  const totalShops = featuredShops.length + Math.max(totalStandardShops, standardShops.length);
 
   return (
     <div className="min-h-screen bg-white dark:bg-slate-950 text-slate-900 dark:text-slate-100 pb-16 transition-colors">
       <SEOHead
         title="Verified Sellers & Storefront Directory | HendAxis Trust"
-        description="Explore verified social commerce sellers and registered businesses protected by HendAxis Trust escrow in Ghana."
+        description="Explore verified social commerce sellers and registered businesses protected by HendAxis Trust in Ghana."
         canonicalUrl="https://trust.hendaxis.com/shops"
       />
 
@@ -611,12 +631,11 @@ export default function ShopsDirectoryView() {
 
         <div className="max-w-5xl w-full mx-auto relative z-10 flex flex-col justify-between flex-1 space-y-3">
           <div className="text-center space-y-1">
-            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider backdrop-blur-md">
-              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
-              Ghana's Escrow Marketplace
+            <div className="inline-flex items-center px-3 py-1 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider backdrop-blur-md">
+              Ghana's Protected Marketplace
             </div>
             <h1 className="text-xl sm:text-3xl font-black text-white tracking-tight drop-shadow-md">
-              Verified Shops & Escrow Marketplace
+              Verified Shops & Protected Marketplace
             </h1>
           </div>
 
@@ -653,7 +672,7 @@ export default function ShopsDirectoryView() {
                 type="submit"
                 className="absolute right-1.5 top-1.5 bottom-1.5 px-3.5 sm:px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs rounded-xl transition shadow flex items-center gap-1.5 cursor-pointer"
               >
-                <Search className="h-3.5 w-3.5" /> Search
+                Search
               </button>
             </form>
 
@@ -661,29 +680,27 @@ export default function ShopsDirectoryView() {
             <div className="flex items-center gap-1.5 sm:gap-2 overflow-x-auto no-scrollbar scrollbar-none pt-1">
               <button
                 onClick={() => handleCategorySelect('All')}
-                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer flex items-center gap-1.5 ${
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer ${
                   selectedCategory === 'All'
                     ? 'bg-blue-600 text-white shadow-md border border-blue-400/40'
                     : 'bg-black/40 hover:bg-black/55 text-white/90 hover:text-white border border-white/20'
                 }`}
               >
-                <Layers className="w-3.5 h-3.5" /> All Categories
+                All Categories
               </button>
 
               {MARKETPLACE_CATEGORIES.map(cat => {
-                const IconComp = cat.icon;
                 const isSelected = selectedCategory === cat.name;
                 return (
                   <button
                     key={cat.id}
                     onClick={() => handleCategorySelect(cat.name)}
-                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer flex items-center gap-1.5 ${
+                    className={`px-3 py-1.5 rounded-xl text-xs font-bold whitespace-nowrap transition backdrop-blur-md cursor-pointer ${
                       isSelected
                         ? 'bg-blue-600 text-white shadow-md border border-blue-400/40'
                         : 'bg-black/40 hover:bg-black/55 text-white/90 hover:text-white border border-white/20'
                     }`}
                   >
-                    <IconComp className="w-3.5 h-3.5" />
                     <span>{cat.shortName}</span>
                   </button>
                 );
@@ -718,7 +735,6 @@ export default function ShopsDirectoryView() {
                   : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              <Store className="w-4 h-4" />
               Verified Shops ({totalShops})
             </button>
 
@@ -730,7 +746,6 @@ export default function ShopsDirectoryView() {
                   : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
               }`}
             >
-              <ShoppingBag className="w-4 h-4" />
               Products ({processedProducts.length})
             </button>
           </div>
@@ -749,8 +764,8 @@ export default function ShopsDirectoryView() {
                 className="bg-transparent text-xs font-bold text-slate-700 dark:text-slate-300 outline-none cursor-pointer pr-1"
               >
                 <option value="RELEVANCE" className="dark:bg-slate-900">Sort: Default</option>
-                <option value="RATING" className="dark:bg-slate-900">Top Rated (⭐)</option>
-                <option value="ESCROWS" className="dark:bg-slate-900">Most Escrows Completed</option>
+                <option value="RATING" className="dark:bg-slate-900">Top Rated</option>
+                <option value="ESCROWS" className="dark:bg-slate-900">Most Orders Completed</option>
                 <option value="PRICE_ASC" className="dark:bg-slate-900">Price: Low to High</option>
                 <option value="PRICE_DESC" className="dark:bg-slate-900">Price: High to Low</option>
               </select>
@@ -762,7 +777,7 @@ export default function ShopsDirectoryView() {
                 onClick={() => setShowPromoteModal(true)}
                 className="px-3.5 py-2 rounded-xl bg-amber-500 hover:bg-amber-600 text-white font-black text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0"
               >
-                <Zap className="w-3.5 h-3.5 fill-white" /> Advertise My Shop
+                Advertise My Shop
               </button>
 
               {!user && (
@@ -770,7 +785,7 @@ export default function ShopsDirectoryView() {
                   to="/register"
                   className="px-3.5 py-2 rounded-xl bg-[#0363ff] hover:bg-blue-600 text-white font-bold text-xs transition shadow-sm flex items-center gap-1.5 cursor-pointer shrink-0"
                 >
-                  <UserPlus className="w-3.5 h-3.5" /> List Store Free
+                  List Store Free
                 </Link>
               )}
             </div>
@@ -827,8 +842,7 @@ export default function ShopsDirectoryView() {
               <div className="space-y-6">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-                      <Store className="h-5 w-5 text-blue-600" />
+                    <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
                       Verified Shops ({totalShops})
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -841,14 +855,9 @@ export default function ShopsDirectoryView() {
                 {featuredShops.length > 0 && (
                   <div className="bg-amber-50/70 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800/50 rounded-3xl p-5 sm:p-6 space-y-4 shadow-sm">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2.5">
-                        <div className="p-2 bg-amber-500 text-white rounded-xl shadow-sm">
-                          <Zap className="h-4 w-4 fill-white" />
-                        </div>
-                        <div>
-                          <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">Featured Sponsored Shops</h3>
-                          <p className="text-[11px] text-slate-600 dark:text-slate-400">Promoted merchants with verified active catalogs</p>
-                        </div>
+                      <div>
+                        <h3 className="text-sm sm:text-base font-extrabold text-slate-900 dark:text-slate-100">Featured Sponsored Shops</h3>
+                        <p className="text-[11px] text-slate-600 dark:text-slate-400">Promoted merchants with verified active catalogs</p>
                       </div>
                       <span className="text-[11px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100/90 dark:bg-amber-900/50 px-3 py-0.5 rounded-full border border-amber-300/80 dark:border-amber-800">
                         {featuredShops.length} Sponsored
@@ -880,8 +889,20 @@ export default function ShopsDirectoryView() {
                           onClick={() => setShowAllStores(!showAllStores)}
                           className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-bold transition shadow-2xs cursor-pointer border border-slate-200 dark:border-slate-700"
                         >
-                          <Store className="w-4 h-4 text-blue-600 dark:text-blue-400" />
                           <span>{showAllStores ? 'Show Fewer Shops' : `View All Verified Shops (${totalShops})`}</span>
+                        </button>
+                      </div>
+                    )}
+
+                    {/* Load more (server-side pagination) */}
+                    {hasMoreShops && (showAllStores || activeTab === 'SHOPS') && (
+                      <div className="text-center pt-2">
+                        <button
+                          onClick={() => fetchDirectory(shopsPage + 1)}
+                          disabled={loadingMore}
+                          className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold transition cursor-pointer disabled:opacity-60"
+                        >
+                          <span>{loadingMore ? 'Loading...' : `Load more shops (${Math.max(totalStandardShops - standardShops.length, 0)} remaining)`}</span>
                         </button>
                       </div>
                     )}
@@ -929,19 +950,18 @@ export default function ShopsDirectoryView() {
                 <RecentReviewsCarousel
                   mode="multi-column"
                   title="Recent Customer Reviews"
-                  subtitle="Explore verified feedback and ratings from recent escrow purchases across Ghana."
+                  subtitle="Explore verified feedback and ratings from recent protected purchases across Ghana."
                 />
               </div>
             )}
 
-            {/* 3. MATCHED PRODUCTS & ESCROW OFFERS GRID */}
+            {/* 3. MATCHED PRODUCTS & PROTECTED OFFERS GRID */}
             {(activeTab === 'ALL' || activeTab === 'PRODUCTS') && (
               <div className="space-y-4 pt-2">
                 <div className="flex items-center justify-between">
                   <div>
-                    <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white flex items-center gap-2">
-                      <ShoppingBag className="w-5 h-5 text-blue-600" />
-                      {query.trim() ? `Search Results for "${query}"` : 'Marketplace Products & Escrow Offers'} ({processedProducts.length})
+                    <h2 className="text-lg sm:text-xl font-black text-slate-900 dark:text-white">
+                      {query.trim() ? `Search Results for "${query}"` : 'Marketplace Products & Protected Offers'} ({processedProducts.length})
                     </h2>
                     <p className="text-xs text-slate-500 dark:text-slate-400">
                       Shipping cost is based on your location and agreed upon with the merchant.
@@ -982,7 +1002,7 @@ export default function ShopsDirectoryView() {
                         to="/for-buyers"
                         className="px-5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs transition inline-flex items-center gap-1.5"
                       >
-                        <span>How to buy from any vendor with escrow</span>
+                        <span>How to buy safely from any vendor</span>
                         <ArrowRight className="w-3.5 h-3.5" />
                       </Link>
                     </div>
@@ -1007,7 +1027,6 @@ export default function ShopsDirectoryView() {
             
             <div className="px-5 sm:px-6 py-4 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between bg-gradient-to-r from-amber-500 to-orange-600 text-white shrink-0">
               <div className="flex items-center gap-2">
-                <Zap className="h-5 w-5 fill-white" />
                 <h3 className="text-base font-bold">Advertise Your Store</h3>
               </div>
               <button onClick={() => setShowPromoteModal(false)} className="text-white/80 hover:text-white cursor-pointer">
@@ -1018,8 +1037,7 @@ export default function ShopsDirectoryView() {
             <div className="p-5 sm:p-6 space-y-5 overflow-y-auto flex-1">
               {!user ? (
                 <div className="text-center space-y-4 py-4">
-                  <Zap className="h-12 w-12 text-amber-500 mx-auto" />
-                  <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100">Advertise Your Escrow Store</h4>
+                  <h4 className="text-lg font-bold text-slate-900 dark:text-slate-100">Advertise Your Verified Store</h4>
                   <p className="text-xs text-slate-500 dark:text-slate-400 max-w-xs mx-auto">
                     Log in as a verified seller to feature your shop at the top of the Marketplace Directory.
                   </p>
@@ -1069,7 +1087,7 @@ export default function ShopsDirectoryView() {
               ) : (
                 <form onSubmit={handlePromoteSubmit} className="space-y-4">
                   <p className="text-xs text-slate-600 dark:text-slate-300">
-                    Feature your shop at the top of the Marketplace Directory with a "Featured Ad ⚡" badge to drive buyer discovery.
+                    Feature your shop at the top of the Marketplace Directory with a "Featured Ad" badge to drive buyer discovery.
                   </p>
 
                   <div className="grid grid-cols-2 gap-3">

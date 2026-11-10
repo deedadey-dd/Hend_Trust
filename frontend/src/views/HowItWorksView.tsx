@@ -1,15 +1,4 @@
 import React, { useState } from 'react';
-import { 
-  Lock, 
-  Truck, 
-  Eye, 
-  CheckCircle2, 
-  RotateCcw, 
-  AlertCircle, 
-  Sparkles, 
-  Layers, 
-  Scale
-} from 'lucide-react';
 import { Link } from 'react-router-dom';
 import { EscrowFeeCalculator } from '../components/EscrowFeeCalculator';
 import SEOHead from '../components/SEOHead';
@@ -20,7 +9,7 @@ export const HowItWorksView: React.FC = () => {
   return (
     <div className="min-h-screen bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 font-sans pb-20 transition-colors">
       <SEOHead 
-        title="How Escrow Works | HendAxis Trust"
+        title="How HendAxis Works | HendAxis Trust"
         description="Learn how HendAxis Trust protects buyers and sellers by holding payment securely until the agreed transaction conditions are fulfilled."
         canonicalUrl="https://trust.hendaxis.com/how-it-works"
       />
@@ -28,8 +17,7 @@ export const HowItWorksView: React.FC = () => {
       {/* Header Banner */}
       <section className="bg-gradient-to-b from-blue-600/10 via-slate-50 to-transparent dark:from-blue-950/30 dark:via-slate-950 dark:to-slate-950 pt-16 pb-12 px-6 border-b border-slate-200 dark:border-slate-800/80">
         <div className="max-w-4xl mx-auto text-center space-y-4">
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-400 text-xs font-extrabold uppercase tracking-wider">
-            <Layers className="h-4 w-4" />
+          <div className="inline-flex items-center px-3.5 py-1.5 rounded-full bg-blue-500/10 border border-blue-500/20 text-blue-700 dark:text-blue-400 text-xs font-extrabold uppercase tracking-wider">
             Clear, Transparent & Fair
           </div>
 
@@ -38,7 +26,7 @@ export const HowItWorksView: React.FC = () => {
           </h1>
 
           <p className="text-sm sm:text-base text-slate-600 dark:text-slate-300 max-w-xl mx-auto leading-relaxed">
-            A step-by-step walkthrough of how escrow protects both parties from the first click to the final Mobile Money payout.
+            A step-by-step walkthrough of how HendAxis protects both parties from the first click to the final Mobile Money payout.
           </p>
 
           {/* Flow Switcher Toggle */}
@@ -46,25 +34,23 @@ export const HowItWorksView: React.FC = () => {
             <button
               type="button"
               onClick={() => setActiveFlow('HAPPY_PATH')}
-              className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition flex items-center gap-2 cursor-pointer ${
+              className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
                 activeFlow === 'HAPPY_PATH'
                   ? 'bg-blue-600 text-white shadow'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <CheckCircle2 className="h-4 w-4" />
               <span>Standard Order & Delivery Flow</span>
             </button>
             <button
               type="button"
               onClick={() => setActiveFlow('DISPUTE_PATH')}
-              className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition flex items-center gap-2 cursor-pointer ${
+              className={`px-5 py-2.5 rounded-xl font-extrabold text-xs transition cursor-pointer ${
                 activeFlow === 'DISPUTE_PATH'
                   ? 'bg-rose-600 text-white shadow'
                   : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
               }`}
             >
-              <Scale className="h-4 w-4" />
               <span>Dispute & Refund Arbitration Flow</span>
             </button>
           </div>
@@ -87,58 +73,50 @@ export const HowItWorksView: React.FC = () => {
             <div className="space-y-4">
               {[
                 {
-                  step: "1",
-                  title: "1. Agreement & Link Generation",
-                  desc: "The seller generates a payment link with title, price, and delivery method, or the buyer requests a custom escrow link. Terms, fees, and inspection hours are crystal clear upfront.",
-                  icon: Sparkles,
+                  step: "01",
+                  title: "Agreement & Link Generation",
+                  desc: "The seller generates a payment link with title, price, and delivery method, or the buyer requests a custom payment link. Terms, fees, and inspection hours are crystal clear upfront.",
                   color: "bg-[#0363ff] text-white",
                 },
                 {
-                  step: "2",
-                  title: "2. Buyer Deposits Funds into Escrow",
-                  desc: "The buyer pays via MTN Mobile Money, Telecel Cash, or Visa/Mastercard. Funds are immediately locked in our protected escrow trust account. The seller cannot withdraw these funds yet.",
-                  icon: Lock,
+                  step: "02",
+                  title: "Buyer Pays with Trust Protection",
+                  desc: "The buyer pays via MTN Mobile Money, Telecel Cash, or Visa/Mastercard. Funds are immediately locked in our protected trust account. The seller cannot withdraw these funds yet.",
                   color: "bg-[#ff6d1d] text-white",
                 },
                 {
-                  step: "3",
-                  title: "3. Click Dispatch & Ship with Live Tracking",
+                  step: "03",
+                  title: "Click Dispatch & Ship with Live Tracking",
                   desc: "The seller receives an automated SMS confirming full payment custody, clicks 'Dispatch' on HendAxis first with the waybill photo or driver details, and then hands the package over to the courier (DHL, Speedaf, FedEx) or intercity bus (VIP, STC, OA).",
-                  icon: Truck,
                   color: "bg-slate-800 dark:bg-slate-700 text-white",
                 },
                 {
-                  step: "4",
-                  title: "4. Physical Delivery & OTP Inspection Period",
+                  step: "04",
+                  title: "Physical Delivery & OTP Inspection Period",
                   desc: "Upon package arrival, the buyer receives a secret 6-digit OTP and an inspection window (24–48 hours) to verify the item condition and specifications.",
-                  icon: Eye,
                   color: "bg-amber-500 text-white",
                 },
                 {
-                  step: "5",
-                  title: "5. OTP Verification & Automated MoMo Payout",
+                  step: "05",
+                  title: "OTP Verification & Automated MoMo Payout",
                   desc: "Buyer confirms satisfaction with their OTP code. HendAxis Trust automatically transfers the funds directly to the seller's Mobile Money wallet or bank account.",
-                  icon: CheckCircle2,
                   color: "bg-emerald-500 text-white",
                 },
-              ].map((item, idx) => {
-                const Icon = item.icon;
-                return (
-                  <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex items-start gap-4 hover:border-blue-500/40 transition">
-                    <div className={`w-10 h-10 rounded-2xl ${item.color} flex items-center justify-center font-bold text-sm shrink-0 shadow`}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                        {item.title}
-                      </h3>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                        {item.desc}
-                      </p>
-                    </div>
+              ].map((item, idx) => (
+                <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex items-start gap-4 hover:border-blue-500/40 transition">
+                  <div className={`w-10 h-10 rounded-2xl ${item.color} flex items-center justify-center font-mono font-bold text-sm shrink-0 shadow`}>
+                    {item.step}
                   </div>
-                );
-              })}
+                  <div className="space-y-1">
+                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                      {item.title}
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      {item.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         ) : (
@@ -155,51 +133,44 @@ export const HowItWorksView: React.FC = () => {
             <div className="space-y-4">
               {[
                 {
-                  step: "1",
-                  title: "1. Buyer Freezes Payout by Raising a Claim",
+                  step: "01",
+                  title: "Buyer Freezes Payout by Raising a Claim",
                   desc: "If the item is damaged, wrong color, counterfeit, or never delivered, the buyer clicks 'Raise Dispute' during the inspection period. The payout to the seller is instantly frozen.",
-                  icon: AlertCircle,
                   color: "bg-rose-500 text-white",
                 },
                 {
-                  step: "2",
-                  title: "2. Evidence Upload on Unified Dialogue Timeline",
+                  step: "02",
+                  title: "Evidence Upload on Unified Dialogue Timeline",
                   desc: "Both parties upload photos, unboxing videos, courier receipts, and statements on a shared chronological timeline. HendAxis relies on those evidences and the transaction details to make a determination on the outcome of a dispute.",
-                  icon: Layers,
                   color: "bg-amber-500 text-white",
                 },
                 {
-                  step: "3",
-                  title: "3. Optional Dispute Retraction or Return Agreement",
+                  step: "03",
+                  title: "Optional Dispute Retraction or Return Agreement",
                   desc: "If the seller provides a replacement or resolves the misunderstanding amicably, the buyer can retract the dispute, or the seller can request the item be returned before refund.",
-                  icon: RotateCcw,
                   color: "bg-blue-500 text-white",
                 },
                 {
-                  step: "4",
-                  title: "4. Binding Arbitration Ruling within 24 Hours",
+                  step: "04",
+                  title: "Binding Arbitration Ruling within 24 Hours",
                   desc: "HendAxis relies on the submitted evidences and the transaction details to make a fair, binding determination on the outcome of a dispute (100% Buyer Refund, Full Seller Payout, or Custom Split). Funds are disbursed within 24 hours.",
-                  icon: Scale,
                   color: "bg-emerald-500 text-white",
                 },
-              ].map((item, idx) => {
-                const Icon = item.icon;
-                return (
-                  <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex items-start gap-4 hover:border-rose-500/40 transition">
-                    <div className={`w-10 h-10 rounded-2xl ${item.color} flex items-center justify-center font-bold text-sm shrink-0 shadow`}>
-                      <Icon className="h-5 w-5" />
-                    </div>
-                    <div className="space-y-1">
-                      <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
-                        {item.title}
-                      </h3>
-                      <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                        {item.desc}
-                      </p>
-                    </div>
+              ].map((item, idx) => (
+                <div key={idx} className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-sm flex items-start gap-4 hover:border-rose-500/40 transition">
+                  <div className={`w-10 h-10 rounded-2xl ${item.color} flex items-center justify-center font-mono font-bold text-sm shrink-0 shadow`}>
+                    {item.step}
                   </div>
-                );
-              })}
+                  <div className="space-y-1">
+                    <h3 className="text-base font-extrabold text-slate-900 dark:text-white">
+                      {item.title}
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      {item.desc}
+                    </p>
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
         )}

@@ -29,7 +29,7 @@ export const ShareableProofCard: React.FC<ShareableProofCardProps> = ({
   sellerUsername,
   buyerName = 'Verified Buyer',
   rating = 5,
-  reviewComment = 'Fast delivery and smooth escrow transaction. Highly recommended!',
+  reviewComment = 'Fast delivery and smooth protected transaction. Highly recommended!',
   onClose,
 }) => {
   useEscapeKey(() => {
@@ -42,7 +42,7 @@ export const ShareableProofCard: React.FC<ShareableProofCardProps> = ({
   const origin = window.location.origin;
   const storeUrl = `${origin}/store/${sellerUsername}`;
   const whatsappShareText = encodeURIComponent(
-    `✅ Successfully completed a protected escrow sale on HendAxis Trust!\n📦 Item: ${itemTitle}\n💰 Amount: GHS ${amountGhs.toFixed(2)}\n⭐ Verified 5-Star Experience\n\nShop with 100% scam protection at my verified store: ${storeUrl}`
+    `✅ Successfully completed a protected sale on HendAxis Trust!\n📦 Item: ${itemTitle}\n💰 Amount: GHS ${amountGhs.toFixed(2)}\n⭐ Verified 5-Star Experience\n\nShop with 100% scam protection at my verified store: ${storeUrl}`
   );
 
   return (
@@ -89,7 +89,7 @@ export const ShareableProofCard: React.FC<ShareableProofCardProps> = ({
                 </div>
                 <div>
                   <span className="text-[10px] font-mono text-slate-400 tracking-wider uppercase block">
-                    Verified Escrow Delivery
+                    Verified Protected Delivery
                   </span>
                   <span className="text-xs font-black text-white">HENDAXIS TRUST</span>
                 </div>
