@@ -3,13 +3,14 @@ import { useParams, Link } from 'react-router-dom';
 import { 
   Shield, ShieldCheck, Star, Award, CheckCircle2, Loader2, 
   Send, ChevronRight, ChevronLeft, Package, ExternalLink, 
-  MessageCircle, Info, Phone, AlertTriangle, X, Search, 
-  ArrowUpDown, ChevronDown
+  MessageCircle, Info, Phone, X, Search, 
+  ArrowUpDown, ChevronDown, Flame
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import SEOHead from '../components/SEOHead';
 import ReviewDetailModal from '../components/ReviewDetailModal';
+import ProductDetailModal from '../components/ProductDetailModal';
 import { useEscapeKey } from '../utils/useEscapeKey';
 import { useModal } from '../context/ModalContext';
 import type { RecentReview } from '../components/TrustpilotReviewCard';
@@ -382,22 +383,23 @@ export default function SellerStoreView() {
           </div>
         )}
 
-        {/* Popular Badge if in first row / top items */}
+        {/* Popular Badge if in first row / top items - sleek & non-intrusive */}
         {isPopularRow && (
-          <div className="absolute top-2 left-2">
-            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-orange-500 text-white font-black text-[10px] uppercase tracking-wider shadow-md">
-              Popular
+          <div className="absolute top-2 left-2 z-10" title="Popular Item">
+            <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded-full bg-slate-950/50 hover:bg-slate-950/75 text-amber-300 dark:text-amber-400 backdrop-blur-md border border-amber-400/30 text-[9.5px] font-bold shadow-md transition-all">
+              <Flame className="w-3 h-3 fill-amber-400 text-amber-400 shrink-0" />
+              <span>Popular</span>
             </span>
           </div>
         )}
 
-        {/* Floating Price Tag */}
-        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1">
-          <span className="px-2 py-0.5 rounded-lg bg-slate-950/90 backdrop-blur-md text-emerald-400 font-extrabold text-[11px] sm:text-xs shadow-lg border border-emerald-500/30 font-mono">
+        {/* Floating Price Tag with increased transparency */}
+        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1 pointer-events-none">
+          <span className="px-2 py-0.5 rounded-lg bg-slate-950/45 backdrop-blur-md text-emerald-400 font-extrabold text-[11px] sm:text-xs shadow-lg border border-emerald-500/25 font-mono">
             GH₵ {Number(prod.price_ghs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
           </span>
           {prod.category && (
-            <span className="px-1.5 py-0.5 rounded-md bg-slate-900/80 backdrop-blur-md text-slate-300 text-[9.5px] font-medium truncate max-w-[110px]">
+            <span className="px-1.5 py-0.5 rounded-md bg-slate-950/45 backdrop-blur-md text-slate-200 text-[9.5px] font-medium truncate max-w-[110px] border border-white/10">
               {prod.category}
             </span>
           )}
@@ -1496,109 +1498,18 @@ export default function SellerStoreView() {
         showVisitStoreButton={false}
       />
 
-      {/* Interstitial Confirm Shipping / Delivery Modal */}
-      {shippingModalProduct && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-xs animate-in fade-in duration-200">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in zoom-in-95 duration-200">
-            {/* Modal Header */}
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex items-center gap-2.5">
-                <div className="h-10 w-10 rounded-2xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
-                  <Package className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-bold text-slate-900 dark:text-white text-base leading-tight">
-                    Confirm Delivery with Seller
-                  </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Verify shipping fees to your destination
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShippingModalProduct(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
-
-            {/* Selected Product Snapshot */}
-            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate">
-                  {shippingModalProduct.title}
-                </h4>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                  Store: <strong className="text-slate-700 dark:text-slate-200 font-semibold">{shippingModalProduct.seller_shop_name || store.shop_name}</strong>
-                </p>
-              </div>
-              <span className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 font-mono shrink-0">
-                GH₵ {Number(shippingModalProduct.price_ghs).toFixed(2)}
-              </span>
-            </div>
-
-            {/* Warning Box */}
-            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 text-xs text-amber-950 dark:text-amber-200 space-y-2">
-              <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300 text-xs">
-                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>Important Shipping Notice</span>
-              </div>
-              <p className="leading-relaxed text-[11.5px]">
-                Shipping costs in Ghana depend on your specific city/town and chosen transport method (e.g. Courier or Station Bus OTP).
-              </p>
-              <p className="leading-relaxed text-[11.5px] font-medium text-amber-900 dark:text-amber-100">
-                If your delivery location costs more than what is included in this link, the seller may ask for an additional shipping fee before dispatching your package.
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="space-y-2 pt-1">
-              {shippingModalProduct.whatsapp_contact_url ? (
-                <a
-                  href={shippingModalProduct.whatsapp_contact_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 text-center cursor-pointer"
-                >
-                  <MessageCircle className="h-4 w-4" />
-                  <span>Chat on WhatsApp to Confirm Delivery</span>
-                </a>
-              ) : (
-                <Link
-                  to={`/l/${shippingModalProduct.link_id}`}
-                  onClick={() => setShippingModalProduct(null)}
-                  className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md flex items-center justify-center gap-2 text-center"
-                >
-                  <ExternalLink className="h-4 w-4" />
-                  <span>Proceed to Escrow Checkout</span>
-                </Link>
-              )}
-
-              {shippingModalProduct.seller_phone && (
-                <a
-                  href={`tel:${shippingModalProduct.seller_phone}`}
-                  className="w-full py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 text-center"
-                >
-                  <Phone className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <span>Call Seller ({shippingModalProduct.seller_phone})</span>
-                </a>
-              )}
-
-              <div className="pt-2 text-center">
-                <Link
-                  to={`/l/${shippingModalProduct.link_id}`}
-                  onClick={() => setShippingModalProduct(null)}
-                  className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-semibold underline"
-                >
-                  I have already agreed on delivery — Proceed to Checkout →
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* Product Details, Larger Image Preview & Delivery Modal */}
+      <ProductDetailModal
+        product={shippingModalProduct ? {
+          ...shippingModalProduct,
+          seller_username: shippingModalProduct.seller_username || store?.seller_username,
+          seller_shop_name: shippingModalProduct.seller_shop_name || store?.shop_name,
+          badge_verified_seller: shippingModalProduct.badge_verified_seller ?? store?.badge_verified_seller,
+          seller_avg_rating: shippingModalProduct.seller_avg_rating ?? store?.avg_overall,
+          seller_review_count: shippingModalProduct.seller_total_reviews ?? store?.total_reviews_count,
+        } : null}
+        onClose={() => setShippingModalProduct(null)}
+      />
     </div>
   );
 }

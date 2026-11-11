@@ -4,13 +4,14 @@ import {
   Search, Store, Star, Shield, ShieldCheck, Loader2, 
   X, Wallet, Truck, MessageCircle, ShoppingBag, 
   Phone, AlertTriangle, ArrowUpDown, 
-  RotateCcw, ArrowRight
+  RotateCcw, ArrowRight, ChevronRight
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.webp';
 import SEOHead from '../components/SEOHead';
 import RecentReviewsCarousel from '../components/RecentReviewsCarousel';
+import ProductDetailModal from '../components/ProductDetailModal';
 import { useEscapeKey } from '../utils/useEscapeKey';
 import { MARKETPLACE_CATEGORIES } from '../constants/categories';
 
@@ -130,6 +131,10 @@ export default function ShopsDirectoryView() {
   // Interstitial Confirm Shipping Modal State for Featured Links
   const [shippingModalItem, setShippingModalItem] = useState<{ product: ShopProduct; shop: ShopCard } | null>(null);
   useEscapeKey(() => setShippingModalItem(null), Boolean(shippingModalItem));
+
+  // Product Details Modal State
+  const [selectedProductModal, setSelectedProductModal] = useState<ProductCard | null>(null);
+  useEscapeKey(() => setSelectedProductModal(null), Boolean(selectedProductModal));
 
   const getProductWhatsappUrl = (
     phoneRaw?: string,
@@ -331,125 +336,134 @@ export default function ShopsDirectoryView() {
   const renderProductCard = (product: ProductCard) => (
     <div
       key={product.link_id}
-      className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-4 sm:p-5 flex flex-col justify-between shadow-sm hover:shadow-xl hover:border-blue-500/40 dark:hover:border-blue-500/40 transition-all group"
+      className="bg-white dark:bg-slate-900 rounded-2xl border border-gray-200/90 dark:border-slate-800 hover:border-blue-500 dark:hover:border-blue-500 hover:shadow-lg transition-all flex flex-col overflow-hidden group relative"
     >
-      <div>
-        {/* Product Image Preview */}
-        <div className="relative w-full h-44 sm:h-48 rounded-2xl bg-slate-100 dark:bg-slate-950 overflow-hidden mb-3 border border-slate-200/80 dark:border-slate-800">
-          {product.image_url ? (
-            <img
-              src={product.image_url}
-              alt={product.title}
-              className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-full h-full flex flex-col items-center justify-center text-slate-400 dark:text-slate-600 gap-1.5">
-              <ShoppingBag className="w-10 h-10 stroke-[1.5]" />
-              <span className="text-[11px] font-medium">HendAxis Protected Product</span>
-            </div>
-          )}
-
-          <div className="absolute top-2.5 left-2.5">
-            <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-black bg-slate-950/80 text-white backdrop-blur-md border border-white/20">
-              <ShieldCheck className="w-3 h-3 text-emerald-400" /> Payment Protected
-            </span>
+      {/* Product Image */}
+      <div 
+        onClick={() => setSelectedProductModal(product)}
+        className="h-36 sm:h-40 w-full bg-slate-100 dark:bg-slate-800 relative overflow-hidden shrink-0 cursor-pointer"
+      >
+        {product.image_url ? (
+          <img
+            src={product.image_url}
+            alt={product.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+          />
+        ) : (
+          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-800 to-indigo-950 text-slate-400 p-3 text-center">
+            <ShoppingBag className="h-8 w-8 text-slate-500 mb-1" />
+            <span className="text-xs font-semibold text-slate-300 line-clamp-1">{product.title}</span>
           </div>
+        )}
 
-          {product.category && (
-            <div className="absolute top-2.5 right-2.5">
-              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[9px] font-bold bg-blue-950/80 text-blue-200 backdrop-blur-md border border-blue-400/30">
-                {product.category}
-              </span>
-            </div>
-          )}
+        {/* Payment Protected - Icon Only with Tooltip */}
+        <div className="absolute top-2 left-2 z-10" title="Payment Protected">
+          <span 
+            className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-slate-950/50 hover:bg-slate-950/80 text-emerald-400 backdrop-blur-md border border-emerald-400/30 shadow-md transition-all cursor-help"
+            aria-label="Payment Protected"
+          >
+            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+          </span>
         </div>
 
-        {/* Product Title */}
-        <h3 className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base line-clamp-2 leading-snug group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
-          {product.title}
-        </h3>
-
-        {/* Price & Shipping Exclusion Disclaimer */}
-        <div className="mt-2.5 p-2.5 rounded-2xl bg-slate-50 dark:bg-slate-950/70 border border-slate-200/80 dark:border-slate-800/80 space-y-1">
-          <div className="flex items-center justify-between">
-            <span className="text-lg sm:text-xl font-black text-emerald-600 dark:text-emerald-400 font-mono">
-              GH₵ {product.price_ghs.toFixed(2)}
+        {/* Floating Price Tag with increased transparency */}
+        <div className="absolute bottom-2 left-2 right-2 flex items-center justify-between gap-1 pointer-events-none">
+          <span className="px-2 py-0.5 rounded-lg bg-slate-950/45 backdrop-blur-md text-emerald-400 font-extrabold text-[11px] sm:text-xs shadow-lg border border-emerald-500/25 font-mono">
+            GH₵ {Number(product.price_ghs).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+          </span>
+          {product.category && (
+            <span className="px-1.5 py-0.5 rounded-md bg-slate-950/45 backdrop-blur-md text-slate-200 text-[9.5px] font-medium truncate max-w-[110px] border border-white/10">
+              {product.category}
             </span>
-          </div>
-
-          {/* Prominent Shipping Cost Disclaimer Badge */}
-          <div
-            className="flex items-center gap-1 text-[10px] font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/40 px-2 py-0.5 rounded-md border border-amber-200/60 dark:border-amber-800/40"
-            title="Shipping cost is calculated based on your location and agreed upon with the seller."
-          >
-            <Truck className="w-3 h-3 text-amber-600 dark:text-amber-400 shrink-0" />
-            <span>Shipping cost is based on your location</span>
-          </div>
+          )}
         </div>
       </div>
 
-      {/* Seller Info (Left) & Direct Icon Action Links (Right) */}
-      <div className="flex items-center justify-between mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 gap-2">
-        <Link
-          to={`/store/${product.seller_username}`}
-          className="flex items-center gap-1.5 min-w-0 hover:text-blue-600 dark:hover:text-blue-400 transition"
-          title={`Visit ${product.seller_shop_name || product.seller_username}'s storefront`}
-        >
-          <div className="w-6 h-6 rounded-full bg-blue-600 text-white flex items-center justify-center text-[10px] font-bold shrink-0 shadow-2xs">
-            {(product.seller_shop_name || product.seller_username || 'S')[0].toUpperCase()}
-          </div>
-          <div className="min-w-0">
-            <div className="flex items-center gap-1">
-              <span className="font-semibold text-slate-700 dark:text-slate-300 truncate text-xs">
+      {/* Card Content */}
+      <div className="p-3 sm:p-3.5 flex flex-col flex-1 justify-between gap-2.5">
+        <div>
+          <h4 
+            onClick={() => setSelectedProductModal(product)}
+            className="font-bold text-gray-900 dark:text-white text-xs sm:text-sm line-clamp-1 group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors cursor-pointer"
+            title={product.title}
+          >
+            {product.title}
+          </h4>
+          {product.description ? (
+            <p className="text-[11px] text-gray-500 dark:text-slate-400 line-clamp-1 mt-0.5">
+              {product.description}
+            </p>
+          ) : (
+            <div className="flex items-center gap-1 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5 truncate">
+              <Link
+                to={`/store/${product.seller_username}`}
+                className="hover:text-blue-600 dark:hover:text-blue-400 transition font-medium truncate"
+                title={`Visit ${product.seller_shop_name || product.seller_username}'s store`}
+              >
                 {product.seller_shop_name || `@${product.seller_username}`}
-              </span>
+              </Link>
               {product.badge_verified_seller && (
-                <ShieldCheck className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <ShieldCheck className="w-3 h-3 text-blue-500 shrink-0" />
               )}
             </div>
-            {product.seller_avg_rating > 0 && (
-              <span className="flex items-center gap-0.5 text-[10px] font-bold text-amber-600 dark:text-amber-400">
-                <Star className="w-2.5 h-2.5 fill-amber-400 text-amber-500" />
-                {product.seller_avg_rating.toFixed(1)}
-              </span>
-            )}
-          </div>
-        </Link>
-
-        {/* Icon-Only Links: Phone and WhatsApp */}
-        <div className="flex items-center gap-1.5 shrink-0">
-          {product.seller_phone && (
-            <a
-              href={`tel:${product.seller_phone}`}
-              className="h-8 w-8 rounded-full bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/60 dark:hover:text-blue-400 text-slate-700 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition shadow-2xs cursor-pointer"
-              title={`Call seller (${product.seller_phone})`}
-              aria-label={`Call seller at ${product.seller_phone}`}
-            >
-              <Phone className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-            </a>
           )}
-          {product.whatsapp_contact_url ? (
-            <a
-              href={product.whatsapp_contact_url}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="h-8 w-8 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-xs transition cursor-pointer"
-              title="Chat with seller on WhatsApp"
-              aria-label="Chat with seller on WhatsApp"
-            >
-              <MessageCircle className="w-4 h-4" />
-            </a>
-          ) : (
+        </div>
+
+        {/* Shipping Notice Trigger (Exact match to /store/seller1) */}
+        <button
+          type="button"
+          onClick={() => setSelectedProductModal(product)}
+          className="w-full flex items-center justify-between text-[10.5px] text-slate-600 dark:text-slate-400 bg-slate-100/90 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 transition cursor-pointer text-left"
+        >
+          <div className="flex items-center gap-1 truncate">
+            <span className="text-[9.5px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider shrink-0">Shipping:</span>
+            <span className="truncate">Based on location</span>
+          </div>
+          <ChevronRight className="h-3 w-3 text-slate-400 shrink-0 ml-1" />
+        </button>
+
+        {/* Action Buttons: Buy with Protection + Contact Icons */}
+        <div className="pt-1.5 border-t border-gray-100 dark:border-slate-800 flex items-center justify-between gap-1.5">
+          <button
+            type="button"
+            onClick={() => setSelectedProductModal(product)}
+            className="flex-1 py-1.5 px-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center whitespace-nowrap truncate cursor-pointer"
+          >
+            <span className="truncate">Buy with Protection</span>
+          </button>
+          <div className="flex items-center gap-1 shrink-0">
+            {product.seller_phone && (
+              <a
+                href={`tel:${product.seller_phone}`}
+                className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/60 dark:hover:text-blue-400 text-slate-700 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition shadow-2xs cursor-pointer"
+                title={`Call seller (${product.seller_phone})`}
+                aria-label={`Call seller at ${product.seller_phone}`}
+              >
+                <Phone className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+              </a>
+            )}
+            {product.whatsapp_contact_url && (
+              <a
+                href={product.whatsapp_contact_url}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="h-7 w-7 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white flex items-center justify-center shadow-2xs transition cursor-pointer"
+                title="Chat with seller on WhatsApp"
+                aria-label="Chat with seller on WhatsApp"
+              >
+                <MessageCircle className="h-3.5 w-3.5" />
+              </a>
+            )}
             <Link
               to={`/store/${product.seller_username}`}
-              className="h-8 w-8 rounded-full bg-blue-600 hover:bg-blue-700 text-white flex items-center justify-center shadow-xs transition"
-              title="Visit Store"
+              className="h-7 w-7 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-blue-50 hover:text-blue-600 dark:hover:bg-blue-950/60 dark:hover:text-blue-400 text-slate-700 dark:text-slate-300 flex items-center justify-center border border-slate-200 dark:border-slate-700 transition shadow-2xs"
+              title={`Visit ${product.seller_shop_name || product.seller_username}'s storefront`}
               aria-label="Visit seller storefront"
             >
-              <Store className="w-3.5 h-3.5" />
+              <Store className="h-3.5 w-3.5" />
             </Link>
-          )}
+          </div>
         </div>
       </div>
     </div>
@@ -1230,6 +1244,12 @@ export default function ShopsDirectoryView() {
           </div>
         </div>
       )}
+
+      {/* Product Details, Larger Image Preview & Delivery Modal */}
+      <ProductDetailModal
+        product={selectedProductModal}
+        onClose={() => setSelectedProductModal(null)}
+      />
 
     </div>
   );

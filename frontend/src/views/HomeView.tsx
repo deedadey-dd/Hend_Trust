@@ -7,7 +7,6 @@ import {
 import { useAuthStore } from '../store/authStore';
 import { apiClient } from '../api/client';
 import heroBanner from '../assets/hero_banner.webp';
-import logoWhite from '../assets/hendaxis_trust_logo_white.svg';
 import SEOHead from '../components/SEOHead';
 import RecentReviewsCarousel from '../components/RecentReviewsCarousel';
 import EscrowFeeCalculator from '../components/EscrowFeeCalculator';
@@ -556,9 +555,9 @@ export default function HomeView() {
         <div className="absolute -bottom-24 -right-24 w-80 h-80 rounded-full bg-[#FF6E1D]/15 blur-3xl pointer-events-none" />
 
         <div className="relative z-10 max-w-3xl mx-auto px-6 py-20 text-center">
-          <div className="flex justify-center mb-6">
+          {/* <div className="flex justify-center mb-6">
             <img src={logoWhite} alt="HendAxis Trust" className="h-10 sm:h-12 w-auto" />
-          </div>
+          </div> */}
           <h2 className="text-3xl sm:text-4xl font-black mb-4 !text-white">Ready to sell & buy with 100% confidence?</h2>
           <p className="!text-slate-300 mb-8 text-base font-medium">Join Ghana's verified vendors. Create your first payment link in under 30 seconds.</p>
           <div className="flex flex-wrap gap-4 justify-center">
