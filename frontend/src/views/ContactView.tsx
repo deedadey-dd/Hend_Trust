@@ -1,7 +1,6 @@
 import React, { useState } from 'react';
 import { 
-  PhoneCall, Mail, MapPin, Send, CheckCircle2, Clock, 
-  ShieldCheck, MessageSquare
+  Send, CheckCircle2, Clock
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import SEOHead from '../components/SEOHead';
@@ -59,13 +58,12 @@ export const ContactView: React.FC = () => {
       {/* Header Banner */}
       <div className="bg-gradient-to-b from-slate-900 via-slate-900 to-slate-950 border-b border-slate-800 py-12 px-4 sm:px-6 text-white">
         <div className="max-w-4xl mx-auto text-center space-y-3">
-          <div className="inline-flex items-center gap-2 bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-full text-xs font-extrabold text-emerald-400">
-            <MessageSquare className="h-4 w-4" />
+          <div className="inline-flex items-center bg-emerald-500/10 border border-emerald-500/20 px-3.5 py-1.5 rounded-full text-xs font-extrabold text-emerald-400">
             Direct Support & Enquiries
           </div>
           <h1 className="text-3xl sm:text-4xl font-black text-white">We're Here to Help You</h1>
           <p className="text-slate-300 text-xs sm:text-sm max-w-xl mx-auto">
-            Have questions about an escrow transaction, seller verification, or platform features? Reach out to our dedicated Ghana support team.
+            Have questions about a transaction, seller verification, or platform features? Reach out to our dedicated Ghana support team.
           </p>
         </div>
       </div>
@@ -78,48 +76,32 @@ export const ContactView: React.FC = () => {
             <h3 className="font-extrabold text-sm text-slate-900 dark:text-white border-b border-slate-100 dark:border-slate-800 pb-2">Official Contact Channels</h3>
 
             <div className="space-y-4 text-xs">
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center shrink-0">
-                  <Mail className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <span className="font-bold text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Email Enquiries</span>
-                  <a href="mailto:support@hendaxistrust.com" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">
-                    support@hendaxis.com
-                  </a>
-                </div>
+              <div>
+                <span className="font-bold text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Email Enquiries</span>
+                <a href="mailto:support@hendaxistrust.com" className="text-blue-600 dark:text-blue-400 font-medium hover:underline">
+                  support@hendaxis.com
+                </a>
               </div>
 
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-emerald-500/10 border border-emerald-500/20 flex items-center justify-center shrink-0">
-                  <PhoneCall className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
-                </div>
-                <div>
-                  <span className="font-bold text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Phone & WhatsApp</span>
-                  <p className="text-slate-900 dark:text-slate-200 font-mono font-bold">+233 (0) 53 812 7939</p>
-                  <p className="text-[10px] text-slate-500 dark:text-slate-400">Mon – Sat: 9:00 – 18:00 GMT</p>
-                </div>
+              <div>
+                <span className="font-bold text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Phone & WhatsApp</span>
+                <p className="text-slate-900 dark:text-slate-200 font-mono font-bold">+233 (0) 53 812 7939</p>
+                <p className="text-[10px] text-slate-500 dark:text-slate-400">Mon – Sat: 9:00 – 18:00 GMT</p>
               </div>
 
-              <div className="flex items-start gap-3">
-                <div className="w-8 h-8 rounded-xl bg-purple-500/10 border border-purple-500/20 flex items-center justify-center shrink-0">
-                  <MapPin className="h-4 w-4 text-purple-600 dark:text-purple-400" />
-                </div>
-                <div>
-                  <span className="font-bold text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Head Office - Ghana</span>
-                  <p className="text-slate-800 dark:text-slate-300">Accra, Ghana</p>
-                </div>
+              <div>
+                <span className="font-bold text-slate-500 dark:text-slate-400 block text-[10px] uppercase">Head Office - Ghana</span>
+                <p className="text-slate-800 dark:text-slate-300">Accra, Ghana</p>
               </div>
             </div>
           </div>
 
           <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-3 shadow-md text-xs">
-            <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400 font-bold">
-              <ShieldCheck className="h-4 w-4" />
+            <div className="text-emerald-600 dark:text-emerald-400 font-bold">
               <span>Fast Response Guarantee</span>
             </div>
             <p className="text-slate-600 dark:text-slate-400 leading-relaxed text-[11px]">
-              Escrow dispute queries are prioritized by senior arbitrators and responded to within 2 hours during business hours.
+              Dispute queries are prioritized by senior arbitrators and responded to within 2 hours during business hours.
             </p>
           </div>
         </div>

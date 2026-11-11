@@ -346,15 +346,15 @@ class PlatformSetting(models.Model):
     def save(self, *args, **kwargs):
         super().save(*args, **kwargs)
         try:
-            from django.core.cache import cache
-            cache.delete("system_platform_settings")
+            from apps.core.cache_utils import invalidate_platform_settings_cache
+            invalidate_platform_settings_cache()
         except Exception:
             pass
 
     def delete(self, *args, **kwargs):
         try:
-            from django.core.cache import cache
-            cache.delete("system_platform_settings")
+            from apps.core.cache_utils import invalidate_platform_settings_cache
+            invalidate_platform_settings_cache()
         except Exception:
             pass
         return super().delete(*args, **kwargs)

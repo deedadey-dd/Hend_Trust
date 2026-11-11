@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo, useRef } from 'react';
 import { useParams, Link } from 'react-router-dom';
 import { 
-  Shield, ShieldCheck, Star, Award, CheckCircle2, MessageSquare, Loader2, 
-  Calendar, PackageCheck, Send, Zap, ChevronRight, ChevronLeft, Pencil, Package, ExternalLink, 
-  MessageCircle, Info, Phone, AlertTriangle, X, Tag, Search, Flame, 
-  ShoppingBag, ArrowUpDown, ChevronDown
+  Shield, ShieldCheck, Star, Award, CheckCircle2, Loader2, 
+  Send, ChevronRight, ChevronLeft, Package, ExternalLink, 
+  MessageCircle, Info, Phone, AlertTriangle, X, Search, 
+  ArrowUpDown, ChevronDown
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -343,7 +343,7 @@ export default function SellerStoreView() {
   );
 
   const storeTitle = `${store.shop_name || `@${store.seller_username}'s Store`} — Verified Seller on HendAxis Trust`;
-  const storeDesc = `Buy safely from ${store.shop_name || store.seller_username} in Ghana using HendAxis Trust escrow protection. ${store.total_completed_escrows} completed escrows, ${store.avg_overall.toFixed(1)}/5 rating.`;
+  const storeDesc = `Buy safely from ${store.shop_name || store.seller_username} in Ghana using HendAxis Trust payment protection. ${store.total_completed_escrows} completed orders, ${store.avg_overall.toFixed(1)}/5 rating.`;
   const storeJsonLd = {
     '@context': 'https://schema.org',
     '@type': 'Store',
@@ -385,8 +385,8 @@ export default function SellerStoreView() {
         {/* Popular Badge if in first row / top items */}
         {isPopularRow && (
           <div className="absolute top-2 left-2">
-            <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-orange-500 text-white font-black text-[10px] uppercase tracking-wider shadow-md">
-              <Flame className="h-3 w-3 fill-white" /> Popular
+            <span className="inline-flex items-center px-2 py-0.5 rounded-md bg-orange-500 text-white font-black text-[10px] uppercase tracking-wider shadow-md">
+              Popular
             </span>
           </div>
         )}
@@ -428,7 +428,7 @@ export default function SellerStoreView() {
           className="w-full flex items-center justify-between text-[10.5px] text-slate-600 dark:text-slate-400 bg-slate-100/90 hover:bg-slate-200/80 dark:bg-slate-800/80 dark:hover:bg-slate-800 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 transition cursor-pointer text-left"
         >
           <div className="flex items-center gap-1 truncate">
-            <span className="text-[9.5px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider shrink-0">📦 Shipping:</span>
+            <span className="text-[9.5px] font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider shrink-0">Shipping:</span>
             <span className="truncate">Based on location</span>
           </div>
           <ChevronRight className="h-3 w-3 text-slate-400 shrink-0 ml-1" />
@@ -441,7 +441,7 @@ export default function SellerStoreView() {
             onClick={() => setShippingModalProduct(prod)}
             className="flex-1 py-1.5 px-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs rounded-xl shadow-xs transition flex items-center justify-center whitespace-nowrap truncate cursor-pointer"
           >
-            <span className="truncate">Buy via Escrow</span>
+            <span className="truncate">Buy with Protection</span>
           </button>
           <div className="flex items-center gap-1 shrink-0">
             {prod.seller_phone && (
@@ -534,18 +534,17 @@ export default function SellerStoreView() {
               <div className="flex items-center gap-2 text-xs text-gray-500 dark:text-slate-400 mt-0.5 flex-wrap">
                 <span className="font-mono text-blue-600 dark:text-blue-400 font-semibold">@{store.seller_username}</span>
                 <span>•</span>
-                <span className="inline-flex items-center gap-1">
-                  <Calendar className="h-3 w-3 text-gray-400 dark:text-slate-500" /> Member since {new Date(store.joined_at).getFullYear()}
+                <span>
+                  Member since {new Date(store.joined_at).getFullYear()}
                 </span>
               </div>
             </div>
           </div>
 
-          {/* Right: Escrows Count & Rating Stats Chips */}
+          {/* Right: Orders Count & Rating Stats Chips */}
           <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
             <span className="inline-flex items-center gap-1.5 font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 px-2.5 sm:px-3 py-1 rounded-xl text-xs shadow-2xs">
-              <PackageCheck className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
-              <span>{store.total_completed_escrows} Escrows</span>
+              <span>{store.total_completed_escrows} Orders</span>
             </span>
 
             <span className="inline-flex items-center gap-1 font-bold text-amber-900 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-2.5 sm:px-3 py-1 rounded-xl text-xs">
@@ -632,7 +631,7 @@ export default function SellerStoreView() {
           <div className="space-y-2.5 max-w-2xl">
             <div className="flex items-center gap-1.5 flex-wrap">
               <span className="inline-flex items-center gap-1 text-[11px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mr-1">
-                <Tag className="h-3 w-3 text-blue-600 dark:text-blue-400" /> Categories:
+                Categories:
               </span>
               {store.shop_categories && store.shop_categories.length > 0 ? (
                 store.shop_categories.map(cat => (
@@ -656,7 +655,7 @@ export default function SellerStoreView() {
 
           <div className="shrink-0 flex items-center gap-2 self-start sm:self-center bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 px-3.5 py-2 rounded-2xl text-xs font-bold text-slate-700 dark:text-slate-300 shadow-2xs">
             <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
-            <span>Escrow Protected Store</span>
+            <span>Verified Shop</span>
           </div>
         </div>
 
@@ -683,7 +682,6 @@ export default function SellerStoreView() {
                 : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-slate-400 border border-gray-200/80 dark:border-slate-800 hover:bg-gray-100 dark:hover:bg-slate-800'
             }`}
           >
-            <ShoppingBag className="h-4 w-4" />
             <span>All Products</span>
             {store.active_products && store.active_products.length > 0 && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
@@ -703,7 +701,6 @@ export default function SellerStoreView() {
                 : 'bg-white dark:bg-slate-900 text-gray-600 dark:text-slate-400 border border-gray-200/80 dark:border-slate-800 hover:bg-gray-100 dark:hover:bg-slate-800'
             }`}
           >
-            <MessageSquare className="h-4 w-4" />
             <span>Customer Reviews</span>
             {store.reviews && store.reviews.length > 0 && (
               <span className={`px-1.5 py-0.5 rounded-full text-[10px] font-mono ${
@@ -728,8 +725,8 @@ export default function SellerStoreView() {
               <div className="p-6 border-b border-gray-100 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
                   <div className="flex items-center gap-2">
-                    <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                      <Package className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Store Products & Offers
+                    <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                      Store Products & Offers
                     </h3>
                     <span className="px-2 py-0.5 rounded-full text-xs font-mono font-bold bg-blue-50 dark:bg-blue-950/60 text-blue-600 dark:text-blue-400 border border-blue-200/80 dark:border-blue-800/80">
                       {store.active_products?.length || 0}
@@ -831,11 +828,11 @@ export default function SellerStoreView() {
             <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-sm border border-gray-200 dark:border-slate-800 p-6 space-y-4 transition-colors">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <MessageSquare className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Store Feedback & Reviews ({sortedReviews.length})
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                    Store Feedback & Reviews ({sortedReviews.length})
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                    Verified purchase reviews from confirmed escrow transactions.
+                    Verified purchase reviews from confirmed transactions.
                   </p>
                 </div>
 
@@ -954,7 +951,7 @@ export default function SellerStoreView() {
                 <div className="flex items-center justify-between">
                   <div>
                     <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-wider text-amber-300 bg-amber-400/20 px-2.5 py-0.5 rounded-full border border-amber-400/30">
-                      <Zap className="h-3 w-3 fill-amber-400" /> Sponsored Merchants
+                      Sponsored Merchants
                     </span>
                     <h3 className="text-lg font-extrabold text-white mt-1">Featured Stores</h3>
                   </div>
@@ -1025,11 +1022,11 @@ export default function SellerStoreView() {
             <div className="space-y-4">
               <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
                 <div>
-                  <h3 className="text-lg font-bold text-gray-900 dark:text-white flex items-center gap-2">
-                    <ShoppingBag className="h-5 w-5 text-blue-600 dark:text-blue-400" /> Complete Store Catalog ({catalogFilteredProducts.length})
+                  <h3 className="text-lg font-bold text-gray-900 dark:text-white">
+                    Complete Store Catalog ({catalogFilteredProducts.length})
                   </h3>
                   <p className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">
-                    Browse all available products and create secure escrow checkouts.
+                    Browse all available products and create protected checkouts.
                   </p>
                 </div>
               </div>
@@ -1373,7 +1370,7 @@ export default function SellerStoreView() {
                                       className="text-blue-600 hover:text-blue-800 dark:text-blue-400 dark:hover:text-blue-300 font-bold text-xs hover:underline flex items-center gap-1 cursor-pointer ml-1"
                                       title="Edit your reply"
                                     >
-                                      <Pencil className="h-3 w-3" /> Edit
+                                      Edit
                                     </button>
                                   )}
                                 </div>

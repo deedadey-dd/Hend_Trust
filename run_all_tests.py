@@ -27,8 +27,18 @@ def main():
     e2e_dir = os.path.join(root_dir, "e2e")
 
     # Detect python venv executable if available
-    venv_python = os.path.join(backend_dir, "venv", "Scripts", "python.exe")
-    python_bin = venv_python if os.path.exists(venv_python) else "python"
+    venv_python_win = os.path.join(backend_dir, "venv", "Scripts", "python.exe")
+    venv_python_nix = os.path.join(backend_dir, "venv", "bin", "python")
+    if os.path.exists(venv_python_win):
+        python_bin = venv_python_win
+    elif os.path.exists(venv_python_nix):
+        python_bin = venv_python_nix
+    else:
+        python_bin = sys.executable or "python"
+
+    is_windows = os.name == 'nt'
+    npm_cmd = "cmd /c npm" if is_windows else "npm"
+    npx_cmd = "cmd /c npx" if is_windows else "npx"
 
     print("\n==================================================")
     print(" HENDAXIS TRUST - MASTER QA AUTOMATED TEST SUITE")
@@ -50,21 +60,21 @@ def main():
 
     # 3. Frontend Vitest Component Suite
     frontend_test_success = run_step(
-        cmd="cmd /c npm test",
+        cmd=f"{npm_cmd} test",
         cwd=frontend_dir,
         description="Frontend Vitest Component & Store Unit Tests"
     )
 
     # 4. Frontend TypeScript & Production Build Check
     frontend_build_success = run_step(
-        cmd="cmd /c npm run build",
+        cmd=f"{npm_cmd} run build",
         cwd=frontend_dir,
         description="Frontend TypeScript & Production Build Verification"
     )
 
     # 5. End-to-End Playwright Suite
     e2e_success = run_step(
-        cmd="cmd /c npx playwright test",
+        cmd=f"{npx_cmd} playwright test",
         cwd=e2e_dir,
         description="End-to-End Playwright Browser Workflow Tests"
     )

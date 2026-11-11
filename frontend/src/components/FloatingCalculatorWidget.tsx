@@ -24,8 +24,8 @@ export const FloatingCalculatorWidget: React.FC = () => {
           type="button"
           onClick={() => setIsOpen(o => !o)}
           className="group flex items-center gap-2.5 px-4 py-3 bg-[#0363ff] hover:bg-blue-600 text-white font-extrabold text-xs rounded-full shadow-2xl shadow-blue-500/40 border border-white/20 transition-all hover:scale-105 active:scale-95 cursor-pointer"
-          title="Calculate Escrow Fees & Payouts"
-          aria-label="Open Escrow Fee Calculator"
+          title="Calculate Protection Fees & Payouts"
+          aria-label="Open Protection Fee Calculator"
         >
           <div className="w-6 h-6 rounded-full bg-white/20 flex items-center justify-center shrink-0">
             <Calculator className="h-3.5 w-3.5 text-white group-hover:rotate-12 transition-transform" />

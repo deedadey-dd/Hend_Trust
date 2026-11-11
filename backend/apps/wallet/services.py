@@ -20,9 +20,20 @@ def sync_wallet_balance(wallet: SellerWallet) -> SellerWallet:
     wallet.save(update_fields=['available_balance_ghs', 'updated_at'])
     return wallet
 
+def get_active_payout_fee_rate() -> tuple[Decimal, Decimal]:
+    """Returns (rate_decimal, rate_percent) from platform settings, e.g. (Decimal('0.0195'), Decimal('1.95'))."""
+    try:
+        from apps.escrow.api import get_platform_settings
+        cfg = get_platform_settings()
+        pct = Decimal(str(cfg.get("payout_transfer_fee_percent", 1.95)))
+        return (pct / Decimal("100")), pct
+    except Exception:
+        return PAYSTACK_TRANSFER_FEE_RATE, Decimal("1.95")
+
 def calculate_paystack_fee(gross_amount: Decimal) -> Decimal:
-    """Calculate the 1.95% Paystack transfer fee, rounded to 2 decimal places."""
-    return (gross_amount * PAYSTACK_TRANSFER_FEE_RATE).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    """Calculate the active payment provider transfer fee, rounded to 2 decimal places."""
+    rate, _ = get_active_payout_fee_rate()
+    return (gross_amount * rate).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
 
 def _get_or_create_fee_account(name: str, account_type: str) -> LedgerAccount:
     account, _ = LedgerAccount.objects.get_or_create(
@@ -81,11 +92,12 @@ def execute_withdrawal(wallet: SellerWallet, amount: Decimal, destination_type: 
     if amount <= Decimal('0.00'):
         raise HttpError(400, "Withdrawal amount must be greater than zero.")
     
+    _, fee_pct = get_active_payout_fee_rate()
     paystack_fee = calculate_paystack_fee(amount)
     total_deducted = amount + paystack_fee
 
     if total_deducted > wallet.available_balance_ghs:
-        raise HttpError(400, f"Insufficient funds. Requested GHS {amount} + 1.95% Paystack fee (GHS {paystack_fee}) = GHS {total_deducted}. Available: GHS {wallet.available_balance_ghs}.")
+        raise HttpError(400, f"Insufficient funds. Requested GHS {amount} + {fee_pct}% transfer fee (GHS {paystack_fee}) = GHS {total_deducted}. Available: GHS {wallet.available_balance_ghs}.")
         
     payout_liability, _ = LedgerAccount.objects.get_or_create(
         name='PAYOUT_CLEARING_LIABILITY',

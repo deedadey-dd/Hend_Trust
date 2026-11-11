@@ -60,6 +60,17 @@ class SellerReview(models.Model):
     def __str__(self):
         return f"Review for {self.seller.username} by {self.buyer_name} ({self.rating_overall}★)"
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from apps.core.cache_utils import invalidate_marketplace_caches
+        invalidate_marketplace_caches()
+
+    def delete(self, *args, **kwargs):
+        res = super().delete(*args, **kwargs)
+        from apps.core.cache_utils import invalidate_marketplace_caches
+        invalidate_marketplace_caches()
+        return res
+
 
 class ReviewVote(models.Model):
     VOTE_UP = 'UP'

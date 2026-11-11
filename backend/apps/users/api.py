@@ -976,7 +976,7 @@ class UpdateShopProfileRequest(Schema):
 
 class SubmitVerificationRequest(Schema):
     national_id_number: str
-    national_id_photo_url: str
+    national_id_photo_url: Optional[str] = ""
     business_license_photo_url: Optional[str] = ""
 
 class ProfileMessageResponse(Schema):
@@ -1217,6 +1217,8 @@ def update_shop_profile(request, data: UpdateShopProfileRequest):
 
     if update_fields:
         user.save(update_fields=update_fields)
+        from apps.core.cache_utils import invalidate_marketplace_caches
+        invalidate_marketplace_caches()
     return {"message": "Shop details updated successfully."}
 
 @profile_router.post("/submit-verification", response=ProfileMessageResponse)
@@ -1224,9 +1226,7 @@ def submit_verification_documents(request, data: SubmitVerificationRequest):
     user = request.user
     raw_id = data.national_id_number.strip()
     if not raw_id:
-        raise HttpError(400, "Please provide your National ID / Ghana Card number.")
-    if not data.national_id_photo_url.strip():
-        raise HttpError(400, "Please upload a photo of your National ID / Ghana Card.")
+        raise HttpError(400, "Please provide your Merchant Verification / Identity Reference number.")
 
     from apps.users.models import VerificationStatus
     from apps.users.ghana_card import normalize_ghana_card_number, validate_ghana_card_format, verify_ghana_card
@@ -1234,10 +1234,10 @@ def submit_verification_documents(request, data: SubmitVerificationRequest):
 
     normalized_id = normalize_ghana_card_number(raw_id)
     if not validate_ghana_card_format(normalized_id):
-        raise HttpError(400, "Invalid Ghana Card format. Please ensure it follows the format GHA-123456789-0.")
+        raise HttpError(400, "Invalid reference format. Please ensure it follows the format GHA-123456789-0.")
 
     user.national_id_number = normalized_id
-    user.national_id_photo_url = data.national_id_photo_url.strip()
+    user.national_id_photo_url = (data.national_id_photo_url or "").strip()
     user.business_license_photo_url = (data.business_license_photo_url or "").strip()
     user.verification_rejection_reason = ""
 
@@ -1260,7 +1260,9 @@ def submit_verification_documents(request, data: SubmitVerificationRequest):
             'business_license_photo_url', 'verification_status', 
             'verification_rejection_reason', 'verified_at', 'role'
         ])
-        msg = "Ghana Card auto-verified successfully! Your account has been upgraded to a Verified Seller." if was_buyer else "Ghana Card auto-verified successfully! Verified merchant badge granted."
+        from apps.core.cache_utils import invalidate_marketplace_caches
+        invalidate_marketplace_caches()
+        msg = "Merchant verification completed automatically! Your account has been upgraded to a Verified Seller." if was_buyer else "Merchant verification completed automatically! Verified merchant badge granted."
         return {"message": msg}
     else:
         user.verification_status = VerificationStatus.PENDING
@@ -1281,13 +1283,13 @@ def submit_verification_documents(request, data: SubmitVerificationRequest):
             create_notification(
                 user=officer,
                 title=f"KYC Verification: @{user.username}",
-                message=f"User @{user.username} ({user.phone_number}) submitted documents for Ghana Card {normalized_id}.",
+                message=f"User @{user.username} ({user.phone_number}) submitted verification reference {normalized_id}.",
                 notif_type=NotificationType.IN_APP,
                 action_url="/admin-portal/dashboard?tab=verifications",
                 metadata={"user_id": str(user.id), "username": user.username, "task_type": "KYC_VERIFICATION"}
             )
 
-        return {"message": f"Submission received! Auto-verification note: {v_msg}. Your documents have been forwarded to platform managers for review. Once verified, your seller account will be activated."}
+        return {"message": f"Submission received! Auto-verification note: {v_msg}. Your details have been forwarded to platform managers for review. Once verified, your seller account will be activated."}
 
 
 @profile_router.post("/2fa/setup", response=dict)

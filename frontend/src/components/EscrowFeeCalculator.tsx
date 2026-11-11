@@ -1,11 +1,10 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { 
   Calculator, 
-  ShieldCheck, 
-  ArrowRight, 
-  Sparkles 
+  ArrowRight
 } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { apiClient } from '../api/client';
 
 export const EscrowFeeCalculator: React.FC<{ 
   compact?: boolean; 
@@ -21,6 +20,18 @@ export const EscrowFeeCalculator: React.FC<{
   const [itemPrice, setItemPrice] = useState<number>(defaultAmount);
   const [shippingFee, setShippingFee] = useState<number>(defaultShipping);
   const [feePayer, setFeePayer] = useState<'BUYER' | 'SELLER'>('BUYER');
+  const [gatewayFeePercent, setGatewayFeePercent] = useState<number>(1.95);
+
+  useEffect(() => {
+    apiClient.get('/escrow/public-settings')
+      .then((res) => {
+        const rate = res.data?.gateway_processing_fee_percent ?? res.data?.payout_transfer_fee_percent;
+        if (typeof rate === 'number' && rate >= 0) {
+          setGatewayFeePercent(rate);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   const totalAmount = Math.max(0, itemPrice) + Math.max(0, shippingFee);
 
@@ -28,8 +39,8 @@ export const EscrowFeeCalculator: React.FC<{
   const rawEscrowFee = totalAmount > 0 ? (totalAmount * 0.015) + 10.00 : 0;
   const escrowFee = Math.round((rawEscrowFee + Number.EPSILON) * 100) / 100;
   
-  // Paystack gateway processing fee: 1.95%
-  const momoFee = Math.round(((totalAmount * 0.0195) + Number.EPSILON) * 100) / 100;
+  // Variable payment provider processing fee (configured on active gateway)
+  const momoFee = Math.round(((totalAmount * (gatewayFeePercent / 100)) + Number.EPSILON) * 100) / 100;
 
   const totalBuyerPays = feePayer === 'BUYER' ? totalAmount + escrowFee : totalAmount;
   const netSellerReceives = feePayer === 'SELLER' ? Math.max(0, totalAmount - escrowFee) : totalAmount;
@@ -45,13 +56,13 @@ export const EscrowFeeCalculator: React.FC<{
           </div>
           <div>
             <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white flex items-center gap-2">
-              Escrow Fee & Trust Calculator
+              Protection Fee & Trust Calculator
               <span className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
                 Live Pricing
               </span>
             </h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              Calculate exact escrow protection, shipping escrow, and net MoMo payouts.
+              Calculate exact payment protection, delivery fees, and net MoMo payouts.
             </p>
           </div>
         </div>
@@ -140,10 +151,10 @@ export const EscrowFeeCalculator: React.FC<{
           <div className="bg-slate-50 dark:bg-slate-950/80 p-3 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
             <div>
               <span className="text-xs font-extrabold text-slate-900 dark:text-white block">
-                Escrow Fee Responsibility
+                Protection Fee Responsibility
               </span>
               <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                Choose who covers the platform escrow protection fee (1.5% + GHS 10.00).
+                Choose who covers the platform protection fee (1.5% + GHS 10.00).
               </p>
             </div>
 
@@ -207,22 +218,21 @@ export const EscrowFeeCalculator: React.FC<{
               <span className="font-bold text-slate-900 dark:text-white font-mono">GHS {itemPrice.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-              <span>Delivery / Shipping Escrow:</span>
+              <span>Delivery / Shipping Fee:</span>
               <span className="font-bold text-slate-900 dark:text-white font-mono">GHS {shippingFee.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center text-slate-700 dark:text-slate-300 font-semibold pt-1 border-t border-slate-200 dark:border-slate-800">
-              <span>Total Escrow Value:</span>
+              <span>Total Protected Order Value:</span>
               <span className="font-bold text-slate-900 dark:text-white font-mono">GHS {totalAmount.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center text-slate-600 dark:text-slate-400">
-              <span className="flex items-center gap-1.5">
-                <ShieldCheck className="h-3.5 w-3.5 text-[#0363ff]" />
-                HendAxis Escrow Fee (1.5% + GHS 10.00):
+              <span>
+                HendAxis Protection Fee (1.5% + GHS 10.00):
               </span>
               <span className="font-bold text-[#0363ff] dark:text-blue-400 font-mono">GHS {escrowFee.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center text-slate-500 text-[11px]">
-              <span>Est. Paystack Gateway Processing Fee (1.95%):</span>
+              <span>Est. Payment Provider Processing Fee ({gatewayFeePercent}% — varies by provider):</span>
               <span className="font-mono">~GHS {momoFee.toFixed(2)}</span>
             </div>
             <div className="flex justify-between items-center text-slate-500 text-[11px] pt-1 border-t border-slate-200 dark:border-slate-800">
@@ -237,8 +247,7 @@ export const EscrowFeeCalculator: React.FC<{
         {/* Right column: Interactive Visual Safety Flow */}
         <div className="lg:col-span-5 bg-gradient-to-br from-blue-900/10 via-slate-900/20 to-orange-900/10 dark:from-slate-950 dark:to-slate-900/90 border border-blue-200 dark:border-blue-900/40 rounded-2xl p-5 flex flex-col justify-between space-y-4">
           <div>
-            <span className="text-[11px] font-black uppercase tracking-wider text-[#0363ff] dark:text-blue-400 flex items-center gap-1.5">
-              <Sparkles className="h-3.5 w-3.5 text-[#ff6d1d]" />
+            <span className="text-[11px] font-black uppercase tracking-wider text-[#0363ff] dark:text-blue-400 block">
               What Happens to GHS {totalAmount.toFixed(2)}
             </span>
             <h4 className="text-sm font-extrabold text-slate-900 dark:text-white mt-1">

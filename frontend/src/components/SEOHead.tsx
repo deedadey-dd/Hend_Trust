@@ -44,6 +44,9 @@ export default function SEOHead({
     updateMeta('property', 'property', 'og:description', description);
     updateMeta('property', 'property', 'og:type', type);
     updateMeta('property', 'property', 'og:image', ogImage);
+    updateMeta('property', 'property', 'og:image:width', '1200');
+    updateMeta('property', 'property', 'og:image:height', '630');
+    updateMeta('property', 'property', 'og:image:type', 'image/jpeg');
 
     const currentUrl = canonicalUrl || window.location.href;
     updateMeta('property', 'property', 'og:url', currentUrl);

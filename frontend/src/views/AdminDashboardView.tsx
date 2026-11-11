@@ -207,6 +207,10 @@ interface LedgerEntryRecord {
 
 interface PlatformSettings {
   active_payment_gateway: string;
+  primary_payment_gateway?: string;
+  secondary_payment_gateway?: string | null;
+  tertiary_payment_gateway?: string | null;
+  gateway_failover_enabled?: boolean;
   enabled_delivery_methods: string[];
   enabled_carriers: string[];
   shipping_timeout_days?: number;
@@ -239,6 +243,12 @@ interface PlatformSettings {
   buyer_monthly_cancel_limit?: number;
   payout_transfer_fee_percent?: number;
   payout_transfer_fee_ghs?: number;
+  gateway_processing_fee_percent?: number;
+  provider_fee_rates?: Record<string, {
+    collection_fee_percent: number;
+    payout_fee_percent: number;
+    flat_payout_fee_ghs: number;
+  }>;
   django_admin_url?: string;
   django_admin_full_url?: string;
   promotions_active?: boolean;
@@ -299,6 +309,10 @@ export const AdminDashboardView: React.FC = () => {
   // Platform Settings State
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
     active_payment_gateway: 'PAYSTACK',
+    primary_payment_gateway: 'PAYSTACK',
+    secondary_payment_gateway: 'APPSNMOBILE',
+    tertiary_payment_gateway: 'HUBTEL',
+    gateway_failover_enabled: true,
     enabled_delivery_methods: ['COURIER_API', 'INFORMAL_BUS'],
     enabled_carriers: ['DHL', 'FEDEX', 'UPS', 'EMS', 'SPEEDAF', 'OTHERS'],
     shipping_timeout_days: 4,
@@ -394,15 +408,66 @@ export const AdminDashboardView: React.FC = () => {
     }
   };
 
-  // Gateway switch confirmation
-  const [gatewayConfirm, setGatewayConfirm] = useState<{ pending: string } | null>(null);
+  // Gateway switch confirmation with editable provider fee rates
+  const DEFAULT_PROVIDER_RATES: Record<string, { collection_fee_percent: number; payout_fee_percent: number; flat_payout_fee_ghs: number }> = {
+    PAYSTACK: { collection_fee_percent: 1.95, payout_fee_percent: 1.95, flat_payout_fee_ghs: 0.0 },
+    APPSNMOBILE: { collection_fee_percent: 1.50, payout_fee_percent: 1.00, flat_payout_fee_ghs: 0.0 },
+    HUBTEL: { collection_fee_percent: 1.95, payout_fee_percent: 1.50, flat_payout_fee_ghs: 0.0 },
+  };
+
+  const getGatewayRates = (gwId: string) => {
+    const saved = platformSettings.provider_fee_rates?.[gwId];
+    const defaults = DEFAULT_PROVIDER_RATES[gwId] || { collection_fee_percent: 1.95, payout_fee_percent: 1.95, flat_payout_fee_ghs: 0.0 };
+    if (gwId === platformSettings.active_payment_gateway) {
+      return {
+        collection_fee_percent: platformSettings.gateway_processing_fee_percent ?? saved?.collection_fee_percent ?? defaults.collection_fee_percent,
+        payout_fee_percent: platformSettings.payout_transfer_fee_percent ?? saved?.payout_fee_percent ?? defaults.payout_fee_percent,
+        flat_payout_fee_ghs: platformSettings.payout_transfer_fee_ghs ?? saved?.flat_payout_fee_ghs ?? defaults.flat_payout_fee_ghs,
+      };
+    }
+    return {
+      collection_fee_percent: saved?.collection_fee_percent ?? defaults.collection_fee_percent,
+      payout_fee_percent: saved?.payout_fee_percent ?? defaults.payout_fee_percent,
+      flat_payout_fee_ghs: saved?.flat_payout_fee_ghs ?? defaults.flat_payout_fee_ghs,
+    };
+  };
+
+  const [gatewayConfirm, setGatewayConfirm] = useState<{
+    pending: string;
+    collection_fee_percent: number;
+    payout_fee_percent: number;
+    flat_payout_fee_ghs: number;
+  } | null>(null);
+
   const handleGatewaySwitch = (gwId: string) => {
     if (gwId === platformSettings.active_payment_gateway) return;
-    setGatewayConfirm({ pending: gwId });
+    const targetRates = getGatewayRates(gwId);
+    setGatewayConfirm({
+      pending: gwId,
+      collection_fee_percent: targetRates.collection_fee_percent,
+      payout_fee_percent: targetRates.payout_fee_percent,
+      flat_payout_fee_ghs: targetRates.flat_payout_fee_ghs,
+    });
   };
+
   const confirmGatewaySwitch = async () => {
     if (!gatewayConfirm) return;
-    await handleUpdateSettings({ active_payment_gateway: gatewayConfirm.pending });
+    const updatedProviderRates = {
+      ...(platformSettings.provider_fee_rates || DEFAULT_PROVIDER_RATES),
+      [gatewayConfirm.pending]: {
+        collection_fee_percent: gatewayConfirm.collection_fee_percent,
+        payout_fee_percent: gatewayConfirm.payout_fee_percent,
+        flat_payout_fee_ghs: gatewayConfirm.flat_payout_fee_ghs,
+      },
+    };
+    await handleUpdateSettings({
+      active_payment_gateway: gatewayConfirm.pending,
+      primary_payment_gateway: gatewayConfirm.pending,
+      gateway_processing_fee_percent: gatewayConfirm.collection_fee_percent,
+      payout_transfer_fee_percent: gatewayConfirm.payout_fee_percent,
+      payout_transfer_fee_ghs: gatewayConfirm.flat_payout_fee_ghs,
+      provider_fee_rates: updatedProviderRates,
+    });
     setGatewayConfirm(null);
   };
 
@@ -2288,21 +2353,9 @@ export const AdminDashboardView: React.FC = () => {
                     {/* Document Details & Photos */}
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                       <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                        <span className="font-bold text-slate-800 dark:text-slate-300 block border-b border-slate-200 dark:border-slate-800 pb-1">🪪 National ID / Ghana Card</span>
-                        <p className="text-slate-600 dark:text-slate-400">ID Number: <strong className="text-slate-900 dark:text-white font-mono">{v.national_id_number || 'N/A'}</strong></p>
-                        {v.national_id_photo_url ? (
-                          <div>
-                            <span className="text-[10px] text-slate-500 block mb-1">Click to inspect:</span>
-                            <img
-                              src={v.national_id_photo_url}
-                              alt="National ID"
-                              onClick={() => setPreviewImage(v.national_id_photo_url)}
-                              className="h-28 w-44 object-cover rounded-lg border border-slate-300 dark:border-slate-700 hover:border-emerald-500 transition cursor-pointer"
-                            />
-                          </div>
-                        ) : (
-                          <span className="text-slate-500 italic block">No photo uploaded</span>
-                        )}
+                        <span className="font-bold text-slate-800 dark:text-slate-300 block border-b border-slate-200 dark:border-slate-800 pb-1">🪪 Identity / Verification Reference</span>
+                        <p className="text-slate-600 dark:text-slate-400">Reference Number: <strong className="text-slate-900 dark:text-white font-mono">{v.national_id_number || 'N/A'}</strong></p>
+                        <span className="text-slate-500 italic block">Verified via official registry reference (no ID card photocopy required)</span>
                       </div>
 
                       <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
@@ -2342,7 +2395,7 @@ export const AdminDashboardView: React.FC = () => {
                     rows={3}
                     value={rejectReason}
                     onChange={e => setRejectReason(e.target.value)}
-                    placeholder="e.g. Ghana Card photo is blurry or ID number does not match image..."
+                    placeholder="e.g. Verification reference number does not match profile name or business certificate..."
                     className="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white focus:ring-2 focus:ring-rose-500 outline-none"
                   />
                 </div>
@@ -3377,25 +3430,200 @@ export const AdminDashboardView: React.FC = () => {
               </div>
             )}
 
-            {/* Section 1: Active Payment Gateway Switcher */}
-            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-4">
-              <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-800 pb-3">
+            {/* Section 1: Active Payment Gateway Switcher & Failover Architecture */}
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
+              <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
                 <div>
                   <h4 className="text-base font-bold text-slate-900 dark:text-white">Active Payment Provider Engine</h4>
-                  <p className="text-xs text-slate-600 dark:text-slate-400">Select which payment processing provider handles incoming buyer checkout payments.</p>
+                  <p className="text-xs text-slate-600 dark:text-slate-400">Select which payment processing provider handles incoming buyer checkout payments and configure provider fee rates.</p>
                 </div>
-                <span className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-xs font-mono font-bold px-3 py-1 rounded-full uppercase">
-                  Current: {platformSettings.active_payment_gateway}
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-500/20 text-xs font-mono font-bold px-3 py-1 rounded-full">
+                    Payout Fee: {platformSettings.payout_transfer_fee_percent ?? 1.95}% | Collection: {platformSettings.gateway_processing_fee_percent ?? platformSettings.payout_transfer_fee_percent ?? 1.95}%
+                  </span>
+                  <span className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-xs font-mono font-bold px-3 py-1 rounded-full uppercase">
+                    Primary: {platformSettings.primary_payment_gateway || platformSettings.active_payment_gateway}
+                  </span>
+                </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-2">
+              {/* Hierarchical Gateway Failover Architecture Controls */}
+              <div className="bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+                  <div>
+                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                      Hierarchical Multi-Gateway Failover Architecture
+                    </h5>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Rank your payment gateways so that if the primary engine encounters MoMo telco downtime or network errors, checkout automatically and seamlessly fails over to the secondary or tertiary engine.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newEnabled = !(platformSettings.gateway_failover_enabled ?? true);
+                        handleUpdateSettings({ gateway_failover_enabled: newEnabled });
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition border cursor-pointer ${
+                        (platformSettings.gateway_failover_enabled ?? true)
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                          : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30'
+                      }`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${
+                        (platformSettings.gateway_failover_enabled ?? true) ? 'bg-emerald-500' : 'bg-amber-500'
+                      }`} />
+                      {(platformSettings.gateway_failover_enabled ?? true) ? 'Auto-Failover Active' : 'Failover Disabled'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3-Tier Priority Selection Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Primary (Rank 1) */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-blue-500/40 dark:border-blue-500/40 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                        Rank 1 • Primary
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">Default Engine</span>
+                    </div>
+                    <label className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
+                      Primary Gateway
+                    </label>
+                    <select
+                      value={platformSettings.primary_payment_gateway || platformSettings.active_payment_gateway || 'PAYSTACK'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        handleGatewaySwitch(val);
+                      }}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-bold rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="PAYSTACK">Paystack (Cards + MoMo)</option>
+                      <option value="APPSNMOBILE">AppsNMobile (Orchard MoMo)</option>
+                      <option value="HUBTEL">Hubtel Ghana PSP</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      All standard checkouts attempt this engine first.
+                    </p>
+                  </div>
+
+                  {/* Secondary (Rank 2) */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                        Rank 2 • Secondary
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">First Failover</span>
+                    </div>
+                    <label className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
+                      Secondary Gateway
+                    </label>
+                    <select
+                      value={platformSettings.secondary_payment_gateway || 'APPSNMOBILE'}
+                      onChange={(e) => {
+                        const val = e.target.value === 'NONE' ? null : e.target.value;
+                        handleUpdateSettings({ secondary_payment_gateway: val });
+                      }}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-bold rounded-lg p-2 outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="APPSNMOBILE">AppsNMobile (Orchard MoMo)</option>
+                      <option value="PAYSTACK">Paystack (Cards + MoMo)</option>
+                      <option value="HUBTEL">Hubtel Ghana PSP</option>
+                      <option value="NONE">-- Disabled (No Secondary) --</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Attempted automatically if primary engine is unreachable.
+                    </p>
+                  </div>
+
+                  {/* Tertiary (Rank 3) */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20">
+                        Rank 3 • Tertiary
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">Last Resort</span>
+                    </div>
+                    <label className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
+                      Tertiary Gateway
+                    </label>
+                    <select
+                      value={platformSettings.tertiary_payment_gateway || 'HUBTEL'}
+                      onChange={(e) => {
+                        const val = e.target.value === 'NONE' ? null : e.target.value;
+                        handleUpdateSettings({ tertiary_payment_gateway: val });
+                      }}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-bold rounded-lg p-2 outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="HUBTEL">Hubtel Ghana PSP</option>
+                      <option value="APPSNMOBILE">AppsNMobile (Orchard MoMo)</option>
+                      <option value="PAYSTACK">Paystack (Cards + MoMo)</option>
+                      <option value="NONE">-- Disabled (No Tertiary) --</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Final fallback if both primary and secondary fail.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Visual Failover Flow Breadcrumb */}
+                <div className="bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                    Live Checkout Route:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] font-bold">
+                    <span className="px-2.5 py-1 rounded-md bg-blue-500 text-white shadow-2xs">
+                      1. {platformSettings.primary_payment_gateway || platformSettings.active_payment_gateway || 'PAYSTACK'}
+                    </span>
+                    {(platformSettings.gateway_failover_enabled ?? true) && (
+                      <>
+                        <span className="text-slate-400">➔</span>
+                        <span className="px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                          2. {platformSettings.secondary_payment_gateway || 'APPSNMOBILE'}
+                        </span>
+                        <span className="text-slate-400">➔</span>
+                        <span className="px-2.5 py-1 rounded-md bg-purple-500/20 text-purple-800 dark:text-purple-300 border border-purple-500/30">
+                          3. {platformSettings.tertiary_payment_gateway || 'HUBTEL'}
+                        </span>
+                      </>
+                    )}
+                    {!(platformSettings.gateway_failover_enabled ?? true) && (
+                      <span className="px-2 py-0.5 text-[10px] rounded bg-slate-200 dark:bg-slate-800 text-slate-500 italic">
+                        (Failover Disabled)
+                      </span>
+                    )}
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-1">
                 {[
                   { id: 'PAYSTACK', title: 'Paystack Multi-Channel', desc: 'MoMo (MTN, Telecel, AT) & Cards (Visa, Mastercard)', badge: 'Default' },
                   { id: 'APPSNMOBILE', title: 'AppsNMobile (The Orchard)', desc: 'Direct MoMo Collections & Bulk Disbursement Engine', badge: 'Disbursements' },
                   { id: 'HUBTEL', title: 'Hubtel Ghana PSP', desc: 'Hubtel POS, Direct MoMo & Bank Card Gateways', badge: 'Alternative' }
                 ].map(gw => {
-                  const isActive = platformSettings.active_payment_gateway === gw.id;
+                  const primaryGw = platformSettings.primary_payment_gateway || platformSettings.active_payment_gateway || 'PAYSTACK';
+                  const secondaryGw = platformSettings.secondary_payment_gateway || 'APPSNMOBILE';
+                  const tertiaryGw = platformSettings.tertiary_payment_gateway || 'HUBTEL';
+                  const isActive = primaryGw === gw.id;
+                  const gwRates = getGatewayRates(gw.id);
+
+                  let rankBadge = 'Unranked';
+                  let rankBadgeClass = 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400';
+                  if (gw.id === primaryGw) {
+                    rankBadge = 'Rank 1 • Primary Engine';
+                    rankBadgeClass = 'bg-blue-600 text-white';
+                  } else if (gw.id === secondaryGw) {
+                    rankBadge = 'Rank 2 • Secondary Failover';
+                    rankBadgeClass = 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30';
+                  } else if (gw.id === tertiaryGw) {
+                    rankBadge = 'Rank 3 • Tertiary Failover';
+                    rankBadgeClass = 'bg-purple-500/20 text-purple-800 dark:text-purple-300 border border-purple-500/30';
+                  }
+
                   return (
                     <div
                       key={gw.id}
@@ -3408,15 +3636,29 @@ export const AdminDashboardView: React.FC = () => {
                     >
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
-                            isActive ? 'bg-blue-500 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400'
-                          }`}>
-                            {gw.badge}
+                          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${rankBadgeClass}`}>
+                            {rankBadge}
                           </span>
                           {isActive && <CheckCircle2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
                         </div>
                         <h5 className="font-bold text-slate-900 dark:text-slate-100 text-sm mb-1">{gw.title}</h5>
                         <p className="text-xs text-slate-600 dark:text-slate-400">{gw.desc}</p>
+
+                        {/* Provider Rate Summary Pills */}
+                        <div className="mt-3 pt-2.5 border-t border-slate-200/70 dark:border-slate-800/80 grid grid-cols-3 gap-1.5 text-[10px]">
+                          <div className="bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1">
+                            <span className="text-slate-400 block">Payout Fee</span>
+                            <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{gwRates.payout_fee_percent}%</span>
+                          </div>
+                          <div className="bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1">
+                            <span className="text-slate-400 block">Collection</span>
+                            <span className="font-mono font-bold text-slate-800 dark:text-slate-200">{gwRates.collection_fee_percent}%</span>
+                          </div>
+                          <div className="bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-lg px-2 py-1">
+                            <span className="text-slate-400 block">Flat Fee</span>
+                            <span className="font-mono font-bold text-slate-800 dark:text-slate-200">GHS {gwRates.flat_payout_fee_ghs.toFixed(2)}</span>
+                          </div>
+                        </div>
                       </div>
 
                       <button
@@ -3427,11 +3669,126 @@ export const AdminDashboardView: React.FC = () => {
                             : 'bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700'
                         }`}
                       >
-                        {isActive ? 'Active Engine' : 'Switch to Gateway'}
+                        {isActive ? 'Active Primary Engine' : 'Set as Primary & Configure'}
                       </button>
                     </div>
                   );
                 })}
+              </div>
+
+              {/* Active Provider Fee Rate Inputs */}
+              <div className="bg-slate-50 dark:bg-slate-950/80 border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      💳 Active Provider Fee Rates ({platformSettings.active_payment_gateway || 'PAYSTACK'})
+                    </h5>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Configure the variable processing and transfer fee rates charged by {platformSettings.active_payment_gateway || 'PAYSTACK'}. These rates automatically apply to withdrawals, refunds, cancellation deductions, and fee calculators across the platform.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* 1. Payment Provider Payout Fee Rate (%) */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Payment Provider Payout Fee Rate (%)
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Transfer fee % when disbursing payouts or refunding to Mobile Money / Bank (In-App Wallet remains 0% FREE).
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="15"
+                        value={platformSettings.payout_transfer_fee_percent ?? 1.95}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) >= 0 ? parseFloat(e.target.value) : 0;
+                          const activeGw = platformSettings.active_payment_gateway || 'PAYSTACK';
+                          const currentGwRates = getGatewayRates(activeGw);
+                          handleUpdateSettings({
+                            payout_transfer_fee_percent: val,
+                            provider_fee_rates: {
+                              ...(platformSettings.provider_fee_rates || DEFAULT_PROVIDER_RATES),
+                              [activeGw]: { ...currentGwRates, payout_fee_percent: val },
+                            },
+                          });
+                        }}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-1.5 w-24 font-mono font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-400">%</span>
+                    </div>
+                  </div>
+
+                  {/* 2. Payment Provider Collection / Processing Fee Rate (%) */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Collection / Processing Fee Rate (%)
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Gateway collection fee % charged on incoming checkout payments and deducted on order cancellations.
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.05"
+                        min="0"
+                        max="15"
+                        value={platformSettings.gateway_processing_fee_percent ?? platformSettings.payout_transfer_fee_percent ?? 1.95}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) >= 0 ? parseFloat(e.target.value) : 0;
+                          const activeGw = platformSettings.active_payment_gateway || 'PAYSTACK';
+                          const currentGwRates = getGatewayRates(activeGw);
+                          handleUpdateSettings({
+                            gateway_processing_fee_percent: val,
+                            provider_fee_rates: {
+                              ...(platformSettings.provider_fee_rates || DEFAULT_PROVIDER_RATES),
+                              [activeGw]: { ...currentGwRates, collection_fee_percent: val },
+                            },
+                          });
+                        }}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-1.5 w-24 font-mono font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-400">%</span>
+                    </div>
+                  </div>
+
+                  {/* 3. Flat Payout Transfer Fee (GHS) */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 space-y-1.5">
+                    <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
+                      Flat Payout Transfer Fee (GHS)
+                    </label>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Optional fixed GHS fee charged per transfer by the payment provider (0.00 if percentage-only).
+                    </p>
+                    <div className="flex items-center gap-2 pt-1">
+                      <input
+                        type="number"
+                        step="0.50"
+                        min="0"
+                        max="100"
+                        value={platformSettings.payout_transfer_fee_ghs ?? 0}
+                        onChange={(e) => {
+                          const val = parseFloat(e.target.value) >= 0 ? parseFloat(e.target.value) : 0;
+                          const activeGw = platformSettings.active_payment_gateway || 'PAYSTACK';
+                          const currentGwRates = getGatewayRates(activeGw);
+                          handleUpdateSettings({
+                            payout_transfer_fee_ghs: val,
+                            provider_fee_rates: {
+                              ...(platformSettings.provider_fee_rates || DEFAULT_PROVIDER_RATES),
+                              [activeGw]: { ...currentGwRates, flat_payout_fee_ghs: val },
+                            },
+                          });
+                        }}
+                        className="bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-1.5 w-24 font-mono font-bold focus:ring-2 focus:ring-blue-500 focus:outline-none"
+                      />
+                      <span className="text-xs font-bold text-slate-600 dark:text-slate-400">GHS</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -4123,49 +4480,6 @@ export const AdminDashboardView: React.FC = () => {
                     <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Minutes (Default 90)</span>
                   </div>
                 </div>
-
-                {/* 5. Buyer Monthly Cancellation Abuse Limit */}
-                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                    🚫 Buyer Monthly Cancellation Limit
-                  </label>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    Maximum number of order cancellations a buyer can initiate per calendar month before being rate-limited.
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="number"
-                      min="1"
-                      max="20"
-                      value={platformSettings.buyer_monthly_cancel_limit ?? 2}
-                      onChange={(e) => handleUpdateSettings({ buyer_monthly_cancel_limit: parseInt(e.target.value) || 2 })}
-                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    />
-                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">Cancellations / Month (Default 2)</span>
-                  </div>
-                </div>
-
-                {/* 6. Payment Provider Payout / Transfer Fee Rate (%) */}
-                <div className="bg-slate-50 dark:bg-slate-950 p-4 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
-                  <label className="text-xs font-bold text-slate-800 dark:text-slate-200 block">
-                    💳 Payment Provider Payout Fee Rate (%)
-                  </label>
-                  <p className="text-[11px] text-slate-600 dark:text-slate-400">
-                    Transfer fee percentage charged by the active payment provider ({platformSettings.active_payment_gateway || 'PAYSTACK'}: {platformSettings.payout_transfer_fee_percent ?? 1.95}%) when refunding directly to Mobile Money / Bank. In-App Wallet refunds remain 0% FREE.
-                  </p>
-                  <div className="flex items-center gap-2 pt-1">
-                    <input
-                      type="number"
-                      step="0.05"
-                      min="0"
-                      max="15"
-                      value={platformSettings.payout_transfer_fee_percent ?? 1.95}
-                      onChange={(e) => handleUpdateSettings({ payout_transfer_fee_percent: parseFloat(e.target.value) >= 0 ? parseFloat(e.target.value) : 1.95 })}
-                      className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-sm rounded-lg px-3 py-2 w-24 font-mono font-bold focus:ring-2 focus:ring-emerald-500 focus:outline-none"
-                    />
-                    <span className="text-xs font-bold text-slate-600 dark:text-slate-400">% (Paystack Default 1.95%)</span>
-                  </div>
-                </div>
               </div>
             </div>
 
@@ -4223,6 +4537,67 @@ export const AdminDashboardView: React.FC = () => {
                   <div className="bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-500/40 rounded-lg px-3 py-2 font-mono font-bold text-amber-800 dark:text-amber-300">{gatewayConfirm.pending}</div>
                 </div>
               </div>
+
+              {/* Rate Inputs While Switching Gateway */}
+              <div className="bg-slate-50 dark:bg-slate-950/70 border border-slate-200 dark:border-slate-800 rounded-xl p-3.5 space-y-3">
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                  Configure {gatewayConfirm.pending} Fee Rates:
+                </p>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                      Payout Fee Rate (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      max="15"
+                      value={gatewayConfirm.payout_fee_percent}
+                      onChange={(e) => setGatewayConfirm({
+                        ...gatewayConfirm,
+                        payout_fee_percent: parseFloat(e.target.value) >= 0 ? parseFloat(e.target.value) : 0,
+                      })}
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded-lg px-2.5 py-1.5 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                      Collection Fee (%)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.05"
+                      min="0"
+                      max="15"
+                      value={gatewayConfirm.collection_fee_percent}
+                      onChange={(e) => setGatewayConfirm({
+                        ...gatewayConfirm,
+                        collection_fee_percent: parseFloat(e.target.value) >= 0 ? parseFloat(e.target.value) : 0,
+                      })}
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded-lg px-2.5 py-1.5 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-[10px] font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                      Flat Payout (GHS)
+                    </label>
+                    <input
+                      type="number"
+                      step="0.50"
+                      min="0"
+                      max="100"
+                      value={gatewayConfirm.flat_payout_fee_ghs}
+                      onChange={(e) => setGatewayConfirm({
+                        ...gatewayConfirm,
+                        flat_payout_fee_ghs: parseFloat(e.target.value) >= 0 ? parseFloat(e.target.value) : 0,
+                      })}
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs rounded-lg px-2.5 py-1.5 font-mono font-bold focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                    />
+                  </div>
+                </div>
+              </div>
+
               <div className="bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800/40 rounded-xl p-3 text-[11px] text-rose-800 dark:text-rose-300 leading-relaxed space-y-1">
                 <p className="font-bold text-rose-700 dark:text-rose-400">⚠ Important before you confirm:</p>
                 <ul className="list-disc list-inside space-y-0.5 text-rose-700/90 dark:text-rose-300/80">

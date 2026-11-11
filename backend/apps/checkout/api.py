@@ -724,24 +724,13 @@ def verify_and_initialize(request, data: VerifyInitializeSchema):
         origin = request.headers.get('origin') or fallback_origin
         cb_url = f"{origin}/l/{link.id}"
         
-        from apps.escrow.api import get_platform_settings
-        active_gw = get_platform_settings().get('active_payment_gateway', 'PAYSTACK')
-
-        if active_gw == 'APPSNMOBILE':
-            from apps.checkout.adapters.appsnmobile import AppsNMobileAdapter
-            pay_data = AppsNMobileAdapter.initialize_transaction(
-                email=data.email,
-                amount_ghs=float(total_amount),
-                reference=paystack_ref,
-                callback_url=cb_url
-            )
-        else:
-            pay_data = PaystackAdapter.initialize_transaction(
-                email=data.email, 
-                amount_ghs=float(total_amount), 
-                reference=paystack_ref,
-                callback_url=cb_url
-            )
+        from apps.checkout.services import initialize_transaction_with_failover
+        pay_data = initialize_transaction_with_failover(
+            email=data.email,
+            amount_ghs=float(total_amount),
+            reference=paystack_ref,
+            callback_url=cb_url
+        )
 
         return {
             "authorization_url": pay_data['authorization_url'],

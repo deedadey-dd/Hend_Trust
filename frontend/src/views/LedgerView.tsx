@@ -4,13 +4,15 @@ import { Wallet, Filter, Loader2, ArrowUpRight, ArrowDownLeft, Send, AlertTriang
 import { apiClient } from '../api/client';
 import { useEscapeKey } from '../utils/useEscapeKey';
 
-const PAYSTACK_FEE_RATE = 0.0195;
+const DEFAULT_PAYOUT_FEE_PERCENT = 1.95;
 
 export const LedgerView: React.FC = () => {
   const [balanceData, setBalanceData] = useState<any>(null);
   const [entries, setEntries] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [totalCount, setTotalCount] = useState(0);
+  const [payoutFeePercent, setPayoutFeePercent] = useState<number>(DEFAULT_PAYOUT_FEE_PERCENT);
+  const payoutFeeRate = payoutFeePercent / 100;
   
   // Withdrawal state
   const [showWithdraw, setShowWithdraw] = useState(false);
@@ -39,6 +41,16 @@ export const LedgerView: React.FC = () => {
 
   const fetchBalance = async () => {
     try {
+      let currentFeePercent = payoutFeePercent;
+      try {
+        const settingsRes = await apiClient.get('/escrow/public-settings');
+        if (typeof settingsRes.data?.payout_transfer_fee_percent === 'number' && settingsRes.data.payout_transfer_fee_percent >= 0) {
+          currentFeePercent = settingsRes.data.payout_transfer_fee_percent;
+          setPayoutFeePercent(currentFeePercent);
+        }
+      } catch {
+        // fallback to default
+      }
       const res = await apiClient.get('/wallet/balance');
       setBalanceData(res.data);
       // Pre-fill destination from profile
@@ -47,7 +59,8 @@ export const LedgerView: React.FC = () => {
       // Pre-fill maximum possible withdrawable amount
       const avail = Number(res.data.available_balance_ghs || 0);
       if (avail > 0) {
-        const maxAmt = Math.floor((avail / (1 + PAYSTACK_FEE_RATE)) * 100) / 100;
+        const rate = currentFeePercent / 100;
+        const maxAmt = Math.floor((avail / (1 + rate)) * 100) / 100;
         setWithdrawAmount(maxAmt.toFixed(2));
       }
     } catch (err) {
@@ -83,11 +96,11 @@ export const LedgerView: React.FC = () => {
 
   // Fee calculation
   const parsedAmount = parseFloat(withdrawAmount) || 0;
-  const paystackFee = parsedAmount * PAYSTACK_FEE_RATE;
+  const paystackFee = parsedAmount * payoutFeeRate;
   const totalDeducted = parsedAmount + paystackFee;
   const youReceive = parsedAmount;
   const availableBalance = Number(balanceData?.available_balance_ghs || 0);
-  const maxPossibleWithdraw = availableBalance > 0 ? Math.floor((availableBalance / (1 + PAYSTACK_FEE_RATE)) * 100) / 100 : 0;
+  const maxPossibleWithdraw = availableBalance > 0 ? Math.floor((availableBalance / (1 + payoutFeeRate)) * 100) / 100 : 0;
   const hasInsufficientFunds = totalDeducted > availableBalance;
 
   const handleWithdraw = async (e: React.FormEvent) => {
@@ -122,13 +135,29 @@ export const LedgerView: React.FC = () => {
   const ENTRY_TYPE_LABELS: Record<string, string> = {
     ESCROW_RELEASE_NET: 'Sale Payout Credit',
     PARTIAL_REFUND_SELLER: 'Partial Dispute Payout Credit',
-    REFUND_FEE_PENALTY: 'Dispute Refund Penalty',
-    NON_DISPATCH_SELLER_PENALTY_PLATFORM_FEE: 'Non-Dispatch Penalty (Platform Fee)',
-    NON_DISPATCH_SELLER_PENALTY_GATEWAY_FEE: 'Non-Dispatch Penalty (Gateway Fee)',
-    SHOP_PROMOTION_AD_FEE: 'Shop Promotion Ad Fee',
-    SELLER_WITHDRAWAL_REQUEST: 'Payout Withdrawal',
-    PAYSTACK_PAYOUT_FEE: 'Transfer Gateway Fee',
-    PAYSTACK_REFUND_FEE: 'Refund Gateway Fee',
+    BUYER_CANCEL_WALLET_REFUND: 'Cancelled Order Wallet Refund',
+    REFUND_FEE_PENALTY: 'Dispute Refund Deduction',
+    NON_DISPATCH_SELLER_PENALTY: 'Order Cancellation / Non-Dispatch Deduction',
+    NON_DISPATCH_SELLER_PENALTY_PLATFORM_FEE: 'Order Cancellation / Non-Dispatch Deduction',
+    NON_DISPATCH_SELLER_PENALTY_GATEWAY_FEE: 'Order Cancellation / Non-Dispatch Deduction',
+    SHOP_PROMOTION_AD_FEE: 'Sponsored Shop Promotion Fee',
+    SELLER_WITHDRAWAL_REQUEST: 'Wallet Payout Withdrawal',
+    PAYSTACK_PAYOUT_FEE: 'Payment Provider Transfer Fee',
+    PAYSTACK_REFUND_FEE: 'Payment Provider Refund Fee',
+  };
+
+  const ENTRY_TYPE_DESCRIPTIONS: Record<string, string> = {
+    ESCROW_RELEASE_NET: 'Net proceeds from a completed order credited to your wallet after buyer confirmation or inspection expiry.',
+    PARTIAL_REFUND_SELLER: 'Your agreed share of an order payout credited following a partial dispute settlement.',
+    BUYER_CANCEL_WALLET_REFUND: 'Net refund credited to your wallet from a cancelled undispatched order.',
+    SELLER_WITHDRAWAL_REQUEST: 'Total withdrawal deduction from your wallet (requested payout amount plus applicable payment provider transfer fee).',
+    NON_DISPATCH_SELLER_PENALTY: 'Combined platform protection fee and payment provider processing fee deducted because a paid order was cancelled by the seller or not dispatched within 4 days.',
+    NON_DISPATCH_SELLER_PENALTY_PLATFORM_FEE: 'Platform protection service fee deducted due to seller order cancellation or non-dispatch.',
+    NON_DISPATCH_SELLER_PENALTY_GATEWAY_FEE: 'Payment provider processing fee deducted due to seller order cancellation or non-dispatch.',
+    REFUND_FEE_PENALTY: 'Platform protection service fee deducted following a full buyer refund ruling in a dispute.',
+    SHOP_PROMOTION_AD_FEE: 'Advertising fee paid from your wallet to feature your shop in Sponsored Shops.',
+    PAYSTACK_PAYOUT_FEE: 'Transfer fee charged by the payment provider when disbursing funds to Mobile Money or Bank.',
+    PAYSTACK_REFUND_FEE: 'Transfer fee charged by the payment provider when processing an external refund.',
   };
 
   return (
@@ -280,7 +309,7 @@ export const LedgerView: React.FC = () => {
                   <span className="font-mono font-medium">GHS {parsedAmount.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-amber-700 dark:text-amber-400">
-                  <span>Paystack transfer fee (1.95%):</span>
+                  <span>Payment provider transfer fee ({payoutFeePercent}%):</span>
                   <span className="font-mono font-medium">+ GHS {paystackFee.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between font-bold text-gray-900 dark:text-slate-100 border-t border-current/20 pt-2 mt-2">
@@ -358,12 +387,13 @@ export const LedgerView: React.FC = () => {
           }}
           className="border border-gray-300 dark:border-slate-700 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-900 text-gray-800 dark:text-slate-200 focus:ring-blue-500 focus:border-blue-500 cursor-pointer"
         >
-          <option value="">All Types</option>
-          <option value="ESCROW_RELEASE_NET">Sale Credits</option>
-          <option value="PAYSTACK_PAYOUT_FEE">Paystack Payout Fees</option>
-          <option value="PAYSTACK_REFUND_FEE">Paystack Refund Fees</option>
-          <option value="REFUND_FEE_PENALTY">Refund Penalties</option>
-          <option value="SELLER_WITHDRAWAL_REQUEST">Withdrawals</option>
+          <option value="">All Activity</option>
+          <option value="ESCROW_RELEASE_NET">Sale Payout Credits</option>
+          <option value="SELLER_WITHDRAWAL_REQUEST">Wallet Withdrawals</option>
+          <option value="NON_DISPATCH_SELLER_PENALTY">Order Cancellation / Non-Dispatch Deductions</option>
+          <option value="REFUND_FEE_PENALTY">Dispute Refund Deductions</option>
+          <option value="SHOP_PROMOTION_AD_FEE">Shop Promotion Fees</option>
+          <option value="BUYER_CANCEL_WALLET_REFUND">Cancelled Order Wallet Refunds</option>
         </select>
         
         {(startDate || endDate || entryType) && (
@@ -416,7 +446,14 @@ export const LedgerView: React.FC = () => {
                       {new Date(entry.timestamp).toLocaleString()}
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap text-xs font-bold text-gray-900 dark:text-white">
-                      {ENTRY_TYPE_LABELS[entry.entry_type] || entry.entry_type.replace(/_/g, ' ')}
+                      <div className="flex items-center gap-2">
+                        <span>{ENTRY_TYPE_LABELS[entry.entry_type] || entry.entry_type.replace(/_/g, ' ')}</span>
+                        {entry.is_bundled && entry.bundle_count > 1 && (
+                          <span className="inline-flex items-center px-2 py-0.5 rounded-md text-[10px] font-semibold bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60">
+                            {entry.bundle_count} items bundled
+                          </span>
+                        )}
+                      </div>
                     </td>
                     <td className="px-6 py-4 whitespace-nowrap">
                       {entry.paystack_reference ? (
@@ -519,7 +556,9 @@ export const LedgerView: React.FC = () => {
                 selectedEntry.type === 'CREDIT' ? 'bg-green-50/80 dark:bg-emerald-950/40 border-green-200 dark:border-emerald-800' : 'bg-red-50/80 dark:bg-red-950/40 border-red-200 dark:border-red-800'
               }`}>
                 <div>
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 block">Entry Type</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 block">
+                    {selectedEntry.is_bundled ? 'Bundled Ledger Deduction' : 'Entry Type'}
+                  </span>
                   <span className="text-sm font-bold text-gray-900 dark:text-white">
                     {ENTRY_TYPE_LABELS[selectedEntry.entry_type] || selectedEntry.entry_type.replace(/_/g, ' ')}
                   </span>
@@ -528,12 +567,108 @@ export const LedgerView: React.FC = () => {
                   </span>
                 </div>
                 <div className="text-right">
-                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 block">Amount</span>
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-gray-500 dark:text-slate-400 block">
+                    {selectedEntry.is_bundled ? 'Total Deducted' : 'Amount'}
+                  </span>
                   <span className={`text-lg font-black font-mono ${selectedEntry.type === 'CREDIT' ? 'text-green-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
                     {selectedEntry.type === 'CREDIT' ? '+' : '-'}GHS {Number(selectedEntry.amount_ghs).toFixed(2)}
                   </span>
                 </div>
               </div>
+
+              {/* Plain-English Explanation of Entry */}
+              {ENTRY_TYPE_DESCRIPTIONS[selectedEntry.entry_type] && (
+                <div className="bg-blue-50/60 dark:bg-blue-950/30 border border-blue-100 dark:border-blue-900/50 rounded-xl p-3 text-slate-700 dark:text-slate-300 leading-relaxed">
+                  {ENTRY_TYPE_DESCRIPTIONS[selectedEntry.entry_type]}
+                </div>
+              )}
+
+              {/* Itemized Fee Breakdown (For Bundled Deductions or Multi-Item Entries) */}
+              {selectedEntry.fee_breakdown && selectedEntry.fee_breakdown.length > 1 && (
+                <div className="bg-slate-50 dark:bg-slate-800/70 rounded-xl p-4 border border-slate-200 dark:border-slate-700 space-y-2.5">
+                  <div className="flex items-center justify-between border-b border-slate-200 dark:border-slate-700 pb-2">
+                    <span className="font-bold text-gray-800 dark:text-slate-200 uppercase text-[10px] tracking-wider">
+                      Itemized Deduction Breakdown
+                    </span>
+                    <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-100/80 dark:bg-amber-950/60 px-2 py-0.5 rounded-full">
+                      {selectedEntry.fee_breakdown.length} Individual Items
+                    </span>
+                  </div>
+                  <div className="space-y-2">
+                    {selectedEntry.fee_breakdown.map((item: any, idx: number) => (
+                      <div key={item.id || idx} className="flex items-center justify-between text-xs py-1 border-b border-dashed border-slate-200 dark:border-slate-700/60 last:border-0">
+                        <div>
+                          <span className="font-semibold text-gray-800 dark:text-slate-200 block">{item.label}</span>
+                          <span className="font-mono text-[10px] text-gray-400 dark:text-slate-500">
+                            Ref ID: {String(item.id).slice(0, 12)}...
+                          </span>
+                        </div>
+                        <span className={`font-mono font-bold ${item.type === 'CREDIT' ? 'text-green-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'}`}>
+                          {item.type === 'CREDIT' ? '+' : '-'}GHS {Number(item.amount_ghs).toFixed(2)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                  <div className="pt-2 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between font-bold text-gray-900 dark:text-white">
+                    <span>Combined Total Deducted:</span>
+                    <span className="font-mono text-red-600 dark:text-red-400">
+                      -GHS {Number(selectedEntry.amount_ghs).toFixed(2)}
+                    </span>
+                  </div>
+                </div>
+              )}
+
+              {/* Order Financial Summary (For Sale Payout Credit) */}
+              {selectedEntry.entry_type === 'ESCROW_RELEASE_NET' && selectedEntry.gross_order_amount_ghs != null && (
+                <div className="bg-slate-50 dark:bg-slate-800/70 rounded-xl p-4 border border-slate-200 dark:border-slate-700 space-y-2">
+                  <span className="font-bold text-gray-800 dark:text-slate-200 block uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700 pb-1.5">
+                    Order Settlement Breakdown
+                  </span>
+                  <div className="flex justify-between text-gray-600 dark:text-slate-400">
+                    <span>Total Order Amount:</span>
+                    <span className="font-mono font-semibold text-gray-900 dark:text-white">GHS {Number(selectedEntry.gross_order_amount_ghs).toFixed(2)}</span>
+                  </div>
+                  {selectedEntry.order_platform_fee_ghs != null && Number(selectedEntry.order_platform_fee_ghs) > 0 && (
+                    <div className="flex justify-between text-gray-600 dark:text-slate-400">
+                      <span>Platform Protection Service Fee:</span>
+                      <span className="font-mono text-red-600 dark:text-red-400">-GHS {Number(selectedEntry.order_platform_fee_ghs).toFixed(2)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between font-bold text-gray-900 dark:text-white pt-1.5 border-t border-slate-200 dark:border-slate-700">
+                    <span>Net Payout Credited to Wallet:</span>
+                    <span className="font-mono text-green-700 dark:text-emerald-400">+GHS {Number(selectedEntry.amount_ghs).toFixed(2)}</span>
+                  </div>
+                </div>
+              )}
+
+              {/* Withdrawal Destination Snapshot (For Wallet Withdrawals) */}
+              {selectedEntry.payout_account_number && (
+                <div className="bg-slate-50 dark:bg-slate-800/70 rounded-xl p-4 border border-slate-200 dark:border-slate-700 space-y-1.5">
+                  <span className="font-bold text-gray-800 dark:text-slate-200 block uppercase text-[10px] tracking-wider border-b border-slate-200 dark:border-slate-700 pb-1.5">
+                    Payout Destination Details
+                  </span>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 dark:text-slate-400">Destination Type:</span>
+                    <span className="font-semibold text-gray-800 dark:text-slate-200">{selectedEntry.payout_destination_type || 'Mobile Money / Bank'}</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span className="text-gray-500 dark:text-slate-400">Account Number:</span>
+                    <span className="font-mono font-bold text-gray-800 dark:text-slate-200">{selectedEntry.payout_account_number}</span>
+                  </div>
+                  {selectedEntry.payout_account_name && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-slate-400">Account Name:</span>
+                      <span className="font-semibold text-gray-800 dark:text-slate-200">{selectedEntry.payout_account_name}</span>
+                    </div>
+                  )}
+                  {selectedEntry.payout_bank_name && (
+                    <div className="flex justify-between">
+                      <span className="text-gray-500 dark:text-slate-400">Bank / Network:</span>
+                      <span className="text-gray-800 dark:text-slate-200">{selectedEntry.payout_bank_name}</span>
+                    </div>
+                  )}
+                </div>
+              )}
 
               {/* Transaction Reference Section */}
               <div className="bg-gray-50 dark:bg-slate-800/60 rounded-xl p-3.5 border border-gray-200 dark:border-slate-800 space-y-2">

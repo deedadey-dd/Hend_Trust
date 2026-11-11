@@ -299,7 +299,20 @@ def compute_seller_dispute_health(seller_user) -> dict:
     from django.utils import timezone
     from datetime import timedelta
     from django.db.models import Q
-    from django.core.mail import send_mail
+    from apps.core.tasks import dispatch_email_task
+    import hashlib
+
+    def send_mail(subject, message, from_email=None, recipient_list=None, fail_silently=True):
+        """Queue seller health notices on Celery (never block the request) and send each distinct notice at most once per 24h."""
+        from apps.core.cache_utils import safe_cache_get, safe_cache_set
+        if not recipient_list:
+            return
+        digest = hashlib.sha256(f"{subject}|{message}".encode('utf-8')).hexdigest()[:24]
+        dedupe_key = f"seller_health_mail:{seller_user.pk}:{digest}"
+        if safe_cache_get(dedupe_key):
+            return
+        safe_cache_set(dedupe_key, 1, timeout=86400)
+        dispatch_email_task.delay(recipient_list[0], subject, message)
 
     # All paid transactions belonging to seller (if reinstated, only evaluate post-reinstatement orders)
     all_paid_txns = Transaction.objects.filter(
@@ -1388,6 +1401,7 @@ class BuyerCancelPreviewSchema(Schema):
     gross_amount_ghs: float
     platform_fee_ghs: float
     gateway_fee_ghs: float
+    gateway_processing_fee_percent: float = 1.95
     payout_transfer_fee_percent: float = 1.95
     wallet_payout_fee_ghs: float = 0.0
     momo_payout_fee_ghs: float
@@ -1478,9 +1492,11 @@ def get_buyer_cancel_preview(request, transaction_id: uuid.UUID):
     seller_resp_hrs = int(cfg.get("seller_cancel_response_window_hours", 6))
     grace_mins = int(cfg.get("cancellation_dispatch_grace_minutes", 90))
     hold_mins = int(cfg.get("cancellation_payout_hold_minutes", cfg.get("cancellation_payout_hold_hours", 90)))
-    monthly_limit = int(cfg.get("buyer_monthly_cancel_limit", 2))
+    monthly_limit = int(cfg.get("buyer_monthly_cancel_limit", 0))
     payout_pct = float(cfg.get("payout_transfer_fee_percent", 1.95))
-    rate_factor = payout_pct / 100.0
+    gateway_pct = float(cfg.get("gateway_processing_fee_percent", payout_pct))
+    payout_rate_factor = payout_pct / 100.0
+    gateway_rate_factor = gateway_pct / 100.0
 
     is_undispatched = (transaction.status == TransactionStatus.PAYMENT_RECEIVED)
     
@@ -1503,9 +1519,9 @@ def get_buyer_cancel_preview(request, transaction_id: uuid.UUID):
 
     gross = float(transaction.total_amount_ghs)
     platform_fee = float(transaction.platform_fee_ghs or 0.0)
-    gateway_fee = round(gross * rate_factor, 2)
+    gateway_fee = round(gross * gateway_rate_factor, 2)
     wallet_net = max(0.0, round(gross - platform_fee - gateway_fee, 2))
-    momo_payout_fee = round(wallet_net * rate_factor, 2)
+    momo_payout_fee = round(wallet_net * payout_rate_factor, 2)
     momo_net = max(0.0, round(wallet_net - momo_payout_fee, 2))
 
     # Anti-abuse: Check monthly cancellations count
@@ -1585,6 +1601,7 @@ def get_buyer_cancel_preview(request, transaction_id: uuid.UUID):
         "gross_amount_ghs": gross,
         "platform_fee_ghs": platform_fee,
         "gateway_fee_ghs": gateway_fee,
+        "gateway_processing_fee_percent": gateway_pct,
         "wallet_payout_fee_ghs": 0.0,
         "momo_payout_fee_ghs": momo_payout_fee,
         "payout_transfer_fee_percent": payout_pct,
@@ -1805,22 +1822,13 @@ def buyer_cancel_order(request, transaction_id: uuid.UUID, data: BuyerCancelRequ
 
     cfg = get_platform_settings()
     grace_mins = int(cfg.get("cancellation_dispatch_grace_minutes", 90))
-    monthly_limit = int(cfg.get("buyer_monthly_cancel_limit", 2))
     payout_pct = Decimal(str(cfg.get("payout_transfer_fee_percent", 1.95)))
-    rate_factor = payout_pct / Decimal('100.0')
+    gateway_pct = Decimal(str(cfg.get("gateway_processing_fee_percent", payout_pct)))
+    payout_rate_factor = payout_pct / Decimal('100.0')
+    gateway_rate_factor = gateway_pct / Decimal('100.0')
 
-    # Anti-abuse: Check monthly cancellations count
+    # Note: Monthly cancellation limit removed; deducted platform & payment provider fees cover system costs.
     now = timezone.now()
-    b_digits = re.sub(r'\D', '', transaction.buyer_phone.strip())
-    if len(b_digits) >= 9:
-        monthly_cancels = Transaction.objects.filter(
-            buyer_phone__endswith=b_digits[-9:],
-            buyer_cancelled=True,
-            created_at__year=now.year,
-            created_at__month=now.month
-        ).count()
-        if monthly_cancels >= monthly_limit:
-            raise HttpError(400, f"Monthly cancellation limit reached ({monthly_limit} cancellations per month). Please contact the seller or HendAxis Support.")
 
     refund_target = (data.refund_target or 'WALLET').upper()
     if refund_target not in ['WALLET', 'MOMO_PAYOUT']:
@@ -1828,9 +1836,9 @@ def buyer_cancel_order(request, transaction_id: uuid.UUID, data: BuyerCancelRequ
 
     gross = transaction.total_amount_ghs
     platform_fee = transaction.platform_fee_ghs or Decimal('0.00')
-    gateway_fee = (gross * rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
+    gateway_fee = (gross * gateway_rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP)
     net_before_payout = max(Decimal('0.00'), gross - platform_fee - gateway_fee)
-    payout_fee = (net_before_payout * rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if refund_target == 'MOMO_PAYOUT' else Decimal('0.00')
+    payout_fee = (net_before_payout * payout_rate_factor).quantize(Decimal('0.01'), rounding=ROUND_HALF_UP) if refund_target == 'MOMO_PAYOUT' else Decimal('0.00')
     net_refund = max(Decimal('0.00'), net_before_payout - payout_fee)
     fee_deducted = gross - net_refund
 
@@ -4237,6 +4245,10 @@ from apps.escrow.models import PlatformSetting
 
 DEFAULT_SYSTEM_SETTINGS = {
     "active_payment_gateway": "PAYSTACK",
+    "primary_payment_gateway": "PAYSTACK",
+    "secondary_payment_gateway": "APPSNMOBILE",
+    "tertiary_payment_gateway": "HUBTEL",
+    "gateway_failover_enabled": True,
     "enabled_delivery_methods": ["COURIER_API", "INFORMAL_BUS"],
     "enabled_carriers": ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"],
     "shipping_timeout_days": 4,
@@ -4271,9 +4283,27 @@ DEFAULT_SYSTEM_SETTINGS = {
     "cancellation_dispatch_grace_minutes": 90,
     "cancellation_payout_hold_minutes": 90,
     "cancellation_payout_hold_hours": 90,
-    "buyer_monthly_cancel_limit": 2,
+    "buyer_monthly_cancel_limit": 0,
+    "gateway_processing_fee_percent": 1.95,
     "payout_transfer_fee_percent": 1.95,
     "payout_transfer_fee_ghs": 2.0,
+    "provider_fee_rates": {
+        "PAYSTACK": {
+            "collection_fee_percent": 1.95,
+            "payout_fee_percent": 1.95,
+            "flat_payout_fee_ghs": 2.0,
+        },
+        "APPSNMOBILE": {
+            "collection_fee_percent": 1.50,
+            "payout_fee_percent": 1.50,
+            "flat_payout_fee_ghs": 1.5,
+        },
+        "HUBTEL": {
+            "collection_fee_percent": 1.75,
+            "payout_fee_percent": 1.75,
+            "flat_payout_fee_ghs": 1.5,
+        },
+    },
     # Global Promotions & Rewards Configuration
     "promotions_active": False,
     "promotions_expires_at": None,
@@ -4286,8 +4316,8 @@ DEFAULT_SYSTEM_SETTINGS = {
 
 
 def get_platform_settings():
-    from django.core.cache import cache
-    cached = cache.get("system_platform_settings")
+    from apps.core.cache_utils import safe_cache_get, safe_cache_set
+    cached = safe_cache_get("system_platform_settings")
     if cached is not None:
         return cached
 
@@ -4309,7 +4339,7 @@ def get_platform_settings():
             if exp and exp <= timezone.now():
                 res["promotions_active"] = False
 
-        cache.set("system_platform_settings", res, timeout=60)
+        safe_cache_set("system_platform_settings", res, timeout=300)
         return res
     except Exception:
         res = DEFAULT_SYSTEM_SETTINGS.copy()
@@ -4336,6 +4366,10 @@ def get_inspection_hours_for_amount(amount) -> int:
 
 class PublicPlatformSettingsSchema(Schema):
     active_payment_gateway: str
+    primary_payment_gateway: str = "PAYSTACK"
+    secondary_payment_gateway: Optional[str] = "APPSNMOBILE"
+    tertiary_payment_gateway: Optional[str] = "HUBTEL"
+    gateway_failover_enabled: bool = True
     enabled_delivery_methods: List[str]
     enabled_carriers: List[str]
     shipping_timeout_days: int = 4
@@ -4366,9 +4400,11 @@ class PublicPlatformSettingsSchema(Schema):
     cancellation_dispatch_grace_minutes: int = 90
     cancellation_payout_hold_minutes: int = 90
     cancellation_payout_hold_hours: int = 90
-    buyer_monthly_cancel_limit: int = 2
+    buyer_monthly_cancel_limit: int = 0
+    gateway_processing_fee_percent: float = 1.95
     payout_transfer_fee_percent: float = 1.95
     payout_transfer_fee_ghs: float = 2.0
+    provider_fee_rates: Optional[dict] = None
     # Promotions
     promotions_active: bool = False
     promotions_expires_at: Optional[str] = None
@@ -4381,6 +4417,10 @@ class PublicPlatformSettingsSchema(Schema):
 
 class PlatformSettingsSchema(Schema):
     active_payment_gateway: str
+    primary_payment_gateway: str = "PAYSTACK"
+    secondary_payment_gateway: Optional[str] = "APPSNMOBILE"
+    tertiary_payment_gateway: Optional[str] = "HUBTEL"
+    gateway_failover_enabled: bool = True
     enabled_delivery_methods: List[str]
     enabled_carriers: List[str]
     shipping_timeout_days: int = 4
@@ -4411,9 +4451,11 @@ class PlatformSettingsSchema(Schema):
     cancellation_dispatch_grace_minutes: int = 90
     cancellation_payout_hold_minutes: int = 90
     cancellation_payout_hold_hours: int = 90
-    buyer_monthly_cancel_limit: int = 2
+    buyer_monthly_cancel_limit: int = 0
+    gateway_processing_fee_percent: float = 1.95
     payout_transfer_fee_percent: float = 1.95
     payout_transfer_fee_ghs: float = 2.0
+    provider_fee_rates: Optional[dict] = None
     django_admin_url: Optional[str] = 'admin/'
     django_admin_full_url: Optional[str] = None
     # Promotions
@@ -4428,6 +4470,10 @@ class PlatformSettingsSchema(Schema):
 
 class UpdatePlatformSettingsSchema(Schema):
     active_payment_gateway: Optional[str] = None
+    primary_payment_gateway: Optional[str] = None
+    secondary_payment_gateway: Optional[str] = None
+    tertiary_payment_gateway: Optional[str] = None
+    gateway_failover_enabled: Optional[bool] = None
     enabled_delivery_methods: Optional[List[str]] = None
     enabled_carriers: Optional[List[str]] = None
     shipping_timeout_days: Optional[int] = None
@@ -4459,8 +4505,10 @@ class UpdatePlatformSettingsSchema(Schema):
     cancellation_payout_hold_minutes: Optional[int] = None
     cancellation_payout_hold_hours: Optional[int] = None
     buyer_monthly_cancel_limit: Optional[int] = None
+    gateway_processing_fee_percent: Optional[float] = None
     payout_transfer_fee_percent: Optional[float] = None
     payout_transfer_fee_ghs: Optional[float] = None
+    provider_fee_rates: Optional[dict] = None
     # Promotions
     promotions_active: Optional[bool] = None
     promotions_expires_at: Optional[str] = None
@@ -4498,11 +4546,35 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     is_admin_manager(request)
 
     current = get_platform_settings()
-    if data.active_payment_gateway:
-        gw = data.active_payment_gateway.upper()
-        if gw not in ["PAYSTACK", "APPSNMOBILE", "HUBTEL"]:
-            raise HttpError(400, "Invalid payment gateway choice.")
+    valid_gws = ["PAYSTACK", "APPSNMOBILE", "HUBTEL"]
+
+    if data.primary_payment_gateway is not None:
+        gw = data.primary_payment_gateway.upper().strip()
+        if gw not in valid_gws:
+            raise HttpError(400, f"Invalid primary gateway '{gw}'. Choose from {valid_gws}.")
+        current["primary_payment_gateway"] = gw
         current["active_payment_gateway"] = gw
+    elif data.active_payment_gateway is not None:
+        gw = data.active_payment_gateway.upper().strip()
+        if gw not in valid_gws:
+            raise HttpError(400, f"Invalid active gateway '{gw}'. Choose from {valid_gws}.")
+        current["active_payment_gateway"] = gw
+        current["primary_payment_gateway"] = gw
+
+    if data.secondary_payment_gateway is not None:
+        raw_sec = data.secondary_payment_gateway.upper().strip() if data.secondary_payment_gateway else None
+        if raw_sec and raw_sec not in valid_gws and raw_sec != "NONE":
+            raise HttpError(400, f"Invalid secondary gateway '{raw_sec}'. Choose from {valid_gws} or None.")
+        current["secondary_payment_gateway"] = None if (not raw_sec or raw_sec == "NONE") else raw_sec
+
+    if data.tertiary_payment_gateway is not None:
+        raw_ter = data.tertiary_payment_gateway.upper().strip() if data.tertiary_payment_gateway else None
+        if raw_ter and raw_ter not in valid_gws and raw_ter != "NONE":
+            raise HttpError(400, f"Invalid tertiary gateway '{raw_ter}'. Choose from {valid_gws} or None.")
+        current["tertiary_payment_gateway"] = None if (not raw_ter or raw_ter == "NONE") else raw_ter
+
+    if data.gateway_failover_enabled is not None:
+        current["gateway_failover_enabled"] = bool(data.gateway_failover_enabled)
 
     if data.enabled_delivery_methods is not None:
         current["enabled_delivery_methods"] = data.enabled_delivery_methods
@@ -4631,13 +4703,58 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
         current["cancellation_payout_hold_hours"] = current["cancellation_payout_hold_minutes"]
 
     if data.buyer_monthly_cancel_limit is not None:
-        current["buyer_monthly_cancel_limit"] = max(1, int(data.buyer_monthly_cancel_limit))
+        current["buyer_monthly_cancel_limit"] = max(0, int(data.buyer_monthly_cancel_limit))
+
+    default_provider_rates = {
+        "PAYSTACK": {"collection_fee_percent": 1.95, "payout_fee_percent": 1.95, "flat_payout_fee_ghs": 2.0},
+        "APPSNMOBILE": {"collection_fee_percent": 1.50, "payout_fee_percent": 1.50, "flat_payout_fee_ghs": 1.5},
+        "HUBTEL": {"collection_fee_percent": 1.75, "payout_fee_percent": 1.75, "flat_payout_fee_ghs": 1.5},
+    }
+    provider_rates = {k: dict(v) for k, v in default_provider_rates.items()}
+    if isinstance(current.get("provider_fee_rates"), dict):
+        for k, v in current["provider_fee_rates"].items():
+            if k in provider_rates and isinstance(v, dict):
+                provider_rates[k].update(v)
+
+    prev_gw = (get_platform_settings().get("active_payment_gateway") or "PAYSTACK").upper()
+    active_gw = (current.get("active_payment_gateway") or "PAYSTACK").upper()
+    gateway_switched = (data.active_payment_gateway is not None and active_gw != prev_gw)
+
+    if data.provider_fee_rates and isinstance(data.provider_fee_rates, dict):
+        for gw_key, gw_vals in data.provider_fee_rates.items():
+            gw_upper = gw_key.upper()
+            if gw_upper in provider_rates and isinstance(gw_vals, dict):
+                if "collection_fee_percent" in gw_vals and gw_vals["collection_fee_percent"] is not None:
+                    provider_rates[gw_upper]["collection_fee_percent"] = max(0.0, min(100.0, float(gw_vals["collection_fee_percent"])))
+                if "payout_fee_percent" in gw_vals and gw_vals["payout_fee_percent"] is not None:
+                    provider_rates[gw_upper]["payout_fee_percent"] = max(0.0, min(100.0, float(gw_vals["payout_fee_percent"])))
+                if "flat_payout_fee_ghs" in gw_vals and gw_vals["flat_payout_fee_ghs"] is not None:
+                    provider_rates[gw_upper]["flat_payout_fee_ghs"] = max(0.0, float(gw_vals["flat_payout_fee_ghs"]))
+
+    active_gw_rates = provider_rates.get(active_gw, provider_rates["PAYSTACK"])
+
+    if data.gateway_processing_fee_percent is not None:
+        val = max(0.0, min(100.0, float(data.gateway_processing_fee_percent)))
+        current["gateway_processing_fee_percent"] = val
+        active_gw_rates["collection_fee_percent"] = val
+    elif gateway_switched:
+        current["gateway_processing_fee_percent"] = float(active_gw_rates.get("collection_fee_percent", 1.95))
 
     if data.payout_transfer_fee_percent is not None:
-        current["payout_transfer_fee_percent"] = max(0.0, min(100.0, float(data.payout_transfer_fee_percent)))
+        val = max(0.0, min(100.0, float(data.payout_transfer_fee_percent)))
+        current["payout_transfer_fee_percent"] = val
+        active_gw_rates["payout_fee_percent"] = val
+    elif gateway_switched:
+        current["payout_transfer_fee_percent"] = float(active_gw_rates.get("payout_fee_percent", 1.95))
 
     if data.payout_transfer_fee_ghs is not None:
-        current["payout_transfer_fee_ghs"] = max(0.0, float(data.payout_transfer_fee_ghs))
+        val = max(0.0, float(data.payout_transfer_fee_ghs))
+        current["payout_transfer_fee_ghs"] = val
+        active_gw_rates["flat_payout_fee_ghs"] = val
+    elif gateway_switched:
+        current["payout_transfer_fee_ghs"] = float(active_gw_rates.get("flat_payout_fee_ghs", 2.0))
+
+    current["provider_fee_rates"] = provider_rates
 
     # Promotions Settings Updates
     if data.promotions_active is not None:

@@ -54,6 +54,7 @@ interface CancelPreviewData {
   wallet_payout_fee_ghs: number;
   momo_payout_fee_ghs: number;
   payout_transfer_fee_percent?: number;
+  gateway_processing_fee_percent?: number;
   wallet_net_refund_ghs: number;
   momo_net_refund_ghs: number;
   buyer_phone: string;
@@ -330,9 +331,6 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
                 <p className="text-[11px] leading-relaxed opacity-90">
                   To protect against items already in transit, the seller will receive an immediate SMS alert with a <strong>90-minute window</strong> to confirm dispatch. If the seller does not report dispatch, your cancellation is auto-confirmed into our 90-minute safety payout hold buffer.
                 </p>
-                <div className="pt-1.5 flex items-center gap-3 text-[10px] font-semibold text-amber-800/90 dark:text-amber-300/90">
-                  <span>Monthly cancellations used: {preview?.buyer_monthly_cancellations_count ?? 0} / {preview?.buyer_monthly_cancel_limit ?? 2}</span>
-                </div>
               </div>
             </div>
           </div>
@@ -362,12 +360,12 @@ export default function BuyerCancelModal({ order, onClose, onSuccess }: BuyerCan
                   <span className="font-mono text-red-600 dark:text-red-400">- GHS {preview.platform_fee_ghs.toFixed(2)}</span>
                 </div>
                 <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400 pl-2">
-                  <span>• Payment Gateway Processing Cost (1.95%):</span>
+                  <span>• Payment Provider Processing Fee ({preview.gateway_processing_fee_percent ?? preview.payout_transfer_fee_percent ?? 1.95}%):</span>
                   <span className="font-mono text-red-600 dark:text-red-400">- GHS {preview.gateway_fee_ghs.toFixed(2)}</span>
                 </div>
                 {refundTarget === 'MOMO_PAYOUT' && preview.momo_payout_fee_ghs > 0 && (
                   <div className="flex justify-between text-[11px] text-slate-500 dark:text-slate-400 pl-2">
-                    <span>• MoMo / Bank Transfer Payout Fee ({preview.payout_transfer_fee_percent ?? 1.95}%):</span>
+                    <span>• Payment Provider Payout Fee ({preview.payout_transfer_fee_percent ?? 1.95}%):</span>
                     <span className="font-mono text-red-600 dark:text-red-400">- GHS {preview.momo_payout_fee_ghs.toFixed(2)}</span>
                   </div>
                 )}

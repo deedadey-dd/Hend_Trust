@@ -1,5 +1,6 @@
 import os
 import re
+import sys
 import subprocess as _sp
 from pathlib import Path
 import environ
@@ -75,6 +76,11 @@ ENABLE_PUBLIC_DOCS = env.bool('ENABLE_PUBLIC_DOCS', default=DEBUG)
 
 PAYSTACK_SECRET_KEY = env('PAYSTACK_SECRET_KEY', default='')
 PAYSTACK_PUBLIC_KEY = env('PAYSTACK_PUBLIC_KEY', default='')
+APPSNMOBILE_CLIENT_ID = env('APPSNMOBILE_CLIENT_ID', default='')
+APPSNMOBILE_SECRET_KEY = env('APPSNMOBILE_SECRET_KEY', default='')
+APPSNMOBILE_API_KEY = env('APPSNMOBILE_API_KEY', default='')
+HUBTEL_CLIENT_ID = env('HUBTEL_CLIENT_ID', default='')
+HUBTEL_CLIENT_SECRET = env('HUBTEL_CLIENT_SECRET', default='')
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -105,6 +111,7 @@ INSTALLED_APPS = [
 
 MIDDLEWARE = [
     'corsheaders.middleware.CorsMiddleware',
+    'django.middleware.gzip.GZipMiddleware',  # compress large JSON (marketplace/storefront payloads carry inline images)
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -212,14 +219,27 @@ AUTH_USER_MODEL = 'users.User'
 
 # Cache Configuration
 # Django's cache is used by rate limiting, hot queries, and OTP storage.
-# In dev/test, use LocMemCache (single-process, fast).
-# In production, use RedisCache (Django 5 native backend).
-_cache_url = env('CACHE_URL', default=env('REDIS_URL', default=''))
+# In dev/test, use LocMemCache (single-process, fast, isolated).
+# In production, use RedisCache (Django 5 native backend) with socket timeouts & connection pooling.
+_is_testing = 'pytest' in sys.modules or 'test' in sys.argv
+_cache_url = '' if _is_testing else env('CACHE_URL', default=env('REDIS_URL', default=''))
+_cache_key_prefix = env('CACHE_KEY_PREFIX', default='hendaxis')
+_cache_default_timeout = env.int('CACHE_DEFAULT_TIMEOUT', default=300)
+
 if _cache_url:
     CACHES = {
         'default': {
             'BACKEND': 'django.core.cache.backends.redis.RedisCache',
             'LOCATION': _cache_url,
+            'KEY_PREFIX': _cache_key_prefix,
+            'TIMEOUT': _cache_default_timeout,
+            'OPTIONS': {
+                'socket_connect_timeout': env.float('REDIS_SOCKET_CONNECT_TIMEOUT', default=2.0),
+                'socket_timeout': env.float('REDIS_SOCKET_TIMEOUT', default=2.0),
+                'retry_on_timeout': True,
+                'health_check_interval': 30,
+                'max_connections': env.int('REDIS_MAX_CONNECTIONS', default=50),
+            },
         }
     }
 else:
@@ -227,6 +247,8 @@ else:
         'default': {
             'BACKEND': 'django.core.cache.backends.locmem.LocMemCache',
             'LOCATION': 'hendaxis-trust-cache',
+            'KEY_PREFIX': _cache_key_prefix,
+            'TIMEOUT': _cache_default_timeout,
         }
     }
 

@@ -55,4 +55,15 @@ class PaymentLink(models.Model):
     def __str__(self):
         return f"{self.title} ({self.price_ghs} GHS) - {'Active' if self.is_active else 'Inactive'}"
 
+    def save(self, *args, **kwargs):
+        super().save(*args, **kwargs)
+        from apps.core.cache_utils import invalidate_marketplace_caches
+        invalidate_marketplace_caches()
+
+    def delete(self, *args, **kwargs):
+        res = super().delete(*args, **kwargs)
+        from apps.core.cache_utils import invalidate_marketplace_caches
+        invalidate_marketplace_caches()
+        return res
+
 

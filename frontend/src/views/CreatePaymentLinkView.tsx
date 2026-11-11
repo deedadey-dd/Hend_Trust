@@ -1,8 +1,8 @@
 import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { 
-  ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, Sparkles, 
-  Image as ImageIcon, Loader2, ShieldAlert, Send, Package, Tag, 
+  ArrowRight, Link as LinkIcon, Truck, Copy, Check, Share2, X, 
+  Image as ImageIcon, Loader2, ShieldAlert, Send, Package, 
   Globe, Search, UserCheck, ShieldCheck, AtSign, CheckCircle2 
 } from 'lucide-react';
 import { apiClient } from '../api/client';
@@ -169,8 +169,8 @@ export default function CreatePaymentLinkView() {
     if (navigator.share) {
       try {
         await navigator.share({
-          title: `HendAxis Escrow - ${title}`,
-          text: `Pay securely for "${title}" via HendAxis Trust Escrow:`,
+          title: `HendAxis Trust - ${title}`,
+          text: `Pay securely for "${title}" via HendAxis Trust:`,
           url: url
         });
       } catch (error) {
@@ -267,11 +267,10 @@ export default function CreatePaymentLinkView() {
     <div className="min-h-screen bg-gray-50 dark:bg-slate-950 py-12 px-4 sm:px-6 lg:px-8 transition-colors">
       <div className="max-w-3xl mx-auto space-y-8">
         <div>
-          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-slate-100 flex items-center gap-2">
-            <LinkIcon className="h-8 w-8 text-blue-600 dark:text-blue-400" />
-            Create Escrow Payment Link
+          <h2 className="text-3xl font-extrabold text-gray-900 dark:text-slate-100">
+            Create Protected Payment Link
           </h2>
-          <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">Generate a single-use escrow link for your buyer.</p>
+          <p className="mt-2 text-sm text-gray-500 dark:text-slate-400">Generate a single-use protected payment link for your buyer.</p>
         </div>
 
         {/* Ready to Ship Advisory Banner */}
@@ -282,7 +281,7 @@ export default function CreatePaymentLinkView() {
           <div className="flex-1">
             <div className="flex items-center gap-2">
               <h4 className="text-xs font-bold text-amber-900 dark:text-amber-200 uppercase tracking-wider">
-                📦 Ready-to-Ship Advisory
+                Ready-to-Ship Advisory
               </h4>
               <span className="bg-amber-200/90 dark:bg-amber-800 text-amber-900 dark:text-amber-100 text-[10px] font-black px-2 py-0.5 rounded-full uppercase">
                 Policy Reminder
@@ -299,8 +298,7 @@ export default function CreatePaymentLinkView() {
         {pastLinks.length > 0 && (
           <div className="bg-gradient-to-r from-blue-50 to-indigo-50 dark:from-blue-950/40 dark:to-indigo-950/40 border border-blue-200 dark:border-blue-800/60 rounded-2xl p-4 space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold text-blue-900 dark:text-blue-300 flex items-center gap-1.5">
-                <Sparkles className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+              <label className="text-xs font-bold text-blue-900 dark:text-blue-300">
                 Quick Autofill from Previous Products
               </label>
               <span className="text-[11px] text-blue-700 dark:text-blue-400 font-medium">{pastLinks.length} products saved</span>
@@ -543,8 +541,7 @@ export default function CreatePaymentLinkView() {
               {/* Product Category Selector */}
               <div>
                 <div className="flex items-center justify-between">
-                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 flex items-center gap-1.5">
-                    <Tag className="h-4 w-4 text-blue-600 dark:text-blue-400" />
+                  <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">
                     Product Category *
                   </label>
                   <span className="text-[11px] text-blue-600 dark:text-blue-400 font-medium">
@@ -630,7 +627,7 @@ export default function CreatePaymentLinkView() {
 
                 <div>
                   <div className="flex items-center justify-between mb-1">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Escrow Fee</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300">Protection Fee</label>
                     <span className="text-[10px] font-mono font-semibold text-gray-500 dark:text-slate-400 bg-gray-100 dark:bg-slate-800 px-1.5 py-0.5 rounded border border-gray-200 dark:border-slate-700">1.5% + GHS 10</span>
                   </div>
                   <div className="relative rounded-md shadow-sm">
@@ -655,8 +652,8 @@ export default function CreatePaymentLinkView() {
                     <span className="text-sm font-bold text-gray-900 dark:text-slate-100 block">Pass Platform Fee (GHS {platformFee.toFixed(2)}) to Buyer</span>
                     <span className="text-xs text-gray-500 dark:text-slate-400">
                       {feeHandling === 'PASS_TO_BUYER' 
-                        ? 'Buyer pays item price + shipping + escrow fee. You receive 100% of price + shipping.' 
-                        : 'You absorb the escrow fee. Fee will be deducted from your final payout.'}
+                        ? 'Buyer pays item price + shipping + protection fee. You receive 100% of price + shipping.' 
+                        : 'You absorb the protection fee. Fee will be deducted from your final payout.'}
                     </span>
                   </div>
                 </label>
@@ -678,7 +675,7 @@ export default function CreatePaymentLinkView() {
             <button type="submit" className="w-full flex justify-center items-center py-3.5 px-4 border border-transparent rounded-xl shadow-md text-sm font-bold text-white bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 transition-all cursor-pointer">
               {deliveryMode === 'DIRECT' ? (
                 <>
-                  <Send className="mr-2 h-4 w-4" /> Dispatch Escrow Order to @{selectedBuyer?.username || 'Buyer'}
+                  <Send className="mr-2 h-4 w-4" /> Dispatch Protected Order to @{selectedBuyer?.username || 'Buyer'}
                 </>
               ) : (
                 <>
@@ -693,7 +690,7 @@ export default function CreatePaymentLinkView() {
             <div className="p-6 bg-green-50 dark:bg-emerald-950/30 border-t border-green-100 dark:border-emerald-900/40">
               <p className="text-sm text-green-800 dark:text-emerald-300 font-medium mb-3 text-center">
                 {isDirectCreated
-                  ? `Direct escrow order dispatched to @${selectedBuyer?.username}! Share backup link if desired:`
+                  ? `Direct protected order dispatched to @${selectedBuyer?.username}! Share backup link if desired:`
                   : 'Link created successfully! Share it with your buyer.'}
               </p>
               <div className="flex items-center gap-2 bg-white dark:bg-slate-900 rounded-lg border border-green-200 dark:border-emerald-800/60 p-3">
@@ -747,7 +744,7 @@ export default function CreatePaymentLinkView() {
                     Sent directly to <strong className="text-indigo-600 dark:text-indigo-400">@{selectedBuyer?.username}</strong>'s HendAxis account. They have received an in-app alert & notification to review and pay.
                   </>
                 ) : (
-                  'Your secure escrow link has been generated. Share it with your buyer to get paid.'
+                  'Your protected payment link has been generated. Share it with your buyer to get paid.'
                 )}
               </p>
 
@@ -769,7 +766,7 @@ export default function CreatePaymentLinkView() {
               <div className="space-y-2.5">
                 <a
                   href={`https://api.whatsapp.com/send?text=${encodeURIComponent(
-                    `Hello! Here is your secure HendAxis Trust escrow checkout link for "${title}" (Total: GHS ${buyerPays.toFixed(2)}).\n\n🔒 Your payment is held safely in escrow until you receive and inspect your package.\n👉 Pay safely here: ${createdUrl}`
+                    `Hello! Here is your secure HendAxis Trust checkout link for "${title}" (Total: GHS ${buyerPays.toFixed(2)}).\n\nYour payment is held safely in trust until you receive and inspect your package.\nPay safely here: ${createdUrl}`
                   )}`}
                   target="_blank"
                   rel="noopener noreferrer"
@@ -822,7 +819,7 @@ export default function CreatePaymentLinkView() {
 
               {appealSuccess ? (
                 <div className="p-4 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-emerald-800 dark:text-emerald-200 font-semibold text-center">
-                  ✅ {appealSuccess}
+                  {appealSuccess}
                 </div>
               ) : (
                 <form onSubmit={handleAppealSubmit} className="space-y-3">

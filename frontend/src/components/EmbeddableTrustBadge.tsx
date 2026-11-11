@@ -23,10 +23,10 @@ export const EmbeddableTrustBadge: React.FC<EmbeddableTrustBadgeProps> = ({
 
   const htmlSnippet = `<a href="${storeUrl}" target="_blank" rel="noopener noreferrer" style="display:inline-flex;align-items:center;gap:8px;padding:8px 14px;background-color:${badgeTheme === 'LIGHT' ? '#f8fafc' : badgeTheme === 'GOLD' ? '#1e1b4b' : '#0f172a'};color:${badgeTheme === 'LIGHT' ? '#0f172a' : badgeTheme === 'GOLD' ? '#fbbf24' : '#38bdf8'};border:1px solid ${badgeTheme === 'GOLD' ? '#f59e0b' : '#334155'};border-radius:12px;font-family:sans-serif;font-size:12px;font-weight:bold;text-decoration:none;box-shadow:0 2px 8px rgba(0,0,0,0.15);">
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/></svg>
-  <span>Verified Escrow Merchant • HendAxis Trust</span>
+  <span>Verified Merchant • HendAxis Trust</span>
 </a>`;
 
-  const linktreeBioText = `🛡 Verified Escrow Store: ${storeUrl} (100% Buyer Protection by HendAxis Trust)`;
+  const linktreeBioText = `🛡 Verified Shop: ${storeUrl} (100% Buyer Protection by HendAxis Trust)`;
 
   const handleCopy = (text: string, key: string) => {
     navigator.clipboard.writeText(text);
@@ -90,7 +90,7 @@ export const EmbeddableTrustBadge: React.FC<EmbeddableTrustBadgeProps> = ({
           }`}
         >
           <ShieldCheck className="h-4 w-4" />
-          <span>Verified Merchant • HendAxis Escrow</span>
+          <span>Verified Merchant • HendAxis Trust</span>
           <ExternalLink className="h-3 w-3 opacity-60" />
         </a>
       </div>

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  User, Wallet, Zap, PiggyBank, Phone, Building2, 
-  Save, Loader2, CheckCircle, AlertTriangle, ShieldCheck, FileCheck, Store, Clock, XCircle, 
-  Image as ImageIcon, Camera, X, ShoppingBag, Sparkles, Lock, BadgeCheck, Mail, Link2, MapPin
+  Zap, Phone, Building2, 
+  Save, Loader2, CheckCircle, AlertTriangle, ShieldCheck, FileCheck, Clock, XCircle, 
+  Image as ImageIcon, Camera, X, BadgeCheck, Mail, MapPin
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -109,9 +109,7 @@ export default function ProfileView() {
 
   // Verification fields
   const [idNumber, setIdNumber] = useState('');
-  const [idPhoto, setIdPhoto] = useState('');
   const [licensePhoto, setLicensePhoto] = useState('');
-  const [isCompressingIdPhoto, setIsCompressingIdPhoto] = useState(false);
   const [isCompressingLicensePhoto, setIsCompressingLicensePhoto] = useState(false);
 
   const fetchProfile = async () => {
@@ -146,7 +144,6 @@ export default function ProfileView() {
       setBanner(data.banner_url || '');
 
       setIdNumber(data.national_id_number || '');
-      setIdPhoto(data.national_id_photo_url || '');
       setLicensePhoto(data.business_license_photo_url || '');
     } catch {
       setError('Failed to load profile.');
@@ -514,7 +511,7 @@ export default function ProfileView() {
     setCompressingFn(true);
     setError('');
     try {
-      // Compress to high-clarity WebP (1600px max, 85% quality) to preserve Ghana Card text & details while shrinking file from 10MB to ~200KB
+      // Compress to high-clarity WebP (1600px max, 85% quality) to preserve document text & details while shrinking file from 10MB to ~200KB
       const webp = await compressImageToWebP(file, 1600, 0.85, false);
       setPhotoFn(webp);
     } catch {
@@ -531,16 +528,12 @@ export default function ProfileView() {
 
   const handleSubmitVerification = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (isCompressingIdPhoto || isCompressingLicensePhoto) {
+    if (isCompressingLicensePhoto) {
       setError('Please wait for image optimization to finish before submitting.');
       return;
     }
     if (!idNumber.trim()) {
-      setError('Please enter your National ID / Ghana Card number.');
-      return;
-    }
-    if (!idPhoto) {
-      setError('Please upload a photo of your National ID / Ghana Card.');
+      setError('Please enter your Merchant Verification / Identity Reference Number.');
       return;
     }
     setSubmittingVerif(true);
@@ -549,7 +542,7 @@ export default function ProfileView() {
     try {
       const res = await apiClient.post('/profile/submit-verification', {
         national_id_number: idNumber,
-        national_id_photo_url: idPhoto,
+        national_id_photo_url: '',
         business_license_photo_url: licensePhoto
       });
       setSuccess(res.data?.message || 'Verification submitted successfully!');
@@ -590,7 +583,7 @@ export default function ProfileView() {
             </h1>
             <p className="mt-1 text-sm text-gray-500 dark:text-slate-400">
               {isBuyer 
-                ? 'Manage your personal details, login security, and unlock selling features with escrow.' 
+                ? 'Manage your personal details, login security, and unlock selling features with HendAxis Trust.' 
                 : 'Manage your identity, store presentation, verification, and payout preferences.'}
             </p>
           </div>
@@ -598,7 +591,6 @@ export default function ProfileView() {
           <div>
             {isBuyer ? (
               <span className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-extrabold bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-700 dark:text-blue-300 shadow-sm">
-                <ShoppingBag className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
                 BUYER ACCOUNT
               </span>
             ) : (
@@ -632,14 +624,9 @@ export default function ProfileView() {
             {/* 1. BUYER PERSONAL INFORMATION CARD */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
               <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center">
-                    <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                  </div>
-                  <div>
-                    <h2 className="font-semibold text-gray-900 dark:text-white">Personal Information</h2>
-                    <p className="text-xs text-gray-500 dark:text-slate-400">Your shopping identity and contact info</p>
-                  </div>
+                <div>
+                  <h2 className="font-semibold text-gray-900 dark:text-white">Personal Information</h2>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Your shopping identity and contact info</p>
                 </div>
                 <button
                   type="button"
@@ -798,7 +785,7 @@ export default function ProfileView() {
                       Default Shipping & Delivery Address
                     </label>
                     <span className="text-[10px] text-blue-600 dark:text-blue-400 font-medium">
-                      Auto-prefilled at escrow checkout
+                      Auto-prefilled at protected checkout
                     </span>
                   </div>
                   <textarea
@@ -823,13 +810,13 @@ export default function ProfileView() {
                 <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-gray-100 dark:border-slate-800 pb-5">
                   <div className="space-y-1">
                     <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-orange-100 dark:bg-orange-950/60 text-orange-700 dark:text-orange-400 mb-1">
-                      <Sparkles className="h-3.5 w-3.5" /> Start Selling
+                      Start Selling
                     </div>
                     <h2 className="text-xl font-black text-gray-900 dark:text-white tracking-tight">
                       Upgrade to Verified Seller
                     </h2>
                     <p className="text-xs text-gray-500 dark:text-slate-400 max-w-xl">
-                      Want to sell products, collect escrow payments, and receive instant Mobile Money or Bank payouts? Submit your Ghana Card for verification.
+                      Want to sell products, collect protected payments, and receive instant Mobile Money or Bank payouts? Complete your merchant verification below.
                     </p>
                   </div>
 
@@ -837,12 +824,12 @@ export default function ProfileView() {
                   <div>
                     {profile?.verification_status === 'APPROVED' && (
                       <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3 py-1.5 rounded-full">
-                        <CheckCircle className="h-4 w-4" /> 🛡️ APPROVED
+                        <CheckCircle className="h-4 w-4" /> APPROVED
                       </span>
                     )}
                     {profile?.verification_status === 'PENDING' && (
                       <span className="inline-flex items-center gap-1 text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-950/60 border border-amber-200 dark:border-amber-800 px-3 py-1.5 rounded-full">
-                        <Clock className="h-4 w-4" /> ⏳ Verification Pending Review
+                        <Clock className="h-4 w-4" /> Verification Pending Review
                       </span>
                     )}
                     {profile?.verification_status === 'REJECTED' && (
@@ -852,7 +839,7 @@ export default function ProfileView() {
                     )}
                     {(!profile?.verification_status || profile.verification_status === 'UNSUBMITTED') && (
                       <span className="inline-flex items-center gap-1 text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-full">
-                        Ghana Card Required
+                        Verification Required
                       </span>
                     )}
                   </div>
@@ -861,19 +848,16 @@ export default function ProfileView() {
                 {/* Seller Value Proposition Grid */}
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div className="p-3.5 rounded-xl bg-orange-50/60 dark:bg-orange-950/20 border border-orange-100 dark:border-orange-900/40">
-                    <Link2 className="h-4 w-4 text-orange-600 dark:text-orange-400 mb-1.5" />
-                    <p className="text-xs font-bold text-gray-900 dark:text-white">Escrow Payment Links</p>
+                    <p className="text-xs font-bold text-gray-900 dark:text-white">Protected Payment Links</p>
                     <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">Generate shareable payment links for WhatsApp, Instagram, and TikTok.</p>
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-emerald-50/60 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40">
-                    <Zap className="h-4 w-4 text-emerald-600 dark:text-emerald-400 mb-1.5" />
                     <p className="text-xs font-bold text-gray-900 dark:text-white">Instant MoMo Payouts</p>
                     <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">Automatic transfers directly to your MTN, Telecel, or Bank account.</p>
                   </div>
 
                   <div className="p-3.5 rounded-xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-100 dark:border-blue-900/40">
-                    <Store className="h-4 w-4 text-blue-600 dark:text-blue-400 mb-1.5" />
                     <p className="text-xs font-bold text-gray-900 dark:text-white">Verified Storefront</p>
                     <p className="text-[11px] text-gray-500 dark:text-slate-400 mt-0.5">Get listed on the Verified Shops Directory with your custom logo and banner.</p>
                   </div>
@@ -884,43 +868,43 @@ export default function ProfileView() {
                   <div className="p-5 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-2xl text-xs text-emerald-900 dark:text-emerald-200 space-y-2">
                     <div className="flex items-center gap-2">
                       <CheckCircle className="h-5 w-5 text-emerald-600 dark:text-emerald-400 shrink-0" />
-                      <p className="font-bold text-sm">🎉 You are a Verified Seller!</p>
+                      <p className="font-bold text-sm">You are a Verified Seller!</p>
                     </div>
                     <p>
-                      Your documents have been verified. You now have full access to create escrow links, receive payouts, and customize your storefront.
+                      Your merchant details have been verified. You now have full access to create protected payment links, receive payouts, and customize your storefront.
                     </p>
                   </div>
                 ) : profile?.verification_status === 'PENDING' ? (
                   <div className="p-5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-2xl text-xs text-amber-900 dark:text-amber-200 space-y-2">
                     <div className="flex items-center gap-2">
                       <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400 shrink-0" />
-                      <p className="font-bold text-sm">⏳ Documents Under Review</p>
+                      <p className="font-bold text-sm">Verification Under Review</p>
                     </div>
                     <p>
-                      We received your Ghana Card submission (<strong>{profile.national_id_number}</strong>). Our compliance team is verifying the details. You will automatically receive seller access once approved!
+                      We received your verification submission (<strong>{profile.national_id_number}</strong>). Our compliance team is verifying your details. You will automatically receive seller access once approved!
                     </p>
                   </div>
                 ) : (
                   <form onSubmit={handleSubmitVerification} className="space-y-4 pt-2">
                     {profile?.verification_status === 'REJECTED' && (
                       <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 space-y-1">
-                        <p className="font-bold">❌ Previous Submission Rejected:</p>
+                        <p className="font-bold">Previous Submission Rejected:</p>
                         <p>{profile.verification_rejection_reason}</p>
                       </div>
                     )}
 
                     <div className="text-xs text-gray-600 dark:text-slate-300 space-y-1">
                       <p>
-                        To activate seller privileges, please provide your <strong>Ghana Card / National ID number</strong> and upload a clear photo of your card.
+                        To activate seller privileges, please provide your <strong>Merchant Verification Reference / Identity Number</strong> below. Do not upload any photocopy or image of a national ID card.
                       </p>
                       <p className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                        <Zap className="h-3.5 w-3.5 shrink-0" /> Instant NIA Auto-Verification: Valid Ghana Cards are verified immediately!
+                        <Zap className="h-3.5 w-3.5 shrink-0" /> Instant Registry Auto-Verification: Valid verification references are verified immediately without requiring ID card uploads!
                       </p>
                     </div>
 
                     <div>
                       <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
-                        National ID / Ghana Card Number *
+                        Merchant Verification / Identity Reference Number *
                       </label>
                       <input
                         type="text"
@@ -933,40 +917,7 @@ export default function ProfileView() {
                       <span className="text-[10px] text-gray-400 dark:text-slate-500 mt-1 block">Format: GHA-XXXXXXXXX-X (15 characters)</span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* National ID Photo */}
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
-                          Ghana Card Photo *
-                        </label>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          disabled={isCompressingIdPhoto}
-                          onChange={e => handleDocumentUpload(e, setIdPhoto, setIsCompressingIdPhoto, 'Ghana Card photo')}
-                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50"
-                        />
-                        {isCompressingIdPhoto && (
-                          <div className="mt-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            <span>Optimizing image clarity and size...</span>
-                          </div>
-                        )}
-                        {idPhoto && !isCompressingIdPhoto && (
-                          <div className="relative mt-2 inline-block">
-                            <img src={idPhoto} alt="National ID" className="h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
-                            <button
-                              type="button"
-                              onClick={() => setIdPhoto('')}
-                              className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full shadow hover:bg-red-700 transition"
-                              title="Remove photo"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
+                    <div>
                       {/* Business License Photo */}
                       <div>
                         <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">
@@ -1003,11 +954,11 @@ export default function ProfileView() {
 
                     <button
                       type="submit"
-                      disabled={submittingVerif || isCompressingIdPhoto || isCompressingLicensePhoto}
+                      disabled={submittingVerif || isCompressingLicensePhoto}
                       className="w-full py-3 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-700 hover:to-amber-700 text-white font-bold rounded-xl text-xs transition shadow-md flex justify-center items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submittingVerif ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
-                      Submit Documents & Activate Seller Account
+                      Submit Verification & Activate Seller Account
                     </button>
                   </form>
                 )}
@@ -1016,14 +967,9 @@ export default function ProfileView() {
 
             {/* 3. BUYER LOCKED SELLER PREVIEW */}
             <div className="bg-slate-100/60 dark:bg-slate-900/40 rounded-2xl p-5 border border-dashed border-slate-300 dark:border-slate-800 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-slate-200 dark:bg-slate-800 text-slate-500 flex items-center justify-center shrink-0">
-                  <Lock className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Storefront Branding & Payout Channels</p>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">Custom shop URL, logo, cover banner, and Mobile Money/Bank payout routing become configurable immediately upon seller verification.</p>
-                </div>
+              <div>
+                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">Storefront Branding & Payout Channels</p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">Custom shop URL, logo, cover banner, and Mobile Money/Bank payout routing become configurable immediately upon seller verification.</p>
               </div>
             </div>
           </>
@@ -1037,19 +983,14 @@ export default function ProfileView() {
             {/* 1. SELLER VERIFICATION STATUS CARD */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
               <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
-                <div className="flex items-center gap-3">
-                  <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center">
-                    <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-                  </div>
-                  <div>
-                    <h2 className="font-semibold text-gray-900 dark:text-white">Seller Document Verification</h2>
-                    <p className="text-xs text-gray-500 dark:text-slate-400">Verified Seller badge status</p>
-                  </div>
+                <div>
+                  <h2 className="font-semibold text-gray-900 dark:text-white">Seller Identity & Business Verification</h2>
+                  <p className="text-xs text-gray-500 dark:text-slate-400">Verified Seller badge status</p>
                 </div>
 
                 {profile?.verification_status === 'APPROVED' && (
                   <span className="inline-flex items-center gap-1 text-xs font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-200 dark:border-emerald-800 px-3 py-1 rounded-full">
-                    <CheckCircle className="h-3.5 w-3.5" /> 🛡️ VERIFIED SELLER
+                    <CheckCircle className="h-3.5 w-3.5" /> VERIFIED SELLER
                   </span>
                 )}
                 {profile?.verification_status === 'PENDING' && (
@@ -1067,29 +1008,29 @@ export default function ProfileView() {
               <div className="px-6 py-5 space-y-5">
                 {profile?.verification_status === 'APPROVED' ? (
                   <div className="p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl text-xs text-emerald-800 dark:text-emerald-300 space-y-1">
-                    <p className="font-bold text-sm">🎉 Your Account is Verified!</p>
-                    <p>Your documents were verified on {profile.verified_at ? new Date(profile.verified_at).toLocaleDateString() : 'Management Review'}. Your store features the official Verified Seller badge across payment links and marketplace listings.</p>
+                    <p className="font-bold text-sm">Your Account is Verified!</p>
+                    <p>Your merchant details were verified on {profile.verified_at ? new Date(profile.verified_at).toLocaleDateString() : 'Management Review'}. Your store features the official Verified Seller badge across payment links and marketplace listings.</p>
                   </div>
                 ) : (
                   <form onSubmit={handleSubmitVerification} className="space-y-4">
                     {profile?.verification_status === 'REJECTED' && (
                       <div className="p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 space-y-1">
-                        <p className="font-bold">❌ Previous Submission Rejected:</p>
+                        <p className="font-bold">Previous Submission Rejected:</p>
                         <p>{profile.verification_rejection_reason}</p>
                       </div>
                     )}
 
                     <div className="text-xs text-gray-500 dark:text-slate-400 space-y-1">
                       <p>
-                        Enter your <strong>Ghana Card / National ID number</strong> and upload a clear photo of your card.
+                        Enter your <strong>Merchant Verification Reference / Identity Number</strong> below. Do not upload any photocopy or image of a national ID card.
                       </p>
                       <p className="text-emerald-600 dark:text-emerald-400 font-medium flex items-center gap-1">
-                        <Zap className="h-3.5 w-3.5" /> Instant NIA Auto-Verification enabled. Valid Ghana Cards are verified immediately!
+                        <Zap className="h-3.5 w-3.5" /> Instant Registry Auto-Verification enabled. Valid references are verified immediately!
                       </p>
                     </div>
 
                     <div>
-                      <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">National ID / Ghana Card Number *</label>
+                      <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Merchant Verification / Identity Reference Number *</label>
                       <input
                         type="text"
                         required
@@ -1101,41 +1042,10 @@ export default function ProfileView() {
                       <span className="text-[10px] text-gray-400 dark:text-slate-500 mt-1 block">Format: GHA-XXXXXXXXX-X (15 characters)</span>
                     </div>
 
-                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {/* National ID Photo */}
-                      <div>
-                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">National ID Photo *</label>
-                        <input
-                          type="file"
-                          accept="image/*"
-                          disabled={isCompressingIdPhoto}
-                          onChange={e => handleDocumentUpload(e, setIdPhoto, setIsCompressingIdPhoto, 'National ID photo')}
-                          className="w-full text-xs text-gray-600 dark:text-slate-400 border border-gray-200 dark:border-slate-700 rounded-xl p-2 bg-gray-50 dark:bg-slate-800 cursor-pointer disabled:opacity-50"
-                        />
-                        {isCompressingIdPhoto && (
-                          <div className="mt-2 flex items-center gap-2 text-xs text-blue-600 dark:text-blue-400 font-medium">
-                            <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                            <span>Optimizing image clarity and size...</span>
-                          </div>
-                        )}
-                        {idPhoto && !isCompressingIdPhoto && (
-                          <div className="relative mt-2 inline-block">
-                            <img src={idPhoto} alt="National ID" className="h-20 w-36 object-cover rounded-lg border border-gray-300 dark:border-slate-700 shadow-sm" />
-                            <button
-                              type="button"
-                              onClick={() => setIdPhoto('')}
-                              className="absolute -top-2 -right-2 bg-red-600 text-white p-1 rounded-full shadow hover:bg-red-700 transition"
-                              title="Remove photo"
-                            >
-                              <X className="h-3 w-3" />
-                            </button>
-                          </div>
-                        )}
-                      </div>
-
+                    <div>
                       {/* Business License Photo */}
                       <div>
-                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Business License <span className="text-gray-400 dark:text-slate-500">(optional)</span></label>
+                        <label className="block text-xs font-semibold text-gray-700 dark:text-slate-300 mb-1">Business Registration Certificate / License <span className="text-gray-400 dark:text-slate-500">(optional)</span></label>
                         <input
                           type="file"
                           accept="image/*"
@@ -1167,7 +1077,7 @@ export default function ProfileView() {
 
                     <button
                       type="submit"
-                      disabled={submittingVerif || isCompressingIdPhoto || isCompressingLicensePhoto}
+                      disabled={submittingVerif || isCompressingLicensePhoto}
                       className="w-full py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs transition shadow flex justify-center items-center gap-2 cursor-pointer disabled:opacity-50"
                     >
                       {submittingVerif ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileCheck className="h-4 w-4" />}
@@ -1180,14 +1090,9 @@ export default function ProfileView() {
 
             {/* 2. STOREFRONT DISPLAY SETTINGS */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
-              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-amber-100 dark:bg-amber-950/60 flex items-center justify-center">
-                  <Store className="h-5 w-5 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div>
-                  <h2 className="font-semibold text-gray-900 dark:text-white">Public Storefront Presentation</h2>
-                  <p className="text-xs text-gray-500 dark:text-slate-400">Displayed on your public profile and marketplace directory</p>
-                </div>
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800">
+                <h2 className="font-semibold text-gray-900 dark:text-white">Public Storefront Presentation</h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400">Displayed on your public profile and marketplace directory</p>
               </div>
               
               <div className="px-6 py-5 space-y-5">
@@ -1281,7 +1186,6 @@ export default function ProfileView() {
                   <div className="flex items-center gap-2 flex-wrap">
                     {MARKETPLACE_CATEGORIES.map(cat => {
                       const isSelected = selectedCategories.includes(cat.name);
-                      const Icon = cat.icon;
                       return (
                         <button
                           key={cat.id}
@@ -1293,7 +1197,6 @@ export default function ProfileView() {
                               : 'bg-gray-100 dark:bg-slate-800 text-gray-700 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-700'
                           }`}
                         >
-                          <Icon className="h-3.5 w-3.5 shrink-0" />
                           <span>{cat.name}</span>
                           {isSelected && <span>✓</span>}
                         </button>
@@ -1318,14 +1221,9 @@ export default function ProfileView() {
 
             {/* 3. ACCOUNT INFO */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
-              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-blue-100 dark:bg-blue-950/60 flex items-center justify-center">
-                  <User className="h-5 w-5 text-blue-600 dark:text-blue-400" />
-                </div>
-                <div>
-                  <h2 className="font-semibold text-gray-900 dark:text-white">Personal Information</h2>
-                  <p className="text-xs text-gray-500 dark:text-slate-400">Your account credentials</p>
-                </div>
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800">
+                <h2 className="font-semibold text-gray-900 dark:text-white">Personal Information</h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400">Your account credentials</p>
               </div>
               <div className="px-6 py-5 space-y-5">
                 <div className="grid grid-cols-2 gap-4">
@@ -1386,14 +1284,9 @@ export default function ProfileView() {
 
             {/* 4. PAYOUT SETTINGS */}
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
-              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center gap-3">
-                <div className="h-9 w-9 rounded-full bg-indigo-100 dark:bg-indigo-950/60 flex items-center justify-center">
-                  <Wallet className="h-5 w-5 text-indigo-600 dark:text-indigo-400" />
-                </div>
-                <div>
-                  <h2 className="font-semibold text-gray-900 dark:text-white">Payout Settings</h2>
-                  <p className="text-xs text-gray-500 dark:text-slate-400">Choose how you receive your earnings</p>
-                </div>
+              <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800">
+                <h2 className="font-semibold text-gray-900 dark:text-white">Payout Settings</h2>
+                <p className="text-xs text-gray-500 dark:text-slate-400">Choose how you receive your earnings</p>
               </div>
               <div className="px-6 py-5 space-y-5">
                 <div>
@@ -1408,11 +1301,6 @@ export default function ProfileView() {
                           : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-gray-300 dark:hover:border-slate-700'
                       }`}
                     >
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center mb-2 ${
-                        payoutMode === 'INSTANT' ? 'bg-blue-100 dark:bg-blue-900/60' : 'bg-gray-100 dark:bg-slate-800'
-                      }`}>
-                        <Zap className={`h-4 w-4 ${payoutMode === 'INSTANT' ? 'text-blue-600 dark:text-blue-400' : 'text-gray-500 dark:text-slate-400'}`} />
-                      </div>
                       <p className={`font-semibold text-xs ${payoutMode === 'INSTANT' ? 'text-blue-800 dark:text-blue-300' : 'text-gray-800 dark:text-slate-200'}`}>
                         Instant Payout
                       </p>
@@ -1428,11 +1316,6 @@ export default function ProfileView() {
                           : 'border-gray-200 dark:border-slate-800 bg-white dark:bg-slate-900 hover:border-gray-300 dark:hover:border-slate-700'
                       }`}
                     >
-                      <div className={`h-8 w-8 rounded-full flex items-center justify-center mb-2 ${
-                        payoutMode === 'MANUAL' ? 'bg-purple-100 dark:bg-purple-900/60' : 'bg-gray-100 dark:bg-slate-800'
-                      }`}>
-                        <PiggyBank className={`h-4 w-4 ${payoutMode === 'MANUAL' ? 'text-purple-600 dark:text-purple-400' : 'text-gray-500 dark:text-slate-400'}`} />
-                      </div>
                       <p className={`font-semibold text-xs ${payoutMode === 'MANUAL' ? 'text-purple-800 dark:text-purple-300' : 'text-gray-800 dark:text-slate-200'}`}>
                         Manual Withdrawal
                       </p>
@@ -1574,21 +1457,16 @@ export default function ProfileView() {
         {/* ======================================================== */}
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-gray-100 dark:border-slate-800 overflow-hidden transition-colors">
           <div className="px-6 py-5 border-b border-gray-100 dark:border-slate-800 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="h-9 w-9 rounded-full bg-emerald-100 dark:bg-emerald-950/60 flex items-center justify-center">
-                <ShieldCheck className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
-              </div>
-              <div>
-                <h2 className="font-semibold text-gray-900 dark:text-white">Account Security & 2FA</h2>
-                <p className="text-xs text-gray-500 dark:text-slate-400">Protect your account using an Authenticator App (Google Authenticator, Authy, 1Password)</p>
-              </div>
+            <div>
+              <h2 className="font-semibold text-gray-900 dark:text-white">Account Security & 2FA</h2>
+              <p className="text-xs text-gray-500 dark:text-slate-400">Protect your account using an Authenticator App (Google Authenticator, Authy, 1Password)</p>
             </div>
             <span className={`px-3 py-1 rounded-full text-xs font-bold ${
               is2FAEnabled
                 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
                 : 'bg-gray-100 text-gray-600 dark:bg-slate-800 dark:text-slate-400'
             }`}>
-              {is2FAEnabled ? '🟢 2FA Enabled' : '⚪ 2FA Disabled'}
+              {is2FAEnabled ? '2FA Enabled' : '2FA Disabled'}
             </span>
           </div>
 

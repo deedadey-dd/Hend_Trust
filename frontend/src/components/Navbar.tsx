@@ -517,7 +517,7 @@ export default function Navbar() {
                               <p className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#0363ff] transition-colors">For Buyers</p>
                             </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-snug pl-9">
-                              100% money-back escrow guarantee on social shopping
+                              100% money-back payment protection on social shopping
                             </p>
                           </Link>
 
@@ -551,7 +551,7 @@ export default function Navbar() {
                               <p className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Shop Directory</p>
                             </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-snug pl-9">
-                              Explore verified Ghanaian stores & active escrow deals
+                              Explore verified Ghanaian shops & protected deals
                             </p>
                           </Link>
 
@@ -568,14 +568,14 @@ export default function Navbar() {
                               <p className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-purple-600 dark:group-hover:text-purple-400 transition-colors">Developer API</p>
                             </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-snug pl-9">
-                              REST API, webhooks & drop-in escrow checkout SDK
+                              REST API, webhooks & drop-in checkout SDK
                             </p>
                           </Link>
                         </div>
 
                         {/* Bottom Banner */}
                         <div className="mt-2 pt-2.5 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between px-2 text-[11px]">
-                          <span className="text-slate-500 dark:text-slate-400">Need escrow fee estimation?</span>
+                          <span className="text-slate-500 dark:text-slate-400">Need protection fee estimation?</span>
                           <Link
                             to="/for-buyers"
                             onClick={() => setSolutionsOpen(false)}
@@ -624,7 +624,7 @@ export default function Navbar() {
                               <p className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-[#ff6d1d] transition-colors">How It Works</p>
                             </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-snug pl-9">
-                              The 5-step escrow protection lifecycle explained
+                              The 5-step transaction protection lifecycle explained
                             </p>
                           </Link>
 
@@ -641,7 +641,7 @@ export default function Navbar() {
                               <p className="text-xs font-bold text-slate-900 dark:text-white group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">Trust Center</p>
                             </div>
                             <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-snug pl-9">
-                              Bank vault security & Ghana Card KYC standards
+                              Bank-grade security & merchant verification standards
                             </p>
                           </Link>
 
@@ -793,7 +793,7 @@ export default function Navbar() {
                         <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                       </span>
                     </div>
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">Real-time courier & escrow delivery lookup</p>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate">Real-time courier & order delivery lookup</p>
                   </div>
                 </div>
                 <span className="px-2.5 py-1.5 rounded-xl bg-blue-600 text-white text-[11px] font-extrabold flex items-center gap-1 shadow-sm shrink-0 ml-1">
@@ -828,7 +828,7 @@ export default function Navbar() {
 
                 <div className="space-y-1 pt-2 border-t border-slate-200 dark:border-slate-800">
                   <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-1">Trust & Support</p>
-                  {navLink('/how-it-works', 'How Escrow Works', <Sparkles className="h-4 w-4 text-[#ff6d1d]" />)}
+                  {navLink('/how-it-works', 'How HendAxis Works', <Sparkles className="h-4 w-4 text-[#ff6d1d]" />)}
                   {navLink('/trust-center', 'Trust & Security Center', <ShieldCheck className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />)}
                   {navLink('/guides', 'Safety & Scam Prevention', <BookOpen className="h-4 w-4 text-blue-600 dark:text-blue-400" />)}
                   {navLink('/developers', 'Developer APIs & SDK', <Code className="h-4 w-4 text-slate-600 dark:text-slate-400" />)}
@@ -907,7 +907,7 @@ export default function Navbar() {
 
                 <div className="space-y-1 pt-2 border-t border-slate-200 dark:border-slate-800">
                   <p className="text-[11px] font-extrabold uppercase tracking-wider text-slate-400 dark:text-slate-500 px-3 mb-1">Trust & Support</p>
-                  {navLink('/how-it-works', 'How Escrow Works', <Sparkles className="h-4 w-4 text-[#ff6d1d]" />)}
+                  {navLink('/how-it-works', 'How HendAxis Works', <Sparkles className="h-4 w-4 text-[#ff6d1d]" />)}
                   {navLink('/trust-center', 'Trust & Security Center', <ShieldCheck className="h-4 w-4 text-emerald-500" />)}
                   {navLink('/guides', 'Safety & Scam Prevention', <BookOpen className="h-4 w-4 text-blue-500" />)}
                   {navLink('/referrals', 'Refer & Earn Rewards', <Gift className="h-4 w-4 text-[#ff6d1d]" />)}

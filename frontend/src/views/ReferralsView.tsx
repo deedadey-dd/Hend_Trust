@@ -1,18 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { 
-  Gift, 
-  Sparkles, 
   Phone, 
-  Share2, 
   Copy, 
   Check, 
   MessageCircle, 
-  ShieldCheck, 
   ArrowRight, 
-  HelpCircle,
   Send,
-  Store,
   Loader2
 } from 'lucide-react';
 import { apiClient, getErrorMessage } from '../api/client';
@@ -129,15 +123,14 @@ export default function ReferralsView() {
         <div className="absolute bottom-0 right-10 w-80 h-80 bg-blue-500/10 rounded-full blur-3xl pointer-events-none" />
 
         <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 relative z-10 text-center space-y-6">
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-inner">
-            <Sparkles className="w-4 h-4 text-amber-400" />
+          <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-blue-500/20 border border-blue-400/30 text-blue-300 text-xs font-bold uppercase tracking-wider backdrop-blur-md shadow-inner">
             HendAxis Trust Referral Hub
           </div>
 
           <h1 className="text-3xl sm:text-5xl lg:text-6xl font-black tracking-tight leading-tight">
             Refer Friends & Sellers. <br />
             <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-sky-300 to-emerald-400">
-              Earn Free Escrow Credits.
+              Earn Free Fee Credits.
             </span>
           </h1>
 
@@ -148,8 +141,8 @@ export default function ReferralsView() {
           {/* Quick Value Pillars */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-3xl mx-auto pt-4 text-left">
             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md shadow-sm hover:border-blue-500/30 transition">
-              <div className="flex items-center gap-2 text-amber-400 font-black text-sm">
-                <Gift className="w-4 h-4 text-[#ff6d1d]" /> GH₵ {referrerBonus.toFixed(2)} for You • GH₵ {refereeBonus.toFixed(2)} for Friend
+              <div className="text-amber-400 font-black text-sm">
+                GH₵ {referrerBonus.toFixed(2)} for You • GH₵ {refereeBonus.toFixed(2)} for Friend
               </div>
               <p className="text-xs text-slate-300 mt-1">
                 Both you and your referred friend receive instant fee credit discounts.
@@ -157,8 +150,8 @@ export default function ReferralsView() {
             </div>
 
             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md shadow-sm hover:border-blue-500/30 transition">
-              <div className="flex items-center gap-2 text-emerald-400 font-black text-sm">
-                <Phone className="w-4 h-4 text-emerald-400" /> Instant Buyer Access
+              <div className="text-emerald-400 font-black text-sm">
+                Instant Buyer Access
               </div>
               <p className="text-xs text-slate-300 mt-1">
                 Buyers can track credits instantly with just their Ghana MoMo phone number.
@@ -166,11 +159,11 @@ export default function ReferralsView() {
             </div>
 
             <div className="p-4 rounded-2xl bg-white/5 border border-white/10 backdrop-blur-md shadow-sm hover:border-blue-500/30 transition">
-              <div className="flex items-center gap-2 text-blue-400 font-black text-sm">
-                <ShieldCheck className="w-4 h-4 text-blue-400" /> Automatic Fee Deduction
+              <div className="text-blue-400 font-black text-sm">
+                Automatic Fee Deduction
               </div>
               <p className="text-xs text-slate-300 mt-1">
-                Credits apply automatically to offset escrow fees on all future deals.
+                Credits apply automatically to offset protection fees on all future deals.
               </p>
             </div>
           </div>
@@ -290,8 +283,8 @@ export default function ReferralsView() {
               {/* Link & Instant Social Sharing */}
               <div className="p-5 rounded-2xl bg-blue-50/60 dark:bg-blue-950/20 border border-blue-200/80 dark:border-blue-900/40 space-y-4">
                 <div className="space-y-1">
-                  <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                    <Share2 className="w-4 h-4 text-blue-600 dark:text-blue-400" /> Share Your Link
+                  <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                    Share Your Link
                   </h4>
                   <p className="text-xs text-slate-600 dark:text-slate-400">
                     Friends receive a <strong className="text-emerald-600 dark:text-emerald-400 font-bold">GH₵ {refereeBonus.toFixed(2)}</strong> welcome discount. You earn <strong className="text-blue-600 dark:text-blue-400 font-bold">GH₵ {referrerBonus.toFixed(2)}</strong> on their first completed deal.
@@ -376,11 +369,11 @@ export default function ReferralsView() {
           {/* Seller / Store Owner CTA */}
           <div className="bg-slate-50 dark:bg-slate-950 rounded-2xl p-6 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-4 transition-colors">
             <div className="space-y-1">
-              <h4 className="text-sm font-black text-slate-900 dark:text-white flex items-center gap-2">
-                <Store className="w-4 h-4 text-[#ff6d1d]" /> Are You an Online Merchant?
+              <h4 className="text-sm font-black text-slate-900 dark:text-white">
+                Are You an Online Merchant?
               </h4>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Log in to your seller dashboard to generate branded escrow checkout links, track order payouts, and offset fees.
+                Log in to your seller dashboard to generate branded payment links, track order payouts, and offset fees.
               </p>
             </div>
             <Link
@@ -396,8 +389,8 @@ export default function ReferralsView() {
 
       {/* Referral FAQ Section */}
       <section className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8 pb-24 space-y-6">
-        <h3 className="text-xl font-black text-center text-slate-900 dark:text-white flex items-center justify-center gap-2">
-          <HelpCircle className="w-5 h-5 text-blue-600 dark:text-blue-400" /> Frequently Asked Questions
+        <h3 className="text-xl font-black text-center text-slate-900 dark:text-white">
+          Frequently Asked Questions
         </h3>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

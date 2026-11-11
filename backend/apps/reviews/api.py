@@ -341,6 +341,15 @@ def get_buyer_my_reviews(request):
 @reviews_router.get("/seller/{identifier}", response=SellerStorefrontSchema, auth=None)
 def get_seller_storefront(request, identifier: str):
     from django.db.models import Q
+    from apps.users.api import _get_request_frontend_url
+    from apps.core.cache_utils import make_versioned_key, safe_cache_get, safe_cache_set
+
+    base_frontend_url = _get_request_frontend_url(request)
+    cache_key = make_versioned_key("seller_storefront", base_frontend_url, identifier.strip().lower())
+    cached_storefront = safe_cache_get(cache_key)
+    if cached_storefront is not None:
+        return cached_storefront
+
     try:
         seller_uuid = uuid.UUID(identifier)
         seller = get_object_or_404(User, id=seller_uuid)
@@ -468,7 +477,7 @@ def get_seller_storefront(request, identifier: str):
     if not cats and seller.shop_category:
         cats = [seller.shop_category]
 
-    return {
+    storefront_payload = {
         "seller_id": seller.id,
         "seller_username": seller.username or seller.email.split('@')[0],
         "shop_name": seller.shop_name or f"@{seller.username}'s Store",
@@ -489,6 +498,8 @@ def get_seller_storefront(request, identifier: str):
         "active_products": active_products_list,
         "reviews": reviews_list
     }
+    safe_cache_set(cache_key, storefront_payload, timeout=120)
+    return storefront_payload
 
 @reviews_router.post("/{review_id}/seller-reply", response=dict, auth=JWTCookieAuth())
 def seller_reply_review(request, review_id: uuid.UUID, data: SellerReplySchema):
@@ -558,24 +569,42 @@ class MarketplaceDirectorySchema(Schema):
     matched_products: List[ProductCardSchema] = []
     featured_shops: List[ShopCardSchema]
     standard_shops: List[ShopCardSchema]
+    total_standard_shops: int = 0
+    page: int = 1
+    page_size: int = 24
+    has_more: bool = False
+
+
+DIRECTORY_DEFAULT_PAGE_SIZE = 24
+DIRECTORY_MAX_PAGE_SIZE = 60
 
 
 @reviews_router.get("/shops", response=MarketplaceDirectorySchema, auth=None)
-def get_marketplace_directory(request, query: Optional[str] = None, category: Optional[str] = None):
-    from django.core.cache import cache
-    cache_key = f"marketplace_dir:{query or ''}:{category or ''}"
-    cached_payload = cache.get(cache_key)
-    if cached_payload is not None:
-        return cached_payload
-
+def get_marketplace_directory(
+    request,
+    query: Optional[str] = None,
+    category: Optional[str] = None,
+    page: int = 1,
+    page_size: int = DIRECTORY_DEFAULT_PAGE_SIZE,
+):
     from django.db.models import Q, Prefetch, Count, Avg
     from apps.links.models import PaymentLink
     from apps.users.models import VerificationStatus
     from apps.users.api import _get_request_frontend_url
+    from apps.core.cache_utils import make_versioned_key, safe_cache_get, safe_cache_set
     import urllib.parse
 
-    now = timezone.now()
     base_frontend_url = _get_request_frontend_url(request)
+    page = max(1, int(page or 1))
+    page_size = max(1, min(int(page_size or DIRECTORY_DEFAULT_PAGE_SIZE), DIRECTORY_MAX_PAGE_SIZE))
+    cache_key = make_versioned_key(
+        "marketplace_dir", base_frontend_url, (query or "").strip().lower(), (category or "").strip().lower(), page, page_size
+    )
+    cached_payload = safe_cache_get(cache_key)
+    if cached_payload is not None:
+        return cached_payload
+
+    now = timezone.now()
 
     # Helper for WhatsApp contact link with prefilled create-link URL for the seller
     def _format_whatsapp_url(phone_raw: str, p_title: str, p_price: float, s_name: str, p_category: str = "", p_img: str = "", p_desc: str = "") -> str:
@@ -828,12 +857,25 @@ def get_marketplace_directory(request, query: Optional[str] = None, category: Op
         else:
             standard_list.append(shop_data)
 
+    # Stable, relevance-first ordering so pages never overlap or reshuffle between requests.
+    standard_list.sort(key=lambda s: (
+        -s["total_completed_escrows"], -s["avg_overall"], -s["total_reviews_count"], s["shop_name"].lower(), str(s["seller_id"])
+    ))
+    total_standard = len(standard_list)
+    start = (page - 1) * page_size
+    page_slice = standard_list[start:start + page_size]
+
     result = {
-        "matched_products": matched_products_list,
-        "featured_shops": featured_list,
-        "standard_shops": standard_list
+        "matched_products": matched_products_list if page == 1 else [],
+        # Featured (paid) shops are always returned on the first page only.
+        "featured_shops": featured_list if page == 1 else [],
+        "standard_shops": page_slice,
+        "total_standard_shops": total_standard,
+        "page": page,
+        "page_size": page_size,
+        "has_more": start + page_size < total_standard,
     }
-    cache.set(cache_key, result, timeout=30)
+    safe_cache_set(cache_key, result, timeout=120)
     return result
 
 
@@ -860,6 +902,8 @@ def update_shop_profile(request, data: UpdateShopProfileSchema):
 
     if update_fields:
         user.save(update_fields=update_fields)
+        from apps.core.cache_utils import invalidate_marketplace_caches
+        invalidate_marketplace_caches()
     return {"message": "Shop profile updated successfully."}
 
 
@@ -870,7 +914,7 @@ def promote_shop_ad(request, data: PromoteShopSchema):
     from django.conf import settings
     from apps.wallet.models import SellerWallet
     from apps.ledger.services import record_ad_promotion_fee
-    from apps.checkout.services import PaystackAdapter
+    from apps.checkout.services import initialize_transaction_with_failover
     from apps.reviews.services import create_and_send_ad_invoice
     import uuid6
 
@@ -891,21 +935,21 @@ def promote_shop_ad(request, data: PromoteShopSchema):
         reference = f"AD_{data.duration_days}D_{request.user.id}_{int(timezone.now().timestamp())}"
 
         try:
-            paystack_data = PaystackAdapter.initialize_transaction(
+            pay_data = initialize_transaction_with_failover(
                 email=request.user.email or f"{request.user.username}@hendaxis.com",
                 amount_ghs=float(fee),
                 reference=reference,
                 callback_url=callback_url
             )
             return {
-                "message": "Redirecting to Paystack for store promotion payment...",
+                "message": f"Redirecting to {pay_data.get('gateway_used', 'gateway')} for store promotion payment...",
                 "requires_paystack": True,
                 "requires_approval": False,
-                "checkout_url": paystack_data['authorization_url'],
+                "checkout_url": pay_data['authorization_url'],
                 "reference": reference
             }
         except Exception as e:
-            raise HttpError(400, f"Failed to initialize Paystack ad payment: {str(e)}")
+            raise HttpError(400, f"Failed to initialize ad promotion payment: {str(e)}")
 
     # Option B: Wallet Balance Available - Prompt for Explicit Approval
     if not data.approved_wallet_deduction:
@@ -930,6 +974,8 @@ def promote_shop_ad(request, data: PromoteShopSchema):
 
     request.user.advertised_until = new_expiry
     request.user.save(update_fields=['advertised_until'])
+    from apps.core.cache_utils import invalidate_marketplace_caches
+    invalidate_marketplace_caches()
 
     # Create & Send Invoice Email Receipt
     invoice = create_and_send_ad_invoice(
@@ -982,7 +1028,48 @@ def get_shop_ad_invoice(request, invoice_id: uuid.UUID):
 @reviews_router.get("/recent", response=List[RecentReviewItemSchema], auth=None)
 def get_recent_reviews_feed(request, limit: int = 15):
     from apps.reviews.models import ReviewVote
-    
+    from apps.core.cache_utils import make_versioned_key, safe_cache_get, safe_cache_set
+
+    safe_limit = max(1, min(int(limit or 15), 50))
+    cache_key = make_versioned_key("recent_reviews", safe_limit)
+    base_result = safe_cache_get(cache_key)
+
+    if base_result is None:
+        reviews = SellerReview.objects.filter(is_active=True).select_related(
+            'seller', 'transaction', 'transaction__link'
+        ).order_by('-created_at')[:safe_limit]
+
+        base_result = []
+        for r in reviews:
+            seller = r.seller
+            item_title = r.transaction.link.title if (r.transaction and r.transaction.link) else "Verified Purchase"
+            item_image_url = r.image_url or (r.transaction.link.image_url if (r.transaction and r.transaction.link) else "")
+            base_result.append({
+                "id": r.id,
+                "buyer_name": r.buyer_name or "Verified Customer",
+                "rating_speed": r.rating_speed,
+                "rating_communication": r.rating_communication,
+                "rating_overall": r.rating_overall,
+                "comment": r.comment,
+                "seller_reply": r.seller_reply,
+                "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
+                "created_at": r.created_at.isoformat(),
+                "updated_at": r.updated_at.isoformat() if r.updated_at else None,
+                "edit_count": r.edit_count or 0,
+                "item_title": item_title,
+                "item_image_url": item_image_url,
+                "upvotes_count": r.upvotes_count,
+                "downvotes_count": r.downvotes_count,
+                "user_voted": None,
+                "shop": {
+                    "seller_id": seller.id,
+                    "seller_username": seller.username or seller.email.split('@')[0],
+                    "shop_name": seller.shop_name or f"@{seller.username}'s Store",
+                    "profile_picture_url": seller.profile_picture_url or ""
+                }
+            })
+        safe_cache_set(cache_key, base_result, timeout=120)
+
     # Try optional user authentication from cookie/header if present
     user = None
     try:
@@ -991,47 +1078,16 @@ def get_recent_reviews_feed(request, limit: int = 15):
     except Exception:
         pass
 
-    reviews = SellerReview.objects.filter(is_active=True).select_related(
-        'seller', 'transaction', 'transaction__link'
-    ).order_by('-created_at')[:limit]
-
-    # Pre-fetch votes for this user if logged in
-    user_votes_map = {}
-    if user and getattr(user, 'is_authenticated', False):
-        review_ids = [r.id for r in reviews]
+    if user and getattr(user, 'is_authenticated', False) and base_result:
+        review_ids = [item["id"] for item in base_result]
         votes = ReviewVote.objects.filter(review_id__in=review_ids, user=user)
         user_votes_map = {v.review_id: v.vote_type for v in votes}
+        return [
+            {**item, "user_voted": user_votes_map.get(item["id"])}
+            for item in base_result
+        ]
 
-    result = []
-    for r in reviews:
-        seller = r.seller
-        item_title = r.transaction.link.title if (r.transaction and r.transaction.link) else "Verified Purchase"
-        item_image_url = r.image_url or (r.transaction.link.image_url if (r.transaction and r.transaction.link) else "")
-        result.append({
-            "id": r.id,
-            "buyer_name": r.buyer_name or "Verified Customer",
-            "rating_speed": r.rating_speed,
-            "rating_communication": r.rating_communication,
-            "rating_overall": r.rating_overall,
-            "comment": r.comment,
-            "seller_reply": r.seller_reply,
-            "seller_replied_at": r.seller_replied_at.isoformat() if r.seller_replied_at else None,
-            "created_at": r.created_at.isoformat(),
-            "updated_at": r.updated_at.isoformat() if r.updated_at else None,
-            "edit_count": r.edit_count or 0,
-            "item_title": item_title,
-            "item_image_url": item_image_url,
-            "upvotes_count": r.upvotes_count,
-            "downvotes_count": r.downvotes_count,
-            "user_voted": user_votes_map.get(r.id),
-            "shop": {
-                "seller_id": seller.id,
-                "seller_username": seller.username or seller.email.split('@')[0],
-                "shop_name": seller.shop_name or f"@{seller.username}'s Store",
-                "profile_picture_url": seller.profile_picture_url or ""
-            }
-        })
-    return result
+    return base_result
 
 
 @reviews_router.post("/{review_id}/vote", response=dict, auth=JWTCookieAuth())

@@ -322,8 +322,15 @@ def execute_non_dispatch_auto_refund(reference_id: str, seller_user_id, gross_am
     )
     _apply_entry_to_balances(escrow, sys_bank, gross_amount)
 
-    # 2. Charge seller penalty: platform fee + 1.95% Paystack fee
-    paystack_gateway_fee = (gross_amount * Decimal('0.0195')).quantize(Decimal('0.01'))
+    # 2. Charge seller penalty: platform fee + active payment provider gateway fee
+    try:
+        from apps.escrow.api import get_platform_settings
+        cfg = get_platform_settings()
+        gw_pct = Decimal(str(cfg.get("gateway_processing_fee_percent", cfg.get("payout_transfer_fee_percent", 1.95))))
+        gw_rate = gw_pct / Decimal('100')
+    except Exception:
+        gw_rate = Decimal('0.0195')
+    paystack_gateway_fee = (gross_amount * gw_rate).quantize(Decimal('0.01'))
     
     if platform_fee > 0:
         LedgerEntry.objects.create(

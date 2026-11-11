@@ -35,7 +35,12 @@ def get_active_couriers(request):
     Returns public list of active courier partners.
     Dynamically respects Platform Settings configured in the Admin Portal (Allowed Delivery Channels & Formal Courier Options).
     """
+    from apps.core.cache_utils import safe_cache_get, safe_cache_set
     from apps.escrow.api import get_platform_settings
+
+    cached = safe_cache_get("public_active_couriers")
+    if cached is not None:
+        return cached
 
     cfg = get_platform_settings()
     enabled_methods = cfg.get('enabled_delivery_methods', ['COURIER_API', 'INFORMAL_BUS'])
@@ -64,6 +69,7 @@ def get_active_couriers(request):
             if c["category"] == "BUS_STATION":
                 active_list.append(c)
 
+    safe_cache_set("public_active_couriers", active_list, timeout=300)
     return active_list
 
 

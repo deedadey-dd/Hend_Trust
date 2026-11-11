@@ -1,6 +1,4 @@
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import * as XLSX from 'xlsx';
+// jspdf / xlsx are loaded on demand so they stay out of the initial page load.
 
 export interface ExportColumn {
   label: string;
@@ -10,7 +8,7 @@ export interface ExportColumn {
 /**
  * Export data records to an Excel (.xlsx) file.
  */
-export const exportToExcel = (
+export const exportToExcel = async (
   filename: string,
   sheetName: string,
   headers: ExportColumn[],
@@ -32,6 +30,7 @@ export const exportToExcel = (
     return row;
   });
 
+  const XLSX = await import('xlsx');
   const worksheet = XLSX.utils.json_to_sheet(formattedData);
 
   // Set intelligent column widths
@@ -52,7 +51,7 @@ export const exportToExcel = (
 /**
  * Export data records to a styled PDF (.pdf) document.
  */
-export const exportToPDF = (
+export const exportToPDF = async (
   filename: string,
   title: string,
   headers: ExportColumn[],
@@ -63,6 +62,11 @@ export const exportToPDF = (
     alert("No data available to export.");
     return;
   }
+
+  const [{ default: jsPDF }, { default: autoTable }] = await Promise.all([
+    import('jspdf'),
+    import('jspdf-autotable'),
+  ]);
 
   const doc = new jsPDF({
     orientation,

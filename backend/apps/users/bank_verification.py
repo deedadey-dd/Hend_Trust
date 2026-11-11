@@ -36,14 +36,23 @@ DEFAULT_GHANA_BANKS = [
 def get_supported_banks(gateway: str = None) -> List[Dict[str, str]]:
     """
     Fetches the list of supported commercial banks and mobile money networks.
-    Queries the active gateway's bank directory API (e.g. Paystack / Hubtel) with fallback.
+    Queries the active gateway's bank directory API (e.g. Paystack / Hubtel) with fallback,
+    caching the live directory in Redis for 24 hours to avoid repeated external API calls.
     """
+    from apps.core.cache_utils import safe_cache_get, safe_cache_set
+
     if not gateway:
         gateway = getattr(settings, 'ACTIVE_PAYMENT_GATEWAY', 'PAYSTACK')
 
+    gw_upper = gateway.upper()
+    cache_key = f"supported_banks:{gw_upper}"
+    cached_banks = safe_cache_get(cache_key)
+    if cached_banks:
+        return cached_banks
+
     paystack_secret = getattr(settings, 'PAYSTACK_SECRET_KEY', '')
     
-    if gateway.upper() == 'PAYSTACK' and paystack_secret:
+    if gw_upper == 'PAYSTACK' and paystack_secret:
         try:
             url = "https://api.paystack.co/bank?country=ghana"
             headers = {"Authorization": f"Bearer {paystack_secret}"}
@@ -59,6 +68,7 @@ def get_supported_banks(gateway: str = None) -> List[Dict[str, str]]:
                             "type": b.get("type", "bank")
                         })
                     if banks:
+                        safe_cache_set(cache_key, banks, timeout=86400)
                         return banks
         except Exception as e:
             logger.warning(f"Paystack bank list API fetch failed: {e}. Using fallback Ghana bank list.")
@@ -72,8 +82,11 @@ def resolve_bank_account(
 ) -> Tuple[bool, str, Dict[str, Any]]:
     """
     Resolves a bank account number against the bank code using the active payment gateway's NIP API.
+    Caches successful resolutions in Redis for 1 hour to prevent duplicate NIP lookups.
     Returns: (success: bool, account_name_or_error: str, raw_response: dict)
     """
+    from apps.core.cache_utils import safe_cache_get, safe_cache_set
+
     clean_account = account_number.strip()
     clean_code = bank_code.strip()
 
@@ -83,13 +96,19 @@ def resolve_bank_account(
     if not gateway:
         gateway = getattr(settings, 'ACTIVE_PAYMENT_GATEWAY', 'PAYSTACK')
 
+    gw_upper = gateway.upper()
     paystack_secret = getattr(settings, 'PAYSTACK_SECRET_KEY', '')
 
     # If in dev / test mode or using mock gateway
-    if gateway.upper() == 'MOCK' or not paystack_secret:
+    if gw_upper == 'MOCK' or not paystack_secret:
         return _resolve_mock_bank_account(clean_code, clean_account)
 
-    if gateway.upper() == 'PAYSTACK':
+    cache_key = f"bank_resolve:{gw_upper}:{clean_code}:{clean_account}"
+    cached_res = safe_cache_get(cache_key)
+    if cached_res and isinstance(cached_res, dict) and cached_res.get("account_name"):
+        return True, cached_res["account_name"], cached_res.get("raw_data", {})
+
+    if gw_upper == 'PAYSTACK':
         url = "https://api.paystack.co/bank/resolve"
         headers = {"Authorization": f"Bearer {paystack_secret}"}
         params = {"account_number": clean_account, "bank_code": clean_code}
@@ -98,7 +117,10 @@ def resolve_bank_account(
             data = res.json()
             if res.status_code == 200 and data.get("status") is True:
                 acc_name = data.get("data", {}).get("account_name", "")
-                return True, acc_name, data.get("data", {})
+                raw_payload = data.get("data", {})
+                if acc_name:
+                    safe_cache_set(cache_key, {"account_name": acc_name, "raw_data": raw_payload}, timeout=3600)
+                return True, acc_name, raw_payload
             else:
                 msg = data.get("message", "Could not resolve bank account with selected bank.")
                 return False, msg, data

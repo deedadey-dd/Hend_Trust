@@ -83,7 +83,7 @@ export function getRoleDetails(user?: { role?: string; is_staff?: boolean; is_su
         portalTitle: 'KYC & Compliance Desk',
         badgeClass: 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-300 border-emerald-500/30',
         isStaff: true,
-        description: 'Seller Ghana Card / NIA verification reviews, fraud monitoring, store suspensions, and appeal evaluations.',
+        description: 'Seller identity & business verification reviews, fraud monitoring, store suspensions, and appeal evaluations.',
       };
 
     case 'FINANCE_ADMIN':
@@ -94,7 +94,7 @@ export function getRoleDetails(user?: { role?: string; is_staff?: boolean; is_su
         portalTitle: 'Finance & Treasury Desk',
         badgeClass: 'bg-amber-500/10 text-amber-700 dark:text-amber-300 border-amber-500/30',
         isStaff: true,
-        description: 'Escrow ledger accounting, platform revenue audits, bank account reconciliations, and arbiter batch payouts.',
+        description: 'Transaction ledger accounting, platform revenue audits, bank account reconciliations, and arbiter batch payouts.',
       };
 
     case 'ADMIN':
