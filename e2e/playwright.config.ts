@@ -21,7 +21,7 @@ export default defineConfig({
     command: 'npm run dev',
     cwd: '../frontend',
     url: 'https://127.0.0.1:5173',
-    reuseExistingServer: !process.env.CI,
+    reuseExistingServer: true,
     ignoreHTTPSErrors: true,
     timeout: 60 * 1000,
   },

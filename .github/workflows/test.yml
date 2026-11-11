@@ -127,11 +127,31 @@ jobs:
         with:
           node-version: '20'
 
+      - name: Configure Network & APT Resilience
+        run: |
+          sudo bash -c 'echo "nameserver 8.8.8.8" >> /etc/resolv.conf'
+          sudo bash -c 'echo "nameserver 1.1.1.1" >> /etc/resolv.conf'
+          sudo bash -c 'echo "Acquire::Retries \"5\";" > /etc/apt/apt.conf.d/80-retries'
+          sudo bash -c 'echo "Acquire::http::Timeout \"30\";" >> /etc/apt/apt.conf.d/80-retries'
+
       - name: Install E2E & Frontend Dependencies
         run: |
           cd frontend && (npm ci || npm install)
           cd ../e2e && (npm ci || npm install)
-          npx playwright install --with-deps chromium
+          for attempt in 1 2 3; do
+            echo "Installing Playwright browsers (attempt $attempt)..."
+            if npx playwright install --with-deps chromium; then
+              echo "Playwright browsers installed successfully!"
+              break
+            fi
+            echo "Attempt $attempt failed. Updating apt with --fix-missing and retrying in 5 seconds..."
+            sudo apt-get update --fix-missing || true
+            sleep 5
+            if [ "$attempt" -eq 3 ]; then
+              echo "Playwright browser installation failed after 3 attempts."
+              exit 1
+            fi
+          done
 
       - name: Start Backend & Frontend Servers
         run: |
