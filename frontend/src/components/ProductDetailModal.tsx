@@ -43,6 +43,17 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
 
   const sellerName = product.seller_shop_name || product.seller_username || 'Seller';
 
+  const computedWhatsappUrl = (() => {
+    if (product.whatsapp_contact_url) return product.whatsapp_contact_url;
+    if (!product.seller_phone) return '';
+    let clean = (product.seller_phone || '').trim().replace(/\s+/g, '').replace(/-/g, '').replace(/\+/g, '');
+    if (clean.startsWith('0')) {
+      clean = '233' + clean.slice(1);
+    }
+    const msg = `Hi ${sellerName}, I saw your product "${product.title}" (GH₵ ${formattedPrice}) on HendAxis Trust.\n\nMy delivery location is: [Your Town / Region]\nCould you confirm availability and total price with shipping?`;
+    return clean ? `https://api.whatsapp.com/send?phone=${clean}&text=${encodeURIComponent(msg)}` : `https://api.whatsapp.com/send?text=${encodeURIComponent(msg)}`;
+  })();
+
   return (
     <>
       <div 
@@ -225,46 +236,63 @@ export const ProductDetailModal: React.FC<ProductDetailModalProps> = ({ product,
             </p>
           </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-2 pt-1">
-            {/* Direct Checkout CTA */}
-            <Link
-              to={`/l/${product.link_id}`}
-              onClick={onClose}
-              className="w-full py-3 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md shadow-blue-600/20 flex items-center justify-center gap-2 text-center cursor-pointer"
-            >
-              <ExternalLink className="h-4 w-4" />
-              <span>Proceed to Escrow Checkout (GH₵ {formattedPrice})</span>
-            </Link>
+          {/* Action Buttons: Contact Seller First to Agree on Delivery */}
+          <div className="space-y-2.5 pt-1">
+            {/* Primary Action: Encourage Contact to Agree on Delivery */}
+            {computedWhatsappUrl ? (
+              <a
+                href={computedWhatsappUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full py-3.5 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 text-center cursor-pointer"
+              >
+                <MessageCircle className="h-4 w-4 shrink-0" />
+                <span>Chat on WhatsApp to Confirm Delivery</span>
+              </a>
+            ) : product.seller_phone ? (
+              <a
+                href={`tel:${product.seller_phone}`}
+                className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md flex items-center justify-center gap-2 text-center cursor-pointer"
+              >
+                <Phone className="h-4 w-4 shrink-0" />
+                <span>Call Seller to Confirm Delivery ({product.seller_phone})</span>
+              </a>
+            ) : (
+              <Link
+                to={`/l/${product.link_id}`}
+                onClick={onClose}
+                className="w-full py-3.5 px-4 bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md flex items-center justify-center gap-2 text-center cursor-pointer"
+              >
+                <ExternalLink className="h-4 w-4 shrink-0" />
+                <span>Proceed to Escrow Checkout</span>
+              </Link>
+            )}
 
-            {/* Seller Contact Actions */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-              {product.whatsapp_contact_url ? (
-                <a
-                  href={product.whatsapp_contact_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="py-2.5 px-3 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl transition shadow-xs flex items-center justify-center gap-2 text-center cursor-pointer"
-                >
-                  <MessageCircle className="h-4 w-4 shrink-0" />
-                  <span className="truncate">Chat on WhatsApp</span>
-                </a>
-              ) : null}
+            {/* Secondary Phone Action if WhatsApp is the primary CTA */}
+            {computedWhatsappUrl && product.seller_phone && (
+              <a
+                href={`tel:${product.seller_phone}`}
+                className="w-full py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 text-center cursor-pointer border border-slate-200 dark:border-slate-700"
+              >
+                <Phone className="h-4 w-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                <span>Call Seller ({product.seller_phone})</span>
+              </a>
+            )}
 
-              {product.seller_phone ? (
-                <a
-                  href={`tel:${product.seller_phone}`}
-                  className="py-2.5 px-3 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 text-center cursor-pointer border border-slate-200 dark:border-slate-700"
-                >
-                  <Phone className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
-                  <span className="truncate">Call Seller</span>
-                </a>
-              ) : null}
+            {/* Understated link to proceed directly to checkout */}
+            <div className="pt-2 text-center">
+              <Link
+                to={`/l/${product.link_id}`}
+                onClick={onClose}
+                className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-semibold underline inline-block transition cursor-pointer"
+              >
+                I have already agreed on delivery — Proceed to Checkout →
+              </Link>
             </div>
 
             {/* Visit Store Link */}
             {product.seller_username && (
-              <div className="pt-1 text-center">
+              <div className="pt-0.5 text-center">
                 <Link
                   to={`/store/${product.seller_username}`}
                   onClick={onClose}
