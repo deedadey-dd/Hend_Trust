@@ -328,6 +328,18 @@ export default function SellerStoreView() {
     return counts;
   }, [store?.reviews]);
 
+  // Filter recommended shops to exclude current seller
+  const otherShops = useMemo(() => {
+    if (!store) return recommendedShops;
+    return recommendedShops.filter(
+      s => s.seller_username.toLowerCase() !== store.seller_username.toLowerCase()
+    );
+  }, [recommendedShops, store?.seller_username]);
+
+  const paidFeaturedAds = useMemo(() => {
+    return otherShops.filter(s => s.is_featured);
+  }, [otherShops]);
+
   if (loading) return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 dark:bg-slate-950">
       <Loader2 className="animate-spin text-blue-600 h-8 w-8" />
@@ -343,17 +355,6 @@ export default function SellerStoreView() {
     (user.email && user.email.split('@')[0].toLowerCase() === store.seller_username.toLowerCase()) ||
     (user.username && user.username.toLowerCase() === store.seller_username.toLowerCase())
   ));
-
-  // Filter recommended shops to exclude current seller
-  const otherShops = useMemo(() => {
-    return recommendedShops.filter(
-      s => s.seller_username.toLowerCase() !== store.seller_username.toLowerCase()
-    );
-  }, [recommendedShops, store.seller_username]);
-
-  const paidFeaturedAds = useMemo(() => {
-    return otherShops.filter(s => s.is_featured);
-  }, [otherShops]);
 
   const storeTitle = `${store.shop_name || `@${store.seller_username}'s Store`} — Verified Seller on HendAxis Trust`;
   const storeDesc = `Buy safely from ${store.shop_name || store.seller_username} in Ghana using HendAxis Trust payment protection. ${store.total_completed_escrows} completed orders, ${store.avg_overall.toFixed(1)}/5 rating.`;
