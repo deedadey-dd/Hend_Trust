@@ -43,6 +43,102 @@ class PaystackAdapter:
         return response.json()['data']
 
 
+def initialize_transaction_with_failover(
+    email: str,
+    amount_ghs: float,
+    reference: str,
+    callback_url: str = None
+) -> dict:
+    """
+    Initializes a checkout transaction following the platform's configured gateway hierarchy:
+    Primary -> Secondary (Failover) -> Tertiary (Last Resort).
+
+    If the primary gateway experiences a network error, downtime, or 5xx, the engine
+    automatically falls back to the next ranked gateway in real time.
+    """
+    from apps.escrow.api import get_platform_settings
+    from ninja.errors import HttpError
+
+    cfg = get_platform_settings()
+    primary = (cfg.get("primary_payment_gateway") or cfg.get("active_payment_gateway") or "PAYSTACK").upper().strip()
+    secondary = (cfg.get("secondary_payment_gateway") or "").upper().strip() or None
+    tertiary = (cfg.get("tertiary_payment_gateway") or "").upper().strip() or None
+    failover_enabled = bool(cfg.get("gateway_failover_enabled", True))
+
+    candidates = [primary]
+    if failover_enabled:
+        for gw in [secondary, tertiary]:
+            if gw and gw not in candidates:
+                candidates.append(gw)
+
+    errors = []
+    attempted = []
+
+    for rank, gw in enumerate(candidates, start=1):
+        attempted.append(gw)
+        try:
+            if gw == "PAYSTACK":
+                data = PaystackAdapter.initialize_transaction(
+                    email=email,
+                    amount_ghs=amount_ghs,
+                    reference=reference,
+                    callback_url=callback_url
+                )
+                auth_url = data.get("authorization_url")
+            elif gw == "APPSNMOBILE":
+                from apps.checkout.adapters.appsnmobile import AppsNMobileAdapter
+                data = AppsNMobileAdapter.initialize_transaction(
+                    email=email,
+                    amount_ghs=amount_ghs,
+                    reference=reference,
+                    callback_url=callback_url
+                )
+                auth_url = data.get("authorization_url")
+            elif gw == "HUBTEL":
+                from apps.checkout.adapters.hubtel import HubtelAdapter
+                data = HubtelAdapter.initialize_transaction(
+                    email=email,
+                    amount_ghs=amount_ghs,
+                    reference=reference,
+                    callback_url=callback_url
+                )
+                auth_url = data.get("authorization_url")
+            else:
+                raise ValueError(f"Unknown gateway candidate: {gw}")
+
+            if not auth_url:
+                raise ValueError(f"{gw} response did not contain an authorization_url")
+
+            if rank > 1:
+                logger.warning(
+                    "[GATEWAY FAILOVER SUCCESS] Transaction %s successfully initialized on rank %d (%s) after earlier failures.",
+                    reference, rank, gw
+                )
+
+            return {
+                "authorization_url": auth_url,
+                "reference": reference,
+                "gateway_used": gw,
+                "gateway_rank": rank,
+                "failover_attempted": attempted,
+                "raw_data": data
+            }
+
+        except Exception as exc:
+            err_msg = f"{gw} (Rank {rank}): {str(exc)}"
+            errors.append(err_msg)
+            logger.warning(
+                "[GATEWAY FAILOVER ATTEMPT] Payment initialization failed on %s for %s: %s. Candidates remaining: %s",
+                gw, reference, exc, candidates[rank:]
+            )
+
+    raise HttpError(
+        500,
+        f"All configured payment engines failed to initialize checkout ({'; '.join(errors)})"
+    )
+
+
+
 # ─── OTP constants ────────────────────────────────────────────────────────────
 
 _OTP_TTL = 7200          # 2 hours (7200 seconds)

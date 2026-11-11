@@ -914,7 +914,7 @@ def promote_shop_ad(request, data: PromoteShopSchema):
     from django.conf import settings
     from apps.wallet.models import SellerWallet
     from apps.ledger.services import record_ad_promotion_fee
-    from apps.checkout.services import PaystackAdapter
+    from apps.checkout.services import initialize_transaction_with_failover
     from apps.reviews.services import create_and_send_ad_invoice
     import uuid6
 
@@ -935,21 +935,21 @@ def promote_shop_ad(request, data: PromoteShopSchema):
         reference = f"AD_{data.duration_days}D_{request.user.id}_{int(timezone.now().timestamp())}"
 
         try:
-            paystack_data = PaystackAdapter.initialize_transaction(
+            pay_data = initialize_transaction_with_failover(
                 email=request.user.email or f"{request.user.username}@hendaxis.com",
                 amount_ghs=float(fee),
                 reference=reference,
                 callback_url=callback_url
             )
             return {
-                "message": "Redirecting to Paystack for store promotion payment...",
+                "message": f"Redirecting to {pay_data.get('gateway_used', 'gateway')} for store promotion payment...",
                 "requires_paystack": True,
                 "requires_approval": False,
-                "checkout_url": paystack_data['authorization_url'],
+                "checkout_url": pay_data['authorization_url'],
                 "reference": reference
             }
         except Exception as e:
-            raise HttpError(400, f"Failed to initialize Paystack ad payment: {str(e)}")
+            raise HttpError(400, f"Failed to initialize ad promotion payment: {str(e)}")
 
     # Option B: Wallet Balance Available - Prompt for Explicit Approval
     if not data.approved_wallet_deduction:

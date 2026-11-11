@@ -4245,6 +4245,10 @@ from apps.escrow.models import PlatformSetting
 
 DEFAULT_SYSTEM_SETTINGS = {
     "active_payment_gateway": "PAYSTACK",
+    "primary_payment_gateway": "PAYSTACK",
+    "secondary_payment_gateway": "APPSNMOBILE",
+    "tertiary_payment_gateway": "HUBTEL",
+    "gateway_failover_enabled": True,
     "enabled_delivery_methods": ["COURIER_API", "INFORMAL_BUS"],
     "enabled_carriers": ["DHL", "FEDEX", "UPS", "EMS", "SPEEDAF", "OTHERS"],
     "shipping_timeout_days": 4,
@@ -4362,6 +4366,10 @@ def get_inspection_hours_for_amount(amount) -> int:
 
 class PublicPlatformSettingsSchema(Schema):
     active_payment_gateway: str
+    primary_payment_gateway: str = "PAYSTACK"
+    secondary_payment_gateway: Optional[str] = "APPSNMOBILE"
+    tertiary_payment_gateway: Optional[str] = "HUBTEL"
+    gateway_failover_enabled: bool = True
     enabled_delivery_methods: List[str]
     enabled_carriers: List[str]
     shipping_timeout_days: int = 4
@@ -4409,6 +4417,10 @@ class PublicPlatformSettingsSchema(Schema):
 
 class PlatformSettingsSchema(Schema):
     active_payment_gateway: str
+    primary_payment_gateway: str = "PAYSTACK"
+    secondary_payment_gateway: Optional[str] = "APPSNMOBILE"
+    tertiary_payment_gateway: Optional[str] = "HUBTEL"
+    gateway_failover_enabled: bool = True
     enabled_delivery_methods: List[str]
     enabled_carriers: List[str]
     shipping_timeout_days: int = 4
@@ -4458,6 +4470,10 @@ class PlatformSettingsSchema(Schema):
 
 class UpdatePlatformSettingsSchema(Schema):
     active_payment_gateway: Optional[str] = None
+    primary_payment_gateway: Optional[str] = None
+    secondary_payment_gateway: Optional[str] = None
+    tertiary_payment_gateway: Optional[str] = None
+    gateway_failover_enabled: Optional[bool] = None
     enabled_delivery_methods: Optional[List[str]] = None
     enabled_carriers: Optional[List[str]] = None
     shipping_timeout_days: Optional[int] = None
@@ -4530,11 +4546,35 @@ def update_admin_settings(request, data: UpdatePlatformSettingsSchema):
     is_admin_manager(request)
 
     current = get_platform_settings()
-    if data.active_payment_gateway:
-        gw = data.active_payment_gateway.upper()
-        if gw not in ["PAYSTACK", "APPSNMOBILE", "HUBTEL"]:
-            raise HttpError(400, "Invalid payment gateway choice.")
+    valid_gws = ["PAYSTACK", "APPSNMOBILE", "HUBTEL"]
+
+    if data.primary_payment_gateway is not None:
+        gw = data.primary_payment_gateway.upper().strip()
+        if gw not in valid_gws:
+            raise HttpError(400, f"Invalid primary gateway '{gw}'. Choose from {valid_gws}.")
+        current["primary_payment_gateway"] = gw
         current["active_payment_gateway"] = gw
+    elif data.active_payment_gateway is not None:
+        gw = data.active_payment_gateway.upper().strip()
+        if gw not in valid_gws:
+            raise HttpError(400, f"Invalid active gateway '{gw}'. Choose from {valid_gws}.")
+        current["active_payment_gateway"] = gw
+        current["primary_payment_gateway"] = gw
+
+    if data.secondary_payment_gateway is not None:
+        raw_sec = data.secondary_payment_gateway.upper().strip() if data.secondary_payment_gateway else None
+        if raw_sec and raw_sec not in valid_gws and raw_sec != "NONE":
+            raise HttpError(400, f"Invalid secondary gateway '{raw_sec}'. Choose from {valid_gws} or None.")
+        current["secondary_payment_gateway"] = None if (not raw_sec or raw_sec == "NONE") else raw_sec
+
+    if data.tertiary_payment_gateway is not None:
+        raw_ter = data.tertiary_payment_gateway.upper().strip() if data.tertiary_payment_gateway else None
+        if raw_ter and raw_ter not in valid_gws and raw_ter != "NONE":
+            raise HttpError(400, f"Invalid tertiary gateway '{raw_ter}'. Choose from {valid_gws} or None.")
+        current["tertiary_payment_gateway"] = None if (not raw_ter or raw_ter == "NONE") else raw_ter
+
+    if data.gateway_failover_enabled is not None:
+        current["gateway_failover_enabled"] = bool(data.gateway_failover_enabled)
 
     if data.enabled_delivery_methods is not None:
         current["enabled_delivery_methods"] = data.enabled_delivery_methods

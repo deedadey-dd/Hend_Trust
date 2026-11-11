@@ -207,6 +207,10 @@ interface LedgerEntryRecord {
 
 interface PlatformSettings {
   active_payment_gateway: string;
+  primary_payment_gateway?: string;
+  secondary_payment_gateway?: string | null;
+  tertiary_payment_gateway?: string | null;
+  gateway_failover_enabled?: boolean;
   enabled_delivery_methods: string[];
   enabled_carriers: string[];
   shipping_timeout_days?: number;
@@ -305,6 +309,10 @@ export const AdminDashboardView: React.FC = () => {
   // Platform Settings State
   const [platformSettings, setPlatformSettings] = useState<PlatformSettings>({
     active_payment_gateway: 'PAYSTACK',
+    primary_payment_gateway: 'PAYSTACK',
+    secondary_payment_gateway: 'APPSNMOBILE',
+    tertiary_payment_gateway: 'HUBTEL',
+    gateway_failover_enabled: true,
     enabled_delivery_methods: ['COURIER_API', 'INFORMAL_BUS'],
     enabled_carriers: ['DHL', 'FEDEX', 'UPS', 'EMS', 'SPEEDAF', 'OTHERS'],
     shipping_timeout_days: 4,
@@ -454,6 +462,7 @@ export const AdminDashboardView: React.FC = () => {
     };
     await handleUpdateSettings({
       active_payment_gateway: gatewayConfirm.pending,
+      primary_payment_gateway: gatewayConfirm.pending,
       gateway_processing_fee_percent: gatewayConfirm.collection_fee_percent,
       payout_transfer_fee_percent: gatewayConfirm.payout_fee_percent,
       payout_transfer_fee_ghs: gatewayConfirm.flat_payout_fee_ghs,
@@ -3421,7 +3430,7 @@ export const AdminDashboardView: React.FC = () => {
               </div>
             )}
 
-            {/* Section 1: Active Payment Gateway Switcher */}
+            {/* Section 1: Active Payment Gateway Switcher & Failover Architecture */}
             <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-6 shadow-xl space-y-5">
               <div className="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
                 <div>
@@ -3433,8 +3442,160 @@ export const AdminDashboardView: React.FC = () => {
                     Payout Fee: {platformSettings.payout_transfer_fee_percent ?? 1.95}% | Collection: {platformSettings.gateway_processing_fee_percent ?? platformSettings.payout_transfer_fee_percent ?? 1.95}%
                   </span>
                   <span className="bg-blue-500/10 text-blue-700 dark:text-blue-400 border border-blue-500/20 text-xs font-mono font-bold px-3 py-1 rounded-full uppercase">
-                    Current: {platformSettings.active_payment_gateway}
+                    Primary: {platformSettings.primary_payment_gateway || platformSettings.active_payment_gateway}
                   </span>
+                </div>
+              </div>
+
+              {/* Hierarchical Gateway Failover Architecture Controls */}
+              <div className="bg-slate-50 dark:bg-slate-950/90 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 space-y-4">
+                <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
+                  <div>
+                    <h5 className="text-xs font-extrabold uppercase tracking-wider text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                      <ShieldCheck className="h-4 w-4 text-emerald-500" />
+                      Hierarchical Multi-Gateway Failover Architecture
+                    </h5>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Rank your payment gateways so that if the primary engine encounters MoMo telco downtime or network errors, checkout automatically and seamlessly fails over to the secondary or tertiary engine.
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const newEnabled = !(platformSettings.gateway_failover_enabled ?? true);
+                        handleUpdateSettings({ gateway_failover_enabled: newEnabled });
+                      }}
+                      className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-bold transition border cursor-pointer ${
+                        (platformSettings.gateway_failover_enabled ?? true)
+                          ? 'bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border-emerald-500/30'
+                          : 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/30'
+                      }`}
+                    >
+                      <span className={`h-2 w-2 rounded-full ${
+                        (platformSettings.gateway_failover_enabled ?? true) ? 'bg-emerald-500' : 'bg-amber-500'
+                      }`} />
+                      {(platformSettings.gateway_failover_enabled ?? true) ? 'Auto-Failover Active' : 'Failover Disabled'}
+                    </button>
+                  </div>
+                </div>
+
+                {/* 3-Tier Priority Selection Grid */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  {/* Primary (Rank 1) */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-blue-500/40 dark:border-blue-500/40 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20">
+                        Rank 1 • Primary
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">Default Engine</span>
+                    </div>
+                    <label className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
+                      Primary Gateway
+                    </label>
+                    <select
+                      value={platformSettings.primary_payment_gateway || platformSettings.active_payment_gateway || 'PAYSTACK'}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        handleGatewaySwitch(val);
+                      }}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-bold rounded-lg p-2 outline-none focus:ring-2 focus:ring-blue-500"
+                    >
+                      <option value="PAYSTACK">Paystack (Cards + MoMo)</option>
+                      <option value="APPSNMOBILE">AppsNMobile (Orchard MoMo)</option>
+                      <option value="HUBTEL">Hubtel Ghana PSP</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      All standard checkouts attempt this engine first.
+                    </p>
+                  </div>
+
+                  {/* Secondary (Rank 2) */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20">
+                        Rank 2 • Secondary
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">First Failover</span>
+                    </div>
+                    <label className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
+                      Secondary Gateway
+                    </label>
+                    <select
+                      value={platformSettings.secondary_payment_gateway || 'APPSNMOBILE'}
+                      onChange={(e) => {
+                        const val = e.target.value === 'NONE' ? null : e.target.value;
+                        handleUpdateSettings({ secondary_payment_gateway: val });
+                      }}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-bold rounded-lg p-2 outline-none focus:ring-2 focus:ring-amber-500"
+                    >
+                      <option value="APPSNMOBILE">AppsNMobile (Orchard MoMo)</option>
+                      <option value="PAYSTACK">Paystack (Cards + MoMo)</option>
+                      <option value="HUBTEL">Hubtel Ghana PSP</option>
+                      <option value="NONE">-- Disabled (No Secondary) --</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Attempted automatically if primary engine is unreachable.
+                    </p>
+                  </div>
+
+                  {/* Tertiary (Rank 3) */}
+                  <div className="bg-white dark:bg-slate-900 p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 shadow-xs space-y-2">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[10px] font-mono font-extrabold uppercase px-2 py-0.5 rounded bg-purple-500/10 text-purple-700 dark:text-purple-400 border border-purple-500/20">
+                        Rank 3 • Tertiary
+                      </span>
+                      <span className="text-[10px] font-bold text-slate-400">Last Resort</span>
+                    </div>
+                    <label className="text-xs font-bold text-slate-900 dark:text-slate-100 block">
+                      Tertiary Gateway
+                    </label>
+                    <select
+                      value={platformSettings.tertiary_payment_gateway || 'HUBTEL'}
+                      onChange={(e) => {
+                        const val = e.target.value === 'NONE' ? null : e.target.value;
+                        handleUpdateSettings({ tertiary_payment_gateway: val });
+                      }}
+                      className="w-full bg-slate-50 dark:bg-slate-950 border border-slate-300 dark:border-slate-700 text-slate-900 dark:text-white text-xs font-bold rounded-lg p-2 outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="HUBTEL">Hubtel Ghana PSP</option>
+                      <option value="APPSNMOBILE">AppsNMobile (Orchard MoMo)</option>
+                      <option value="PAYSTACK">Paystack (Cards + MoMo)</option>
+                      <option value="NONE">-- Disabled (No Tertiary) --</option>
+                    </select>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Final fallback if both primary and secondary fail.
+                    </p>
+                  </div>
+                </div>
+
+                {/* Visual Failover Flow Breadcrumb */}
+                <div className="bg-white/80 dark:bg-slate-900/80 border border-slate-200 dark:border-slate-800 rounded-xl p-3 flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400">
+                    Live Checkout Route:
+                  </span>
+                  <div className="flex flex-wrap items-center gap-1.5 font-mono text-[11px] font-bold">
+                    <span className="px-2.5 py-1 rounded-md bg-blue-500 text-white shadow-2xs">
+                      1. {platformSettings.primary_payment_gateway || platformSettings.active_payment_gateway || 'PAYSTACK'}
+                    </span>
+                    {(platformSettings.gateway_failover_enabled ?? true) && (
+                      <>
+                        <span className="text-slate-400">➔</span>
+                        <span className="px-2.5 py-1 rounded-md bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30">
+                          2. {platformSettings.secondary_payment_gateway || 'APPSNMOBILE'}
+                        </span>
+                        <span className="text-slate-400">➔</span>
+                        <span className="px-2.5 py-1 rounded-md bg-purple-500/20 text-purple-800 dark:text-purple-300 border border-purple-500/30">
+                          3. {platformSettings.tertiary_payment_gateway || 'HUBTEL'}
+                        </span>
+                      </>
+                    )}
+                    {!(platformSettings.gateway_failover_enabled ?? true) && (
+                      <span className="px-2 py-0.5 text-[10px] rounded bg-slate-200 dark:bg-slate-800 text-slate-500 italic">
+                        (Failover Disabled)
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
 
@@ -3444,8 +3605,25 @@ export const AdminDashboardView: React.FC = () => {
                   { id: 'APPSNMOBILE', title: 'AppsNMobile (The Orchard)', desc: 'Direct MoMo Collections & Bulk Disbursement Engine', badge: 'Disbursements' },
                   { id: 'HUBTEL', title: 'Hubtel Ghana PSP', desc: 'Hubtel POS, Direct MoMo & Bank Card Gateways', badge: 'Alternative' }
                 ].map(gw => {
-                  const isActive = platformSettings.active_payment_gateway === gw.id;
+                  const primaryGw = platformSettings.primary_payment_gateway || platformSettings.active_payment_gateway || 'PAYSTACK';
+                  const secondaryGw = platformSettings.secondary_payment_gateway || 'APPSNMOBILE';
+                  const tertiaryGw = platformSettings.tertiary_payment_gateway || 'HUBTEL';
+                  const isActive = primaryGw === gw.id;
                   const gwRates = getGatewayRates(gw.id);
+
+                  let rankBadge = 'Unranked';
+                  let rankBadgeClass = 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400';
+                  if (gw.id === primaryGw) {
+                    rankBadge = 'Rank 1 • Primary Engine';
+                    rankBadgeClass = 'bg-blue-600 text-white';
+                  } else if (gw.id === secondaryGw) {
+                    rankBadge = 'Rank 2 • Secondary Failover';
+                    rankBadgeClass = 'bg-amber-500/20 text-amber-800 dark:text-amber-300 border border-amber-500/30';
+                  } else if (gw.id === tertiaryGw) {
+                    rankBadge = 'Rank 3 • Tertiary Failover';
+                    rankBadgeClass = 'bg-purple-500/20 text-purple-800 dark:text-purple-300 border border-purple-500/30';
+                  }
+
                   return (
                     <div
                       key={gw.id}
@@ -3458,10 +3636,8 @@ export const AdminDashboardView: React.FC = () => {
                     >
                       <div>
                         <div className="flex items-center justify-between mb-2">
-                          <span className={`text-xs font-mono font-bold px-2 py-0.5 rounded ${
-                            isActive ? 'bg-blue-500 text-white' : 'bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-400'
-                          }`}>
-                            {gw.badge}
+                          <span className={`text-[10px] font-mono font-bold px-2 py-0.5 rounded ${rankBadgeClass}`}>
+                            {rankBadge}
                           </span>
                           {isActive && <CheckCircle2 className="h-5 w-5 text-blue-600 dark:text-blue-400" />}
                         </div>
@@ -3493,7 +3669,7 @@ export const AdminDashboardView: React.FC = () => {
                             : 'bg-slate-100 dark:bg-slate-900 hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-800 dark:text-slate-300 border-slate-300 dark:border-slate-700'
                         }`}
                       >
-                        {isActive ? 'Active Engine' : 'Switch & Configure Rates'}
+                        {isActive ? 'Active Primary Engine' : 'Set as Primary & Configure'}
                       </button>
                     </div>
                   );

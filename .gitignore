@@ -142,3 +142,6 @@ scripts/reports/**
 stress_test_report_*.md
 stress_test_report_*.html
 stress_test_report_*.pdf
+
+# Others
+GO_LIVE_OPERATIONS_CHECKLIST.md
