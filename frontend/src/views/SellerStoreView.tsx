@@ -4,7 +4,7 @@ import {
   Shield, ShieldCheck, Star, Award, CheckCircle2, Loader2, 
   Send, ChevronRight, ChevronLeft, Package, ExternalLink, 
   MessageCircle, Info, Phone, X, Search, 
-  ArrowUpDown, ChevronDown, Flame
+  ArrowUpDown, ChevronDown, Flame, Store, ShoppingBag, ArrowRight
 } from 'lucide-react';
 import { apiClient } from '../api/client';
 import { useAuthStore } from '../store/authStore';
@@ -59,6 +59,8 @@ interface RecommendedShop {
   seller_username: string;
   shop_name: string;
   shop_description: string;
+  shop_category?: string;
+  shop_categories?: string[];
   profile_picture_url?: string;
   avg_overall: number;
   is_featured?: boolean;
@@ -146,8 +148,12 @@ export default function SellerStoreView() {
   const fetchRecommendedShops = async () => {
     try {
       const res = await apiClient.get('/reviews/shops');
-      // Only include shops that have an active paid advertisement (featured_shops)
-      setRecommendedShops(res.data.featured_shops || []);
+      const featured: RecommendedShop[] = (res.data.featured_shops || []).map((s: any) => ({ ...s, is_featured: true }));
+      const standard: RecommendedShop[] = (res.data.standard_shops || []).map((s: any) => ({ ...s, is_featured: false }));
+      const combined = [...featured, ...standard];
+      // Deduplicate by seller_id
+      const uniqueShops = Array.from(new Map(combined.map(s => [s.seller_id, s])).values());
+      setRecommendedShops(uniqueShops);
     } catch {
       /* ignore */
     }
@@ -338,10 +344,16 @@ export default function SellerStoreView() {
     (user.username && user.username.toLowerCase() === store.seller_username.toLowerCase())
   ));
 
-  // Filter recommended paid advertised shops to exclude current seller
-  const paidFeaturedAds = recommendedShops.filter(
-    s => s.seller_username.toLowerCase() !== store.seller_username.toLowerCase()
-  );
+  // Filter recommended shops to exclude current seller
+  const otherShops = useMemo(() => {
+    return recommendedShops.filter(
+      s => s.seller_username.toLowerCase() !== store.seller_username.toLowerCase()
+    );
+  }, [recommendedShops, store.seller_username]);
+
+  const paidFeaturedAds = useMemo(() => {
+    return otherShops.filter(s => s.is_featured);
+  }, [otherShops]);
 
   const storeTitle = `${store.shop_name || `@${store.seller_username}'s Store`} — Verified Seller on HendAxis Trust`;
   const storeDesc = `Buy safely from ${store.shop_name || store.seller_username} in Ghana using HendAxis Trust payment protection. ${store.total_completed_escrows} completed orders, ${store.avg_overall.toFixed(1)}/5 rating.`;
@@ -560,8 +572,38 @@ export default function SellerStoreView() {
         </div>
       </div>
 
-      <div className="max-w-4xl mx-auto space-y-6 px-4 sm:px-6 lg:px-8 pt-6">
+      <div className="max-w-4xl mx-auto space-y-6 px-4 sm:px-6 lg:px-8 pt-4">
         
+        {/* Marketplace Breadcrumbs & Quick Discovery Bar */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2.5 pb-1">
+          <div className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400">
+            <Link to="/" className="hover:text-blue-600 dark:hover:text-blue-400 font-medium transition">Home</Link>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            <Link to="/shops" className="hover:text-blue-600 dark:hover:text-blue-400 font-medium transition">Verified Shops</Link>
+            <ChevronRight className="w-3.5 h-3.5 text-slate-400" />
+            <span className="font-semibold text-slate-900 dark:text-white truncate max-w-[180px] sm:max-w-xs">
+              {store.shop_name || `@${store.seller_username}`}
+            </span>
+          </div>
+
+          <div className="flex items-center gap-2 flex-wrap">
+            <Link
+              to="/shops"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:text-blue-600 dark:hover:text-blue-400 hover:border-blue-500/40 text-xs font-semibold shadow-2xs transition"
+            >
+              <Store className="w-3.5 h-3.5 text-blue-500" />
+              <span>All Verified Shops</span>
+            </Link>
+            <Link
+              to="/shops?tab=products"
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 dark:bg-blue-950/40 border border-blue-200/60 dark:border-blue-800/40 text-blue-700 dark:text-blue-300 hover:bg-blue-100 dark:hover:bg-blue-900/60 text-xs font-semibold shadow-2xs transition"
+            >
+              <ShoppingBag className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>All Products</span>
+            </Link>
+          </div>
+        </div>
+
         {/* 1. SELLER COVER BANNER */}
         <div className="rounded-3xl h-44 sm:h-56 md:h-64 w-full relative overflow-hidden shadow-md bg-slate-900 border border-gray-200/60 dark:border-slate-800">
           {store.banner_url ? (
@@ -1488,6 +1530,164 @@ export default function SellerStoreView() {
             </div>
           </div>
         )}
+
+        {/* 4. DISCOVER MORE VERIFIED SELLERS & MARKETPLACE EXPLORER */}
+        <div className="pt-8 border-t border-gray-200 dark:border-slate-800 space-y-6">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+            <div>
+              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-600 dark:text-blue-400 uppercase tracking-wider mb-1">
+                <Store className="w-3.5 h-3.5" />
+                <span>Explore HendAxis Marketplace</span>
+              </div>
+              <h3 className="text-lg sm:text-xl font-extrabold text-slate-900 dark:text-white">
+                Discover More Verified Ghanaian Sellers
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Every transaction across all vendors is protected by HendAxis Escrow.
+              </p>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0">
+              <Link
+                to="/shops"
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs transition shadow-sm"
+              >
+                <span>View All Verified Shops</span>
+                <ArrowRight className="w-3.5 h-3.5" />
+              </Link>
+            </div>
+          </div>
+
+          {/* Other Sellers Grid */}
+          {otherShops.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4">
+              {otherShops.slice(0, 6).map((otherShop) => (
+                <Link
+                  key={otherShop.seller_id}
+                  to={`/store/${otherShop.seller_username}`}
+                  className="bg-white dark:bg-slate-900 rounded-2xl p-4 border border-gray-200/90 dark:border-slate-800 hover:border-blue-500/50 hover:shadow-md transition-all flex flex-col justify-between gap-3 group"
+                >
+                  <div className="flex items-center gap-3 min-w-0">
+                    {otherShop.profile_picture_url ? (
+                      <img
+                        src={otherShop.profile_picture_url}
+                        alt={otherShop.shop_name}
+                        className="w-11 h-11 rounded-2xl object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                      />
+                    ) : (
+                      <div className="w-11 h-11 rounded-2xl bg-blue-600 text-white font-extrabold text-sm flex items-center justify-center shrink-0 shadow-2xs">
+                        {(otherShop.shop_name || otherShop.seller_username).charAt(0).toUpperCase()}
+                      </div>
+                    )}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1">
+                        <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                          {otherShop.shop_name || `@${otherShop.seller_username}`}
+                        </h4>
+                        {otherShop.is_featured && (
+                          <span className="text-[9px] font-black uppercase text-amber-500 bg-amber-50 dark:bg-amber-950/60 px-1 py-0.5 rounded border border-amber-400/30">
+                            Featured
+                          </span>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2 text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                        <span className="truncate">@{otherShop.seller_username}</span>
+                        {otherShop.avg_overall > 0 && (
+                          <span className="flex items-center gap-0.5 font-bold text-amber-500 shrink-0">
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-500" />
+                            {otherShop.avg_overall.toFixed(1)}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+
+                  {otherShop.shop_description && (
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 line-clamp-2 leading-relaxed">
+                      {otherShop.shop_description}
+                    </p>
+                  )}
+
+                  <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 flex items-center justify-between text-xs font-semibold text-blue-600 dark:text-blue-400">
+                    <span className="text-[11px] text-slate-400 dark:text-slate-500 truncate max-w-[140px]">
+                      {otherShop.shop_category || 'Verified Seller'}
+                    </span>
+                    <span className="inline-flex items-center gap-1 group-hover:translate-x-0.5 transition-transform text-[11px] shrink-0">
+                      Visit Store <ChevronRight className="w-3.5 h-3.5" />
+                    </span>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          ) : (
+            <div className="p-6 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-center space-y-2">
+              <Store className="w-8 h-8 text-blue-500 mx-auto" />
+              <h4 className="font-bold text-slate-900 dark:text-white text-sm">
+                Explore More Vendors & Products
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                Visit the verified directory to discover hundreds of Ghanaian tech vendors, fashion shops, and everyday goods.
+              </p>
+            </div>
+          )}
+
+          {/* Quick Hub Navigation Cards */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-2">
+            <Link
+              to="/shops"
+              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-blue-400 dark:hover:border-blue-500 transition shadow-2xs group flex items-center justify-between"
+            >
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                  Directory
+                </span>
+                <h4 className="font-extrabold text-slate-900 dark:text-white text-sm group-hover:text-blue-600 dark:group-hover:text-blue-400 transition-colors">
+                  All Verified Shops
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Browse Ghana's vetted merchant storefronts
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-blue-500 group-hover:translate-x-1 transition-transform shrink-0" />
+            </Link>
+
+            <Link
+              to="/shops?tab=products"
+              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-emerald-400 dark:hover:border-emerald-500 transition shadow-2xs group flex items-center justify-between"
+            >
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
+                  Marketplace
+                </span>
+                <h4 className="font-extrabold text-slate-900 dark:text-white text-sm group-hover:text-emerald-600 dark:group-hover:text-emerald-400 transition-colors">
+                  All Products
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Search protected offers & instant checkout links
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-emerald-500 group-hover:translate-x-1 transition-transform shrink-0" />
+            </Link>
+
+            <Link
+              to="/reviews"
+              className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 hover:border-amber-400 dark:hover:border-amber-500 transition shadow-2xs group flex items-center justify-between"
+            >
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-amber-600 dark:text-amber-400">
+                  Ratings
+                </span>
+                <h4 className="font-extrabold text-slate-900 dark:text-white text-sm group-hover:text-amber-600 dark:group-hover:text-amber-400 transition-colors">
+                  Customer Reviews
+                </h4>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                  Read verified feedback from escrow purchases
+                </p>
+              </div>
+              <ChevronRight className="w-5 h-5 text-amber-500 group-hover:translate-x-1 transition-transform shrink-0" />
+            </Link>
+          </div>
+        </div>
 
       </div>
 

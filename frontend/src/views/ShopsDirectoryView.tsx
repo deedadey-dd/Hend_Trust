@@ -91,8 +91,10 @@ const POPULAR_SUGGESTIONS = [
 export default function ShopsDirectoryView() {
   const { user } = useAuthStore();
   const [searchParams, setSearchParams] = useSearchParams();
-  const initialQuery = searchParams.get('query') || searchParams.get('search') || '';
+  const initialQuery = searchParams.get('query') || searchParams.get('search') || searchParams.get('q') || '';
   const initialCategory = searchParams.get('category') || 'All';
+  const tabParam = (searchParams.get('tab') || '').toUpperCase();
+  const initialTab: 'ALL' | 'PRODUCTS' | 'SHOPS' = (tabParam === 'PRODUCTS' || tabParam === 'SHOPS') ? tabParam : 'ALL';
 
   const [matchedProducts, setMatchedProducts] = useState<ProductCard[]>([]);
   const [featuredShops, setFeaturedShops] = useState<ShopCard[]>([]);
@@ -106,16 +108,22 @@ export default function ShopsDirectoryView() {
   // Search & Filters
   const [query, setQuery] = useState(initialQuery);
   const [selectedCategory, setSelectedCategory] = useState(initialCategory);
-  const [activeTab, setActiveTab] = useState<'ALL' | 'PRODUCTS' | 'SHOPS'>('ALL');
+  const [activeTab, setActiveTab] = useState<'ALL' | 'PRODUCTS' | 'SHOPS'>(initialTab);
   const [showAllStores, setShowAllStores] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('RELEVANCE');
   const [priceRange, setPriceRange] = useState<PriceFilter>('ALL');
 
   useEffect(() => {
-    const urlQuery = searchParams.get('query') || searchParams.get('search') || '';
+    const urlQuery = searchParams.get('query') || searchParams.get('search') || searchParams.get('q') || '';
     const urlCategory = searchParams.get('category') || 'All';
+    const tab = (searchParams.get('tab') || '').toUpperCase();
     if (urlQuery !== query) setQuery(urlQuery);
     if (urlCategory !== selectedCategory) setSelectedCategory(urlCategory);
+    if (tab === 'PRODUCTS' || tab === 'SHOPS') {
+      setActiveTab(tab);
+    } else if (tab === 'ALL') {
+      setActiveTab('ALL');
+    }
   }, [searchParams]);
 
   // Promote Shop Modal State
