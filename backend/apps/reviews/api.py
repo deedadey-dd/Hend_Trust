@@ -545,6 +545,8 @@ class ShopProductSchema(Schema):
     link_id: str
     title: str
     price_ghs: float
+    image_url: Optional[str] = ""
+    description: Optional[str] = ""
 
 class ShopCardSchema(Schema):
     seller_id: uuid.UUID
@@ -823,7 +825,9 @@ def get_marketplace_directory(
             {
                 "link_id": str(link.id),
                 "title": link.title,
-                "price_ghs": float(link.price_ghs)
+                "price_ghs": float(link.price_ghs),
+                "image_url": link.image_url or "",
+                "description": link.description or "",
             } for link in seller_links[:3]
         ]
 

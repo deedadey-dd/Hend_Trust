@@ -2,8 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { 
   Search, Store, Star, Shield, ShieldCheck, Loader2, 
-  X, Wallet, Truck, MessageCircle, ShoppingBag, 
-  Phone, AlertTriangle, ArrowUpDown, 
+  X, Wallet, MessageCircle, ShoppingBag, 
+  Phone, ArrowUpDown, 
   RotateCcw, ArrowRight, ChevronRight
 } from 'lucide-react';
 import { apiClient } from '../api/client';
@@ -11,7 +11,7 @@ import { useAuthStore } from '../store/authStore';
 import heroBanner from '../assets/hero_banner.webp';
 import SEOHead from '../components/SEOHead';
 import RecentReviewsCarousel from '../components/RecentReviewsCarousel';
-import ProductDetailModal from '../components/ProductDetailModal';
+import ProductDetailModal, { type ProductModalData } from '../components/ProductDetailModal';
 import { useEscapeKey } from '../utils/useEscapeKey';
 import { MARKETPLACE_CATEGORIES } from '../constants/categories';
 
@@ -19,6 +19,8 @@ interface ShopProduct {
   link_id: string;
   title: string;
   price_ghs: number;
+  image_url?: string;
+  description?: string;
 }
 
 interface ProductCard {
@@ -136,12 +138,8 @@ export default function ShopsDirectoryView() {
   const [showApprovalStep, setShowApprovalStep] = useState(false);
   const [approvalData, setApprovalData] = useState<{ fee: number; remaining: number } | null>(null);
 
-  // Interstitial Confirm Shipping Modal State for Featured Links
-  const [shippingModalItem, setShippingModalItem] = useState<{ product: ShopProduct; shop: ShopCard } | null>(null);
-  useEscapeKey(() => setShippingModalItem(null), Boolean(shippingModalItem));
-
   // Product Details Modal State
-  const [selectedProductModal, setSelectedProductModal] = useState<ProductCard | null>(null);
+  const [selectedProductModal, setSelectedProductModal] = useState<ProductModalData | null>(null);
   useEscapeKey(() => setSelectedProductModal(null), Boolean(selectedProductModal));
 
   const getProductWhatsappUrl = (
@@ -578,7 +576,29 @@ export default function ShopsDirectoryView() {
                   <button
                     key={product.link_id}
                     type="button"
-                    onClick={() => setShippingModalItem({ product, shop })}
+                    onClick={() => setSelectedProductModal({
+                      link_id: product.link_id,
+                      title: product.title,
+                      price_ghs: product.price_ghs,
+                      image_url: product.image_url,
+                      description: product.description || '',
+                      category: shop.shop_category,
+                      seller_username: shop.seller_username,
+                      seller_shop_name: shop.shop_name,
+                      seller_phone: shop.seller_phone,
+                      badge_verified_seller: Boolean(shop.badge_title?.toLowerCase().includes('verified') || shop.badge_title?.toLowerCase().includes('top-rated')),
+                      badge_title: shop.badge_title,
+                      seller_avg_rating: shop.avg_overall,
+                      seller_review_count: shop.total_reviews_count,
+                      whatsapp_contact_url: getProductWhatsappUrl(
+                        shop.seller_phone,
+                        product.title,
+                        product.price_ghs,
+                        shop.shop_name,
+                        shop.shop_category,
+                        product.image_url
+                      )
+                    })}
                     className="w-full text-left p-2 rounded-xl bg-slate-50 dark:bg-slate-950/80 hover:bg-blue-50 dark:hover:bg-blue-950/40 border border-slate-200/80 dark:border-slate-800 transition flex items-center justify-between gap-2 group/prod cursor-pointer"
                   >
                     <span className="text-xs font-semibold text-slate-800 dark:text-slate-200 group-hover/prod:text-blue-600 dark:group-hover/prod:text-blue-400 truncate">
@@ -1155,103 +1175,7 @@ export default function ShopsDirectoryView() {
         </div>
       )}
 
-      {/* Interstitial Confirm Shipping Modal for Featured Shop Links */}
-      {shippingModalItem && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm animate-fade-in">
-          <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-md w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
-            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
-              <div className="flex items-center gap-2">
-                <div className="h-9 w-9 rounded-2xl bg-amber-100 dark:bg-amber-950/60 flex items-center justify-center text-amber-600 dark:text-amber-400">
-                  <Truck className="h-5 w-5" />
-                </div>
-                <div>
-                  <h3 className="font-extrabold text-slate-900 dark:text-white text-sm sm:text-base">
-                    Confirm Delivery with Seller
-                  </h3>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Verify shipping fees to your destination
-                  </p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setShippingModalItem(null)}
-                className="p-1.5 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 hover:text-slate-600 cursor-pointer"
-              >
-                <X className="h-5 w-5" />
-              </button>
-            </div>
 
-            {/* Selected Product Snapshot */}
-            <div className="p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/60 flex items-center justify-between gap-3">
-              <div className="min-w-0">
-                <h4 className="font-bold text-slate-900 dark:text-white text-xs sm:text-sm truncate">
-                  {shippingModalItem.product.title}
-                </h4>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate">
-                  Store: <strong className="text-slate-700 dark:text-slate-200 font-semibold">{shippingModalItem.shop.shop_name}</strong>
-                </p>
-              </div>
-              <span className="text-sm sm:text-base font-black text-emerald-600 dark:text-emerald-400 font-mono shrink-0">
-                GH₵ {shippingModalItem.product.price_ghs.toFixed(2)}
-              </span>
-            </div>
-
-            {/* Warning Box */}
-            <div className="p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200/80 dark:border-amber-800/60 text-xs text-amber-950 dark:text-amber-200 space-y-2">
-              <div className="flex items-center gap-1.5 font-bold text-amber-800 dark:text-amber-300 text-xs">
-                <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                <span>Important Shipping Notice</span>
-              </div>
-              <p className="leading-relaxed text-[11.5px]">
-                Shipping costs in Ghana depend on your specific city/town and chosen transport method (e.g. Courier or Station Bus OTP).
-              </p>
-              <p className="leading-relaxed text-[11.5px] font-medium text-amber-900 dark:text-amber-100">
-                If your delivery location costs more than what is included in this link, the seller may ask for an additional shipping fee before dispatching your package.
-              </p>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="space-y-2 pt-1">
-              <a
-                href={getProductWhatsappUrl(
-                  shippingModalItem.shop.seller_phone,
-                  shippingModalItem.product.title,
-                  shippingModalItem.product.price_ghs,
-                  shippingModalItem.shop.shop_name,
-                  shippingModalItem.shop.shop_category
-                )}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs sm:text-sm rounded-xl transition shadow-md shadow-emerald-600/20 flex items-center justify-center gap-2 text-center cursor-pointer"
-              >
-                <MessageCircle className="h-4 w-4" />
-                <span>Chat on WhatsApp to Confirm Delivery</span>
-              </a>
-
-              {shippingModalItem.shop.seller_phone && (
-                <a
-                  href={`tel:${shippingModalItem.shop.seller_phone}`}
-                  className="w-full py-2.5 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 font-bold text-xs rounded-xl transition flex items-center justify-center gap-2 text-center"
-                >
-                  <Phone className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                  <span>Call Seller ({shippingModalItem.shop.seller_phone})</span>
-                </a>
-              )}
-
-              <div className="pt-2 text-center">
-                <Link
-                  to={`/l/${shippingModalItem.product.link_id}`}
-                  onClick={() => setShippingModalItem(null)}
-                  className="text-[11px] text-slate-500 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-400 font-semibold underline"
-                >
-                  I have already agreed on delivery — Proceed to Checkout →
-                </Link>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Product Details, Larger Image Preview & Delivery Modal */}
       <ProductDetailModal
